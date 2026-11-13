@@ -1,5 +1,26 @@
 # 小K三线集成审查
 
+## I6.15 统一执行器与正式防水委托（Limited）
+
+分支 `codex/xiaok-integration`，fetch 基线 `72777986d854`。新建隔离 PG17 `xiaok_i615_validation`，企业 `4`、对照企业 `5`、业主 `1`、项目 `1`、卫生间 `1`、原 C01 `1`、取消对照 C01 `2`。保留历史事项 `8`、V1 Agent 与已发布的各版本，采用既有 JSON/事件存储，空库迁移已验证。
+
+| 项目 | 状态 | 实际结果 |
+| --- | --- | --- |
+| A 普通防水咨询 | failed | Native Run `7` 未创建委托，首稿含无来源的 200 mm / 200–300 mm。将量数检查提前到原单次修复节点后，Stable 的 Run `14` 首稿仍给出无据量数，唯一修复在正文中带入 `<think>` 及原量数，仍被拦截。停止同类复采。 |
+| B/C 明确授权与登记回执 | passed | Native Run `8` 成功；原消息 `10`、站内回执 `11`，正式 Run `specialist:d5f6bf06-21d5-4bb8-93dd-fe50673f8fc3`，首 Outbox `14`，绑定 rev3 `44f15a21…`。 |
+| D 取消 | passed | 独立 Native Run `9` 成功登记；原会话取消将 `specialist:7073bcd3-6867-4f6f-b4b2-1b53e41a5be6` 置为 `cancelled`。 |
+| 正式 Workflow 等待与来源 | passed | 真实子 Agent Run `10` 成功，工作流进入补资料分支并在 `site_record` 等待，持久任务无执行租约。获权同房间记录发布后，由原 Worker 登记事项并进入经理复核等待。 |
+| E/F/G/H 同一 Run 的四端验收 | passed | Stable 3.17.2 / 390×844 副屏实跑。工人提交待核对记录 `1` 及整改记录 `3`，重进读回合成原件。经理确认、转交，核对原件和历史版本并正式复核。事项 `35` 修订 `4`、复核 `55` 修订 `2`、证据事件 `52`、回传 Outbox `56`、原 C01 回执 `38`（回复原消息 `10`）。老板端读取同一已解决事项及当前施工节点；业主重进读到同一 Run、复核与原件。通过范围为同一合成项目的补资料路径。 |
+| 当前授权与恢复 | passed | 另一业主不能打开原件或委托，对照企业看不到 Run，第二条 C01 无原咨询 Run。撤销项目对客授权后 Stable 原结果遮蔽、原件 404、任务列表为空；恢复后原回执和原件重新可读。 |
+| C01 有据清单的本轮真实渲染 | limited | 专业子作业保存了检查内容，此 Run 按冻结 rev3 进入补资料。企业工艺检索不可用，公网原文未核实。有据清单分支本轮仅复用模拟及历史证据。 |
+| 真实素材、真机、BLE、真实微信 | not_run | 本轮现场照片使用明确标记的合成图。 |
+
+新增模型统一 `bailian / deepseek-flash / deepseek-v4.1-flash-1017`。普通及授权走 Responses，工作流子 Agent 和现场草稿的固定结构化载体走原 Chat Completions。首稿、工具、回执、provider request ID 和 tokens 见 `admin/tmp/i6.15/{advice,follow,follow2,startup-assistant-10,closed-loop}.json` 及隔离库 Run `14`。成本金额未对账。Stable 证据 `stable-*.json`、`four-role-readback.json`、`closed-loop.json`，保留前后摘要、角色收发记录、原件和截图。空输入、开关及编辑保存的自动化限制通过页面原处理函数操作，记录实际 API 写入。业务写入批若遇源码漂移保留原批，相关复核及重进已在固定快照只读核验；登记首批未采集完整工作树前后摘要。
+
+历史 Run `7` 的 `consultation` 配置在派发前即不匹配，`9`/`10` 为独立普通答复失败，`12` 在真实写入后产生无来源承诺，`13` 在写入后终稿工具格式无效。现有快照保留；新建 Run 的配置诊断和共享工具合同见[架构](xiaok-specialist-agent-architecture.md)。G 标准现行性继续复用 I6.14 已通过的原始证据。
+
+工程定向 Assistant / Native Workflow / Construction 250/250，小程序 123/123；新库 PG17 双 Admin 进程、双 Worker、强制 RLS、失效租约、Outbox、回滚及两运行时共享工具验证 8/8；A02/A06/E06 定向 8/8，提交 `a7af6626`。新 LangGraph 测试使用受控模型帧，实际写入并核对公开路由诊断、Run、原始事项 Evidence 和取消后审计留存。原共享队列测试无范围地领取任务，隔离后使用既有企业/Run 过滤，生产领取规则保持原值；双 Worker 仍争用同一条真实任务。B511 复用已有周槽的失败批与历史书桌收纳分开保留。
+
 ## I6.14 防水 Agent 最终验收闭环（Limited）
 
 分支 `codex/xiaok-integration`，起点 `4dd69461`。隔离 PG17 `sfp-xiaok-i67-test` / `xiaok_r6_model_i614`，模型统一为百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`。范围外的小程序作品图片/`api.js` 等改动未提交。已发布 `waterproof-specialist@1` 与 Workflow revision/digest 未修改。

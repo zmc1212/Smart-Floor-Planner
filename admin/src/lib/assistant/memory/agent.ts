@@ -1,21 +1,25 @@
 
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { one, type Row } from '@/db/repositories/assistant-repository';
+import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { DelegationService } from '@/lib/native-workflow/live/delegation-store';
-import { currentDelegationViews, delegationModelView, delegationNoticeAvailable, delegationReceipt, delegationSummary } from '@/lib/native-workflow/live/delegation-chat';
+import { currentDelegationViews, delegationNoticeAvailable, delegationReceipt, delegationSummary } from '@/lib/native-workflow/live/delegation-chat';
 import { delegationKinds, type SpecialistWorkflowBinding } from '@/lib/native-workflow/live/delegation-state';
 import { fail, fingerprint, safeText, type ActorContext, type MessageContent } from '../contracts';
 import type { ModelTool, ModelToolCall } from '../contracts/model';
+import { toolSchemaIssue } from '../agent/tool-protocol';
 import { ToolExecutor } from '../tools/executor';
 import { ToolRegistry } from '../tools/registry';
+import { specialistDelegationRoom, type ConsultationSpecialist } from '../specialists/consultation';
+import { specialists } from '../specialists/registry';
 import { MemoryService, type MemoryEntry } from './long-term';
 import { privateMemoryScope, type PrivateMemoryScope } from './scope';
 
 const contextStep = 1014;
 const contextKind = 'agent_long_term_context';
 const memoryToolName = 'manage_long_term_memory';
-const delegationToolName = 'start_delegation';
+export const delegationToolName = 'start_delegation';
+export const delegationToolProtocol = 'start-delegation-v1';
 const text = (maxLength: number) => ({ type: 'string', minLength: 1, maxLength });
 
 const memoryTool: ModelTool = {
@@ -42,6 +46,45 @@ export function longTermTools(scope: PrivateMemoryScope, question: string) {
   if (explicitPublicResearch(question)) return [];
   const writes = /记住|记录|记下|更正|纠正|删除|删掉|忘掉|忘记|作废|偏好|习惯|一直|以后|长期|我喜欢|我希望|我们决定|我家|不再/u.test(question);
   return [...(writes ? [memoryTool] : []), ...(scope.projectId && delegationRequested(question) ? [delegationTool] : [])];
+}
+
+export function delegationToolForQuestion(scope: PrivateMemoryScope, question: string, specialist: ConsultationSpecialist | null) {
+  if (!scope.projectId || explicitPublicResearch(question)) return undefined;
+  if (!specialist) return longTermTools(scope, question).find(tool => tool.name === delegationToolName);
+  const room = specialistDelegationRoom(specialist, question);
+  if (!room) return undefined;
+  return { ...delegationTool,
+    description: '登记用户明确交代的待复核事项。subject 逐字复制当前原话中连续的具体部位或事项，quote 摘录包含该 subject 的本条原话。登记回执由服务端展示，现场复核由项目团队处理。',
+    parameters: { ...delegationTool.parameters, required: ['kind', 'subject', 'room', 'quote'],
+      properties: { ...delegationTool.parameters.properties as Row, kind: { type: 'string', enum: ['rectification_review'] },
+        room: { type: 'string', enum: [room] } } },
+  };
+}
+
+export async function dispatchDelegationTool(tx: PostgresTransaction, actor: ActorContext, c: Row, source: Row,
+  runId: string, sequence: number, call: ModelToolCall, specialist: ConsultationSpecialist | null) {
+  const scope = await privateMemoryScope(tx, actor, c);
+  const question = safeText(source.content as MessageContent);
+  const tool = scope && delegationToolForQuestion(scope, question, specialist);
+  if (!tool || call.name !== delegationToolName)
+    fail('assistant_capability_forbidden', 403);
+  if (await toolSchemaIssue(tool, call.arguments)) fail('delegation_source_mismatch', 422);
+  const bindWorkflow = specialist ? async (): Promise<SpecialistWorkflowBinding> => {
+    const { getNativeWorkflowService } = await import('@/lib/native-workflow/server');
+    const templateId = specialist.agent.workflowTemplateId;
+    if (!templateId) fail('specialist_workflow_unavailable', 503);
+    const { record } = await getNativeWorkflowService().getDefinition(templateId);
+    const published = record.versions.at(-1);
+    const node = published?.definition.nodes.find(item => item.type === 'agent');
+    const agentVersion = Number(node?.config?.agentVersion);
+    const selected = specialists.version(String(node?.config?.agentId), agentVersion);
+    if (!published || published.definition.inputSchema.eventType !== 'specialist_followup'
+      || !selected || selected.agentId !== specialist.agent.agentId || selected.status !== 'active'
+      || selected.workflowTemplateId !== templateId || !selected.toolPermissions.includes('followup'))
+      fail('specialist_workflow_unavailable', 503);
+    return { templateId, revision: published.revision, digest: published.digest, agentId: selected.agentId, agentVersion, originRunId: runId, originBound: true };
+  } : undefined;
+  return agentLongTermToolResult(tx, actor, c, source, runId, sequence, call, bindWorkflow, specialist?.agent);
 }
 
 export function standalonePreferenceTool(tool: ModelTool): ModelTool {
@@ -78,9 +121,11 @@ export async function executeLongTermTool(tx: PostgresTransaction, actor: ActorC
         const d = await service.create(messageId, request, new Date(), workflow);
         // Only the owner sees this in-app receipt; the source grant lives in
         // construction material sharing and is never created by this tool.
-        const notice = await delegationReceipt(tx, d, 'create:' + d.id, delegationSummary(d));
+        const key = d.originMessageId === messageId ? 'create:' + d.id : 'register:' + d.id + ':' + messageId;
+        const notice = await delegationReceipt(tx, d, key, delegationSummary(d));
         if (!notice) fail('delegation_receipt_unavailable', 409);
-        return { delegation: delegationModelView([d])[0], delivery: 'in_app_receipt', businessConfirmation: false,
+        return { delegation: { id: d.id, title: d.title, status: d.status, nextAction: d.nextAction, version: d.version },
+          delivery: 'in_app_receipt', businessConfirmation: false, quote,
           messageId: notice.messageId,
           instructions: '已登记委托，等服务端按实际事件核对。只能说明已登记和当前等待状态。' };
       }
@@ -135,7 +180,7 @@ export async function agentLongTermContext(tx: PostgresTransaction, actor: Actor
   const taskQuestion = /委托|跟进|插座|点位|底盒|整改|设计师.*核对/u.test(question);
   const tasks = taskQuestion ? (await new DelegationService(tx, scope).list())
     .filter(d => /委托|跟进/u.test(question) || question.includes(d.scope.subject)).slice(0, 6) : [];
-  const delegations = delegationModelView(await currentDelegationViews(tx, tasks));
+  const delegations = (await currentDelegationViews(tx, tasks)).map(({ title, status, nextAction }) => ({ title, status, nextAction }));
   const project = await service.projectContext(question, delegationRequested(question));
   const facts = editing ? memories.map(({ key, revision, category, topic, room, state }) => ({ key, revision, category, topic, room, state })) : memories;
   const privateContext = facts.length + delegations.length > 0 || !!project;
@@ -174,21 +219,24 @@ export async function longTermRunAvailable(tx: PostgresTransaction, actor: Actor
 }
 
 export async function agentLongTermToolResult(tx: PostgresTransaction, actor: ActorContext, c: Row, source: Row, runId: string,
-  sequence: number, call: ModelToolCall, workflow?: SpecialistWorkflowBinding) {
-  const binding = fingerprint({ source: String(source.id), content: source.content, tool: call.name, args: call.arguments, ...(workflow ? { workflow: { templateId: workflow.templateId, agentId: workflow.agentId } } : {}) });
+  sequence: number, call: ModelToolCall, bindWorkflow?: () => Promise<SpecialistWorkflowBinding>,
+  specialist?: ConsultationSpecialist['agent']) {
+  const binding = fingerprint({ source: String(source.id), content: source.content, tool: call.name, args: call.arguments,
+    ...(specialist ? { workflow: { templateId: specialist.workflowTemplateId, agentId: specialist.agentId } } : {}) });
   const prior = await one(tx, sql`select kind,input_summary,private_checkpoint from app.assistant_run_steps
     where enterprise_id=${actor.enterpriseId} and run_id=${runId} and step_seq=${sequence}`);
   if (prior) {
     if (prior.kind !== 'agent_long_term_write' || (prior.input_summary as Row)?.binding !== binding) fail('context_changed');
-    return { content: String((prior.private_checkpoint as Row).content) };
+    return { content: longTermModelReceipt(call.name, String((prior.private_checkpoint as Row).content)) };
   }
+  const workflow = await bindWorkflow?.();
   // ToolExecutor returns business failures as receipts. Roll back any partial
   // writes before committing a failure receipt, including PostgreSQL errors.
   await tx.execute(sql`savepoint r5_agent_tool`);
   const result = await executeLongTermTool(tx, actor, c, source, call, runId, workflow);
   if (!result.ok) await tx.execute(sql`rollback to savepoint r5_agent_tool`);
   await tx.execute(sql`release savepoint r5_agent_tool`);
-  if (result.ok) {
+  if (result.ok && call.name === memoryToolName) {
     const scope = await privateMemoryScope(tx, actor, c);
     if (!scope) fail('context_changed');
     const packet = JSON.parse(result.content) as { result?: { memory?: MemoryEntry } };
@@ -205,7 +253,17 @@ export async function agentLongTermToolResult(tx: PostgresTransaction, actor: Ac
     values(${actor.enterpriseId},${runId},${sequence},'agent_long_term_write',${call.name},1,${result.ok ? 'succeeded' : 'failed'},
       ${JSON.stringify({ binding, operationKey: result.record.operationKey, resultHash: result.record.resultHash })}::jsonb,
       ${JSON.stringify({ content: result.content })}::jsonb)`);
-  return { content: result.content };
+  return { content: longTermModelReceipt(call.name, result.content) };
+}
+
+function longTermModelReceipt(name: string, content: string) {
+  if (name !== delegationToolName) return content;
+  const packet = JSON.parse(content);
+  if (!packet.ok) return content;
+  const { title, status, nextAction } = packet.result.delegation;
+  return JSON.stringify({ ok: true, tool: name, callId: packet.callId,
+    result: { delegation: { title, status, nextAction }, delivery: 'in_app_receipt', businessConfirmation: false },
+    instruction: '站内已有服务端回执。回答用户另外提出的咨询问题，不重述登记、截止时间或后续操作。' });
 }
 
 /** A standalone preference update already has an authenticated durable result.
@@ -223,22 +281,35 @@ export async function longTermPreferenceReceipt(tx: PostgresTransaction, eid: st
   return null;
 }
 
+/** Resolve the exact system message created by this run's service effect.
+ * Read-only tools and a rejected model draft cannot manufacture a receipt. */
 export async function longTermDelegationReceipt(tx: PostgresTransaction, actor: ActorContext, c: Row,
-  runId: string, sequence: number, original: string) {
+  runId: string, options: { standalone?: boolean } = {}) {
   const scope = await privateMemoryScope(tx, actor, c);
   if (!scope) return null;
-  const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${scope.enterpriseId}
-    and run_id=${runId} and step_seq=${sequence} and kind='agent_long_term_write'
-    and capability_name=${delegationToolName} and status='succeeded'`);
-  if (!step) return null;
-  const result = JSON.parse(String((step.private_checkpoint as Row).content)).result as Row | undefined;
-  const taskId = (result?.delegation as Row | undefined)?.id;
-  const noticeId = result?.messageId;
-  if (typeof taskId !== 'string' || typeof noticeId !== 'string') return null;
-  const task = await new DelegationService(tx, scope).find(taskId);
-  if (!task || task.conversationId !== scope.conversationId || task.objective !== original.trim()
-    || !await delegationNoticeAvailable(tx, actor, c, noticeId)) return null;
-  return `已登记跟进：${task.title}。你可以在这次咨询里查看进展。`;
+  const receipts = await rows(tx, sql`select s.private_checkpoint,m.content as original from app.assistant_run_steps s
+    join app.assistant_runs r on r.enterprise_id=s.enterprise_id and r.id=s.run_id
+    join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.conversation_id=r.conversation_id and m.id=r.trigger_message_id
+    where r.enterprise_id=${scope.enterpriseId} and r.id=${runId} and r.conversation_id=${scope.conversationId}
+      and r.purpose='reply' and m.author_kind='user' and m.user_id=${scope.ownerId}
+      and s.kind='agent_long_term_write' and s.capability_name=${delegationToolName} and s.status='succeeded' order by s.step_seq desc`);
+  for (const step of receipts) {
+    const result = JSON.parse(String((step.private_checkpoint as Row).content)).result as Row | undefined;
+    const taskId = (result?.delegation as Row | undefined)?.id;
+    const noticeId = result?.messageId;
+    if (typeof taskId !== 'string' || typeof noticeId !== 'string') continue;
+    const task = await new DelegationService(tx, scope).find(taskId);
+    if (!task || task.conversationId !== scope.conversationId) continue;
+    if (options.standalone) {
+      const original = safeText(step.original as MessageContent).trim();
+      if ((result?.quote ?? task.objective) !== original || /[？?]/u.test(original)) continue;
+    }
+    if (!await delegationNoticeAvailable(tx, actor, c, noticeId)) continue;
+    const notice = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${scope.enterpriseId}
+      and conversation_id=${scope.conversationId} and id=${noticeId} and author_kind='system'`);
+    if (notice) return { messageId: noticeId, text: safeText(notice.content as MessageContent) };
+  }
+  return null;
 }
 
 export async function longTermOperationIds(tx: PostgresTransaction, eid: string, runId: string) {

@@ -19,6 +19,7 @@ export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal
    * explanation runs additionally require their durable semantic proof;
    * explicitly bound source-boundary runs use the strict original parser. */
   specialistAcceptance?: boolean;
+  delegationReply?: boolean;
   /** Current room of a room-scoped specialist run. Project originals from any
    * other room cannot support this answer, even when the source is still valid. */
   currentRoom?: string;

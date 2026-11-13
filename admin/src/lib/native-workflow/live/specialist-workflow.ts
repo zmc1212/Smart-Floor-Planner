@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { newRun } from '@/lib/assistant/core/conversation';
+import { cancelRuns, newRun } from '@/lib/assistant/core/conversation';
 import { AssistantError, fail, fingerprint, safeText, type MessageContent } from '@/lib/assistant/contracts';
 import { currentSynthesisContext } from '@/lib/assistant/agent/synthesis-sources';
 import { checkWebSources } from '@/lib/assistant/agent/web-evidence';
 import { validResult, syncSiteResults } from '@/lib/construction/site-results';
 import { specialistPolicy } from '@/lib/assistant/specialists/consultation';
-import { parseSpecialistOutput, specialists, type SpecialistRunBinding } from '@/lib/assistant/specialists/registry';
+import { parseSpecialistOutput, specialists, type SpecialistEvidenceRef, type SpecialistRunBinding } from '@/lib/assistant/specialists/registry';
 import { specialistChecks, specialistPublicSections, type SpecialistEnterpriseRead, type SpecialistProjectEvidence, type SpecialistPublicRead } from '@/lib/assistant/specialists/evidence';
 import type { SynthesisAnswer, SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { configuredPublicRead, publicDocumentPages, publicDocumentReadFailures } from '@/lib/assistant/agent/public-research';
@@ -22,18 +22,50 @@ import { workflowIssue } from '../errors';
 import { getNativeWorkflowService } from '../server';
 import type { PendingOperation, WorkflowDefinition, WorkflowValue } from '../types';
 import { delegationActor, type ReviewDelegationEvent } from './delegation-review-store';
-import { delegationRefresh, outcome, type DelegationOutcome, type ReviewDelegation } from './delegation-state';
+import { delegationRefresh, outcome, specialistWorkflowRunId, type DelegationOutcome, type ReviewDelegation } from './delegation-state';
 import { checkDelegationStandards } from './delegation-knowledge';
 import { createPostgresDurableTaskStore } from './durable-task-postgres-store';
 import { createDurableTaskRuntime } from './durable-task-runtime';
 import type { DurableTaskData } from './durable-task-types';
 import { createPostgresWorkflowRunStore } from './runtime-postgres-stores';
-import { runPublishedLive } from './runner';
+import { cancelPublishedLiveRun, registerPublishedLiveRun, runPublishedLive } from './runner';
+import type { LiveBusinessEvent } from './types';
 import { LiveOperationFailure, LiveOperationUnknownError, LiveOperationWaiting } from './types';
 
-export const specialistWorkflowRunId = (id: string) => 'specialist:' + id;
+async function specialistRunRegistration(tx: PostgresTransaction, d: ReviewDelegation) {
+  const binding = d.scope.workflow!;
+  const agent = specialists.version(binding.agentId, binding.agentVersion);
+  if (!agent || agent.status !== 'active' || agent.workflowTemplateId !== binding.templateId) fail('specialist_workflow_unavailable', 503);
+  const { record } = await getNativeWorkflowService().getDefinition(binding.templateId);
+  const published = record.versions.find(version => version.revision === binding.revision && version.digest === binding.digest);
+  if (!published) fail('specialist_workflow_unavailable', 503);
+  const store = createPostgresWorkflowRunStore(d.enterpriseId, tx);
+  const runId = specialistWorkflowRunId(d.id);
+  const existing = binding.originBound ? await store.get(runId) : null;
+  const businessEvent: LiveBusinessEvent = {
+    source: 'outbox', outboxEventId: binding.originBound ? existing?.binding.businessEvent.outboxEventId ?? d.activationEventId : null,
+    progressRevision: 0, stageKey: agent.supportedStages[0], settingsVersion: 1,
+    ...(binding.originBound && d.scope.roomId ? { specialistOrigin: { delegationId: d.id, customerId: d.ownerId,
+      conversationId: d.conversationId, originalMessageId: d.originMessageId, roomId: d.scope.roomId,
+      agentId: agent.agentId, agentVersion: agent.version } } : {}),
+  };
+  return { published, runId, store, enterpriseId: d.enterpriseId, projectId: d.projectId,
+    event: { eventType: 'specialist_followup' as const, eventId: 'request:' + d.id, occurredAt: d.createdAt.toISOString() },
+    businessEvent, agent };
+}
+
+export async function registerSpecialistRun(tx: PostgresTransaction, d: ReviewDelegation) {
+  if (!d.scope.roomId || !d.activationEventId) fail('specialist_workflow_unavailable', 503);
+  return registerPublishedLiveRun(await specialistRunRegistration(tx, d));
+}
 
 export async function cancelSpecialistWaits(tx: PostgresTransaction, d: ReviewDelegation) {
+  const runId = specialistWorkflowRunId(d.id);
+  await cancelPublishedLiveRun(createPostgresWorkflowRunStore(d.enterpriseId, tx), runId, new Date().toISOString());
+  const analysis = await specialistAnalysis(tx, d, runId);
+  // A dispatched provider call must record its own outcome. Its lease will
+  // fail the delegation guard before any answer can be published.
+  if (analysis?.status === 'queued') await cancelRuns(tx, delegationActor(d), d.conversationId, String(analysis.id));
   const store = createPostgresDurableTaskStore({ tx, enterpriseId: d.enterpriseId });
   const runtime = createDurableTaskRuntime({ store });
   const tasks = await rows(tx, sql`select id from app.native_workflow_durable_tasks where enterprise_id=${d.enterpriseId}
@@ -121,11 +153,8 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
   const settings = await one(tx, sql`select agent_config,knowledge_epoch from app.assistant_enterprise_settings where enterprise_id=${d.enterpriseId}`);
   if (!specialistPolicy(d.enterpriseId, settings?.agent_config as Parameters<typeof specialistPolicy>[1] ?? { tools: false, providerKey: '', model: '' }))
     return outcome('waiting_for_authorization');
-  const runId = specialistWorkflowRunId(d.id);
-  const store = createPostgresWorkflowRunStore(d.enterpriseId, tx);
-  const { record } = await getNativeWorkflowService().getDefinition(binding.templateId);
-  const published = record.versions.find(version => version.revision === binding.revision && version.digest === binding.digest);
-  if (!published) throw new Error('delegation_workflow_version_unavailable');
+  const registration = await specialistRunRegistration(tx, d);
+  const { runId, published } = registration;
   const branched = published.definition.nodes.some(node => node.capabilityRef === 'condition.specialist_evidence');
   const managerOnly = published.definition.nodes.some(node => node.capabilityRef === 'save.specialist_issue.v2' && node.config?.policy === 'manager_only');
   const outputNode = published.definition.nodes.find(node => node.capabilityRef === 'deliver.specialist_result');
@@ -187,10 +216,7 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
   };
 
   const result = await runPublishedLive({
-    published, runId, enterpriseId: d.enterpriseId, projectId: d.projectId,
-    event: { eventType: 'specialist_followup', eventId: 'request:' + d.id, occurredAt: d.createdAt.toISOString() },
-    businessEvent: { source: 'outbox', outboxEventId: null, progressRevision: 0, stageKey: agent.supportedStages[0], settingsVersion: 1 },
-    store, resume: true, wakeEventId: event.id,
+    ...registration, resume: true, wakeEventId: event.id,
     ports: { async execute(operation): Promise<Readonly<Record<string, WorkflowValue>>> {
       switch (operation.capabilityRef) {
         case 'read.specialist_project': {
@@ -306,8 +332,12 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
         case 'save.specialist_issue.v2': {
           const input = operation.input.record as { id: string; version: number } | undefined;
           try {
+            const checkpoint = binding.originBound ? await registration.store.get(runId) : null;
+            const analysis = checkpoint?.operations.findLast(item => item.capabilityRef === 'read.specialist_evidence'
+              || item.nodeVersion.startsWith('agent@'))?.outputs?.analysis as { evidenceRefs?: SpecialistEvidenceRef[] } | undefined;
             const issue = await openSpecialistSiteIssue(tx, d, input,
-              operation.config?.policy === 'manager_only' ? 'manager_only' : 'open_or_reuse');
+              operation.config?.policy === 'manager_only' ? 'manager_only' : 'open_or_reuse',
+              analysis?.evidenceRefs);
             if (!issue) throw new LiveOperationWaiting(operation.config?.policy === 'manager_only'
               ? 'specialist_waiting_for_manager_record' : 'specialist_waiting_for_site_record');
             return { saved: true, saveReceipt: { receiptId: issue.issueId, revision: issue.revision, simulated: false } };
@@ -413,11 +443,12 @@ export async function queueSpecialistAnalysisCompletion(tx: PostgresTransaction,
   const task = await one(tx, sql`select r.policy_snapshot->'specialistRun' as binding from app.assistant_runs r
     where r.enterprise_id=${eid} and r.id=${runId}`);
   const id = (task?.binding as { delegationId: string } | null)?.delegationId;
-  const target = await one(tx, sql`select id::text,project_id::text from app.native_workflow_delegations where enterprise_id=${eid}
+  const targets = await rows(tx, sql`select id::text,project_id::text from app.native_workflow_delegations where enterprise_id=${eid}
     and current_status in ('pending','running') and ${id ? sql`id::text=${id}` : sql`scope#>>'{workflow,originRunId}'=${runId}`}`);
-  if (!target) return;
-  const targetId = String(target.id);
   const { appendDelegationEvent } = await import('./delegation-store');
-  await appendDelegationEvent(tx, eid, delegationRefresh, targetId + ':assistant:' + runId, 1,
-    { delegationId: targetId, projectId: String(target.project_id), assistantRunId: runId, status });
+  for (const target of targets) {
+    const targetId = String(target.id);
+    await appendDelegationEvent(tx, eid, delegationRefresh, targetId + ':assistant:' + runId, 1,
+      { delegationId: targetId, projectId: String(target.project_id), assistantRunId: runId, status });
+  }
 }

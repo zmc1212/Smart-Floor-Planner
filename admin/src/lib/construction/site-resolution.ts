@@ -215,7 +215,7 @@ export async function executeSiteResolution(tx: PostgresTransaction, actor: Acto
         ${JSON.stringify({ projectId: pid, issueId: issue.issueId, revision: data.revision, issueRevision: issue.revision, conversationId: plan?.conversationId ?? issue.conversationId,
           customerId: plan?.customerId ?? issue.customerId, needGrantId: plan?.needGrantId, materialVersion: plan?.materialVersion, roomName: issue.roomName,
           lifecycleId: String(event.id), planId: plan?.id, planNumber: plan?.number, evidenceId: data.evidenceId, state: data.state,
-          ...(specialist ? { specialistDelegationId: issue.specialistDelegationId } : {}),
+          ...(specialist ? { specialistDelegationId: issue.specialistDelegationId, specialistSource: issue.specialistSource } : {}),
           ...disclosure })}::jsonb)`);
   }
   return { issueId: issue.issueId, revision: issue.revision, lifecycleId: String(event.id), lifecycleRevision: view.revision,

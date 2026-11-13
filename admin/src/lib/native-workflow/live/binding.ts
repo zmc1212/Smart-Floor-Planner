@@ -24,6 +24,7 @@ function nodeVersionsKey(versions: Readonly<Record<string, string>>): string {
 
 export function sameLiveBinding(left: LiveRunBinding, right: LiveRunBinding): boolean {
   if (!left.businessEvent || !right.businessEvent) return false;
+  const a = left.businessEvent.specialistOrigin, b = right.businessEvent.specialistOrigin;
   return left.runId === right.runId
     && left.definitionId === right.definitionId
     && left.revision === right.revision
@@ -39,7 +40,10 @@ export function sameLiveBinding(left: LiveRunBinding, right: LiveRunBinding): bo
     && left.businessEvent.periodStart === right.businessEvent.periodStart
     && left.businessEvent.periodEnd === right.businessEvent.periodEnd
     && (left.businessEvent.receiver?.kind ?? 'customer') === (right.businessEvent.receiver?.kind ?? 'customer')
-    && (left.businessEvent.receiver?.adminId ?? '') === (right.businessEvent.receiver?.adminId ?? '');
+    && (left.businessEvent.receiver?.adminId ?? '') === (right.businessEvent.receiver?.adminId ?? '')
+    && a?.delegationId === b?.delegationId && a?.customerId === b?.customerId
+    && a?.conversationId === b?.conversationId && a?.originalMessageId === b?.originalMessageId
+    && a?.roomId === b?.roomId && a?.agentId === b?.agentId && a?.agentVersion === b?.agentVersion;
 }
 
 export function sameLiveRunIdentity(left: LiveRunRecord, right: LiveRunRecord): boolean {

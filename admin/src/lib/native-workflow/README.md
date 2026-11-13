@@ -13,6 +13,10 @@ channel; only the separate `live/` adapter does, under host identity.
 
 ## I6.9 waterproof specialist (Limited)
 
+I6.15 registers the PostgreSQL Run and its first Outbox event in the same transaction as the owner's specialist delegation. The binding records the original C01 message, customer, project and room, specialist version, and published revision/digest. The existing Durable Task store holds the event wait without a running lease. Cancellation fences unfinished work and retains prior operation receipts. Construction records and manager reviews carry the same source back to the original consultation. See the [workflow contract](../../../../docs/xiaok-waterproof-workflow.md#i615-原咨询运行与事项).
+
+I6.15 在原业主委托事务内同时登记 PostgreSQL Run 及首条 Outbox 事件，绑定原 C01 消息、客户、项目、房间、专业 Agent 版本及发布 revision/digest。Durable Task 等待事件时释放租约，取消结束未完成工作并保留已有操作回执。Construction 事项和经理复核沿同一来源回传原咨询。[工作流合同](../../../../docs/xiaok-waterproof-workflow.md#i615-原咨询运行与事项)。
+
 `waterproof-inspection-v1` accepts an explicit owner follow-up from the original C01 consultation. The existing definition store retains the draft and immutable published revision. The X6 editor at `/native-workflow` uses the existing typed ports, config validation and fixture simulator. `GET /api/native-workflow/runs/:runId/specialist-status` returns a redacted PostgreSQL Run for a platform administrator with current project access in the session tenant.
 
 The existing leased delegation consumer advances the compiled graph. Read nodes check Construction, authorized enterprise knowledge and the reviewed public PDF. The Agent node queues the same Assistant Worker, and `WAIT_EVENT` plus human review use the PostgreSQL Durable Task store. Construction issues and manager review retain their original service and outbox, with an explicit result in the original C01. The three-way condition uses current cited sources and the authorized site record. Checklist, material request and issue paths are individually simulated. New publications apply to new runs. See the [design and limits](../../../../docs/xiaok-waterproof-workflow.md).

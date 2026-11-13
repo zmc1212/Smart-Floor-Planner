@@ -2,7 +2,7 @@
 
 > 唯一执行入口；2026-11-05用户批准按本聊天的最小架构方案开发，并明确后续开发不设费用上限。第2节只保留一个当前交付，历史停止批、真实用量及生产边界保留。
 
-I6.14（2026-11-14）：防水 Agent V1 冻结不变。G 标准现行性真实模型通过；施工端 Stable 照片/记录提交通过；业主 C01 授权登记与取消通过但终稿仍失败，标 `limited`；四端缺 Workflow Run 绑定，标 `limited`；真实工地照片 `not_run`。V1.1 候选见[第一版交付冻结](xiaok-waterproof-agent-v1-release.md)第 13 节。
+I6.15 防水持续委托复用 V1 冻结定义与发布版本。当前交付见第2节，原 I6.14 失败与冻结状态见[第一版交付冻结](xiaok-waterproof-agent-v1-release.md)。
 
 ## 1. 第一版交付什么
 
@@ -24,15 +24,15 @@ I6.14（2026-11-14）：防水 Agent V1 冻结不变。G 标准现行性真实�
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 家客来 I6.12，唯一分支 `codex/xiaok-integration`，单一负责人。方法约束：先验证真实回答，禁止补丁循环。模型解释，KnowledgeRetriever/Evidence 提供获权材料，代码控制权限、动作和真实回执。 |
-| 用户入口与结果 | C01 防水咨询、更正、本人房间进度与获权照片观察；明确委托后生成有据清单、补资料或现场事项，经理结果回传原咨询；四端读取同一 Construction 事实。 |
-| 已证缺口 | 真实工地照片、真机/真实微信/BLE、已保存 PDF 页引用的 C01 打开未执行；B/G/H 固定问答与本轮 A–L 的失败原样保留。 |
-| 已完成 | 照片观察改为服务端解析＋独立文本归一化，保持 kind/text 工具合同；A–L 固定问答 8 项保存；工作流有据/补资料/直达整改与取消四路径；Stable 四端 390×844；PDF 原件 Hash/Reader 故障；第一版模板冻结。 |
-| 下一动作 | 补真实工地照片和 Stable 控制器后执行真实工地与真机；固定 B/G/H 的失败原因已记录，不继续同类措辞循环。 |
-| 必要验收 | 12 场景自然答复、三路径隔离库证据、四端同源状态、原件可重开与撤权；保留首稿、唯一修复、请求 ID 和用量。 |
-| 失败与调用边界 | 隔离库 143 次真实调用、363,328 输入 / 30,347 输出 tokens，1 次 unknown（归一化超时），金额未知；B/G/H 与早批环境失败保留。 |
-| 环境与资源 | Codex 使用 `G:/workspace/向总/Smart-Floor-Planner`，Stable DevTools 使用其 `miniprogram/`。历史验收资源为隔离 PG17 `xiaok_r6_model_i612`、百炼 `bailian`/`deepseek-flash`/`deepseek-v4.1-flash-1017`、OpenSERP 0.8.17/Baidu、原工作树 Reader。 |
-| 证据与后继 | [第一版交付](xiaok-waterproof-agent-v1-release.md)与[集成审查](xiaok-integration-audit.md#i612-真实工地验证stable-四端验收与防水-agent-第一版冻结limited)记录冻结、回执与限制；[工作流](xiaok-waterproof-workflow.md)记录合同。 |
+| 交付与负责人 | 家客来 I6.15，唯一分支 `codex/xiaok-integration`，单一负责人。方法约束：先验证真实回答，禁止补丁循环。模型解释，KnowledgeRetriever/Evidence 提供获权材料，代码控制权限、动作和真实回执。 |
+| 用户入口与结果 | 原 C01 明确授权防水跟进，查看站内登记、同一 Run 与事项状态。工人从工地交流提交原件，经理复核并明确回传，业主重进原咨询，老板查看同一项目事项。 |
+| 已证缺口 | 普通防水 Run 7、14 的无据量数被拦截，14 的唯一修复仍失败。真实有据清单分支、真实工地照片、真机及真实微信未验证。I6.14 原始失败保留。 |
+| 已完成 | 两运行时共用委托工具。隔离 PG17 验证登记、正式 Run、取消、等待释放租约、同一事项 35、复核 55、原 C01 回执 38、Stable 四角色重进及撤权/恢复。 |
+| 下一动作 | 停止普通咨询同类修词/采样，按原首稿与修复区分 Responses 正文边界和咨询历史影响，先做零调用复现；有获权 Evidence 时再核有据清单。 |
+| 必要验收 | 固定 A–H，四端对应同一 Run、事项、复核及原会话；租户/房间/媒体权限和真实双 Worker 争用；保留首稿、请求 ID、用量与失败。 |
+| 失败与调用边界 | 新模型测试统一 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`，Responses 优先。I6.12 的 1 次归一化 unknown 与 143 次用量见历史审查，未知金额保留。 |
+| 环境与资源 | `G:/workspace/向总/Smart-Floor-Planner`，Stable 使用其 `miniprogram/`；PG17 独立库 `xiaok_i615_validation`。冻结 Agent 和已发布 revision/digest 沿第一版原值。 |
+| 证据与后继 | [I6.15 集成审查](xiaok-integration-audit.md#i615-统一执行器与正式防水委托limited)、[冻结](xiaok-waterproof-agent-v1-release.md)、[工作流](xiaok-waterproof-workflow.md)。 |
 
 ## 3. 复用哪些成果
 

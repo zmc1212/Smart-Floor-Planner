@@ -1,5 +1,7 @@
 # XiaoK Phase Two: Requirements and Human Handoff
 
+**I6.15 specialist delegation (Limited).** Native Executor and LangGraph share the `start_delegation` schema and `DelegationService`. The existing owner consultation supplies the exact quote, active project and room. The service commits the registration receipt with the published Workflow Run. A standalone authorization turn ends on that receipt, and a mixed turn still validates the model explanation. Status, pause, resume and cancellation use the original C01 commands and current authorization. [Workflow and evidence](xiaok-waterproof-workflow.md#i615-原咨询运行与事项).
+
 <!-- xiaok-r3-web-contract -->
 **R3 web sources (Limited).** The existing LangGraph worker dispatches the R2 tool registry for eligible native conversations. The independent search service supplies public candidates, and the guarded reader supplies originals to the existing Evidence and citation pipeline. Bailian Responses carries search tool calls and results. Final-only turns use the established structured carrier. [Protocol, configuration and verification](bailian-responses-adapter.md#11-r3-应用联网搜索).
 <!-- /xiaok-r3-web-contract -->

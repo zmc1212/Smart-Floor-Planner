@@ -39,6 +39,7 @@ async function authorizedResult(tx: PostgresTransaction, eid: string, cid: strin
     if (!origin || origin.status === 'cancelled' || origin.conversationId !== cid || origin.ownerId !== p.customerId) return null;
     const issue = await readSiteIssueBase(tx, eid, projectId, issueId);
     if (!issue?.sourceAvailable || issue.specialistDelegationId !== origin.id || issue.revision !== p.issueRevision
+      || origin.scope.workflow?.originBound && (!p.specialistSource || fingerprint(issue.specialistSource ?? null) !== fingerprint(p.specialistSource))
       || issue.roomId !== origin.scope.roomId) return null;
     const resolution = await readSiteResolution(tx, eid, projectId, issueId, issue);
     if (!resolution?.available || resolution.id !== p.lifecycleId || resolution.revision !== p.revision
@@ -228,7 +229,9 @@ export async function syncSiteResults(tx: PostgresTransaction, actor: ActorConte
     if (!d) continue;
     const p = event.payload as Row;
     const display = p.lifecycleId || p.state ? await resultText(tx, eid, p) : `${p.text}\n这是处理回复，仍待核对，不代表方案、费用、工期或验收批准。`;
+    const specialistSource = p.specialistSource as { originalMessageId: string } | undefined;
     await appendMessage(tx, actor, cid, { author: 'system', eventId: String(event.id), purpose: 'construction.result',
+      replyToMessageId: specialistSource?.originalMessageId,
       content: { version: 1, blocks: [{ type: 'text', text: `「${p.roomName}」事项${p.issueId} · 修订${p.revision}，项目团队回传：\n${display}` }] } });
     await tx.execute(sql`update app.domain_event_deliveries set status='delivered',updated_at=now() where enterprise_id=${eid} and id=${String(d.id)}`);
     delivered++;

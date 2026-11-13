@@ -5,6 +5,14 @@ import { projectDeniedApprovalList } from '../agent/formal-claim-scope';
 
 const original = '本次读取只是查询状态，不代表方案、费用、工期、现场落实或验收已批准；也没有已确认的处理期限，不能据此判断是否逾期。';
 const parse = (text: string) => parseAgentReply(JSON.stringify({ kind: 'general', text }));
+test('model prose cannot claim delegation registration or promise a date or delivery', () => {
+  const scope = { delegationReply: true };
+  for (const text of ['已为你登记跟进事项「卫生间管根」。', '跟进已取消。', '预计核对时间是明天。',
+    '届时我会在这里告知你。', '明天一定完成核对。']) {
+    assert.throws(() => guardAnswerCommitments(text, scope), /unsupported_model_commitment/, text);
+  }
+  assert.doesNotThrow(() => guardAnswerCommitments('目前缺少能核对管根的现场照片。', scope));
+});
 test('the actual sourced denial keeps its original wording and cannot become a completion receipt', () => {
   assert.equal(parse(original), original);
   for (const text of ['不代表方案、费用已批准。', '这并不代表方案和工期已经正式批准。', '不能证明现场落实及验收已批准。']) assert.equal(parse(text), text);

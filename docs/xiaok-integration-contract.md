@@ -13,7 +13,7 @@
 
 公开网页候选的标题、域名和来源类别仅供选择。原生 Responses 提取回执的摘要按其来源地址绑定，引用目录只接受核读原文。C01 完整历史、引用打开和 LangGraph 祖先来源复用先鉴权，再核对保存原件和当前源站。页面变化、撤回、访问被拒和暂不可读沿原来源反馈，响应附可用的具体 `errorCode`。轮询增量沿已存快照投影，完整刷新复核当前公开来源。公开来源说明对应文件的内容及已核实的适用时间。企业标准、获权现场记录和正式业务结果各自有独立来源。现行规范完整性见[集成验收](xiaok-integration-audit.md#i610-防水专业-agent-可信度与现场资料limited)。
 
-I6.14 补充：业主持续跟进的原话、房间与项目仍由 `start_delegation` 绑定；登记回执与取消回执经 `construction.delegation` 消息重投影。企业默认 native executor 当前不提供该工具，故 I6.14 的授权证据来自 LangGraph Agent 运行时。事项正式复核仍由 Construction 服务写入，四端读取同一 `projectId`/`roomId`/`issueId`；事项需绑定原业主会话才能把复核结果回传 C01。
+I6.15 补充：Native Executor 和 LangGraph 共用 `start_delegation` 输入、授权、幂等和正式委托入口。单独授权的用户消息在登记事务提交后可用站内回执结束，取消沿原会话控制；模型首稿、工具操作和服务回执分别留存。专业登记事务同时保存首个 Outbox 事件与正式 Run，固定原 C01、客户、项目、房间、原消息和已发布 revision/digest。Construction 初始事项事件保存相同来源和 Evidence 引用，后续变更保留该来源。复核结果在明确披露范围内回复原 C01 消息，受保护的原件读回继续重验当前授权。`long-term` 与员工项目投影分别经原权限读取关联身份；历史事项沿原审计记录读取。[运行与验收](xiaok-waterproof-workflow.md)。
 
 托管混合检索在授权后预检专用配置。缺配置返回 `retrieval_unavailable` 并记录原因；关闭知识、未命中和未配置各自保留状态。现有委托工艺核对使用同一检索与版本约束，核对回执按当前知识 epoch 及项目上下文失效，由后续获权事件重新读取。工艺引用和业务完成回执各自保留，施工结论由 Construction 服务写入。
 

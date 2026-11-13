@@ -25,19 +25,56 @@ import {
   type RuntimeWriteGuard,
 } from './types';
 
-export interface LiveRunInput {
+export interface LiveRunRegistration {
   readonly published: PublishedWorkflowVersion;
   readonly enterpriseId: string;
   readonly projectId: string;
   readonly event: TriggerEvent;
   readonly businessEvent: LiveBusinessEvent;
-  readonly ports: LiveOperationPorts;
   readonly store: LiveRunStore;
   readonly writeGuard?: RuntimeWriteGuard;
   readonly runId: string;
   readonly now?: () => string;
+}
+
+export interface LiveRunInput extends LiveRunRegistration {
+  readonly ports: LiveOperationPorts;
   readonly resume?: boolean;
   readonly wakeEventId?: string;
+}
+
+async function registerRun(input: LiveRunRegistration) {
+  const { definition, plan, nodeVersions } = resolvePublishedTarget(input.published, input.event);
+  const now = input.now?.() ?? new Date().toISOString();
+  const binding: LiveRunBinding = {
+    runId: input.runId, definitionId: definition.definitionId,
+    revision: publishedRevision(definition.revision, input.published.revision), digest: plan.digest, nodeVersions,
+    event: structuredClone(input.event), businessEvent: structuredClone(input.businessEvent),
+  };
+  const record: LiveRunRecord = {
+    binding, enterpriseId: input.enterpriseId, projectId: input.projectId, status: 'running',
+    state: createRunState(plan, { runId: input.runId, mode: 'live' }),
+    trace: [], operations: [], createdAt: now, updatedAt: now,
+  };
+  const created = await input.store.create(record, input.writeGuard);
+  if (!created.created) assertSameLiveRunIdentity(created.record, record);
+  return { plan, binding, ...created };
+}
+
+/** Reserve the published identity in the same transaction as its business
+ * registration. The outbox worker will start the graph on its own lease. */
+export async function registerPublishedLiveRun(input: LiveRunRegistration): Promise<LiveRunRecord> {
+  return (await registerRun(input)).record;
+}
+
+export async function cancelPublishedLiveRun(store: LiveRunStore, runId: string, at: string) {
+  const record = await store.get(runId);
+  if (!record || !['running', 'waiting'].includes(record.status)) return record;
+  const state: WorkflowRunState = { ...record.state, status: 'halted', pendingNodeId: null,
+    outcome: 'delegation_cancelled', traceSeq: record.state.traceSeq + 1 };
+  return store.update({ ...record, status: 'cancelled', state, updatedAt: at,
+    trace: [...record.trace, { seq: state.traceSeq, at, kind: 'run_cancelled',
+      nodeId: record.state.pendingNodeId, nodeType: null, mode: 'live' }] });
 }
 
 function statusOf(state: WorkflowRunState, unknown: boolean): LiveRunStatus {
@@ -63,25 +100,16 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
   // Same shared check the CLI runs before the first business write. A run that
   // reaches this function again proves the selected version and event still
   // match; no second rule set is maintained here.
-  const { definition, plan, nodeVersions } = resolvePublishedTarget(input.published, input.event);
-
   const now = input.now ?? (() => new Date().toISOString());
-  const event = structuredClone(input.event);
-  const binding: LiveRunBinding = {
-    runId: input.runId,
-    definitionId: definition.definitionId,
-    revision: publishedRevision(definition.revision, input.published.revision),
-    digest: plan.digest,
-    nodeVersions,
-    event,
-    businessEvent: structuredClone(input.businessEvent),
-  };
+  const created = await registerRun({ ...input, now });
+  const { binding, plan } = created;
+  const event = binding.event;
   const context: LiveRunContext = {
     ...binding,
     enterpriseId: input.enterpriseId,
     projectId: input.projectId,
   };
-  let state = createRunState(plan, { runId: input.runId, mode: 'live' });
+  let state = structuredClone(created.record.state);
   const trace: WorkflowTraceEntry[] = [];
   const operations: LiveOperationRecord[] = [];
   let unknown = false;
@@ -100,13 +128,9 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
 
   // The first write is exclusive: a replay of the same runId must observe the
   // original record instead of starting a second execution.
-  const initial: LiveRunRecord = { ...snapshot(now()), status: 'running' };
-  const created = await input.store.create(initial, input.writeGuard);
   const canResume = input.resume && event.eventType === 'specialist_followup';
   if (!created.created) {
-    assertSameLiveRunIdentity(created.record, initial);
     if (!canResume || !['waiting', 'running'].includes(created.record.status)) return created.record;
-    state = structuredClone(created.record.state);
     trace.push(...cloneTrace(created.record.trace));
     operations.push(...cloneOperations(created.record.operations));
     if (input.wakeEventId && state.processedEventIds.includes(input.wakeEventId)) return created.record;
@@ -131,7 +155,7 @@ export async function runPublishedLive(input: LiveRunInput): Promise<LiveRunReco
       trace.push(...cloneTrace(result.trace));
       await persist();
     }
-    if (canResume && !created.created && input.wakeEventId) {
+    if (canResume && !created.created && created.record.trace.length && input.wakeEventId) {
       state.traceSeq++;
       trace.push({ seq: state.traceSeq, at: now(), kind: 'run_resumed', nodeId: state.pendingNodeId,
         nodeType: pendingOperation(plan, state)?.nodeType ?? null, mode: 'live', detail: { eventId: input.wakeEventId } });

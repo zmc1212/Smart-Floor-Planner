@@ -4,7 +4,7 @@ import { currentBudgetRecallRequested, currentNeedView, type NeedMemory } from '
 import { fail } from '../contracts';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { originalAnswerOnly } from './read-tool-input';
-import { hasAcceptanceClaim, projectAcceptanceClaims, projectDeniedApprovalList } from './formal-claim-scope';
+import { hasAcceptanceClaim, hasDelegationClaim, projectAcceptanceClaims, projectDeniedApprovalList } from './formal-claim-scope';
 import { projectNegativeWorkStatus } from './formal-status-polarity';
 import { generalKnowledgeInstructions } from '../knowledge-policy';
 
@@ -79,9 +79,10 @@ export function buildAgentContext(turns: Array<{ id: string; role: 'user' | 'ass
 /** Reject free-form completion/price claims that no service receipt supports.
  * Shared by the built-in reply parser and the FastGPT Agent V2 free-form path;
  * service-authored business snapshots are delivered separately. */
-type CommitmentScope = { formalStatusEvidence?: boolean; acceptanceQuotes?: readonly string[]; acceptanceAdvice?: boolean };
+type CommitmentScope = { formalStatusEvidence?: boolean; acceptanceQuotes?: readonly string[]; acceptanceAdvice?: boolean; delegationReply?: boolean };
 
 export function guardAnswerCommitments(text: string, options: CommitmentScope = {}) {
+  if (options.delegationReply && hasDelegationClaim(text)) fail('unsupported_model_commitment', 502);
   // Formal commitments always come from a business service, never free-form generation.
   // Project explicit absence/denial/question predicates, retaining other claims.
   const status = options.acceptanceQuotes ? projectAcceptanceClaims(text, options.acceptanceQuotes, options.acceptanceAdvice) : text;

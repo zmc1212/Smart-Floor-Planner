@@ -15,13 +15,13 @@ type RunIdentity = {
 };
 
 function statusFor(record: LiveRunRecord | null, delegation: RunIdentity, agentStatus: unknown) {
-  if (delegation.status === 'cancelled' || agentStatus === 'cancelled') return 'cancelled';
+  if (record?.status === 'cancelled' || delegation.status === 'cancelled' || agentStatus === 'cancelled') return 'cancelled';
   if (record?.status === 'unknown' || agentStatus === 'indeterminate') return 'indeterminate';
   if (agentStatus === 'failed' || delegation.status === 'failed'
     || record?.status === 'failed' || record?.status === 'halted') return 'failed';
   if (delegation.status === 'completed' && record?.status === 'completed') return 'succeeded';
   if (delegation.status === 'paused' || delegation.status.startsWith('waiting_')) return 'waiting';
-  if (agentStatus === 'queued' || !record && delegation.status === 'pending') return 'queued';
+  if (agentStatus === 'queued' || !record && delegation.status === 'pending' || record?.status === 'running' && !record.trace.length) return 'queued';
   if (agentStatus === 'running' || record?.status === 'running') return 'running';
   return record?.status === 'waiting' ? 'waiting' : 'queued';
 }

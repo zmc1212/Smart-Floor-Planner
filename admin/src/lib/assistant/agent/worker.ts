@@ -16,7 +16,7 @@ import { type ModelTool, type ModelTurnOutput, type ModelMessage } from '../cont
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { projectMessage, resolveEvidence } from '../knowledge/sources';
 import { delegationOwnerPurpose } from '@/lib/native-workflow/live/delegation-chat';
-import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
+import { runContext, failRun, heartbeat, completeAnswer, completeDelegationReply, delegationAnswerRejected, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, recoverableUnavailableRead, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
 import { finalResponseShapeIssue, finalResponseShapeProtocol } from './final-response-shape';
@@ -26,7 +26,8 @@ import { conversationImageProtocol, conversationImageInstructions, conversationI
 import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
-import { agentLongTermContext, agentLongTermToolResult, isLongTermTool, longTermDelegationReceipt, longTermOperationIds, longTermPreferenceReceipt, longTermRunAvailable, longTermTools, standalonePreferenceTool } from '../memory/agent';
+import { agentLongTermContext, agentLongTermToolResult, delegationToolForQuestion, delegationToolName, dispatchDelegationTool, isLongTermTool,
+  longTermDelegationReceipt, longTermOperationIds, longTermPreferenceReceipt, longTermRunAvailable, longTermTools, standalonePreferenceTool } from '../memory/agent';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { buildAgentContext, parseAgentReply, agentPromptVersion, ownerNoArchivePolicy } from './context';
 import { knowledgeTools, runKnowledgeEnabled, generalKnowledgeInstructions } from '../knowledge-policy';
@@ -97,7 +98,7 @@ import { independentAdviceContextProtocol } from './independent-advice-context';
 import { compileModelRequest, type ModelRequestPurpose } from './model-request';
 import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from './home-source-view';
 import { specialistPublicSections } from '../specialists/evidence';
-import { consultationSpecialist, specialistConsultationTools, specialistFollowupRequested, specialistPhotoModel, specialistPhotoRequested, specialistPolicy } from '../specialists/consultation';
+import { consultationSpecialist, routedConsultationSpecialist, specialistConsultationTools, specialistDelegationRoom, specialistPhotoModel, specialistPhotoRequested, specialistPolicy } from '../specialists/consultation';
 import { parsePhotoObservationText, parseSpecialistPhotoAnalysis, photoObservationTextProtocol, type SpecialistPhotoAnalysis } from '../specialists/photo-analysis';
 import { bindSpecialistInput, specialistModel, specialistProtocol, specialists, type SpecialistInput, type SpecialistRunBinding } from '../specialists/registry';
 import { ownerArchiveReadProtocol, ownerArchiveReadRequested, ownerProjectStatusReadProtocol, ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol,
@@ -953,9 +954,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       ? specialists.version(specialistBinding.agentId, specialistBinding.agentVersion) : undefined;
     const routedSpecialist = (initial.run.policy_snapshot as Row).specialist === specialistProtocol
       && initial.config.providerKey === specialistModel.providerKey && initial.config.model === specialistModel.model
-      && !review && !reportSource && !homeEntry.activePublicSite && !currentMessageOnlyRequested(reviewContext.currentQuestion)
-      && !explicitNeedWriteStatement(reviewContext.currentQuestion) && !explicitHumanHandoffRequested(reviewContext.currentQuestion)
-      ? consultationSpecialist(reviewContext.currentQuestion, initial.precedingQuestions, boundSpecialist) : null;
+      && !review && !reportSource && !homeEntry.activePublicSite
+      ? routedConsultationSpecialist(reviewContext.currentQuestion, initial.precedingQuestions, boundSpecialist) : null;
     const specialist = routedSpecialist && specialistBinding?.roomName
       ? { ...routedSpecialist, room: specialistBinding.roomName,
         ...(specialistBinding.publicCoverage ? { reviewedSections: specialistPublicSections(specialistBinding.publicCoverage) } : {}) } : routedSpecialist;
@@ -979,7 +979,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       await scoped(async () => {});
     }
     const specialistFollowup = !!specialist && !specialistChecklist && !!initial.r5?.scope.projectId
-      && !!specialist.room && specialistFollowupRequested(reviewContext.currentQuestion);
+      && !!specialistDelegationRoom(specialist, reviewContext.currentQuestion);
+    const delegationTool = initial.r5 && !specialistChecklist && !review
+      ? delegationToolForQuestion(initial.r5.scope, reviewContext.currentQuestion, specialist) : undefined;
     const photoObservation = imageSchema && specialistPhotoModel(initial.config) && !nativeFinalization
       && (initial.trigger.purpose === 'media.upload' || !!specialist && !specialist.progressRequested
         && !specialist.companyPractice && !specialistFollowup && !specialist.editionQuestion
@@ -1114,15 +1116,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           question: reviewContext.currentQuestion, conversation: initial.messages, enterpriseId: lease.enterpriseId,
           projectId: initial.r5?.scope.projectId ?? null, stage: specialist.agent.supportedStages[0], room: specialist.room, knowledgeScopes, toolPermissions,
         });
-        return specialistConsultationTools(specialistFollowup ? [...offered, ...longTermTools(initial.r5!.scope, reviewContext.currentQuestion)] : offered,
+        return specialistConsultationTools(delegationTool ? [...offered, delegationTool] : offered,
           input, specialist.progressRequested).map(tool => {
-          if (tool.name === 'start_delegation') {
-            const properties = tool.parameters.properties as Record<string, unknown>;
-            return { ...tool, description: '登记用户明确要求持续跟进的防水待复核事项。subject 逐字复制当前原话中连续的具体部位或事项，不写总结，quote 是包含该 subject 的原话。登记只开始跟进，现场回执由施工团队核对。',
-              parameters: { ...tool.parameters, required: ['kind', 'subject', 'room', 'quote'],
-                properties: { ...properties, kind: { type: 'string', enum: ['rectification_review'] },
-                  room: { type: 'string', enum: [specialist.room] } } } };
-          }
           const definition = ownerQuestionMaterialTool(tool, false, projectStatusRead);
           if (tool.name !== 'query_business' || !specialist.room || !projectStatusRead) return definition;
           return { ...definition, parameters: { ...definition.parameters, required: ['domain', 'room'],
@@ -1564,6 +1559,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     }
     const sourceReviewContext = {
       ...reviewContext, ...(specialist ? { specialistAcceptance: true } : {}),
+      delegationReply: !!initial.r5,
       ...(specialist?.room ? { currentRoom: specialist.room } : {}),
       ...(r3Active ? { generalKnowledge: false } : {}), ...(r4Active ? { enterpriseKnowledgeAuthority: true } : {}),
     };
@@ -1689,6 +1685,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs`);
         }),
         resolveToolReply: async state => {
+          if (delegationTool) {
+            const receipt = await scoped((tx, context) => longTermDelegationReceipt(tx, lease.actor, context.conversation,
+              lease.runId, { standalone: true }));
+            if (receipt) return JSON.stringify({ kind: 'general', text: receipt.text });
+          }
           if (coordinationReferral || ownerScopeIdentity) {
             const reads = await scoped(tx => coordinationReads(tx));
             if (reads.ownerScope === 'site' || coordinationReferral && reads.site && !reads.knowledge
@@ -1702,12 +1703,6 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const call = request?.role === 'assistant' && request.toolCalls?.length === 1 ? request.toolCalls[0] : null;
             if (initial.r5 && call?.name === 'manage_long_term_memory' && call.id === last.callId) {
               const receipt = await scoped(tx => longTermPreferenceReceipt(tx, lease.enterpriseId, lease.runId, reviewContext.currentQuestion));
-              if (receipt) return JSON.stringify({ kind: 'general', text: receipt });
-            }
-            if (initial.r5 && call?.name === 'start_delegation' && call.id === last.callId
-              && state.messages.filter(message => message.role === 'tool').length === 1) {
-              const receipt = await scoped((tx, context) => longTermDelegationReceipt(tx, lease.actor, context.conversation,
-                lease.runId, 1200 + (state.turn - 1) * 10, reviewContext.currentQuestion));
               if (receipt) return JSON.stringify({ kind: 'general', text: receipt });
             }
             if (call && call.id === last.callId && ['prepare_material_share', 'revoke_material_share'].includes(call.name)) {
@@ -1769,6 +1764,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           });
         },
         resolveFinal: (raw, state) => scoped(async (tx, context) => {
+          if (state.finalFromTools && delegationTool) {
+            const receipt = await longTermDelegationReceipt(tx, lease.actor, context.conversation, lease.runId, { standalone: true });
+            if (receipt && raw === JSON.stringify({ kind: 'general', text: receipt.text })) return raw;
+          }
           const claims = claimFinalization ? await boundReviewClaims(tx, lease.actor, context.conversation, lease.runId) : null;
           if (claims) raw = resolveReviewClaims(raw, claims);
           if (knowledgeReadPending(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), state.messages, String(initial.trigger.id),sourceMode.requiredKnowledge)) {
@@ -1798,7 +1797,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (claims) assertReviewClaimSegments(resolved, claims);
           return resolved;
         }),
-        validateFinal:async(raw,turn)=>{
+        validateFinal:async(raw,turn,finalFromTools)=>{
+          if (finalFromTools && delegationTool) {
+            const receipt = await scoped((tx, context) => longTermDelegationReceipt(tx, lease.actor, context.conversation,
+              lease.runId, { standalone: true }));
+            if (receipt && raw === JSON.stringify({ kind: 'general', text: receipt.text })) return null;
+          }
           const ownerScope = ownerScopeIdentity ? await scoped(tx => ownerScopeForRun(tx)) : null;
           if (coordinationReferral || ownerScope) {
             const draft = await scoped(async (tx, context) => {
@@ -2090,26 +2094,16 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (scope === 'site' || scope === 'knowledge_and_site' && !ownerKnowledgeTools.has(name)) fail('assistant_capability_forbidden', 403);
           }
           const sequence = 1200 + turn * 10 + index, resultKey = `${lease.runId}:${turn}:${index}`;
+          if (name === delegationToolName) {
+            if (!callId || !delegationTool) fail('assistant_capability_forbidden', 403);
+            return scoped((tx, context) => dispatchDelegationTool(tx, lease.actor, context.conversation, initial.trigger,
+              lease.runId, sequence, { id: callId, name, arguments: args }, specialist));
+          }
           if (isLongTermTool(name)) {
             if (!initial.r5 || !callId || !longTermTools(initial.r5.scope, reviewContext.currentQuestion).some(tool => tool.name === name))
               fail('assistant_capability_forbidden', 403);
-            let workflow: import('@/lib/native-workflow/live/delegation-state').SpecialistWorkflowBinding | undefined;
-            if (specialist && name === 'start_delegation') {
-              if (!specialistFollowup || (JSON.parse(args) as { room?: string }).room !== specialist.room) fail('delegation_source_mismatch', 422);
-              const { getNativeWorkflowService } = await import('@/lib/native-workflow/server');
-              const templateId = specialist.agent.workflowTemplateId!;
-              const { record } = await getNativeWorkflowService().getDefinition(templateId);
-              const published = record.versions.at(-1);
-              if (!published || published.definition.inputSchema.eventType !== 'specialist_followup') fail('specialist_workflow_unavailable', 503);
-              const node = published.definition.nodes.find(item => item.type === 'agent');
-              const agentVersion = Number(node?.config?.agentVersion);
-              const selected = specialists.version(String(node?.config?.agentId), agentVersion);
-              if (!selected || selected.status !== 'active' || selected.workflowTemplateId !== templateId) fail('specialist_workflow_unavailable', 503);
-              workflow = { templateId, revision: published.revision, digest: published.digest, agentId: selected.agentId,
-                agentVersion, originRunId: lease.runId };
-            }
             return scoped((tx, context) => agentLongTermToolResult(tx, lease.actor, context.conversation, initial.trigger,
-              lease.runId, sequence, { id: callId, name, arguments: args }, workflow));
+              lease.runId, sequence, { id: callId, name, arguments: args }));
           }
           if (webTool) {
             if (!applicationWeb || !r3Active || !callId) fail('assistant_capability_forbidden', 403);
@@ -2558,6 +2552,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       },
     });
     if (result.stop) return;
+    if (result.finalFromTools && delegationTool) {
+      const receipt = await scoped((tx, context) => longTermDelegationReceipt(tx, lease.actor, context.conversation,
+        lease.runId, { standalone: true }));
+      if (receipt && result.output?.text === JSON.stringify({ kind: 'general', text: receipt.text })) {
+        if (!await completeDelegationReply(lease, { standalone: true })) fail('context_changed');
+        return;
+      }
+    }
     if (review) await new RequirementWorkflow(lease.actor).read(String(initial.conversation.id));
     // The final answer and real business receipt are independent. Reconstruct
     // receipts from durable authorized tool effects, never provider prose.
@@ -2786,7 +2788,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       return step.private_checkpoint as BusinessSnapshot;
     }) : null;
     const modelText = references ? NO_REFERENCE : business ? business.displayText
-      : parseAgentReply(result.output?.text || '', specialist ? { acceptanceQuotes: [] } : undefined);
+      : parseAgentReply(result.output?.text || '', { ...(specialist ? { acceptanceQuotes: [] } : {}), delegationReply: !!initial.r5 });
     if (photoObservation) assertUncitedEngineeringQuantities(modelText);
     // The image turn keeps the verified kind/text tool contract. A labelled
     // answer is parsed directly; otherwise one text-only JSON normalization
@@ -2862,6 +2864,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
   } catch (error) {
     if (!(error instanceof AssistantError)) console.error('[assistant] unexpected agent failure', lease.runId, error);
     const code = error instanceof AssistantError ? error.code : error instanceof AiProviderError && error.code === 'HTTP_402' ? 'provider_payment_required' : 'model_unavailable';
+    if (delegationAnswerRejected(code)) {
+      try { if (await completeDelegationReply(lease, { rejectedAnswer: code })) return; }
+      catch (e) { if (!(e instanceof AssistantError && e.code === 'context_changed')) throw e; }
+    }
     let rejected = false;
     if (isDefiniteAgentRejection(error)) {
       try {

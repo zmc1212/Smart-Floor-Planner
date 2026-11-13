@@ -4,7 +4,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import { fail, safeText, type ActorContext, type MessageContent } from '@/lib/assistant/contracts';
 import { privateMemoryScope } from '@/lib/assistant/memory/scope';
-import { delegationConsumer, delegationNotice, delegationOwnerInput, delegationPurpose, delegationRefresh, statusText,
+import { delegationConsumer, delegationNotice, delegationOwnerInput, delegationPurpose, delegationRefresh, specialistWorkflowRunId, statusText,
   type ReviewDelegation, type DelegationControl } from './delegation-state';
 import { appendDelegationEvent } from './delegation-store';
 import { controlOutcome, delegationActor, reviewDelegationFromRow, reviewDelegationOrigin,
@@ -28,8 +28,10 @@ function reviewCommandCandidates(command: ReviewCommand, all: ReviewDelegation[]
   return command.action === 'status' ? all : all.filter(item => !['cancelled','completed'].includes(item.status));
 }
 
-async function reviewCommandFeedback(tx: PostgresTransaction, command: ReviewCommand, candidates: ReviewDelegation[]) {
-  const summaries = (await currentDelegationViews(tx, candidates)).map(delegationSummary);
+async function reviewCommandFeedback(tx: PostgresTransaction, command: ReviewCommand, candidates: ReviewDelegation[], showWorkflow = false) {
+  const summaries = (await currentDelegationViews(tx, candidates)).map(item => delegationSummary(item)
+    + (showWorkflow && item.scope.workflow?.originBound
+      ? `\n跟进编号 ${specialistWorkflowRunId(item.id)} · 工作流版本 ${item.scope.workflow.revision}` : ''));
   if (command.action === 'status') return summaries.join('\n') || '这次项目咨询没有可查看的委托。';
   return summaries.length ? '请说明要操作哪一项委托。\n' + summaries.join('\n') : '当前项目没有匹配的委托。';
 }
@@ -37,7 +39,8 @@ async function reviewCommandFeedback(tx: PostgresTransaction, command: ReviewCom
 export async function delegationReceipt(tx: PostgresTransaction, d: ReviewDelegation, key: string, text: string, conversationId = d.conversationId) {
   let eventId = await appendDelegationEvent(tx, d.enterpriseId, delegationNotice, key, 1,
     { projectId: d.projectId, delegationId: d.id, conversationId, ownerId: d.ownerId, delivery: 'in_app',
-      delegationVersion: d.version, evidence: d.evidence });
+      delegationVersion: d.version, evidence: d.evidence,
+      ...(d.scope.workflow?.originBound ? { workflowRunId: specialistWorkflowRunId(d.id), originalMessageId: d.originMessageId } : {}) });
   if (!eventId) {
     const saved = await one(tx, sql`select e.id::text as event_id,m.id::text from app.domain_event_outbox e
       left join app.assistant_messages m on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id
@@ -51,13 +54,15 @@ export async function delegationReceipt(tx: PostgresTransaction, d: ReviewDelega
     eventId = String(saved.event_id);
   }
   const message = await appendMessage(tx, delegationActor(d), conversationId, { author: 'system', eventId,
+    ...(d.scope.workflow?.originBound && conversationId === d.conversationId ? { replyToMessageId: d.originMessageId } : {}),
     purpose: delegationPurpose, content: { version: 1, blocks: [{ type: 'text', text }] } });
   return { messageId: String(message.id), delivery: 'persisted_in_app' };
 }
 
-async function commandReceipt(tx: PostgresTransaction, actor: ActorContext, c: Row, message: Row, text: string) {
+async function commandReceipt(tx: PostgresTransaction, actor: ActorContext, c: Row, message: Row, text: string, specialistStatus = false) {
   const id = await appendDelegationEvent(tx, actor.enterpriseId, delegationNotice, 'command:' + String(message.id), 1,
-    { conversationId: String(c.id), ownerId: actor.principal.kind === 'user' ? actor.principal.userId : '', delivery: 'in_app' });
+    { conversationId: String(c.id), ownerId: actor.principal.kind === 'user' ? actor.principal.userId : '', delivery: 'in_app',
+      ...(specialistStatus ? { specialistStatus: true } : {}) });
   if (id) await appendMessage(tx, actor, String(c.id), { author: 'system', eventId: id, purpose: delegationPurpose,
     content: { version: 1, blocks: [{ type: 'text', text }] } });
 }
@@ -73,7 +78,8 @@ export async function applyReviewDelegationCommand(tx: PostgresTransaction, acto
   const service = new DelegationService(tx, scope);
   const selected = reviewCommandCandidates(command, await service.list(true));
   if (command.action === 'status' || selected.length !== 1) {
-    await commandReceipt(tx, actor, c, message, await reviewCommandFeedback(tx, command, selected));
+    const specialistStatus = command.action === 'status' && selected.some(item => item.scope.workflow?.originBound);
+    await commandReceipt(tx, actor, c, message, await reviewCommandFeedback(tx, command, selected, specialistStatus), specialistStatus);
     return true;
   }
   const d = await service.find(selected[0].id, true);
@@ -129,7 +135,7 @@ export async function reviewDelegationNoticeAvailable(tx: PostgresTransaction, a
     if (!command) return false;
     const candidates = reviewCommandCandidates(command, await new DelegationService(tx, scope).list(true));
     if (command.action !== 'status' && candidates.length === 1) return false;
-    const feedback = await reviewCommandFeedback(tx, command, candidates);
+    const feedback = await reviewCommandFeedback(tx, command, candidates, p.specialistStatus === true);
     return safeText(row.content as MessageContent) === feedback;
   }
   if (!scope.projectId || scope.projectId !== p.projectId) return false;
@@ -167,9 +173,9 @@ export async function currentDelegationViews(tx: PostgresTransaction, delegation
 }
 
 export function delegationModelView(items: ReviewDelegation[]) {
-  return items.map(({ id, title, status, nextAction, dueAt, waitingFor, completionCriteria, version, evidence, scope, originMessageId, projectId }) =>
-    ({ id, title, status, nextAction: nextAction || statusText[status], dueAt, waitingFor, completionCriteria, version, evidence, ...(scope.workflow ? { workflowRunId: 'specialist:' + id,
+  return items.map(({ id, title, status, nextAction, dueAt, waitingFor, completionCriteria, version, evidence, scope, originMessageId, projectId, ownerId, conversationId }) =>
+    ({ id, title, status, nextAction: nextAction || statusText[status], dueAt, waitingFor, completionCriteria, version, evidence, ...(scope.workflow ? { workflowRunId: specialistWorkflowRunId(id),
       workflowVersion: scope.workflow.revision, workflowTemplateId: scope.workflow.templateId, workflowDigest: scope.workflow.digest,
       agentId: scope.workflow.agentId, agentVersion: scope.workflow.agentVersion, originalMessageId: originMessageId,
-      projectId, roomId: scope.roomId, issueId: evidence?.issueId ?? null } : {}) }));
+      projectId, roomId: scope.roomId, customerId: ownerId, conversationId, issueId: evidence?.issueId ?? scope.issueId } : {}) }));
 }

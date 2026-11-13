@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { currentDelegationViews, delegationModelView, delegationNoticeAvailable } from '@/lib/native-workflow/live/delegation-chat';
+import { createPostgresWorkflowRunStore } from '@/lib/native-workflow/live/runtime-postgres-stores';
 import { delegationNotice } from '@/lib/native-workflow/live/delegation-state';
 import { currentDelegationStandards } from '@/lib/native-workflow/live/delegation-knowledge';
 import { DelegationService } from '@/lib/native-workflow/live/delegation-store';
@@ -32,7 +33,11 @@ export async function longTermHttp(actor: ActorContext, conversationId: string, 
       for (const task of tasks) {
         const [view] = delegationModelView([task]);
         const standardCheck = await currentDelegationStandards(tx, actor, c, task);
-        delegations.push(standardCheck ? { ...view, standardCheck } : view);
+        const run = view.workflowRunId ? await createPostgresWorkflowRunStore(enterpriseId, tx).get(view.workflowRunId) : null;
+        delegations.push({ ...view, ...(standardCheck ? { standardCheck } : {}), ...(run ? { workflow: {
+          status: !run.trace.length && run.status === 'running' ? 'queued' : run.status,
+          currentNodeId: run.state.pendingNodeId ?? run.state.currentNodeId,
+        } } : {}) });
       }
       const notices = await rows(tx, sql`select m.id::text,m.created_at as persisted_at,d.updated_at as read_at
         from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id

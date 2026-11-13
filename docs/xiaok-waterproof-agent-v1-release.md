@@ -166,3 +166,7 @@
 3. 隔离验收夹具通过正式 Native Workflow 服务创建一个绑定 `waterproof-inspector` 的工作流 Run，并在四端证据中固定 `workflowRunId`、revision、digest。
 4. 终稿守卫对“登记回执”中的时间承诺与“届时告知”给出可解释的修复反馈，减少整轮失败。
 5. 补齐 Reader 超时/撤回的 Stable UI 模拟与真实工地照片授权素材后，再将对应项由 `limited`/`not_run` 提升为 `released`。
+
+## 14. I6.15 集成验证
+
+统一执行器工具、登记回执及正式 Run 属于集成运行层。`waterproof-specialist@1` 的注册及冻结表中发布 revision/digest、节点能力与输入输出 Schema 保持原值。新原咨询委托在原 PostgreSQL Store 登记 Run，按同一 Construction 事项和经理复核事实回传。历史事项 8 保留原来源。当前通过范围、首稿失败、Stable 和真实素材限制见[I6.15 集成审查](xiaok-integration-audit.md#i615-统一执行器与正式防水委托limited)。

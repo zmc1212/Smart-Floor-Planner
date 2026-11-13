@@ -30,12 +30,13 @@ import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
 import { xiaokNativeExecutorProtocol } from '../agent/native-executor';
-import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
+import { nativeAgentRuntimeBinding, nativeExecutorConfigurationIssue } from '../fastgpt/agent-v2/config';
 import { knowledgePolicy, enterpriseKnowledgeEnabled } from '../knowledge-policy';
 import { knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { homeSourceViewProtocol } from '../agent/home-source-view';
 import { specialistPolicy } from '../specialists/consultation';
+import { delegationToolProtocol } from '../memory/agent';
 import type { SpecialistRunBinding } from '../specialists/registry';
 import { ownerArchiveReadProtocol, ownerProjectStatusReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
 import { ownerCitationCarrierProtocol } from '../agent/final-output';
@@ -199,11 +200,13 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const triggerContent = rag || agentV2 || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
   const textOnlyTrigger = (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text');
+  const nativeConfigurationIssue = nativeExecutor && agent && textOnlyTrigger ? nativeExecutorConfigurationIssue(agent) : null;
+  if (nativeConfigurationIssue && purpose !== 'reply') fail(nativeConfigurationIssue, 503);
   const agentRuntime = agentV2 && (openingReady || enterpriseKnowledgeEnabled(settings.agent_config)) && textOnlyTrigger
     ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding }
-    : nativeExecutor && textOnlyTrigger
+    : nativeExecutor && textOnlyTrigger && !nativeConfigurationIssue
       ? { protocol: xiaokNativeExecutorProtocol, binding: nativeExecutor.binding } : undefined;
-  const nativeRag = !agentRuntime && rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
+  const nativeRag = !agentRuntime && !nativeConfigurationIssue && rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
     && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
     ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
   const reviewRuntime = agent && purpose === 'reply' && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
@@ -245,6 +248,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         ? { publicSiteSelection: entry.activePublicSite ?? null } : {}),
       ...(nativeRag ? { nativeRag } : {}),
       ...(agentRuntime ? { agentRuntime } : {}),
+      ...(nativeConfigurationIssue ? { agentRuntimeRouting: { executor: 'langgraph-v1', reason: nativeConfigurationIssue } } : {}),
       ...(staffPreview && agent ? { staffKnowledgePreview: fastGPTPreviewProtocol } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
         && !agentRuntime && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal
@@ -259,7 +263,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol, reportCoordination: reportCoordinationProtocol } : {}),
       ...(agent && (enterpriseKnowledgeEnabled(settings.agent_config) || c.purpose === 'knowledge_preview') && !agent.structuredFinal && ['reply','site.question','specialist.workflow'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation || sourceExcerptProtocol,
-          ...(agent.tools && !agentRuntime && !nativeRag && !agent.consultation ? { knowledgeTools: knowledgeToolProtocol } : {}),
+          ...(agent.tools && agentRuntime?.protocol !== fastGPTAgentV2Protocol && !nativeRag && !agent.consultation ? { knowledgeTools: knowledgeToolProtocol } : {}),
           ...(agent.knowledgeExplanation === naturalKnowledgeProtocol ? { knowledgeQuantityScope: knowledgeQuantityScopeProtocol,
           ...(agent.knowledgeAnswerValidation === sourceBoundaryValidationProtocol && (staffPreview || ['customer_consultation','project_collaboration'].includes(String(c.purpose)))
               ? { knowledgeAnswerValidation: sourceBoundaryValidationProtocol } : {}),
@@ -275,10 +279,11 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
           drawingChecklistRead: drawingChecklistReadProtocol, homeSourceView: homeSourceViewProtocol,
           ownerQuestionScope: ownerQuestionScopeProtocol, ownerArchiveRead: ownerArchiveReadProtocol,
           ownerProjectStatusRead: ownerProjectStatusReadProtocol,
-          ...(!reviewRuntime && !agentRuntime && !agent.consultation && !agent.structuredFinal && specialistPolicy(actor.enterpriseId, agent)
+          ...(!reviewRuntime && agentRuntime?.protocol !== fastGPTAgentV2Protocol && !nativeRag && !agent.structuredFinal && specialistPolicy(actor.enterpriseId, agent)
             ? { specialist: specialistPolicy(actor.enterpriseId, agent) } : {}),
           ...(agent.providerKey === 'dashscope' && agent.model === 'qwen3.8-flash' ? { ownerCitationCarrier: ownerCitationCarrierProtocol } : {}) } : {}),
-      ...(agent && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId) ? { longTermMemory: true } : {}),
+      ...(agent && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId)
+        ? { longTermMemory: true, ...(agent.tools && agentRuntime?.protocol !== fastGPTAgentV2Protocol ? { delegationToolProtocol } : {}) } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);

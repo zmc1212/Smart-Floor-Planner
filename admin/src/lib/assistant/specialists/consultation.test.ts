@@ -5,6 +5,8 @@ import { bindSpecialistInput, specialistRegistry, specialists, waterproofAgentId
 import type { ModelTool } from '../contracts/model';
 import { guardAnswerCommitments } from '../agent/context';
 import { knowledgeReadPending } from '../agent/read-tool-input';
+import { delegationToolForQuestion } from '../memory/agent';
+import { toolSchemaIssue } from '../agent/tool-protocol';
 
 test('only the active waterproof registration is selectable and can narrow authorized tools', () => {
   const active = specialists.active(waterproofAgentId)!;
@@ -23,6 +25,20 @@ test('only the active waterproof registration is selectable and can narrow autho
   assert.deepEqual(input.knowledgeScopes, ['enterprise']);
   assert.deepEqual(specialistConsultationTools(tools, input, false).map(tool => tool.name), ['search_knowledge']);
   assert.deepEqual(specialistConsultationTools(tools, input, true), []);
+});
+
+test('a waterproof delegation admits only the current authorized room and service action', async () => {
+  const question = '帮我持续跟进卫生间防水管根处理。';
+  const specialist = consultationSpecialist(question, [])!;
+  const scope = { enterpriseId: '1454', ownerId: '1', conversationId: '2', leadId: '3', projectId: '4', ambiguous: false };
+  const tool = delegationToolForQuestion(scope, question, specialist)!;
+  const args = { kind: 'rectification_review', room: '卫生间', subject: '防水管根处理', quote: question };
+  assert.equal(await toolSchemaIssue(tool, JSON.stringify(args)), null);
+  for (const input of [{ ...args, room: '厨房' }, { ...args, kind: 'room_progress' }, { ...args, workflowRunId: 'forged' }])
+    assert.ok(await toolSchemaIssue(tool, JSON.stringify(input)));
+  assert.equal(delegationToolForQuestion({ ...scope, projectId: null }, question, specialist), undefined);
+  assert.equal(delegationToolForQuestion(scope, '卫生间管根为什么要单独做防水？', specialist), undefined);
+  assert.equal(delegationToolForQuestion(scope, '取消防水管根处理的跟进', specialist), undefined);
 });
 
 test('advice, latest room corrections, company standards, other editions and project facts use separate reads', () => {

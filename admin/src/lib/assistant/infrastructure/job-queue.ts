@@ -171,6 +171,31 @@ export async function completeRun(lease: Lease, result: RunResult, commit?: (tx:
     return String(message.id);
   });
 }
+
+/** A service receipt already has a message and a metered model turn. Finish
+ * against that message, keeping all provider steps and the receipt distinct. */
+export async function completeDelegationReply(lease: Lease, options: { standalone?: boolean; rejectedAnswer?: string } = {}) {
+  const { longTermDelegationReceipt } = await import('../memory/agent');
+  return withTenantTransaction(lease.enterpriseId, async tx => {
+    const { conversation, job } = await runContext(tx, lease);
+    if (!job.provider_started_at || await one(tx, sql`select id from app.assistant_run_steps
+      where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model' and status='running' limit 1`)) return false;
+    const receipt = await longTermDelegationReceipt(tx, lease.actor, conversation, lease.runId, options);
+    if (!receipt) return false;
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+      values(${lease.enterpriseId},${lease.runId},1022,'agent_delegation_reply','succeeded',
+      ${JSON.stringify({ messageId: receipt.messageId, rejectedAnswer: options.rejectedAnswer ?? null })}::jsonb)
+      on conflict do nothing`);
+    await tx.execute(sql`update app.assistant_quota_reservations set status='reconciling',version=version+1,updated_at=now()
+      where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+    await finish(tx, lease, 'succeeded', null, receipt.messageId);
+    return true;
+  });
+}
+
+export function delegationAnswerRejected(code: string) {
+  return ['invalid_model_answer', 'invalid_model_citation', 'unsupported_model_commitment'].includes(code);
+}
 /** Preserve actual completed usage even when later authorization/answer
  * validation prevents delivery. The successful commit uses this same key. */
 export async function recordRunUsage(tx: PostgresTransaction, lease: Lease, result: Pick<RunResult, 'usage' | 'attemptId'>) {

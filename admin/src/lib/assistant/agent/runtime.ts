@@ -30,7 +30,7 @@ export type AgentRuntimePorts = {
   resolveToolReply?(state: AgentCheckpoint): Promise<string | null>;
   /** Deterministic final-response reconstruction only; no tools or dispatch. */
   resolveFinal?(text: string, state: AgentCheckpoint): Promise<string>;
-  validateFinal?(text:string,turn:number):Promise<{code:string;feedback:string;responseScope?:FinalAnswerRepairScope}|null>;
+  validateFinal?(text:string,turn:number,finalFromTools?: boolean):Promise<{code:string;feedback:string;responseScope?:FinalAnswerRepairScope}|null>;
 };
 const State = Annotation.Root({
   turn: Annotation<number>(), messages: Annotation<ModelMessage[]>(),
@@ -220,7 +220,7 @@ export async function runRenovationAgent(input: {
       }
       if (ports.resolveFinal) output.text = await ports.resolveFinal(output.text, { version: 1, turn: state.turn,
         messages: state.messages, output: state.output, validationRepairs: state.validationRepairs, argumentFailures: state.argumentFailures, exhaustedTools: state.exhaustedTools, readReceipts: state.readReceipts, finalFromTools: state.finalFromTools });
-      const issue=await ports.validateFinal?.(output.text,state.turn);
+      const issue=await ports.validateFinal?.(output.text,state.turn,state.finalFromTools);
       // Keep provider output or the explicitly marked server tool reply in the
       // durable checkpoint. A crash reconstructs without provider dispatch.
       if(!issue) return { output };

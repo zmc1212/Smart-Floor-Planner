@@ -150,7 +150,8 @@ export type TraceKind =
   | 'node_failed'
   | 'branch_selected'
   | 'run_completed'
-  | 'run_halted';
+  | 'run_halted'
+  | 'run_cancelled';
 
 export interface WorkflowTraceEntry {
   readonly seq: number;

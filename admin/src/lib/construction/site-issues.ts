@@ -7,6 +7,13 @@ import { sharedMaterial, sharedMaterials } from './site-materials';
 import { readSiteResolution } from './site-resolution';
 import { collaborationEnabled, collaborationMember } from './collaboration-scope';
 import { publishedSiteRecord } from './site-publications';
+import type { SpecialistEvidenceRef } from '@/lib/assistant/specialists/registry';
+
+export type SpecialistIssueSource = {
+  enterpriseId: string; projectId: string; roomId: string; customerId: string; conversationId: string;
+  originalMessageId: string; specialistAgentId: string; specialistAgentVersion: number;
+  workflowRunId: string; workflowRevision: number; workflowDigest: string;
+};
 
 export type SiteIssueCommand = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'resume' | 'refresh' | 'check' | 'return' | 'confirm' | 'rectify' | 'dismiss'; target: string; value: string };
 type Issue = { issueId: string; revision: number; projectId: string; recordId: string; recordVersion: number;
@@ -17,6 +24,8 @@ type Issue = { issueId: string; revision: number; projectId: string; recordId: s
   projectReview?: boolean;
   specialistDelegationId?: string;
   specialistManagerOnly?: boolean;
+  specialistSource?: SpecialistIssueSource;
+  specialistEvidenceRefs?: SpecialistEvidenceRef[];
   confirmed?: boolean; confirmedAt?: string; confirmedBy?: string; confirmationReason?: string; rectifyingAt?: string; dismissedAt?: string; dismissReason?: string;
   /** A record item follows onsite work; a need item follows a customer's explicitly shared requirement. */
   sourceKind?: 'record' | 'need'; needGrantId?: string; customerId?: string; conversationId?: string };
@@ -45,6 +54,7 @@ export function siteIssueSummary(issue: IssueView) {
     sourceAvailable, designRelated, lifecycleId, lifecycleRevision, evidenceId, executionRecordId, executionRecordVersion, planId } = issue;
   return { issueId, revision, roomId, roomName, status, classification, classificationLabel, confirmed, ownerId, ownerName,
     sourceAvailable, designRelated, lifecycleId, lifecycleRevision, evidenceId, executionRecordId, executionRecordVersion, planId,
+    ...(sourceAvailable && issue.specialistSource ? { specialistSource: issue.specialistSource } : {}),
     sourceKind: issue.sourceKind || 'record', recordId: issue.recordId || null, recordVersion: issue.recordVersion || null };
 }
 
@@ -163,7 +173,10 @@ async function issueData(tx: PostgresTransaction, eid: string, pid: string, issu
     ${asOf ? sql`and created_at<${asOf}` : sql``} order by aggregate_version desc limit 1`);
   const original = opened.payload as Issue;
   const projectReview = original.projectReview ?? (original.sourceKind === 'need' && !original.requestMessageId);
-  return { ...(latest?.payload || original) as Issue, issueId, ...(projectReview ? { projectReview } : {}) };
+  return { ...(latest?.payload || original) as Issue, issueId, ...(projectReview ? { projectReview } : {}),
+    ...(original.specialistDelegationId ? { specialistDelegationId: original.specialistDelegationId,
+      customerId: original.customerId, conversationId: original.conversationId, specialistSource: original.specialistSource,
+      specialistEvidenceRefs: original.specialistEvidenceRefs } : {}) };
 }
 
 async function effectiveOwner(tx: PostgresTransaction, eid: string, pid: string, aid: string) {
@@ -207,10 +220,12 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
     : !issue.requestMessageId || !!request && fingerprint(request.content) === issue.requestHash;
   let specialistAuthorized = true;
   if (issue.specialistDelegationId) {
-    const { specialistIssueOrigin, specialistPublicationAuthorized } = await import('./specialist-issues');
+    const { specialistIssueOrigin, specialistIssueSource, specialistPublicationAuthorized } = await import('./specialist-issues');
     const origin = await specialistIssueOrigin(tx, eid, pid, issue.specialistDelegationId);
     const publication = origin && await publishedSiteRecord(tx, eid, origin.ownerId, issue.recordId, issue.recordVersion, true);
-    specialistAuthorized = !!publication && await specialistPublicationAuthorized(tx, origin, publication, issue.specialistManagerOnly);
+    specialistAuthorized = !!origin && !!publication && (!origin.scope.workflow?.originBound
+      || !!issue.specialistSource && fingerprint(issue.specialistSource) === fingerprint(specialistIssueSource(origin) ?? null))
+      && await specialistPublicationAuthorized(tx, origin, publication, issue.specialistManagerOnly);
   }
   const valid = requestAvailable && specialistAuthorized && (isNeed ? true : !!source && Number(source!.row.version) === issue.recordVersion && source!.hash === issue.sourceHash)
     && (!issue.materialVersion || materials?.version === issue.materialVersion);
@@ -284,7 +299,8 @@ export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorConte
  * staff member confirms the exact persisted preview; model output alone cannot. */
 export async function openRecordIssue(tx: PostgresTransaction, eid: string, pid: string, recordId: string,
   source: NonNullable<Awaited<ReturnType<typeof currentRecord>>>,
-  request: Pick<Issue, 'openedBy' | 'requestMessageId' | 'requestHash' | 'requestText' | 'projectReview' | 'specialistDelegationId' | 'specialistManagerOnly' | 'customerId' | 'conversationId'>,
+  request: Pick<Issue, 'openedBy' | 'requestMessageId' | 'requestHash' | 'requestText' | 'projectReview' | 'specialistDelegationId'
+    | 'specialistManagerOnly' | 'specialistSource' | 'specialistEvidenceRefs' | 'customerId' | 'conversationId'>,
   principal: ActorContext['principal'], correlationId: string) {
   const issue: Issue = { issueId: '', revision: 1, projectId: pid, recordId, recordVersion: Number(source.row.version), sourceHash: source.hash,
     sourceMessageId: String(source.row.source_message_id), roomId: String(source.row.room_id), roomName: String(source.row.room_name_snapshot),

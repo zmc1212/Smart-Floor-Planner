@@ -14,7 +14,7 @@ I6.11 起，验收表述的 A 标准规定、B 专业解释、C 项目事实、D
 
 LangGraph 的恢复机制以检查点和可幂等的任务为边界。仓库继续用已落地的 PostgreSQL 租约持有跨业务等待，并在同一租户事务提交 Construction 与 Outbox 回执。JS 子图重复执行问题已有上游修复记录。 [LangGraph 检查点及重放](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/graph-api.mdx) · [上游持久化测试](https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/tests/test_subgraph_persistence.py) · [LangGraph.js #2667](https://github.com/langchain-ai/langgraphjs/issues/2667)
 
-I6.14 暴露的运行时边界：`xiaok-native-executor-v1` 是客户咨询的默认执行面，但不提供 `start_delegation`，且与 `consultation` 配置绑定不兼容（`assistant_model_configuration_invalid`）。业主持续跟进只在 LangGraph Agent 面完成登记与取消。V1.1 若继续使用 native executor，必须接入同一长期委托能力；否则应明确 C01 持续跟进的路由边界，不能让两个运行时产生不同授权语义。
+I6.15 在 `xiaok-native-executor-v1` 和 LangGraph 装配同一 `delegationToolForQuestion`、`dispatchDelegationTool` 和 `DelegationService`。当前业主、原咨询、项目、精确房间、原话授权、操作键、活动注册与发布版本均由服务端决定。`consultation` 或 `structuredFinal` 与 Native 配置的组合在建 Run 时显式路由到 LangGraph，并保留路由诊断；已固定且不兼容的旧快照在模型派发前给出配置错误。持久化的登记回执可直接结束一条独立授权消息。模型首稿、工具执行和服务回执分别保留，混合咨询的正文继续走原来源及承诺校验。
 
 节点、操作及验收见[防水工作流](xiaok-waterproof-workflow.md)和[集成审查](xiaok-integration-audit.md)。
 

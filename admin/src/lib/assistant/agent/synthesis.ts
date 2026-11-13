@@ -564,6 +564,7 @@ function synthesisCommitmentOptions(segment: SynthesisSegment, sources: Synthesi
   const pooled = [...new Set([...(answerQuotes || []), ...standardQuotes])];
   return {
     formalStatusEvidence: formalStatusEvidence(segment.citations, sources, context),
+    delegationReply: context.delegationReply,
     ...(context.specialistAcceptance || pooled.length
       ? { acceptanceQuotes: pooled, acceptanceAdvice: segment.basis === 'advice' } : {}),
   };

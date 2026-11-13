@@ -1,5 +1,7 @@
 import type { SynthesisSource } from '../agent/synthesis';
-import { companyPracticeRequested } from '../agent/read-tool-input';
+import { companyPracticeRequested, explicitHumanHandoffRequested, independentAdviceRequested } from '../agent/read-tool-input';
+import { currentMessageOnlyRequested } from '../agent/current-message-scope';
+import { explicitNeedWriteStatement } from '../agent/memory';
 import type { ModelMessage, ModelTool } from '../contracts/model';
 import { explicitStandardReference, matchingReviewedStandard, namedReviewedStandard, reviewedStandardTopic } from '../web-search/standards';
 import { isKnowledgeTool } from '../knowledge/rag-tools';
@@ -72,12 +74,26 @@ export function consultationSpecialist(question: string, previousQuestions: stri
   return { agent, room, progressRequested, standard: companyOnly ? undefined : standard, editionQuestion, evidenceQuestion, reviewedSections, companyPractice, companyOnly };
 }
 
+export function routedConsultationSpecialist(question: string, previousQuestions: string[],
+  agent?: ReturnType<typeof specialists.active>) {
+  if (currentMessageOnlyRequested(question) || independentAdviceRequested(question)
+    || explicitNeedWriteStatement(question) || explicitHumanHandoffRequested(question)) return null;
+  return consultationSpecialist(question, previousQuestions, agent);
+}
+
+export type ConsultationSpecialist = NonNullable<ReturnType<typeof consultationSpecialist>>;
+
+export function specialistDelegationRoom(specialist: ConsultationSpecialist, question: string) {
+  return specialist.agent.toolPermissions.includes('followup') && specialistFollowupRequested(question)
+    && specialist.room && question.includes(specialist.room) ? specialist.room : null;
+}
+
 export function specialistConsultationTools(tools: ModelTool[], input: SpecialistInput, progressRequested: boolean) {
   return tools.filter(tool => {
     if (tool.name === 'query_business') return progressRequested && input.toolPermissions.includes('project_progress') && !!input.room;
     if (tool.name === 'start_delegation') return input.toolPermissions.includes('followup');
     if (progressRequested) return false;
-    if (tool.name === 'search_knowledge' || isKnowledgeTool(tool.name)) return input.toolPermissions.includes('knowledge');
+    if (['search_knowledge', 'search_enterprise'].includes(tool.name) || isKnowledgeTool(tool.name)) return input.toolPermissions.includes('knowledge');
     return input.toolPermissions.includes('public_read') && (['search_web', 'read_web'].includes(tool.name) || isWebTool(tool.name));
   });
 }

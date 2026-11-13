@@ -32,6 +32,15 @@ export interface LiveBusinessEvent {
   readonly periodStart?: string;
   readonly periodEnd?: string;
   readonly receiver?: LivePeriodReceiver;
+  readonly specialistOrigin?: {
+    readonly delegationId: string;
+    readonly customerId: string;
+    readonly conversationId: string;
+    readonly originalMessageId: string;
+    readonly roomId: string;
+    readonly agentId: string;
+    readonly agentVersion: number;
+  };
 }
 
 /** Immutable version and business-event binding captured when a run starts. */
@@ -51,7 +60,7 @@ export interface LiveRunContext extends LiveRunBinding {
   readonly projectId: string;
 }
 
-export type LiveRunStatus = 'running' | 'waiting' | 'completed' | 'halted' | 'failed' | 'unknown';
+export type LiveRunStatus = 'running' | 'waiting' | 'completed' | 'halted' | 'failed' | 'unknown' | 'cancelled';
 
 export type LiveOperationOutcome = 'succeeded' | 'failed' | 'unknown';
 

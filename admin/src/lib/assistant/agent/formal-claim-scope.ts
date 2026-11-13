@@ -185,6 +185,12 @@ export function hasAcceptanceClaim(text: string) {
   return text.search(acceptance) >= 0;
 }
 
+/** Follow-up state comes from the separately persisted service message. A
+ * generated paragraph cannot supply that receipt or promise a delivery. */
+export function hasDelegationClaim(text: string) {
+  return /(?:已(?:经)?(?:为你|替你)?(?:成功)?(?:登记|取消|恢复|暂停)(?:了)?[^。！？\n]{0,24}(?:委托|跟进)|(?:委托|跟进)[^。！？\n]{0,16}(?:已登记|已取消|已恢复|已暂停)|预计(?:核对|复核|回传|通知|完成)时间|(?:届时|到时|明天|处理完后|完成后)[^。！？\n]{0,16}(?:会|一定|保证)[^。！？\n]{0,12}(?:通知|告诉|告知|回传|完成|给你回执)|(?:我|小K)(?:一定会?|保证|会)[^。！？\n]{0,12}(?:通知你|告诉你|告知你|给你回执)|(?:委托|跟进)(?:编号|\s*ID)\s*[:：#]?\s*[a-z0-9-]+)/iu.test(text);
+}
+
 // Project only an explicit, complete denial of approval for a closed list of
 // business subjects. This changes the guard view, never the original answer.
 const subjects = new Set(['方案', '费用', '工期', '现场落实', '验收']);

@@ -73,7 +73,7 @@ function sourceAuthorizes(request: DelegationRequest, original: string) {
   // The model can classify and bind the user's request. An unrelated or
   // quoted example cannot grant a persistent background action.
   return delegationKinds.includes(request.kind) && quote.length > 0 && quote.length <= 800 && original.includes(quote)
-    && subject.length > 0 && subject.length <= 80 && original.includes(subject)
+    && subject.length > 0 && subject.length <= 80 && quote.includes(subject)
     && (!request.room || original.includes(request.room))
     && !/假设|举例|举个例子|不用跟进|不要跟进|别跟进|取消|暂停|怎么委托|怎么跟进/u.test(original)
     && /跟进|盯一下|盯着|盯下|帮我.{0,14}(?:核对|核一下|确认|问问|留意|看看)|(?:等|让|请).{0,12}(?:设计师|师傅|工人).{0,14}(?:核对|核一下|看一下|回复|复核)|到时提醒我/u.test(original);
@@ -105,11 +105,13 @@ export class DelegationService {
       if (!Number.isFinite(date.getTime()) || date <= now || !original.includes(request.dueAt)) fail('delegation_due_date_unconfirmed', 422);
       dueAt.setTime(date.getTime());
     }
-    const operationKey = fingerprint({ projectId, kind: scope.kind, roomId: scope.roomId, subject: subject.normalize('NFKC').toLowerCase(), ...(workflow ? { workflow: workflow.templateId } : {}) });
+    const subjectKey = subject.normalize('NFKC').toLowerCase();
+    const operationKey = fingerprint({ projectId, kind: scope.kind, roomId: scope.roomId, subject: subjectKey, ...(workflow ? { workflow: workflow.templateId } : {}) });
     await this.tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'native-delegation:' + enterpriseId + ':' + conversationId + ':' + operationKey},0))`);
     const existing = await one(this.tx, sql`select * from app.native_workflow_delegations
       where enterprise_id=${enterpriseId} and owner_id=${ownerId} and project_id=${projectId} and conversation_id=${conversationId}
-        and (scope - 'issueId' - 'workflow')=(${delegationJson(scope)}::jsonb - 'issueId' - 'workflow')
+        and scope->>'kind'=${scope.kind} and (scope->>'roomId') is not distinct from ${scope.roomId}::text
+        and lower(normalize(scope->>'subject', NFKC))=${subjectKey}
         and coalesce(scope#>>'{workflow,templateId}','')=${workflow?.templateId ?? ''}
         and (origin_message_id=${messageId} or current_status not in ('cancelled','completed'))
       order by (origin_message_id=${messageId}) desc,created_at desc,id limit 1 for share`);
@@ -130,10 +132,15 @@ export class DelegationService {
       { delegationId: d.id, projectId, action: 'start' }, { kind: 'user', userId: ownerId }))!;
     await this.tx.execute(sql`update app.native_workflow_delegations set activation_event_id=${eventId}
       where enterprise_id=${enterpriseId} and id=${d.id}`);
+    const activated = { ...d, activationEventId: eventId };
+    if (workflow?.originBound) {
+      const { registerSpecialistRun } = await import('./specialist-workflow');
+      await registerSpecialistRun(this.tx, activated);
+    }
     const auditId = (await appendDelegationEvent(this.tx, enterpriseId, 'native.delegation.control.v1', d.id, 1,
       { delegationId: d.id, projectId, action: 'start', sourceMessageId: messageId }, { kind: 'user', userId: ownerId }))!;
     await linkReviewDelegationEvent(this.tx, null, d, auditId, 'control', { action: 'start', sourceMessageId: messageId });
-    return { ...d, activationEventId: eventId };
+    return activated;
   }
 
   async find(id: string, lock = false) {

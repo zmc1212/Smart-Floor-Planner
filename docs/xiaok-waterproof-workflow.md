@@ -2,7 +2,14 @@
 
 业主在 C01 询问管根、基层、防水层、试验、保护层和验收。普通解释、企业工艺和本人项目进度沿本轮意图读取各自依据。明确提出持续跟进后，原咨询登记委托并绑定已发布的 `waterproof-inspection-v1`，施工团队从原工地入口处理现场材料与事项。
 
-I6.14 结果：G 标准现行性真实模型通过；施工端 Stable 提交照片与施工记录通过；业主 C01 在 LangGraph 运行时完成登记与取消，但终稿被 `invalid_model_answer` 拒绝，保持 `limited`。企业 `1454` 默认的 `xiaok-native-executor-v1` 不提供 `start_delegation`，V1.1 需接入或明确路由；本隔离库没有绑定 specialist 的 `native_workflow_runs`，四端 Workflow Version 证据 `not_run`。详见[第一版交付冻结](xiaok-waterproof-agent-v1-release.md)第 13 节。
+I6.15 接通 Native Executor 与 LangGraph 的同一 `start_delegation` 服务。明确授权的防水委托与 PostgreSQL Run 同事务登记，原 C01 立即保存站内登记回执。`waterproof-specialist@1` 与已发布的 `waterproof-inspection-v1` 仍按冻结版本执行。I6.14 的原始验收、失败及当前验证见[第一版交付冻结](xiaok-waterproof-agent-v1-release.md)与[集成审查](xiaok-integration-audit.md#i615-统一执行器与正式防水委托limited)。
+
+## I6.15 原咨询、运行与事项
+
+- `DelegationService` 从客户原话、当前项目及精确房间取得授权；在同一事务写入委托、首条 Outbox 事件和正式 Run。Run 固定客户、会话、原消息、Agent 版本和发布 revision/digest；重复派送从原检查点接续。
+- 登记、暂停、恢复及取消使用原会话控制与服务回执。取消终止未完成的 Run、等待任务及仍在队列中的专业作业。已存在的施工记录和事项仍可追溯。历史委托沿原兼容读取。
+- 同房间、当前对客且带有效原件的现场记录才能登记专业事项。事项的首次事件保存来源关联与 Evidence 引用，后续修订继承。经理复核保存独立的复核 ID、版本与明确选择的回传节选及原件；工作流将获准结果回复到原消息。读回重验客户授权、房间、现场原件、人员和版本。
+- C01 继续使用登记、检查清单或资料缺项与正式回执的现有显示。原会话 `long-term` 读取相同 Run 的身份、节点及状态。员工沿工地聊天与项目详情读取同一事项及复核；平台管理员由原 `specialist-status` 入口查看 Run 节点和模型审计。生产和真机状态见集成审查。
 
 ## 角色和版本
 

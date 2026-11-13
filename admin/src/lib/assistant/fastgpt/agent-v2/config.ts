@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { fail } from '../../contracts';
 import { parseAgentV2Skills, type AgentV2SkillSelection } from './skills';
+import type { AgentConfig } from '../../agent/config';
 
 export const fastGPTAgentV2Protocol = 'fastgpt-agent-v2-v1';
 export type AgentV2Runtime = 'fastgpt-agent-v2' | 'langgraph-v1';
@@ -71,4 +72,12 @@ export function fastGPTAgentV2Configuration(enterpriseId: string): { configurati
 export function nativeAgentRuntimeBinding(enterpriseId: string): { configuration: AgentV2Configuration; binding: string } | undefined {
   const bound = fastGPTAgentV2Configurations().find(item => item.configuration.enterpriseId === enterpriseId);
   return bound && bound.configuration.runtime === 'langgraph-v1' ? bound : undefined;
+}
+
+/** The dedicated consultation profile requires LangGraph's quota and
+ * deadline contract. Keep the deployment binding intact when it is selected. */
+export function nativeExecutorConfigurationIssue(agent: AgentConfig) {
+  if (agent.consultation) return 'assistant_native_consultation_profile_unsupported';
+  if (agent.structuredFinal) return 'assistant_native_structured_final_unsupported';
+  return null;
 }

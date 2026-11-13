@@ -1,22 +1,44 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows } from '@/db/repositories/assistant-repository';
-import { fail, safeText, type MessageContent } from '@/lib/assistant/contracts';
-import type { ReviewDelegation } from '@/lib/native-workflow/live/delegation-state';
+import { fail, fingerprint, safeText, type MessageContent } from '@/lib/assistant/contracts';
+import type { SpecialistEvidenceRef } from '@/lib/assistant/specialists/registry';
+import { specialistWorkflowRunId, type ReviewDelegation } from '@/lib/native-workflow/live/delegation-state';
+import { createPostgresWorkflowRunStore } from '@/lib/native-workflow/live/runtime-postgres-stores';
 import { WorkflowOperationError } from '@/lib/native-workflow/errors';
 import { getNativeWorkflowService } from '@/lib/native-workflow/server';
 import { reviewDelegationOrigin, reviewDelegationFromRow } from '@/lib/native-workflow/live/delegation-review-store';
 import { collaborationEnabled, collaborationMember } from './collaboration-scope';
-import { currentRecord, openRecordIssue, readSiteIssue } from './site-issues';
+import { currentRecord, openRecordIssue, readSiteIssue, type SpecialistIssueSource } from './site-issues';
 import { publishedSiteRecord } from './site-publications';
 import { siteAccessRevoked } from './site-access';
+
+export function specialistIssueSource(d: ReviewDelegation): SpecialistIssueSource | undefined {
+  const binding = d.scope.workflow;
+  if (!binding?.originBound || !d.scope.roomId) return;
+  return { enterpriseId: d.enterpriseId, projectId: d.projectId, roomId: d.scope.roomId, customerId: d.ownerId,
+    conversationId: d.conversationId, originalMessageId: d.originMessageId, specialistAgentId: binding.agentId,
+    specialistAgentVersion: binding.agentVersion, workflowRunId: specialistWorkflowRunId(d.id),
+    workflowRevision: binding.revision, workflowDigest: binding.digest };
+}
 
 export async function specialistIssueOrigin(tx: PostgresTransaction, eid: string, pid: string, delegationId: string) {
   const row = await one(tx, sql`select * from app.native_workflow_delegations where enterprise_id=${eid}
     and project_id=${pid} and id::text=${delegationId} and scope->'workflow' is not null for share`);
   if (!row) return null;
   const delegation = reviewDelegationFromRow(row);
-  return await reviewDelegationOrigin(tx, delegation) ? delegation : null;
+  if (!await reviewDelegationOrigin(tx, delegation)) return null;
+  if (delegation.scope.workflow?.originBound) {
+    const source = specialistIssueSource(delegation);
+    if (!source) return null;
+    const run = await createPostgresWorkflowRunStore(eid, tx).get(source.workflowRunId);
+    const origin = run?.binding.businessEvent.specialistOrigin;
+    if (!run || run.projectId !== pid || run.binding.revision !== source.workflowRevision || run.binding.digest !== source.workflowDigest
+      || !origin || origin.delegationId !== delegation.id || origin.customerId !== source.customerId
+      || origin.conversationId !== source.conversationId || origin.originalMessageId !== source.originalMessageId
+      || origin.roomId !== source.roomId || origin.agentId !== source.specialistAgentId || origin.agentVersion !== source.specialistAgentVersion) return null;
+  }
+  return delegation;
 }
 
 export async function specialistResultRequired(tx: PostgresTransaction, eid: string, pid: string, delegationId: string, state: 'resolved' | 'closed') {
@@ -76,19 +98,22 @@ export async function specialistSiteRecord(tx: PostgresTransaction, d: ReviewDel
 /** The owner's explicit, scoped request may register a pending matter tied to
  * a current customer-visible photo. Confirmation and review use staff actions. */
 export async function openSpecialistSiteIssue(tx: PostgresTransaction, d: ReviewDelegation,
-  input?: { id: string; version: number }, policy: 'open_or_reuse' | 'manager_only' = 'open_or_reuse') {
+  input?: { id: string; version: number }, policy: 'open_or_reuse' | 'manager_only' = 'open_or_reuse',
+  evidenceRefs?: readonly SpecialistEvidenceRef[]) {
   const { enterpriseId: eid, projectId: pid } = d;
-  if (!collaborationEnabled(eid) || !await reviewDelegationOrigin(tx, d)) fail('construction_forbidden', 403);
+  const origin = await specialistIssueOrigin(tx, eid, pid, d.id);
+  if (!collaborationEnabled(eid) || !origin || ['cancelled', 'paused'].includes(origin.status)
+    || fingerprint(specialistIssueSource(origin) ?? null) !== fingerprint(specialistIssueSource(d) ?? null)) fail('construction_forbidden', 403);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'site-material:' + eid + ':' + pid},0))`);
-  if (!input) {
-    const saved = await one(tx, sql`select id::text from app.domain_event_outbox where enterprise_id=${eid}
+  const saved = await one(tx, sql`select id::text from app.domain_event_outbox where enterprise_id=${eid}
       and type='construction.site.issue.opened.v1' and payload->>'projectId'=${pid}
       and payload->>'specialistDelegationId'=${d.id}`);
-    if (saved) {
-      const issue = await readSiteIssue(tx, eid, pid, String(saved.id));
-      if (!issue?.sourceAvailable) fail('context_changed');
-      return issue;
-    }
+  if (saved) {
+    const issue = await readSiteIssue(tx, eid, pid, String(saved.id));
+    if (!issue?.sourceAvailable || input && (issue.recordId !== input.id || issue.recordVersion !== input.version)) fail('context_changed');
+    return issue;
+  }
+  if (!input) {
     input = await specialistSiteRecord(tx, d, { requireCurrentStaff: true, managerOnly: policy === 'manager_only' }) ?? undefined;
     if (!input) return null;
   }
@@ -106,9 +131,14 @@ export async function openSpecialistSiteIssue(tx: PostgresTransaction, d: Review
   if (!published || !await specialistPublicationAuthorized(tx, d, published, policy === 'manager_only')) return null;
   const source = published && await currentRecord(tx, eid, pid, input.id);
   if (!source?.media.length || String(source.row.room_id) !== d.scope.roomId) fail('site_review_required', 422);
+  const issueSource = specialistIssueSource(origin);
+  const recordRef: SpecialistEvidenceRef = { kind: 'project_fact',
+    ref: { type: 'site_record', id: input.id, version: String(input.version) }, hash: source.hash };
+  const refs = (evidenceRefs ?? []).filter(item => item.ref.type !== recordRef.ref.type || item.ref.id !== recordRef.ref.id);
   return openRecordIssue(tx, eid, pid, input.id, source, {
     openedBy: '', projectReview: true, specialistDelegationId: d.id,
     ...(policy === 'manager_only' ? { specialistManagerOnly: true } : {}),
     customerId: d.ownerId, conversationId: d.conversationId, requestText: d.scope.subject,
+    ...(issueSource ? { specialistSource: issueSource, specialistEvidenceRefs: [...refs, recordRef] } : {}),
   }, { kind: 'user', userId: d.ownerId }, d.originMessageId);
 }

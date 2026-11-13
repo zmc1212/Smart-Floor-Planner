@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
@@ -9,16 +9,23 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { sql } from 'drizzle-orm';
 import { NextRequest } from 'next/server';
+import sharp from 'sharp';
 import { GET as readAssistant, POST as sendAssistant } from '@/app/api/miniprogram/assistant/[...path]/route';
 import { GET as getManualQueue } from '@/app/api/native-workflow/tasks/manual/route';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { TenantEnterpriseResetRepository } from '@/db/repositories/tenant-enterprise-reset-repository';
 import { cancelRuns, ConversationService } from '@/lib/assistant/core/conversation';
+import { processAgentAnswer } from '@/lib/assistant/agent/worker';
+import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import type { ActorContext } from '@/lib/assistant/contracts';
+import { consultationAcceptanceProfile } from '@/lib/assistant/contracts/consultation';
+import { specialistModel } from '@/lib/assistant/specialists/registry';
 import { ensureFollowupBinding } from '@/lib/construction/report-store';
 import { ConstructionService } from '@/lib/construction/service';
 import { SiteChatService } from '@/lib/construction/site-chat';
+import { openSpecialistSiteIssue } from '@/lib/construction/specialist-issues';
+import { DelegationService } from '../live/delegation-review-store';
 import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { closePostgresPool } from '@/lib/postgresql';
 import { createRunState } from '../advance';
@@ -41,6 +48,7 @@ import { emptyCounts, scheduleRequestId, scheduleRunId, type PeriodReportSchedul
 import { resolvePublishedTarget } from '../live/published-target';
 import { createFileWorkflowRunStore } from '../live/run-store';
 import { createNativeRuntimeStores } from '../live/runtime-stores';
+import { getNativeWorkflowService } from '../server';
 import type { LiveRunRecord } from '../live/types';
 
 const enabled = process.env.B511_PG_TEST === '1';
@@ -201,6 +209,121 @@ async function sandbox() {
   await mkdir('tmp', { recursive: true });
   return mkdtemp(path.resolve('tmp/b511-runtime-'));
 }
+
+test('consultation profile keeps the native binding and routes the shared specialist write through LangGraph', { skip: !enabled, timeout: 90_000 }, async t => {
+  const root = await sandbox();
+  const specialistTenant = await withPlatformTransaction(async tx => {
+    const enterprise = await one(tx, sql`insert into app.enterprises(name,code,status)
+      values(${label + ' I6.15 防水'},${'b511-specialist-' + randomUUID()},'active') returning id::text`);
+    return String(enterprise!.id);
+  });
+  const env = {
+    XIAOK_FASTGPT_WORKFLOWS_FILE: path.join(root, 'runtime.json'),
+    NATIVE_WORKFLOW_STORE_DIR: path.join(root, 'definitions'),
+    ASSISTANT_SPECIALIST_ENTERPRISE_IDS: specialistTenant,
+    NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS: specialistTenant,
+    NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS: specialistTenant,
+  };
+  const previous = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+  await writeFile(env.XIAOK_FASTGPT_WORKFLOWS_FILE, JSON.stringify({ agentV2: { protocol: 'fastgpt-agent-v2-v1',
+    enterpriseId: specialistTenant, appId: 'a'.repeat(24), model: specialistModel.model, bridgeKey: randomUUID(), runtime: 'langgraph-v1' } }));
+  Object.assign(process.env, env);
+  const workflow = getNativeWorkflowService(), definitionId = 'waterproof-inspection-v1';
+  const draft = await workflow.createFromTemplate(definitionId);
+  const { version } = await workflow.publishDraft({ definitionId, expectedDraftRevision: draft.draft.draftRevision });
+  await withTenantTransaction(specialistTenant, tx => tx.execute(sql`insert into app.assistant_enterprise_settings
+    (enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${specialistTenant},true,100,10000000,1000000000,30)`));
+  const f = await fixture(specialistTenant, true);
+  await withTenantTransaction(specialistTenant, tx => tx.execute(sql`update app.admin_users set menu_permissions=array['construction-projects']
+    where enterprise_id=${specialistTenant} and id in (${f.manager},${f.worker})`));
+  const construction = new ConstructionService({ enterpriseId: specialistTenant, adminId: f.boss });
+  const { project } = await construction.execute('detail', { projectId: f.projectId });
+  await construction.execute('update', { projectId: f.projectId, name: (project as Row).name, status: 'active',
+    expectedVersion: (project as Row).version, customerAccess: true }, randomUUID());
+  const profile = consultationAcceptanceProfile;
+  const config = { runtime: 'langgraph-v1', providerKey: specialistModel.providerKey, model: specialistModel.model, probeVersion: 'i615-test',
+    imageInput: false, tools: true, consultation: { profile: profile.id, stage: 'R4', budgetGroup: 'i615-' + randomUUID(),
+      quota: { model: profile.model, remainingTokens: profile.stageTokens.R4, quotaOnly: true, verifiedAt: new Date().toISOString(), observedTokensAtVerification: 0 } } };
+  await withTenantTransaction(specialistTenant, tx => tx.execute(sql`update app.assistant_enterprise_settings
+    set agent_config=${JSON.stringify(config)}::jsonb where enterprise_id=${specialistTenant}`));
+  const question = '帮我持续跟进主卧的防水管根处理。';
+  const first = await miniMessages(f, question);
+  assert.equal(first.status, 202);
+  const sent = (await first.json()).data;
+  const runId = String(sent.runId);
+  const lease = await claimJob({ enterpriseId: specialistTenant, runId });
+  assert.ok(lease);
+  let calls = 0;
+  await processAgentAnswer(lease, { model: async (_messages, tools) => {
+    assert.equal(++calls, 1);
+    const tool = tools.find(item => item.name === 'start_delegation');
+    assert.ok(tool);
+    assert.deepEqual((tool.parameters.properties as Row).room, { type: 'string', enum: ['主卧'] });
+    return { text: '', finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 30, outputTokens: 10 },
+      toolCalls: [{ id: 'i615-authorization', name: tool.name, arguments: JSON.stringify({ kind: 'rectification_review', room: '主卧', subject: '防水管根处理', quote: question }) }] };
+  } });
+  const run = await withTenantTransaction(specialistTenant, tx => one(tx, sql`select status,output_message_id::text,
+    policy_snapshot->'agentRuntime' as runtime,policy_snapshot->'agentRuntimeRouting' as routing from app.assistant_runs where id=${runId}`));
+  assert.equal(run?.status, 'succeeded');
+  assert.equal(run.runtime, null);
+  assert.deepEqual(run.routing, { executor: 'langgraph-v1', reason: 'assistant_native_consultation_profile_unsupported' });
+  const delegation = await withTenantTransaction(specialistTenant, tx => one(tx, sql`select id::text,origin_message_id::text,activation_event_id::text
+    from app.native_workflow_delegations where conversation_id=${f.conversationId} and owner_id=${f.uid}`));
+  assert.ok(delegation);
+  const runKey = 'specialist:' + delegation.id;
+  const store = createNativeRuntimeStores(specialistTenant).runStore;
+  const formal = await store.get(runKey);
+  assert.equal(formal?.binding.revision, version.revision);
+  assert.equal(formal.binding.digest, version.digest);
+  assert.equal(formal.binding.businessEvent.outboxEventId, delegation.activation_event_id);
+  assert.equal(formal.binding.businessEvent.specialistOrigin?.originalMessageId, delegation.origin_message_id);
+  assert.equal(formal.binding.businessEvent.specialistOrigin?.conversationId, f.conversationId);
+  assert.equal(await createNativeRuntimeStores(controlTenant).runStore.get(runKey), null);
+  const messages = (await (await miniMessages(f)).json()).data.items;
+  assert.ok(messages.some((message: Row) => message.id === run.output_message_id && message.authorKind === 'system' && message.available === true));
+  const status = await miniMessages(f, '查看委托');
+  assert.equal((await status.json()).data.runId, null);
+  const statusMessages = (await (await miniMessages(f)).json()).data.items as Row[];
+  assert.ok(statusMessages.some(message => message.authorKind === 'system' && message.available === true
+    && JSON.stringify(message.content).includes(runKey)));
+  const site = new SiteChatService({ enterpriseId: specialistTenant, adminId: f.worker });
+  const manager = new SiteChatService({ enterpriseId: specialistTenant, adminId: f.manager });
+  const roomId = formal.binding.businessEvent.specialistOrigin!.roomId;
+  const image = await sharp({ create: { width: 120, height: 90, channels: 3, background: '#abcdef' } }).jpeg().toBuffer();
+  const media = await site.upload(f.projectId, randomUUID(), image);
+  const onsite = '主卧的防水管根处理仍待核对';
+  const sentRecord = await site.send(f.projectId, { text: onsite, mediaIds: [String(media.id)],
+    capture: { kind: 'quick', workId: 'water_test', roomId, location: null, progress: 'partial' } }, randomUUID());
+  const recordId = String(sentRecord.recordId);
+  const versions = async () => (await manager.read(f.projectId)).versions as { records: Record<string, number> };
+  await manager.mutate(f.projectId, recordId, 'edit', { expectedVersion: (await versions()).records[recordId],
+    data: { title: '防水管根待核对', roomId, completed: '', pending: onsite, coordination: '', note: '' } }, randomUUID());
+  await manager.mutate(f.projectId, recordId, 'publish', { expectedVersion: (await versions()).records[recordId], audience: 'customer' }, randomUUID());
+  const recordVersion = (await versions()).records[recordId];
+  const open = () => withTenantTransaction(specialistTenant, async tx => {
+    const service = new DelegationService(tx, { enterpriseId: specialistTenant, projectId: f.projectId, ownerId: f.uid,
+      conversationId: f.conversationId, leadId: null, ambiguous: false });
+    const task = await service.find(String(delegation.id));
+    assert.ok(task);
+    return openSpecialistSiteIssue(tx, task, { id: recordId, version: recordVersion });
+  });
+  const issue = await open();
+  assert.equal(issue?.specialistSource?.workflowRunId, runKey);
+  assert.equal(issue?.specialistSource?.originalMessageId, delegation.origin_message_id);
+  assert.deepEqual(issue?.specialistEvidenceRefs, [{ kind: 'project_fact', ref: { type: 'site_record', id: recordId, version: String(recordVersion) },
+    hash: issue?.sourceHash }]);
+  assert.equal((await open())?.issueId, issue?.issueId);
+  const cancelled = await miniMessages(f, '取消防水管根处理的跟进');
+  assert.equal(cancelled.status, 202);
+  assert.equal((await cancelled.json()).data.runId, null);
+  assert.equal((await store.get(runKey))?.status, 'cancelled');
+  assert.equal((await (await manager.read(f.projectId)).versions as { issues: Record<string, number> }).issues[issue!.issueId], issue?.revision);
+});
 
 test('independent Admin processes compare Workflow Run revisions, with direct forced RLS isolation', { skip: !enabled, timeout: 90_000 }, async () => {
   const root = await sandbox();

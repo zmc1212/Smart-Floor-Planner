@@ -136,7 +136,9 @@ export type DelegationStatus = 'pending' | 'running' | 'waiting_for_user' | 'wai
   | 'waiting_for_designer' | 'waiting_for_external' | 'waiting_for_authorization'
   | 'failed' | 'paused' | 'cancelled' | 'completed';
 export type DelegationControl = 'status' | 'pause' | 'resume' | 'cancel';
-export type SpecialistWorkflowBinding = { templateId: string; revision: number; digest: string; agentId: string; agentVersion: number; originRunId: string };
+export type SpecialistWorkflowBinding = { templateId: string; revision: number; digest: string; agentId: string; agentVersion: number;
+  originRunId: string; originBound?: true };
+export const specialistWorkflowRunId = (delegationId: string) => 'specialist:' + delegationId;
 export type DelegationScope = { workflow?: SpecialistWorkflowBinding; kind: DelegationKind; roomId: string | null; roomName: string; subject: string; issueId: string | null };
 export type ReviewDelegationEvidence = {
   type: 'record' | 'designer_reply' | 'issue' | 'rectification' | 'review' | 'owner_reply' | 'external_result';

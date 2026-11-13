@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
 import type { Row } from '@/db/repositories/assistant-repository';
-import { fail } from '../contracts';
+import { fail, fingerprint } from '../contracts';
 import { knowledgeSynthesisSources, businessSynthesisSources, type SynthesisContext } from './synthesis';
 import { synthesisContextAvailable } from './synthesis-sources';
 import { queryBusiness, type BusinessQuery, type BusinessSnapshot } from './business-tools';
@@ -107,7 +107,7 @@ export function dialogueBusinessQuery(rt: DialogueToolRuntime) {
     ? [...rt.recovered.businesses].map(([key, receipt]) => [key, Promise.resolve(receipt)] as const)
     : []);
   return (query: BusinessQuery, sequence: number): Promise<DialogueToolReceipt> => {
-    const key = query.domain + ':' + query.leadId;
+    const key = query.domain + ':' + query.leadId + (query.currentProject ? ':' + fingerprint(query.currentProject) : '');
     let pending = businesses.get(key);
     if (!pending) {
       pending = (async () => {

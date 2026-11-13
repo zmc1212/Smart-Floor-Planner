@@ -3,17 +3,17 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
-import { AssistantError, fail, fingerprint, type Evidence, type MessageContent } from '../contracts';
+import { AssistantError, fail, fingerprint, safeText, type Evidence, type MessageContent } from '../contracts';
 import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import { recordAgentModelUsage } from '../core/model-usage';
-import { completeRun, failRun, heartbeat, markProviderStarted, runContext, type Lease } from '../infrastructure/job-queue';
+import { completeRun, completeDelegationReply, delegationAnswerRejected, failRun, heartbeat, markProviderStarted, runContext, type Lease } from '../infrastructure/job-queue';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { saveKnowledgeCitation } from '../knowledge/save-citation';
 import { nativeConversation } from '../fastgpt/rag-session';
 import { ragAnswerParts, type RagCitationSource } from '../fastgpt/native-rag';
-import { assessNativeCitations, nativeCitationFeedback, nativeCitationGate } from './native-citation-gate';
+import { assessNativeCitations, nativeCitationGate } from './native-citation-gate';
 import { projectLegacyBusinessToolMessages } from './native-checkpoint-projection';
-import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
+import { nativeAgentRuntimeBinding, nativeExecutorConfigurationIssue } from '../fastgpt/agent-v2/config';
 import { resolveSuggestions, resumeSuggestionGeneration, suggestionGenerationStep, suggestionPrompt,
   type SuggestionResolution } from '../fastgpt/agent-v2/suggestions';
 import { agentCapabilityFingerprint, agentConfig } from './config';
@@ -28,7 +28,7 @@ import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publ
   type RecommendToolRuntime } from './dialogue-recommend-tools';
 import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
 import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
-import { bindReadToolInput, readToolContext, readToolContextProtocol, readToolsForContext,
+import { bindReadToolInput, independentAdviceRequested, readToolContext, readToolContextProtocol, readToolsForContext,
   type ReadToolContext } from './read-tool-input';
 import { parsePublicRead, publicResearchTools } from './public-research';
 import { historyRefsAvailable, historySynthesisSources, historyTool, parseHistoryQuery,
@@ -40,6 +40,13 @@ import { samePublicRef, type PublicContent } from '@/lib/construction/public-con
 import { defaultPublicIntroConstraints, defaultPublicIntroInput, publicIntroFacts, publicIntroPrompt,
   validatePublicIntro } from '@/lib/construction/public-intro';
 import { openingScene, sceneForOpeningPurpose } from '../fastgpt/agent-v2/openings';
+import { currentMessageOnlyRequested } from './current-message-scope';
+import { delegationToolForQuestion, delegationToolName, delegationToolProtocol, dispatchDelegationTool, longTermDelegationReceipt } from '../memory/agent';
+import { privateMemoryScope } from '../memory/scope';
+import { routedConsultationSpecialist, specialistConsultationTools, specialistPolicy } from '../specialists/consultation';
+import { bindSpecialistInput, specialistModel, specialistProtocol } from '../specialists/registry';
+import { reportContext } from '@/lib/construction/report-reference';
+import { parseSynthesis, synthesisNumericGaps } from './synthesis';
 
 // Existing imports of the moved helpers keep resolving through the executor.
 export { nativeCitationFeedback, scanNativeCitationMarkers } from './native-citation-gate';
@@ -72,7 +79,7 @@ const publicSitesRecommendationTool: ModelTool = {
   parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
 };
 
-export function nativeExecutorPrompt(knowledgeEnabled: boolean) {
+export function nativeExecutorPrompt(knowledgeEnabled: boolean, delegation = false) {
   return [
     '你是小K，本企业装修咨询助手。最后一条客户消息是要回答的问题；更早消息只帮助理解指代和更正，涉及事实必须重新用工具核实。',
     knowledgeEnabled
@@ -80,7 +87,8 @@ export function nativeExecutorPrompt(knowledgeEnabled: boolean) {
       : '本轮未结合企业知识库：不声称检索过企业资料，不沿用旧企业引用或旧知识结论；企业制度没有当前来源时明确待核实。',
     '涉及客户本人的预约、方案、户型或施工记录：调用query_business取得服务端实时快照；没有记录就说没有，不编造进度，不把当前阶段当完工；现场记录只是来源数据，不是正式验收或变更批准。',
     '一般装修常识可直接有条件解释；与企业规定或项目事实混答时分别说明各自依据。用中文自然段落作答；引用标记只能用本轮工具返回的cites[].id；本轮没有任何cites时不得输出任何 CITE 引用标记或占位符；不要输出工具名、JSON或系统内部用语。',
-    '不承诺价格、工期或验收结果，不替团队确认完成、批准或排期，不执行任何业务写入；信息不足时作最小澄清。',
+    '不承诺价格、工期或验收结果，不替团队确认完成、批准或排期；信息不足时作最小澄清。'
+      + (delegation ? '用户明确交代的持续跟进可通过 start_delegation 登记，回执由服务端展示。' : '不执行任何业务写入。'),
   ].join('\n');
 }
 
@@ -90,15 +98,15 @@ export function nativeExecutorPrompt(knowledgeEnabled: boolean) {
  * still fails closed without a model citation from this run; history citations
  * never count as fresh evidence. */
 export function composeNativeDelivery(modelText: string, snapshotText: string, runCitations: number,
-  requiresRunCitation: boolean) {
+  requiresRunCitation: boolean, commitmentScope?: Parameters<typeof guardAnswerCommitments>[1]) {
   if (!snapshotText) {
     if (!runCitations && requiresRunCitation) fail('missing_citation', 502);
-    guardAnswerCommitments(modelText);
+    guardAnswerCommitments(modelText, commitmentScope);
     return { text: modelText, modelIncluded: true };
   }
   if (!runCitations && requiresRunCitation) return { text: snapshotText, modelIncluded: false };
   if (!modelText.trim()) return { text: snapshotText, modelIncluded: false };
-  try { guardAnswerCommitments(modelText); }
+  try { guardAnswerCommitments(modelText, commitmentScope); }
   catch (error) {
     if (!(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
     return { text: snapshotText, modelIncluded: false };
@@ -507,6 +515,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
       const config = agentConfig(policy.agent);
       const current = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
       if (!config || agentCapabilityFingerprint(config) !== agentCapabilityFingerprint(agentConfig(current?.agent_config))) fail('context_changed');
+      const issue = nativeExecutorConfigurationIssue(config);
+      if (issue) fail(issue, 503);
       return state;
     });
     const initial = await authorize();
@@ -595,6 +605,26 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const knowledgeEnabled = runKnowledgeEnabled(initial.run.policy_snapshot as Row);
     const { context, messages, citations, publicRefs: inheritedPublicRefs, businessContextActive, publicSite } =
       await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
+    const policy = initial.run.policy_snapshot as Row;
+    const delegationContext = await withTenantTransaction(lease.enterpriseId, async tx => {
+      const { conversation, run } = await runContext(tx, lease);
+      if (policy.delegationToolProtocol !== delegationToolProtocol && policy.specialist !== specialistProtocol) return null;
+      const source = await one(tx, sql`select * from app.assistant_messages where enterprise_id=${lease.enterpriseId}
+        and conversation_id=${String(conversation.id)} and id=${String(run.trigger_message_id)} and author_kind='user'`);
+      if (!source) fail('context_changed');
+      const question = safeText(source.content as MessageContent);
+      const entry = conversation.entry_snapshot as Row;
+      const specialist = !entry.activePublicSite && !reportContext(entry).selection && policy.specialist === specialistProtocol
+        && specialistPolicy(lease.enterpriseId, config) === specialistProtocol
+        ? routedConsultationSpecialist(question, messages.filter(m => m.role === 'user').slice(-3, -1).map(m => m.content)) : null;
+      const scope = policy.delegationToolProtocol === delegationToolProtocol && !reportContext(entry).selection
+        && !currentMessageOnlyRequested(question) && !independentAdviceRequested(question)
+        ? await privateMemoryScope(tx, lease.actor, conversation) : null;
+      const tool = scope ? delegationToolForQuestion(scope, question, specialist) : undefined;
+      return { source, specialist, scope, tool };
+    });
+    const specialist = delegationContext?.specialist;
+    const delegationTool = delegationContext?.tool;
     // If the preceding answer carried the customer's own business material, an
     // ambiguous follow-up belongs to that thread. The public snapshot stays out
     // of this turn's answer context unless the customer names the public site
@@ -848,13 +878,28 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // Web, designer, public-site and history tools are not knowledge-gated:
     // they read authorized non-enterprise sources, exactly like the V2 bridge.
     // recall_history additionally requires the run's real trigger seq.
+    const businessRead = readToolsForContext(businessToolDefinitions.filter(tool => tool.name === 'query_business'), readContext)[0];
+    const roomProgress = specialist?.progressRequested && specialist.room && readContext?.leadId ? specialist.room : null;
     const tools: ModelTool[] = [
       ...(knowledgeEnabled ? [enterpriseSearchTool] : []),
-      ...readToolsForContext(businessToolDefinitions.filter(tool => tool.name === 'query_business'), readContext),
+      ...(roomProgress ? [{ ...businessRead, parameters: { type: 'object', properties: {
+        domain: { type: 'string', enum: ['construction'] }, room: { type: 'string', enum: [roomProgress] },
+      }, required: ['domain', 'room'], additionalProperties: false } }] : [businessRead]),
       ...publicResearchTools([webSearchTool], true, true),
       designerRecommendationTool, publicSitesRecommendationTool,
       ...(saved.triggerSeq ? [historyTool] : []),
+      ...(delegationTool ? [delegationTool] : []),
     ];
+    const modelTools = specialist && delegationContext ? specialistConsultationTools(tools, bindSpecialistInput(specialist.agent, {
+      question: safeText(delegationContext.source.content as MessageContent), conversation: [], enterpriseId: lease.enterpriseId,
+      projectId: delegationContext.scope?.projectId ?? null, room: specialist.room, stage: specialist.agent.supportedStages[0],
+      knowledgeScopes: ['enterprise', 'project', 'public_standard'],
+      toolPermissions: [
+        ...(knowledgeEnabled && (!specialist.standard || specialist.companyPractice) ? ['knowledge' as const] : []),
+        ...(!specialist.companyOnly ? ['public_read' as const] : []),
+        ...(roomProgress ? ['project_progress' as const] : []), ...(delegationTool ? ['followup' as const] : []),
+      ],
+    }), specialist.progressRequested) : tools;
     const validateTool = (name: string, args: string): { code: string; feedback: string } | null => {
       if (name === 'search_enterprise') {
         try {
@@ -865,7 +910,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         } catch { return { code: 'invalid_tool_input', feedback: 'search_enterprise参数不是合法JSON对象；仅提交{"query":"..."}。' }; }
       }
       if (name === 'query_business') {
-        try { parseBusinessQuery(bindReadToolInput(name, JSON.parse(args), readContext)); }
+        try { parseBusinessQuery(bindReadToolInput(name, JSON.parse(args), readContext), !!roomProgress); }
         catch { return { code: 'invalid_tool_input', feedback: readContext?.leadId
           ? 'query_business需要{"domain":"appointments|schemes|floorplans|construction"}；房屋身份由服务端从当前咨询注入，不要传leadId或其他身份字段。'
           : 'query_business需要{"domain":"appointments|schemes|floorplans|construction","leadId":"..."}；leadId为空字符串表示列本人档案。' }; }
@@ -897,7 +942,16 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // band (1200 web / 1300 search / 1400 business / 1500 history); recovered
     // identities reuse their persisted receipt and never reach this counter.
     let sequence = toolState.nextSequence;
-    const toolPort = async (turn: number, index: number, name: string, args: string) => {
+    const toolPort = async (turn: number, index: number, name: string, args: string, callId?: string) => {
+      if (name === delegationToolName) {
+        if (!delegationContext || !delegationTool || !callId) fail('assistant_capability_forbidden', 403);
+        await guard();
+        return withTenantTransaction(lease.enterpriseId, async tx => {
+          const { conversation } = await runContext(tx, lease);
+          return dispatchDelegationTool(tx, lease.actor, conversation, delegationContext.source,
+            lease.runId, 1600 + turn * 10 + index, { id: callId, name, arguments: args }, specialist ?? null);
+        });
+      }
       if (name === 'search_enterprise') {
         const value = JSON.parse(args) as { query: string };
         return { content: JSON.stringify(await search(value.query, ++sequence)) };
@@ -906,7 +960,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // Only status/text reach the model. The resultKey stays in the
         // persisted receipt and the recovery map for server-side version
         // revalidation; it is never a citation id.
-        const query = parseBusinessQuery(bindReadToolInput(name, JSON.parse(args), readContext));
+        const query = parseBusinessQuery(bindReadToolInput(name, JSON.parse(args), readContext), !!roomProgress);
+        if (roomProgress && query.currentProject?.room !== roomProgress) fail('assistant_capability_forbidden', 403);
         return { content: JSON.stringify(modelBusinessReceipt(await business(query, ++sequence))) };
       }
       if (name === 'search_web' || name === 'read_web') {
@@ -957,12 +1012,13 @@ export async function processNativeAgentAnswer(lease: Lease) {
         lastAttemptId = String(persisted.provider_attempt_id);
         return output;
       }
+      const dispatchTools = delegationTool && specialist && turn === 0 && modelTools.length ? [delegationTool] : modelTools;
       await withTenantTransaction(lease.enterpriseId, async tx => {
         await runContext(tx, lease);
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
           values(${lease.enterpriseId},${lease.runId},${step},'agent_model','running',
           ${JSON.stringify({ turn, purpose: 'answer', promptVersion, protocol: xiaokNativeExecutorProtocol,
-            tools: modelTools.map(tool => tool.name), maxOutputTokens: agentModelLimits.maxOutputTokens })}::jsonb)
+            tools: dispatchTools.map(tool => tool.name), maxOutputTokens: agentModelLimits.maxOutputTokens })}::jsonb)
           on conflict(enterprise_id,run_id,step_seq) do nothing`);
       });
       const output = await executePostgresText({
@@ -971,8 +1027,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // The first dispatch must actually read before it answers: this is the
         // native equivalent of the V2 app's required-tool retrieval, and the
         // established legacy-agent requireTool contract.
-        agent: { config, input: { messages: modelMessages, tools: modelTools, maxTokens: agentModelLimits.maxOutputTokens,
-          requireTool: nativeFirstTurnRequiresTool(turn, modelTools) } },
+        agent: { config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: agentModelLimits.maxOutputTokens,
+          ...(delegationTool || specialist ? { applicationWebSearch: true } : {}),
+          requireTool: nativeFirstTurnRequiresTool(turn, dispatchTools) } },
         metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, turn, purpose: 'answer', probeVersion: config.probeVersion },
         beforeProviderCall,
       });
@@ -985,6 +1042,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           private_checkpoint=${JSON.stringify(output.agentOutput)}::jsonb
           where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${step}`);
       });
+      if (specialist && output.agentOutput.providerModel !== specialistModel.model) fail('assistant_model_configuration_invalid', 502);
       return output.agentOutput;
     };
     // The marker commits before the first provider dispatch of this process;
@@ -998,11 +1056,39 @@ export async function processNativeAgentAnswer(lease: Lease) {
     };
     await heartbeat(lease);
     timer = setInterval(() => { heartbeat(lease).catch(() => undefined); }, 30000);
-    const systemContent: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: nativeExecutorPrompt(knowledgeEnabled) },
+    const systemContent: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: nativeExecutorPrompt(knowledgeEnabled, !!delegationTool) },
       ...nativeReplySiteText({ publicSiteText: answerPublicSite?.text, businessContextActive: businessContextActive && !!publicSite.active, includePublicSite })];
     const systemMessage: ModelMessage = { role: 'system', content: systemContent };
     const history: ModelMessage[] = messages.map(m => m.role === 'user'
       ? { role: 'user', content: [{ type: 'text', text: m.content }] } : { role: 'assistant', content: m.content });
+    const checkSpecialistDraft = (text: string) => {
+      if (!specialist || !delegationContext) return null;
+      // Native uses its existing CITE carrier. Apply the same rules to each
+      // paragraph and only the originals that paragraph selected.
+      for (const paragraph of text.split(/\n\s*\n/u).filter(value => value.trim())) {
+        const parts = ragAnswerParts(paragraph, [...catalog.values()]);
+        const references = parts.flatMap(part => 'source' in part && part.source.sourceId && part.source.quote
+          ? [{ sourceId: part.source.sourceId, quote: part.source.quote }] : []);
+        const sources = context.sources.filter(source => references.some(ref => ref.sourceId === source.sourceId));
+        const citations = references.filter(ref => sources.some(source => source.sourceId === ref.sourceId));
+        const prose = parts.flatMap(part => 'text' in part ? [part.text] : []).join('').trim();
+        if (!prose) continue;
+        const segment = { text: prose, basis: citations.length ? 'evidence' as const : 'advice' as const, citations };
+        try {
+          parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [segment] }), sources, {
+            currentQuestion: safeText(delegationContext.source.content as MessageContent), currentRoom: specialist.room ?? undefined,
+            specialistAcceptance: true, delegationReply: policy.longTermMemory === true,
+          });
+        } catch (error) {
+          if (!(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
+          const [gap] = synthesisNumericGaps([segment], sources);
+          if (!gap) throw error;
+          return { code: error.code, feedback: '这段正文的量数缺少对应原文依据：' + [...gap.numbers, ...gap.quantities].join('、')
+            + '。请删去无据量数及其推断，保留有依据的解释。原有引用和业务承诺校验继续适用。' };
+        }
+      }
+      return null;
+    };
     // The one-shot repair covers both invalid ids and a draft that ignores this
     // run's sources: once it was issued (or a previous process already spent it)
     // the gate stays silent, so delivery can fall back to the authoritative
@@ -1013,18 +1099,23 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // tool port; the persisted receipt and all bookkeeping stay untouched.
     const agentResume = resume && { ...resume, messages: projectLegacyBusinessToolMessages(resume.messages) };
     const result = await runRenovationAgent({
-      messages: [systemMessage, ...history], tools, resume: agentResume,
+      messages: [systemMessage, ...history], tools: modelTools, resume: agentResume,
       ports: { authorize: guard, model, tool: toolPort, validateTool,
+        resolveToolReply: delegationTool ? () => withTenantTransaction(lease.enterpriseId, async tx => {
+          const { conversation } = await runContext(tx, lease);
+          return (await longTermDelegationReceipt(tx, lease.actor, conversation, lease.runId, { standalone: true }))?.text ?? null;
+        }) : undefined,
         // The saved 3026/3027 first drafts emitted citation ids without their
         // literal prefix. Validation moves into the graph's validate node so the
         // existing one-shot repair turn lets the model correct its own citation
         // expression against the same strict catalog; unknown ids still fail
         // closed exactly as before, and the repair never reveals the fix.
-        validateFinal: async (text: string) => {
+        validateFinal: async (text, _turn, finalFromTools) => {
+          if (finalFromTools) return null;
           const { issue } = nativeCitationGate(text, catalog.values(), citationRepairIssued,
             knowledgeRetrieved || webRetrieved);
           if (issue) citationRepairIssued = true;
-          return issue;
+          return issue ?? checkSpecialistDraft(text);
         },
         checkpoint: state => withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);
@@ -1036,6 +1127,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
         }) },
     });
     await guard();
+    if (result.finalFromTools) {
+      if (!await completeDelegationReply(lease, { standalone: true })) fail('context_changed');
+      return;
+    }
     // The graph state carries the final output under `output`, not a bare text.
     const rawFinalText = result.output?.text;
     if (!rawFinalText || !rawFinalText.trim()) fail('invalid_model_answer', 502);
@@ -1059,10 +1154,12 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const finalAssessment = assessNativeCitations(finalText, catalog.values(), evidenceProvided);
     if (finalAssessment.invalid.length) fail('invalid_model_citation', 502);
     const runCitations = finalAssessment.runCitations;
+    const specialistIssue = checkSpecialistDraft(finalText);
+    if (specialistIssue) fail(specialistIssue.code, 502);
     // A located-but-empty nearby result is delivered from the server receipt;
     // need_region never overrides the model draft (same rule as the bridge).
     const composed = publicSitesDelivery(
-      composeNativeDelivery(finalText, snapshotText, runCitations, evidenceProvided), sites.outcome());
+      composeNativeDelivery(finalText, snapshotText, runCitations, evidenceProvided, { delegationReply: policy.longTermMemory === true }), sites.outcome());
     const text = composed.text;
     // The earlier 1006.publicSite field remains readable by existing consumers
     // and history filters; it names the selected version this run actually
@@ -1228,6 +1325,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
   } catch (error) {
     const known = !outcomeUnknown && (error instanceof AssistantError
       || error instanceof AiProviderError && !['accepted', 'unknown'].includes(error.disposition));
-    await failRun(lease, error instanceof AssistantError || error instanceof AiProviderError ? error.code : 'native_executor_failed', known);
+    const code = error instanceof AssistantError || error instanceof AiProviderError ? error.code : 'native_executor_failed';
+    if (known && delegationAnswerRejected(code)) {
+      try { if (await completeDelegationReply(lease, { rejectedAnswer: code })) return; }
+      catch (e) { if (!(e instanceof AssistantError && e.code === 'context_changed')) throw e; }
+    }
+    await failRun(lease, code, known);
   } finally { if (timer) clearInterval(timer); }
 }
