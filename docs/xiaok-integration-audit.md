@@ -239,6 +239,49 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 - **用量。** 北京目录命中 `deepseek-v4.1-flash-1017`（Text/Image）；逻辑名 `deepseek-flash`。同一网关共 27 次真实请求，Responses 13、Chat Completions 14，55,027 输入、11,660 输出、25,344 缓存输入 tokens。27 条均有请求 ID 和观察用量，本批 unknown 为 0，金额未返回。该批配置、测试和源码绑定无漂移。见 `tmp/i6.10/closeout/{bailian-catalog,model-receipts}.json`。[百炼模型说明](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/deepseek-v4-1-flash)
 - **工程与 Stable。** 原定向 61/61，最终受影响的 44/44，TypeScript、改动文件 ESLint 通过；较广回归 1,522 通过、27 跳过、1 项既有书桌收纳意图失败。Stable 390×844 / SDK 3.17.2 实际重进 `181` 的清单、`179` 的更正与失败反馈，并点击 `178` 的 PDF 第 28 页引用，沿原流程查回同一经理结果。无客户端样式或接口变化。恢复隔离配置，关闭本轮 Stable 窗口、Reader 和测试数据库。截图与 HTTP 记录见 `tmp/i6.10/closeout/stable/verification.json`。
 
+## I6.11 防水专业决策可信度与真实工地验证（Limited）
+
+起点为 fetch 后的 `origin/codex/xiaok-integration@53e19acc92e6`，本地 Integration 工作树与该提交一致且干净。原 Public 工作树的 `source-manifest.json` 未提交修改保留原样。本轮按功能切片提交：`68db15d0`（四类语义合同）、`c8fa73af`（房间证据作用域与照片信封）、`6822570a`（清单绑定与生命周期测试）。源码、测试与证据绑定见 `admin/tmp/i6.11/`。
+
+### I6.11.1 四类语义合同
+
+- **根因。** 保存层按段使用该段引用校验验收谓词。I6.10 剩余 7 份失败稿都不是项目完成断言，而是 A/B 类信息：规范条件跨分句继续（「要看……并且基层验收合格」）、条件所引条款在同答案其他段（§5.1.4 与 §5.1.12 分段引用）、解释性表述（「看的是……这一结论」「关键节点是……」「……的基础上」）以及裸谓词与完成式混用（「防水层已经验收合格了」不能由裸条款支持）。
+- **合同。** `formal-claim-scope.ts` 统一区分 A 标准规定、B 专业解释、C 项目事实、D 正式业务结论，并导出 `acceptanceSemanticContract` 供专业 Agent 提示词、终稿校验与保存层共用。同一段内逐条谓词判断；条件/解释须有本答案实际选中、同对象且同完成强度的标准原文；项目主语、已/目前/现场等完成式仍须 Construction 回执。未关闭承诺守卫，未新增防水专用正则，未修改历史预期。
+- **回放。** `replay-final-02.json` 的 28 份保存稿、124 段：修改前 117/124 段通过，7 段被拒；修改后 124/124 段通过，且新增「你家基层已经验收合格」「项目已经正式验收通过」「验收结果：……」等负例仍被拒。证据 `admin/tmp/i6.11/replay-check.log`。回放只重放已保存段落与引用，不重放未保存首稿，不新增模型调用。
+
+### I6.11.2 房间与项目隔离
+
+- 六问固定序列：厨房进度 →「刚才说错了，是卫生间」→ 卫生间管根 → 后续防水 → 主卧进度 → 主卧/卫生间记录对比。路由在更正轮即更新为卫生间并沿用后续追问；主卧独立切换；双房间对比不压成单房间 specialist run，保留给 Construction 同源读取。测试 `consultation.test.ts`。
+- 新增服务端 `currentRoom` 证据守卫：房间只来自 specialist binding，其他房间仍有效的记录也不能支撑本房间回答，修复反馈为 `misattributed_project_room`。测试覆盖跨房间记录仍授权时仍被拒。
+- `constructionRead` 边界测试：指定房间只返回该房间记录；同名房间在其他项目不混用；项目内重名房间返回歧义；缺房间明确缺项；无权限或跨租户不返回项目事实。测试 `customer-room-scope.test.ts`。重进仍沿原 `synthesisContextAvailable` 与媒体权限复核，本轮未改。
+
+### I6.11.3 真实施工照片
+
+- 新增 `specialist-photo-analysis-v1` 信封：`visibleObservations`、`possibleIssues`、`notObservable`、`requiredEvidence`、`applicableStandards`、`confidence`、`needsHumanReview`。照片分析不得声明验收、放行或试验合格，不得给出精确施工量数；存在可能问题时必须人工复核并列出补充证据。解析严格失败关闭。
+- Construction 原件、上传人员、项目/房间、原件 Hash、发布版本和撤权继续沿现有链路；不复制原图到公共知识库，日志不保存图片访问凭证。
+- **真实工地验收 not_run。** 隔离库 `xiaok_r6_model_i69` 与 `xiaok_r6_acceptance_i67` 的项目均明确标记「合成」，现场媒体为 112×80 或 480×360、约 3.7KB 的合成图；没有可合法使用的真实工地照片。I6.10 的合成图能力证据保留，不转为本轮真实工地通过。
+
+### I6.11.4 防水检查清单
+
+- 每项绑定 `checkId`、`projectId`、`roomId`、`stage`、`agentId`、`agentVersion`、`workflowRunId`、`evidenceRefs`、`evidenceVersions`、`sourceType`、`applicability`、`currentProjectState`、`checkStatus`、`needsHumanReview` 和十类 `category`（基层、管根、阴阳角、预埋、企业工艺、材料与记录、防水层、试验验收、保护、下一道工序）。
+- 状态区分企业标准明确、公开规范明确、项目记录支持、通用建议、资料缺失、不适用、待人工确认、已正式复核。模型分析只产生前七类；`reviewed` 仅保留给 Construction 正式复核回执。企业/公开依据要求当前 epoch、同版状态与实际来源；项目依据要求同项目、同房间、同版本和同 hash。含验收谓词的检查项进入 `pending_review`。
+- 清单只由本回答选中的段落生成；历史清单随原 Run/版本保留；重复事项仍按原 Construction 键去重；结果沿原投递回 C01。本轮未重新生成已有报告或清单。
+
+### I6.11.5 工作流生命周期
+
+- 离线覆盖：创建草稿、Agent 版本、知识范围、公开规范范围、类型化输入输出端口、有据/资料不足/整改三路模拟、vNext 发布、旧发布版与 digest 不变、WAIT_EVENT 重复回调、旧定义按原 digest 解析。测试 `specialist.test.ts` 与 `validate/simulate/store` 套件。
+- 实库项（企业知识版本替换、公开来源撤回、图片撤权、原会话取消、Worker 中断恢复、Outbox 重复投递、退出重进）沿用 I6.9/I6.10 原证据，本轮未重跑，状态 limited。
+
+### I6.11.6–7 实模与 Stable
+
+- **not_run。** 当前工作树无 `.env.local`，环境无 `BAILIAN`/`DASHSCOPE`/`DATABASE` 变量，也没有运行中的隔离 Admin、Worker 或 Reader；无法发起百炼 `bailian / deepseek-flash / deepseek-v4.1-flash-1017` 真实调用，也无法执行 Stable 390×844 四端旅程。未使用模拟结果冒充真实模型或业务通过。I6.10 的 27 次真实回执、Stable 截图与清单重进证据保持原状态。
+
+### 工程质量
+
+- TypeScript 全量 `tsc --noEmit` 0 条诊断；改动文件 ESLint 0 错误；生产 Webpack 构建通过。
+- Assistant 单元回归 1058/1059，唯一失败为既有「书桌收纳」`need-write-intent` 基线；本轮定向 89/89；Native Workflow 单元 63/63；照片信封 11/11。
+- 未重跑：小程序 2243/2244、PostgreSQL 实库、托管 RAG、真机与物理设备。生产部署与模型默认值未改。
+
 ## I6.9 防水专业 Agent 闭环（Limited）
 
 起点为 fetch 后的 `0892909ae1c4`，工作树已有的 X6 改动在开发期间进入远端 `deaf1429`。使用独立 Integration 工作树、微云 1454 的合成隔离库及受限 `sfp_app`。百炼实际目录返回 `deepseek-v4.1-flash-1017`，专业 Agent 逻辑名 `deepseek-flash`，凭据沿原加密配置和用量台账。目录回执 `tmp/i6.9/bailian-catalog.json`。

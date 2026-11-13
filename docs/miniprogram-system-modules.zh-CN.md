@@ -18,6 +18,8 @@
 关闭协同后，已保存的设计和质量事项继续核对项目角色。B5.10 的签名路由及实库检查覆盖撤权、失效版本、项目成员、无效照片上传、退回重提和整改回传去重。[B5.10 验收](./native-workflow-b510-deployment-review.zh-CN.md)。
 <!-- /cross-role-business-current -->
 
+**I6.11 专业语义与清单展示（Limited）。** C01 继续使用原消息、引用、清单和经理回执界面，不新增客户端协议。服务端把标准规定、专业解释、项目事实和正式结论分开；清单项携带项目、房间、阶段、版本、来源和检查状态，客户端只按原投影展示。照片仍只显示正文观察，固定分析信封不改变媒体权限和撤回规则。本轮未执行 Stable 四端实跑，界面验收沿用 I6.10 证据，不转为本轮通过。
+
 **I6.10 防水咨询与跟进（Limited）。** 原 `packages/assistant/chat/chat` 接收工艺、规范、房间进度和明确跟进请求。消息和 `GET /api/miniprogram/assistant/conversations/:id/long-term` 按当前权限重投影绑定 Run、版本、房间、事项和经理回执。清单和补资料沿原会话反馈，施工人员沿 `packages/construction/chat/chat` 上报、发布及处理事项。显式启用图片能力的 C01 可描述本咨询获权上传图和已对该业主发布的同项目同房间照片，重进复核原图与发布权限。PDF 引用沿原引用面板复核已存页和当前源站版本。缺少现场资料时可保存通用核对项和本轮资料范围，有据的施工前提仍须引用同段原文。正式验收和工序放行继续沿 Construction 回执。[工作流与验收](xiaok-waterproof-workflow.md)。
 
 <!-- native-delegation-current -->

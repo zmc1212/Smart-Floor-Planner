@@ -491,3 +491,9 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 | Chat Completions | `964a86a3-c31b-9049-9a2b-517696697567` | 212 / 19 | 识别同一合成图文字和形状 |
 
 防水现场图、客户上传与追问走原 `conversation-images-v1`，使用现有 `final_response` 的图像答复字段。仅图像观察由同一回复结构保存正文，混合来源问题继续使用原引用协议。原件在派发、恢复和读回时按现有权限复核，照片只能说明可见现象。目录、探针、原始失败、产品运行与真实用量见 `tmp/i6.10/bailian-catalog.json`、`bailian-vision-wire.json`、`vision-01/` 和 `vision-02/`。
+
+## 18. I6.11 照片信封与实模边界
+
+图像请求仍走原 `conversation-images-v1` 和同一 `AgentModelGateway`，未新增第二套网关、Provider 或生产默认值。`final_response` 的视觉分支新增可选 `observation` 信封（可见现象、可能问题、不可见内容、需补证据、可对应标准、可信程度、人工复核），服务端严格校验；模型可以选择不提交，正文仍按原 `kind`/`text` 合同保存。信封不能声明验收、放行或试验合格，也不能给出精确施工量数。
+
+本轮没有执行真实百炼调用：工作树无 `.env.local`，环境没有 `BAILIAN`/`DASHSCOPE` 变量，也没有运行中的隔离 Admin、Worker 或 Reader。真实工地照片验收为 `not_run`。I6.10 的目录命中、Responses/Chat Completions 图像探针、27 次请求回执与用量保持原状态，不重放、不记为零。[集成审查](xiaok-integration-audit.md#i611-防水专业决策可信度与真实工地验证limited)

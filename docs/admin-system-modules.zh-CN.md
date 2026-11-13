@@ -10,6 +10,8 @@
 
 **小K业主项目进度。** 现有 Construction 读适配器从业主咨询绑定的唯一在施工项目读取实际节点。指定房间时仅取向该业主发布的对应房间记录。已存答复重进复查来源及版本。图纸、现场决定沿原流程处理。[集成合同](xiaok-integration-contract.md)。
 
+**I6.11 防水专业语义与清单（Limited）。** 验收表述统一区分标准规定、专业解释、项目事实和正式业务结论，Agent 提示词、终稿校验与保存层共用同一合同；规范条件与解释只有在引用对象和完成强度由本答案实际选中的标准原文支持时成立，项目完成仍须 Construction 回执。房间只来自服务端绑定，其他房间的有效记录不能支撑本房间回答。照片新增固定分析信封，禁止从照片声明验收、放行或精确量数。检查项绑定项目、房间、阶段、Agent 版本、Run、来源版本、来源类型、适用性、当前项目状态、检查状态和人工复核，并归入十类防水维度；模型分析不产生「已正式复核」。见[工作流](xiaok-waterproof-workflow.md)与[验收](xiaok-integration-audit.md#i611-防水专业决策可信度与真实工地验证limited)。
+
 **I6.10 防水专业 Agent 与工作流（Limited）。** 平台管理员在 `/native-workflow` 创建 `waterproof-inspection-v1`，模板使用活动注册、版本和规范 ID。X6 沿类型化端口展示已保存分析回执和服务端「复核引用依据」节点，沿原校验、模拟和发布，旧发布版保留原能力版本。`GET /api/native-workflow/runs/:runId/specialist-status` 按会话所选企业和当前 Construction 项目权限显示绑定版本、节点、来源、实际模型、用量和等待恢复记录。Assistant 准入要求 `ASSISTANT_SPECIALIST_ENTERPRISE_IDS` 与指定百炼模型。服务端依据将清单、补资料和同房间待核对事项分流。事项、经理复核及原咨询回传由 Construction 管理。终稿校验和同轮唯一修复共用施工前提、工程量数和项目事实的来源边界。[架构](xiaok-waterproof-workflow.md) · [验证](xiaok-integration-audit.md#i610-防水专业-agent-可信度与现场资料limited)。
 
 <!-- cross-role-business-current -->
