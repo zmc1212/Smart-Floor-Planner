@@ -3,6 +3,7 @@ import { currentReportStageEvent } from './stage-events';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, principalKey, type ActorContext } from '@/lib/assistant/contracts';
+import { computePilotReportScope } from '@/lib/xiaok-v1/pilot-report-scope';
 import { activeReportProject, reportAudienceEnabled, deliveryActor, followupAvailable, followupProjects, projectReportFacts, type FollowupAudience, type ReportFacts } from './report-scope';
 
 export async function ensureFollowupBinding(tx: PostgresTransaction, eid: string, recipient: { kind: 'user' | 'admin'; id: string;
@@ -92,6 +93,19 @@ export async function enqueueReportCorrection(tx: PostgresTransaction, eid: stri
   if (result) await tx.execute(sql`update app.construction_reports set latest_revision=${revision} where enterprise_id=${eid} and id=${String(report.id)}`);
   return result;
 }
+/** Build the effective settings for one pilot report run. The original settings
+ * row is never mutated: a shallow copy replaces only project_ids with the
+ * intersection of the saved pilot scope and the enterprise report filter.
+ * `null` means the intersection is empty, so this tick creates no report. */
+export function pilotScopedReportSettings(settings: Row, pilotProjectIds: readonly string[]): Row | null {
+  const scope = computePilotReportScope({
+    pilotProjectIds,
+    reportProjectIds: (settings.project_ids as string[] | undefined) ?? [],
+  });
+  if (scope.status === 'empty') return null;
+  return { ...settings, project_ids: scope.projectIds };
+}
+
 export async function discoverFollowups(tx: PostgresTransaction, eid: string, settings: Row) {
   const projects = await rows(tx, sql`select p.id,l.customer_user_id from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid} and ${activeReportProject} and l.archived_at is null

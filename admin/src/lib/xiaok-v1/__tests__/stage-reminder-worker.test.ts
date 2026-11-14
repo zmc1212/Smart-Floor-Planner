@@ -102,7 +102,8 @@ test('F/G. the worker route keeps the other jobs, auth guard and delivery flow',
   assert.doesNotMatch(source, /advanceStageReminders\(/);
   assert.match(source, /try \{ stageReminderChecks = await advanceConfiguredStageReminders[\s\S]*catch[\s\S]*const data = await processAssistantJob\(processAssistantRun\)/);
   assert.match(source, /const knowledgeBatchChecks=await advanceKnowledgeBatches\(\)/);
-  assert.match(source, /const constructionReportChecks = await advanceConstructionReports\(\)/);
+  assert.match(source, /const constructionReportChecks = await advanceConfiguredConstructionReports\(\{ now: new Date\(\) \}\)/);
+  assert.doesNotMatch(source, /advanceConstructionReports\(/);
   assert.match(source, /const inAppDeliveries = [\s\S]*deliverConfiguredStageReminders\(\{ now: new Date\(\) \}\)/);
   assert.doesNotMatch(source, /deliverStageReminders\(/);
   assert.ok(source.indexOf('advanceConfiguredStageReminders({ now') < source.indexOf('processAssistantJob(processAssistantRun)'));

@@ -8,7 +8,7 @@ import { deliverPublicConsents } from '@/lib/construction/public-projections';
 import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
 import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
-import { advanceConstructionReports, deliverConstructionReports } from '@/lib/construction/report-worker';
+import { advanceConfiguredConstructionReports, deliverConstructionReports } from '@/lib/construction/report-worker';
 import { advanceConfiguredStageReminders, deliverConfiguredStageReminders } from '@/lib/xiaok-v1/stage-reminder-worker';
 import { nativeWorkflowEnabled } from '@/lib/native-workflow/live/tenant-allowlist';
 export const dynamic = 'force-dynamic';
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       }
     }
     const knowledgeBatchChecks=await advanceKnowledgeBatches();
-    const constructionReportChecks = await advanceConstructionReports();
+    const constructionReportChecks = await advanceConfiguredConstructionReports({ now: new Date() });
     // I7.1 deterministic reminders are isolated from model and report failures.
     // I7.4.5-C2 resolves the deployment mode first: a pilot run only scans its
     // saved scope, and an invalid pilot configuration never runs as enterprise.
