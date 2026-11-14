@@ -6,7 +6,7 @@
     <customer-service-home wx:if="{{customerTab === 'service'}}" />
     <customer-nav id="customer-nav" />
   </block>
-  <role-workbench wx:elif="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" />
+  <role-workbench id="role-workbench" wx:elif="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" />
   <block wx:else>
   <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}" enhanced>
     <view class="home-content">

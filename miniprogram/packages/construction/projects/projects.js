@@ -76,7 +76,7 @@ Page({
       const data = response.data;
       if (pid) { this.setData({ detail: decorateDetail(data) }); void this.loadPreview(g); void this.loadReminders(g); void this.applyDeepLink(g); }
       else { const items = data.items.map(p => decorateProject(p, data.stages || [])); this.clearPreview();
-        this.setData({ items, owner: data.owner, detail: null, managementBrief: data.collaboration && (data.owner || items.some(p => p.my_role === 'manager')), activeCount: items.filter(p => p.status === 'active').length,
+        this.setData({ items, owner: data.owner, detail: null, managementBrief: data.owner || (data.collaboration && items.some(p => p.my_role === 'manager')), activeCount: items.filter(p => p.status === 'active').length,
           filteredItems: items.filter(p => this.data.statusFilter !== 'active' || p.status === 'active'),
           canBrief: data.owner || data.items.some(p => p.status !== 'archived') });
         void this.loadWorkbench(g); }

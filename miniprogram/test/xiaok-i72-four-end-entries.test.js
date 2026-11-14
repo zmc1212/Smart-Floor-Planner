@@ -20,10 +20,12 @@ test('owner C01 shows stage reminders and opens the saved weekly report', () => 
 test('designer and boss workbench shows role reminders and a report entry', () => {
   const workbench = read('components/role-workbench/role-workbench.wxml');
   const script = read('components/role-workbench/role-workbench.js');
+  const home = read('pages/index/index.wxml');
   assert.match(workbench, /xiaok-reminder-card/u);
   assert.match(workbench, /bindtap="openXiaokFollowup"/u);
   assert.match(script, /loadXiaokReminders/u);
   assert.match(script, /'\/packages\/assistant\/chat\/chat\?followup=1'/u);
+  assert.match(home, /<role-workbench id="role-workbench"[^>]*focus="overview"/u);
 });
 
 test('construction staff keeps photo, voice and current tasks plus a weekly report entry', () => {

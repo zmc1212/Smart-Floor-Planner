@@ -42,6 +42,22 @@ test('designers, construction staff and enterprise owners share the cloud-site r
   await p.onPullDownRefresh(); assert.equal(f.messages.at(-1), 'refresh-stopped');
 });
 
+test('the enterprise owner brief entry opens the company project brief instead of a private followup', async () => {
+  const owner = fixture('enterprise_admin');
+  owner.intercept(async () => ({ data: { owner: true, collaboration: false, stages: [], items: [{ id: '19', status: 'active', name: '项目 A' }] } }));
+  const ownerPage = owner.page(); await ownerPage.onShow();
+  assert.equal(ownerPage.data.managementBrief, true);
+  ownerPage.openBrief();
+  assert.equal(owner.messages.at(-1), '/packages/construction/brief/brief');
+
+  const staff = fixture('construction_staff');
+  staff.intercept(async () => ({ data: { owner: false, collaboration: false, stages: [], items: [{ id: '19', status: 'active', name: '项目 A', my_role: 'worker' }] } }));
+  const staffPage = staff.page(); await staffPage.onShow();
+  assert.equal(staffPage.data.managementBrief, false);
+  staffPage.openBrief();
+  assert.equal(staff.messages.at(-1), '/packages/assistant/chat/chat?followup=1');
+});
+
 test('project shortcuts use authorized rows and preserve inactive, pending and session boundaries', async () => {
   const f=fixture(),p=f.page();await p.onShow();
   p.setData({items:[{id:'1',status:'active'},{id:'2',status:'paused'},{id:'3',status:'archived'}]});

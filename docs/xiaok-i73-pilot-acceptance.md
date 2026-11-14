@@ -195,3 +195,71 @@
 3. 企业 Assistant 设置、报告计划、四端试点账号与项目初始化。
 4. 微信订阅消息未配置前只承诺站内提醒。
 5. 生产部署仍需明确授权，本结论不等于已发布。
+
+## 11. I7.4.1 老板端主动简报入口与周报导航修复
+
+> 基线：`codex/xiaok-integration`，`dc946a4c5d37`；本节省略的四端结论仍以第 10 节为准。
+> 本轮只修复老板端主动简报入口与周报导航，并完成老板端真实页面验收；不新增后台子系统、不新增专业 Agent、不增加装修阶段、不重建提醒/周报/Construction/Native Workflow、不开发 CAD/OCR/自动验收、不部署生产、不合并 main。
+
+### 11.1 环境与账号
+
+| 项 | 值 |
+| --- | --- |
+| 数据库 | 同一隔离 PG17 容器 `sfp-i72-accept` 内 `i73_accept`，`127.0.0.1:55443`，业务账号 `sfp_app` |
+| 应用服务 | 独立 `NEXT_DIST_DIR=.next-i73`，`http://127.0.0.1:3016`，Assistant Worker 同端口 |
+| 小程序 | Stable DevTools `2.02.2608080`，基础库 `3.17.2`，逻辑视口 `390×844`，automator `ws://127.0.0.1:9421` |
+| 企业 | `I7.3试点验收合成-1794661611999`（`7`） |
+| 老板 | 真实隔离账号 `i73_1794661611999_1`，管理员 `25`，`enterprise_admin`（owner） |
+| 项目 | A `19`、B `20`、C `21` |
+| 周报 | `99`，`weekly`，revision `1`，projects `19,20`，来源快照 `4636ee546352…` |
+| 证据 | `tmp/xiaok-i741-ui/result-boss.json`、`boss-*.png` |
+
+验收期间临时将 `miniprogram/utils/api.js` 本地 API 指向 `127.0.0.1:3016`，验收后已恢复原值，未提交该临时改动。工作区其他未提交改动（如 `native-preview`）保持原样，未纳入本轮提交。
+
+### 11.2 修复
+
+| 问题 | 根因 | 修复 |
+| --- | --- | --- |
+| 老板点击“项目简报 ↗”进入私人跟进会话而非公司项目简报 | `managementBrief` 同时要求协作开关和 owner/manager，老板（owner）在协作开关关闭时被回退到 `chat?followup=1` | `managementBrief` 对 owner 直接成立，老板打开 `/packages/construction/brief/brief`；非 owner 与协作开关行为不变 |
+| 首页主动周报入口缺少稳定真实点击锚点 | `role-workbench` 为自定义组件，自动化只能在页面级选择器外定位 | 首页宿主增加 `id="role-workbench"`，通过组件宿主内的真实按钮完成点击，不改变视觉与业务行为 |
+
+未增加老板的设计审批、工程验收或 Construction 写权限；未修改周报 facts/body 合同、`construction_reports` / `construction_report_versions` 数据合同或投递规则。
+
+### 11.3 老板端真实页面验收
+
+全部在同一 Stable DevTools、`390×844`、真实隔离 API、真实老板账号上完成；入口与按钮均通过真实点击触发。
+
+| 检查 | 状态 | 证据 |
+| --- | --- | --- |
+| 老板跨项目列表 | `passed` | 项目 `21,20,19`，`owner=true` |
+| 工作台主动简报入口存在 | `passed` | 项目页 `.brief-link` |
+| 点击主动简报入口 | `passed` | 真实跳转 `packages/construction/brief/brief`，公司项目简报 3 个项目，`asOf=11月14日 23:16` |
+| 不错误跳转业主私人简报 | `passed` | 落点为公司项目简报，不进入客户 `audience=customer` 绑定 |
+| 首页主动周报入口真实点击 | `passed` | 组件宿主内“查看本周周报 ↗”真实点击，进入 `audience=boss` 的“企业工地简报” |
+| 老板跨项目周报 | `passed` | 3 条简报记录；企业周报 `99` revision `1`，项目 `19,20`，快照 `4636ee546352`，`facts_only` |
+| 无权项目不显示 | `passed` | 简报范围仅 `19,20,21`；无其他企业或范围外项目 ID |
+| 点击周报进入详情 | `passed` | 周报 `99` revision `1`，快照一致；章节 `overview,stages,colors,new_issues,rectifying,review,fixed,exceptions,next_week` |
+| 历史周报 | `passed` | 简报记录 3 条，含周报 `99` revision `1`；从历史打开同一版本与快照 |
+| 退出重进一致 | `passed` | 重进后仍为周报 `99` revision `1`，快照 `4636ee546352` |
+| 不增加设计审批/工程验收 | `passed`（合同） | 老板页面数据无“设计审批/工程验收”入口；权限未改 |
+| 截图 | `passed` | `boss-projects.png`、`boss-brief.png`、`boss-weekly.png`、`boss-weekly-detail.png`、`boss-weekly-history.png`、`boss-weekly-history-detail.png`、`boss-weekly-reentry.png`、`boss-weekly-card-projects.png`、`boss-weekly-sections.png` |
+
+DevTools 异常记录：首轮进入聊天页时模拟器空白，Wxml 面板显示 `body is="wx://not-found"`，页面节点不可读；完整重编译（Ctrl+B）后同一源码正常渲染，聊天页数据与周报均恢复。该现象判定为 DevTools 编译状态问题，不是页面脚本异常；空白截图与重编译后的页面证据均保留在 `tmp/xiaok-i741-ui/`，未据此直接宣布通过。
+
+### 11.4 工程回归
+
+| 检查 | 状态 | 结果 |
+| --- | --- | --- |
+| 定向小程序测试 | `passed` | `construction-projects`、`xiaok-i72-four-end-entries`、`assistant-followups`、`assistant-followup-chat/compose/enterprise/settings`、`assistant-report-context/history/plan/sources`，11 个文件 102/102 |
+| `npx tsc --noEmit` | `passed` | 无错误 |
+
+### 11.5 未验证与边界
+
+| 项 | 状态 | 原因 |
+| --- | --- | --- |
+| 真实微信订阅消息 | `not_run` | 未配置模板、授权和可验证回执；仅站内 |
+| 真机/真实微信登录 | `not_run` | DevTools 模拟器不能替代 |
+| 生产部署 | `not_run` | 本轮不部署生产 |
+| 其他三端页面 | `not_run` | 本轮固定只验收老板端；不修改业主、设计师、施工人员、项目经理页面 |
+
+本轮结论：老板端主动简报入口已进入公司项目简报，老板可真实查看跨项目周报、详情、历史并在重进后保持版本与来源快照一致；未扩大老板权限，未修改周报与 Construction 数据合同。
