@@ -247,8 +247,47 @@ npx tsx --test src/lib/xiaok-v1/__tests__/pilot-report-scope.test.ts
 
 测试结果：8 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。D1 未接入周报 Worker，未修改企业周报配置，未生成或发送真实周报。
 
+## 周报 Worker 模式配置（I7.4.5-D2a）
+
+`admin/src/lib/xiaok-v1/weekly-report-config.ts` 提供周报 Worker 独立的纯配置解析。本轮不接入 `report-worker.ts`、`report-store.ts` 或周报服务，不读取数据库，不生成或发送周报，不修改任何环境变量。
+
+| 环境变量 | 含义 |
+| --- | --- |
+| `XIAOK_WEEKLY_REPORT_MODE` | `enterprise` 或 `pilot`；未配置时默认 `enterprise`。 |
+| `XIAOK_WEEKLY_REPORT_ENTERPRISE_ID` | 正 bigint 企业 ID；pilot 模式必填，enterprise 模式可选。 |
+| `XIAOK_WEEKLY_REPORT_PILOT_ID` | 1–128 个英文字母、数字或 `._:-`；pilot 模式必填，enterprise 模式忽略。 |
+
+周报模式使用独立环境变量，不读取 `XIAOK_STAGE_REMINDER_MODE` 等提醒 Worker 配置。
+
+解析结果 `readWeeklyReportConfig(env)`：
+
+| 结果 | 含义 |
+| --- | --- |
+| `{ok:true, mode:'enterprise', enterpriseId, pilotId:null}` | 普通企业模式；未配置模式时也返回此项。 |
+| `{ok:true, mode:'pilot', enterpriseId, pilotId}` | 完整试点配置。 |
+| `{ok:false, mode, code}` | 明确配置错误，调用方不得自行回退。 |
+
+失败关闭规则：
+
+- 未知模式：`weekly_report_mode_invalid`，`mode` 为 `null`。
+- pilot 缺少企业 ID（未设置、空串或空白）：`weekly_report_enterprise_required`。
+- 企业 ID 非法（前导零、非数字、小数或超出 bigint）：`weekly_report_enterprise_invalid`。
+- pilot 缺少试点 ID：`weekly_report_pilot_required`。
+- 试点 ID 非法：`weekly_report_pilot_invalid`。
+- enterprise 模式提供非法企业 ID 时同样返回 `weekly_report_enterprise_invalid`；显式 enterprise 模式下残留的 pilotId 被忽略，不会切换成试点。
+- 任何错误都不会自动回退到 enterprise。
+
+定向验证（9 项，覆盖 A–H 及提醒变量隔离）：
+
+```powershell
+cd admin
+npx tsx --test src/lib/xiaok-v1/__tests__/weekly-report-config.test.ts
+```
+
+测试结果：9 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。D2a 未接入周报 Worker，企业报告配置和真实周报均未修改。
+
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算，空的企业周报项目清单表示全部符合条件的项目；I7.4.5-D1 只提供试点范围与 `project_ids` 的纯函数交集计算器，尚未接入周报 Worker，实际周报行为不变。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算，空的企业周报项目清单表示全部符合条件的项目；I7.4.5-D1 只提供试点范围与 `project_ids` 的纯函数交集计算器，I7.4.5-D2a 只提供独立的企业/试点模式配置解析，二者均尚未接入周报 Worker，实际周报行为不变。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。
