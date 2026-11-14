@@ -7,6 +7,7 @@ import { object, text } from './contracts';
 import { defaultConstructionStages, stageKey, type ConstructionStage } from './stages';
 import { collaborationMember } from './collaboration-scope';
 import { siteAccessRevoked } from './site-access';
+import { aggregatePlanStatus, classifyPlanTiming } from '@/lib/xiaok-v1/progress-status';
 
 const publishedType = 'construction.schedule.published.v1';
 type Color = 'green' | 'yellow' | 'red' | 'gray';
@@ -49,17 +50,10 @@ export function latestScheduleEvent(tx: PostgresTransaction, eid: string, pid: s
     order by aggregate_version desc limit 1`);
 }
 
+/** Kept as the construction-facing adapter. The single I7.1 rule lives in
+ * `classifyPlanTiming` so project, boss and weekly views cannot diverge. */
 export function scheduleColor(node: Pick<Node, 'plannedStart' | 'plannedEnd'>, now: Date, observed: boolean, completedAt?: string) {
-  const start = dayStart(node.plannedStart), end = dayAfter(node.plannedEnd);
-  if (completedAt) {
-    const actual = +time(completedAt);
-    if (actual < dayStart(node.plannedEnd)) return { color: 'green', label: '提前', reason: '完工证据早于计划结束日。' } as const;
-    if (actual < end) return { color: 'yellow', label: '正常', reason: '完工证据在计划结束日。' } as const;
-    return { color: 'red', label: '落后', reason: '完工证据晚于计划结束日。' } as const;
-  }
-  if (+now >= end) return { color: 'red', label: '已落后', reason: '计划结束日已过，待核对完成情况。' } as const;
-  if (+now >= start && observed) return { color: 'yellow', label: '正常', reason: '处于计划期内，已有现场进展。' } as const;
-  return { color: 'gray', label: '待核实', reason: +now < start ? '尚未到计划开始日。' : '计划期内尚无有效现场记录。' } as const;
+  return classifyPlanTiming({ ...node, now, observed, completedAt });
 }
 
 const stageOf = (audit: Row) => String((audit.snapshot as Row)?.stageKey || '');
@@ -168,8 +162,9 @@ export async function readSchedule(tx: PostgresTransaction, eid: string, project
   }
   for (const node of nodes) counts[node.color]++;
   const currentStageScheduled = nodes.some(node => node.stageKey === currentStage);
-  const overall = counts.red ? { color: 'red', label: '落后' } : !nodes.length ? { color: 'gray', label: '未排期' }
-    : counts.gray || !currentStageScheduled ? { color: 'gray', label: '待核实' } : counts.yellow ? { color: 'yellow', label: '正常' } : { color: 'green', label: '提前' };
+  const aggregate = aggregatePlanStatus(nodes);
+  const overall = !currentStageScheduled && nodes.length
+    ? { color: 'gray' as const, label: '待核实' } : aggregate;
   const version = Number(event?.aggregate_version || 0);
   if (!event) gaps.push({ kind: 'schedule_missing', label: '尚未发布施工进度计划。' });
   else if (!currentStageScheduled) gaps.push({ kind: 'current_stage_unscheduled', label: '当前施工节点未排期。' });

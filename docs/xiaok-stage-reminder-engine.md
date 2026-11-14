@@ -1,0 +1,79 @@
+# 小K 阶段主动提醒引擎（I7.1）
+
+## 1. 触发来源
+
+| 类型 | 触发条件 | 真实依据 |
+| --- | --- | --- |
+| `stage_entered` | 项目进入当前阶段 | Construction 阶段事件 |
+| `plan_node_due_soon` | 有效计划节点临近结束 | 已发布计划版本 + 节点日期 |
+| `plan_node_overdue` | 计划结束日已过且无完成证据 | 已发布计划版本 + 现场记录 |
+| `assignee_todo` | 责任人有待处理事项 | 正式业务事项 |
+| `owner_confirmation` | 业主有待确认事项 | 正式需求/方案状态 |
+| `designer_review` | 设计师有待核对事项 | 正式设计事项 |
+| `worker_missing_material` | 施工人员待补资料 | 正式资料缺口 |
+| `data_stale` | 已有记录且长时间未更新 | 最近真实发布记录 |
+| `issue_overdue` | 问题超过已约定期限 | 问题的真实期限字段 |
+| `stage_ending` | 有效计划节点即将结束 | 已发布计划版本 |
+
+普通问答不会产生提醒。没有有效计划时不生成精确到期或阶段结束提醒；没有施工记录时只表示未知，不判定停滞；没有真实期限时不生成问题超期提醒。
+
+## 2. 提醒合同
+
+每条提醒包含：
+
+- `reminderId`（由去重键确定性生成）
+- `enterpriseId`、`projectId`、`stageId`、`constructionStageKey`
+- `targetRole`、`targetUserId`
+- `relatedTaskId`、`relatedIssueId`
+- `triggerType`、`triggerEvidence`
+- `scheduledAt`、`deliveredAt`
+- `status`：`pending`、`delivered`、`failed`、`paused`、`cancelled`、`acknowledged`、`expired`
+- `dedupeKey`、`actionUrl`、`title`、`body`
+
+文案由服务端事实和固定模板生成。提醒正文明确说明：提醒不代表对方已读、已承诺或已完成。
+
+## 3. 去重与重评
+
+去重键：
+
+```text
+enterpriseId:projectId:triggerType:stageId:targetRole:targetUserId:subject
+```
+
+- 阶段进入按真实阶段事件去重。
+- 计划节点按节点键 + 计划结束日去重。
+- 待办/确认/问题按业务对象 ID 去重。
+- 资料未更新按阶段 + 周边界去重。
+- 同一 tick 重复执行不会重复生成。
+
+重评规则：
+
+- 项目暂停/归档：待发提醒取消。
+- 阶段变化：旧阶段提醒过期，新阶段重新评估。
+- 任务取消或事项关闭：对应提醒取消。
+- 权限撤销：不再向失权人员生成；已存在待发提醒取消。
+- 已送达历史保留，不回滚为未读。
+
+## 4. 暂停与恢复
+
+- 用户暂停按 `enterpriseId:projectId:triggerType` 前缀匹配，匹配的待发提醒进入 `paused`。
+- 恢复后下一 tick 按当前事实重新生成；不重放暂停期间的历史提醒。
+- 发送失败保留 `failed` 和原始回执，可在条件仍成立时重试；条件消失后取消。
+
+## 5. 发送
+
+第一版优先站内提醒和待办。微信订阅消息仅在以下条件同时满足时标记已发送：
+
+1. 企业/平台已配置对应模板。
+2. 用户已授权。
+3. 发送结果有可验证回执。
+
+模型失败不影响提醒记录：提醒由确定性事实计算生成，模型只可参与自然语言表达。
+
+## 6. 安静时段
+
+策略包含上海时间安静时段（默认 21:00–08:00）。落在安静时段的提醒顺延到下一个允许小时，不丢弃、不提前。
+
+## 7. 测试
+
+`admin/src/lib/xiaok-v1/__tests__/reminder-engine.test.ts` 覆盖：阶段进入、无计划不生成精确提醒、无记录不判定停滞、角色化待办、去重、阶段变化过期、权限撤销、暂停、失败保留、安静时段顺延。
