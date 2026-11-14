@@ -375,10 +375,12 @@ npx tsx --test src/lib/construction/__tests__/report-worker-pilot.test.ts src/li
 
 | 状态 | 条件 | Worker 行为 |
 | --- | --- | --- |
-| `aligned` + `enterprise` | 两者均 `enterprise`，显式企业 ID 不冲突 | 保持原企业级提醒/周报行为 |
+| `aligned` + `enterprise` | 两者均 `enterprise`，且 `enterpriseId` 完全相同（两边都为空，或同为同一企业） | 保持原企业级提醒/周报行为 |
 | `aligned` + `pilot` | 两者均 `pilot`，`enterpriseId` 与 `pilotId` 完全一致 | 允许四项运行 |
-| `mismatch` | 一方 pilot、一方 enterprise；企业 ID 不同；pilot ID 不同 | 跳过四项 |
+| `mismatch` | 一方 pilot、一方 enterprise；Enterprise 仅一边配置企业 ID；企业 ID 不同；pilot ID 不同 | 跳过四项 |
 | `invalid` | 任一配置解析失败 | 跳过四项 |
+
+Enterprise 范围规则：两边 `enterpriseId` 都为空表示全企业模式；两边必须同时为空或同为同一企业。只有提醒配置企业 ID、只有周报配置企业 ID、或两边企业 ID 不同，均返回 `pilot_worker_enterprise_mismatch`。系统不会自动清空单边配置，也不会回退全企业。
 
 错误码：`pilot_worker_mode_mismatch`、`pilot_worker_enterprise_mismatch`、`pilot_worker_pilot_mismatch`；解析错误沿用 `stage_reminder_*` / `weekly_report_*`。
 
@@ -391,14 +393,14 @@ Worker Route 在四个入口前调用一次 `checkPilotWorkerAlignment()`，只�
 
 非 `aligned` 时四项返回 `skipped: true, reason: 'pilot_worker_alignment', errorCode`，响应包含完整的 `pilotScopeAlignment`。其他 Assistant Job、Knowledge Batch、Native Workflow、站内公开通知继续运行；401 授权逻辑不变；任何失败都不回退到 enterprise。
 
-定向验证（8 项一致性检查 + Worker/周报回归，共 44 项）：
+定向验证（11 项一致性检查 + Worker/周报回归，共 47 项）：
 
 ```powershell
 cd admin
 npx tsx --test src/lib/xiaok-v1/__tests__/pilot-worker-alignment.test.ts src/lib/xiaok-v1/__tests__/stage-reminder-worker.test.ts src/lib/construction/__tests__/report-worker-pilot.test.ts
 ```
 
-测试结果：44 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。本轮未修改生产环境变量、真实企业配置，未发送真实通知。
+测试结果：47 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。本轮未修改生产环境变量、真实企业配置，未发送真实通知。
 
 ## 通知边界
 

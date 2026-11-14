@@ -45,15 +45,16 @@ export function checkPilotWorkerAlignment(
       reminderConfig, weeklyReportConfig, errorCode: 'pilot_worker_mode_mismatch' };
   }
   if (reminderConfig.mode === 'enterprise') {
-    // The enterprise id is optional in this mode. One configured value is
-    // enough; only two different explicit values are inconsistent.
-    const ids = [reminderConfig.enterpriseId, weeklyReportConfig.enterpriseId]
-      .filter((value): value is string => !!value);
-    if (new Set(ids).size > 1) {
-      return { status: 'mismatch', mode: 'enterprise', enterpriseId: ids[0], pilotId: null,
+    // Both workers must run over exactly the same enterprise scope: either
+    // both are unscoped, or both name the same enterprise. A one-sided id
+    // would make one worker scan the whole platform while the other scans one
+    // enterprise, so it is a mismatch rather than an implicit default.
+    if (reminderConfig.enterpriseId !== weeklyReportConfig.enterpriseId) {
+      return { status: 'mismatch', mode: 'enterprise',
+        enterpriseId: reminderConfig.enterpriseId ?? weeklyReportConfig.enterpriseId, pilotId: null,
         reminderConfig, weeklyReportConfig, errorCode: 'pilot_worker_enterprise_mismatch' };
     }
-    return { status: 'aligned', mode: 'enterprise', enterpriseId: ids[0] ?? null, pilotId: null,
+    return { status: 'aligned', mode: 'enterprise', enterpriseId: reminderConfig.enterpriseId, pilotId: null,
       reminderConfig, weeklyReportConfig, errorCode: null };
   }
   if (reminderConfig.enterpriseId !== weeklyReportConfig.enterpriseId) {
