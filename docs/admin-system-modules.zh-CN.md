@@ -937,3 +937,7 @@ AI 工作台参考图展示：`/ai-studio/scenarios` 在每轮生成结果旁渲
 2026-11-09，业务快照回答中仅有数值的`unsupported_model_commitment`，在所有受影响段都引用当前服务端快照（`kind='project'`且带`resultKey`）时，现进入既有唯一一次`synthesis-edit-v1`修复；结构/引用/引文、正式承诺、范围/来源及修复后完整校验不变。客户问题“我家工地在现在装修到什么阶段了”不再以“这次回答没有完成”结束：保存的run2449收到`removeUnsupportedNumbers:["4"]`后通过，两次真实配置模型旅程（runs2484/2485）均首稿通过。未知引用、完成承诺及非快照来源仍拒绝。证据：`tmp/xiaok-business-numeric-repair-20261109/verification.json`；无路由/API/权限/schema/UI改动。
 
 2026-11-13，I6.13：助理知识解释单次修复精确定位数字/量数与状态缺口，`advice` 一般建议标签被复核承认；PDF 页引用 `w:99:1` 在 Stable 业主会话 `70` 点击与退出重进通过；施工端 Stable 照片补交、业主 Stable 再切换授权、真实工地照片本轮 `not_run`。代码提交 `9156e9a0`，证据 `tmp/i6.13/`、`admin/tmp/i6.13/`。
+
+### 水电专业 Agent 与原生工作流（I7.0，已实现 / 有限）
+
+`electrical-specialist@1` 是第二个真正可运行的专业 Agent，复用现有 Assistant Worker、`AgentModelGateway`、Evidence、Knowledge Scope、Native Workflow、Durable Task、Outbox 与 Construction 事项。注册包含 `utilities` 阶段、五个阶段细分、五个知识域（强电、弱电、给水、排水、隐蔽工程）和 `electrical-inspection-v1` 模板。管理端原生编排页可创建、编辑、校验、模拟和发布模板；画布列出所有已发布专业 Agent 版本并支持 `any_evidence` 分支。`electrical-inspection-v1` revision 1 digest `7265f7a0…` 已通过校验、编译、模拟、发布和 K/L/M 真实闭环（委托 → 现场记录 → 经理复核 → 原 C01 结果）。防水 V1/V1.1 的版本、Scope 和 digest 保持不变。当前真实共享图纸为图片，PDF 抽取由确定性测试覆盖。详见[水电 Agent](./xiaok-electrical-agent.md)与[水电工作流](./xiaok-electrical-workflow.md)。

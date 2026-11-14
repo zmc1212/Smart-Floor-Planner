@@ -74,3 +74,17 @@ I6.17 补充：施工量数必须能追溯到标准原文、企业工艺、当�
 引用载体只接受本轮签发 id，兼容 `CITE[id]`、`[id](CITE id)` 与裸 `[id]`/`[id][id]`；未知 id 不归一、不计引用。单个专业段落最多 4 条签发引用，超出按 `invalid_model_answer` 失败关闭。原生项目快照可支撑无自身 CITE 的阶段观察，但只限服务端聚合的 project 来源，不扩大知识、网页或现场记录权限。
 
 V1.1 为独立 `waterproof-specialist@2` 候选与 Workflow revision 4 digest `dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0`；V1 的 @1 与 rev1–3 不变，旧 Run 继续按启动时 revision/digest 恢复。完整边界见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。
+
+### I7.0 水电专业 Agent 合同
+
+`electrical-specialist@1` 与 `electrical-inspection-v1` revision 1 digest `7265f7a0ac6cab306e557820740bd486b93da3e82e8c8972da388dd2db801a60` 独立绑定。Agent 注册记录 `utilities` 阶段、五个阶段细分、五个知识域和全套 Specialist Tool Permission；水电与防水不共享知识 Scope、检查分类或 Workflow 模板。
+
+主 Agent 路由按领域词选择活动注册：防水词优先，水电明确词进入水电；`水管` 单独出现不改变防水历史路由。项目进度只来自 Construction；图纸问题必须绑定当前项目精确房间的共享图纸；多个房间无法唯一确定时询问用户，不猜房间。普通问答不自动创建持续委托。
+
+检查项绑定 `checkId/projectId/roomId/stage/agentId/agentVersion/workflowRunId/workflowRevision/workflowDigest/drawingRefs/evidenceRefs/evidenceVersions/sourceType/applicability/currentProjectState/checkStatus/needsHumanReview`。新增状态 `drawing_supported` 与 `pending_site_verification`；图纸派生检查始终需要人工复核，模型不能产生“已正式复核”。没有 Construction 正式回执不得标记验收通过。
+
+图纸合同只读取当前项目精确房间最新未撤回授权，旧版、跨房间、跨项目、撤回或替换后的图纸不可读。PDF 保留页号与 `page:N:x:X:y:Y` 坐标；图片不做 OCR 时标记 `unreadable`。设计内容与现场施工分开，模型不能把设计点位认定为实际安装完成。
+
+已核对公开标准只有 `GB55020-2021` 的给排水章节；强电/弱电公开条文未核实。企业托管 RAG 未配置时返回 `retrieval_unavailable` 并明确“本次未核实”。真实模型固定 `bailian / deepseek-flash / deepseek-v4.1-flash-1017`，沿用 Responses API、用量台账和 I6.18 的引用/`<think>` 限制。
+
+详细实现见[水电 Agent](xiaok-electrical-agent.md)与[水电工作流](xiaok-electrical-workflow.md)。

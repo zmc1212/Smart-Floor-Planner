@@ -35,3 +35,13 @@ I6.13 复核：知识解释的单次修复改为精确诊断——按 Q/段号�
 - 无引用段落无法生成修复诊断时返回可定位修复问题，不再直接抛出 `ungrounded_response_scope`；修复后仍执行原有数值、承诺、引用与范围校验。
 
 上述边界由 `parameter-provenance.test.ts`、`formal-claim-scope.test.ts`、`synthesis-source-roles.test.ts`、`dialogue-web-tools.test.ts` 与 `agent-runtime.test.ts` 覆盖。真实模型仍保留 E 单段引用超限与 G `<think>` 协议失败，详见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。
+
+## I7.0 水电专业 Agent
+
+`electrical-specialist@1` 复用同一注册表、Native 模板、模型网关、Evidence、Durable Task、WAIT_EVENT、Outbox 和 Construction 事项合同。注册记录独立的 `knowledgeDomains`（强电、弱电、给水、排水、隐蔽工程）、五个阶段细分和 `electrical-inspection-v1`。水电与防水的知识 Scope、检查分类、公开标准读取和检查清单互不复制；普通咨询由 `specialistDomain()` 按领域词选择活动注册，防水词优先保持冻结范围，`水管` 单独出现不抢防水历史路由。
+
+`createSpecialistInspectionDefinition()` 为水电增加 `any_evidence` 分支策略和 `drawing` 条件输入；`read.specialist_project` 读取当前项目精确房间最新共享图纸，`read.specialist_evidence` 重新核验 `drawingId/sourceHash/version` 并输出 `hasDrawing`。图纸合同、PDF 文本与坐标、图片 `unreadable`、设计不等于现场完成的边界见[水电 Agent](xiaok-electrical-agent.md)。
+
+检查清单扩展为十二类水电分组和两个新状态：`drawing_supported`（当前图纸支持）与 `pending_site_verification`（待现场核实）。图纸派生检查始终 `needsHumanReview: true`，模型分析仍不能产生“已正式复核”。公开标准只配置 `GB55020-2021` 的给排水章节；强电/弱电公开条文如实标记未核实。
+
+Agent 版本与 Workflow 版本独立绑定。`isChecklistAgentVersion()` 取代防水专用版本判断，防水 V1 等历史版本继续按原合同读取；水电 `@1` 与 Workflow revision 1 的 digest 固定在 Run。真实验收见[水电工作流](xiaok-electrical-workflow.md)。

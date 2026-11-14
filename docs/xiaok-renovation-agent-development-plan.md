@@ -120,3 +120,18 @@ I6.16 防水 Agent V1.1 候选，复用 I6.15 原咨询委托。V1 冻结值与�
 - 保持 limited：B/D/E/G 真实场景仅部分通过；E 单段引用超限、G 部分轮次 `<think>` 协议失败。
 - 保持 not_run：真实工地照片、真机、真实微信登录、BLE、托管 RAG、12–18k 真实长网页隔离读取。
 - 不再继续防水专项修复；下一阶段进入 I7.0 水电专业 Agent，复用现有网关、Evidence、Workflow 与复核合同。
+
+## I7.0 水电专业 Agent（已完成纵向样板）
+
+- I7.0.1 注册：`electrical-specialist@1`、`utilities` 阶段、五个阶段细分、五个知识域、`electrical-inspection-v1`；Agent 初始为 draft，离线校验后转 candidate，真实验收通过后转 active。
+- I7.0.2 专业知识：强电、弱电、给水、排水、隐蔽工程五类；没有企业资料时明确“本次未核实”，没有规范原文时不编造数值，高风险作业要求持证人员现场处理。
+- I7.0.3 图纸：当前项目精确房间最新共享图纸合同、版本绑定、PDF 页号/坐标、图片 `unreadable`、设计不等于现场完成；旧版、撤回和替换后的图纸不可读。
+- I7.0.4 检查清单：`electrical-inspection-v1` 十二类分组，新增 `drawing_supported` 与 `pending_site_verification`，图纸检查始终需要人工复核。
+- I7.0.5 工作流：复用 Native Workflow、Durable Task、PostgreSQL Runtime、WAIT_EVENT、Outbox、Construction 事项与 C01 回传；`any_evidence` 分支同时考虑企业、公开和图纸依据。
+- I7.0.6 路由：防水词优先，水电明确词进入水电；项目进度读 Construction；图纸绑定当前项目；房间更正重新绑定；无法确定时询问。
+- I7.0.7 照片：复用固定分析信封，照片不等于测量或验收；真实照片本轮 `not_run`。
+- I7.0.8 验收：A–J 普通咨询、K/L/M 委托—现场记录—经理复核—C01 回传真实通过；图片图纸未 OCR 导致真实检查清单分支进入补资料；企业 RAG 与强电/弱电公开条文 `Limited`。
+- I7.0.9 权限与隔离：水电/防水数据、检查分类、Workflow 和公开标准独立；角色、撤权、版本、幂等和恢复沿用现有合同。
+- 文档：[水电 Agent](xiaok-electrical-agent.md)、[水电工作流](xiaok-electrical-workflow.md)、[集成审查](xiaok-integration-audit.md)。
+
+下一阶段不在本轮范围：真实 PDF 共享图纸、OCR、强电/弱电公开规范目录、真实工地照片、真机与 BLE。

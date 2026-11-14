@@ -517,3 +517,17 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 固定 `bailian` / `deepseek-flash` / 实际 `deepseek-v4.1-flash-1017`，Responses 优先。两批共 42 次 Responses 与 2 次未标 wire 的规划调用，97,646 输入 / 23,704 输出 / 36,096 缓存输入 tokens，44 次尝试全部有实际模型与请求 ID，用量 unknown 0，结算金额 `unknown`。原始回执在 `admin/tmp/i6.18/final/case-batch1-*.json`、`case-batch2-*.json` 与 `model-usage.json`。
 
 本轮确认的协议边界：裸 `[id]`/`[id][id]` 只有在 id 为本轮签发引用时才归一；字面 `<think>` 终稿仍整稿拒绝；单个专业段落最多 4 条签发引用；企业托管检索 `retrieval_unavailable` 时回答必须写明本次未核实。E Run 44/53、G Run 55/57、B Run 51 的失败均为协议/结构边界，未通过放宽校验掩盖。未新增网关、Provider 或生产默认值。完整结果见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。
+
+## 22. I7.0 水电 Agent 实模边界
+
+水电专业 Agent 继续固定 `bailian` / `deepseek-flash` / 实际 `deepseek-v4.1-flash-1017`，优先 Responses API，不新增 Provider、网关或生产默认值。真实调用全部记录实际模型与请求 ID，首稿、唯一修复、用量和失败原因保留在 `admin/tmp/i7.0/final/`。
+
+本轮确认的网关相关边界：
+
+- 普通水电咨询 A/B/C/D/F/G/H/I/J 走现有 C01 与 Native Executor；企业检索不可用时明确“本次未核实企业水电施工工艺”，公开检索失败时不编造条文。
+- 图纸问句在 Native Executor 中新增 `query_materials` 读工具，仍沿用原 `query_materials` 快照、来源指纹、版本和合成来源合同；未新增模型协议或第二套网关。
+- 图纸问句的真实终稿首稿正确引用了共享图纸 `shared_drawing:219`，但修复轮输出字面 `<think>`，按 `invalid_model_answer` 失败关闭；沿用 I6.18 的整稿拒绝规则，未放宽引用载体或修复轮校验。
+- K/L/M 工作流内的专业分析 Run 83 首稿因复述“已登记跟进/已订阅/到时会通知你”等承诺句式触发 `unsupported_model_commitment`；只修改水电专业提示词，要求不复述承诺句式，未修改共享承诺守卫。第二次 Run 成功。
+- 单个专业段落仍最多 4 条签发引用；企业托管 RAG 未配置时仍返回 `retrieval_unavailable`；公开已核对目录仍只有 `GB55020-2021` 给排水章节。
+
+完整验收见[水电工作流](xiaok-electrical-workflow.md)与[集成审查](xiaok-integration-audit.md#i70-水电专业-agent-完整纵向样板)。

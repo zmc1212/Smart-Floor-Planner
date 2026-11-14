@@ -615,3 +615,56 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 | 工程验证 | 192 项定向 Agent/Native 检查通过，105 项 C01/工地客户端定向通过，PDF reader 3 项通过。完整小程序套件 2243/2244，剩余测绘 Phase 0 调用清单基线，未修改测绘。TypeScript、定向 ESLint 与生产 Webpack 构建通过。 |
 
 对话最后固定批为 `admin/tmp/r6/integration-i68-dialogue-05`。双端源码指纹一致，17/18 轮落盘，25 次百炼响应，Responses 2 次、Chat Completions 23 次，53,545 输入、8,124 输出 tokens。现场闭环 `admin/tmp/r6/integration-i68-workflow-06`，登记和清单作业共 2 次，Responses 与 Chat Completions 各 1 次，3,511 输入、872 输出 tokens。两批实际价格未回传。所有实模实际 ID 均为 `deepseek-v4.1-flash-1017`。终稿保留既有已验证载体，工具轮满足已有 Responses 合同时优先使用。Stable 证据位于 `tmp/i6.8/stable-workflow-04/verification.json`，回到原咨询与下载原件通过，额外的原生状态发送未到达 API，批次保留失败状态。管理端证据位于 `tmp/i6.8` 的 `admin-playwright-ports.log`、`admin-playwright-live-final.log` 及 `admin-api-check.json`。目录响应、原稿、失败、未知和实际用量保留在各批次。真机、BLE、真实微信登录和生产均未验。
+
+## I7.0 水电专业 Agent 完整纵向样板
+
+### Released
+
+| 能力 | 证据 |
+| --- | --- |
+| 注册 | `electrical-specialist@1` 活动注册，阶段 `utilities`、五个阶段细分、五个知识域、`electrical-inspection-v1`；防水 V1/V1.1 不变。 |
+| 路由 | `specialistDomain()` 区分防水与水电；防水词优先，`水管` 单独出现不抢防水历史路由；水电明确词进入水电 Agent。 |
+| 知识隔离 | 水电与防水各自的知识域、检查分类、公开标准和 Workflow 模板独立；检查分类为十二类水电分组。 |
+| 图纸合同 | 当前项目精确房间最新共享图纸可读；旧版、跨房间、撤回或替换后不可读；PDF 页号与坐标、图片 `unreadable`、设计不等于现场完成。 |
+| 检查清单 | 图纸派生检查绑定 `drawingRefs`、`pending_site_verification`/`drawing_supported`，始终需要人工复核；没有正式回执不标验收通过。 |
+| 工作流 | `electrical-inspection-v1` revision 1 digest `7265f7a0ac6cab306e557820740bd486b93da3e82e8c8972da388dd2db801a60` 通过校验、编译、模拟、发布与真实运行。 |
+| K/L/M 真实闭环 | 委托 `d66e8554-…`；事项 260；施工记录 3/4；resolution 299 `resolved`；C01 消息 205 返回公开节选；施工人员、经理、老板读取同一事项 revision 6。 |
+| 版本独立 | Agent 版本与 Workflow revision/digest 固定在 Run；旧防水 Run 仍为 revision 4 digest `dc9c…`。 |
+| 真实模型 | 所有调用为 `bailian / deepseek-flash / deepseek-v4.1-flash-1017`，Responses API；请求 ID、首稿、修复、用量与失败原因保留在 `admin/tmp/i7.0/final/`。 |
+
+### Limited
+
+| 场景 | 结果与边界 |
+| --- | --- |
+| 真实图纸检查清单分支 | 产品 `assistant_media` 只接受 PNG/JPEG，真实共享图纸为图片且未 OCR，图纸未解析出要素，Workflow 进入 `REQUEST_MATERIAL` 而非 `CHECKLIST`。PDF 解析与要素抽取由确定性测试覆盖。 |
+| 普通咨询图纸问句 | 首次运行未提供 `query_materials`，修复后模型正确读取共享图纸并引用 `shared_drawing:219`，但终稿修复轮输出字面 `<think>`，按 `invalid_model_answer` 失败关闭；沿用 I6.18 限制。 |
+| 企业水电工艺 | 托管 RAG 未配置，持续 `retrieval_unavailable`，回答明确“本次未核实企业水电施工工艺”。 |
+| 强电/弱电公开规范 | 已核对目录只有 `GB55020-2021` 给排水章节；强电/弱电公开条文未核实，回答不借用给排水页面。 |
+| 合同外扩展 | 未新增模型网关、RAG、PDF Reader、第二套状态机；未修改防水历史版本。 |
+
+### Not Run
+
+- 真实工地照片、真机、真实微信登录、BLE、四端完整 UI 旅程。
+- PostgreSQL live runtime / Durable Task live / WAIT_EVENT live / Outbox live / 双 Worker 争用实库套件未在含验收数据的隔离库重跑；本轮真实闭环使用同一 PostgreSQL Runtime 和 Outbox，但未重跑完整 live 测试套件。
+- 真实 PDF 共享图纸（受存储合同限制）。
+
+### Engineering
+
+- `npx tsc --noEmit` 通过。
+- 定向 ESLint 通过。
+- `next build --webpack` 通过。
+- Native Workflow + Specialist 测试 534 项，506 通过、28 跳过、0 失败。
+- Assistant 套件 1103 项，1102 通过、1 失败；失败为 `need-write-intent.test.ts` 的既有 `recall_history` 预期，与本轮改动文件无关（未修改 `read-tool-input.ts` 或该测试）。
+
+### 证据索引
+
+| 内容 | 路径 |
+| --- | --- |
+| 环境与发布检查 | `admin/tmp/i7.0/check-environment.ts`、`electrical-definition.json` |
+| 普通咨询 A–J | `admin/tmp/i7.0/final/case-*.json` |
+| 图纸咨询 | `admin/tmp/i7.0/final/case-E-drawing.json` |
+| 委托与 Workflow | `admin/tmp/i7.0/final/case-K2.json`、`delegation-K2.json` |
+| 现场记录与完成记录 | `admin/tmp/i7.0/site-record.private.json`、`completion-record.private.json` |
+| 经理复核与正式解决 | `admin/tmp/i7.0/final/manager-review-K2.json` |
+| C01 回传与四端一致 | `admin/tmp/i7.0/final/verify-result-K2.json` |
+| 隔离库 | `sfp-xiaok-i67-test` / `xiaok_i616_validation`，企业 `5`、项目 `1`、厨房 `2` |
