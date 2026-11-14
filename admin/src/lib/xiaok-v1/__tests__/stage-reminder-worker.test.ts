@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { advanceConfiguredStageReminders } from '../stage-reminder-worker';
+import { advanceConfiguredStageReminders, deliverConfiguredStageReminders } from '../stage-reminder-worker';
 
 const now = new Date('2026-11-15T10:00:00+08:00');
 const pilotEnv = {
@@ -103,7 +103,71 @@ test('F/G. the worker route keeps the other jobs, auth guard and delivery flow',
   assert.match(source, /try \{ stageReminderChecks = await advanceConfiguredStageReminders[\s\S]*catch[\s\S]*const data = await processAssistantJob\(processAssistantRun\)/);
   assert.match(source, /const knowledgeBatchChecks=await advanceKnowledgeBatches\(\)/);
   assert.match(source, /const constructionReportChecks = await advanceConstructionReports\(\)/);
-  assert.match(source, /const inAppDeliveries = [\s\S]*deliverStageReminders\(\)/);
+  assert.match(source, /const inAppDeliveries = [\s\S]*deliverConfiguredStageReminders\(\{ now: new Date\(\) \}\)/);
+  assert.doesNotMatch(source, /deliverStageReminders\(/);
   assert.ok(source.indexOf('advanceConfiguredStageReminders({ now') < source.indexOf('processAssistantJob(processAssistantRun)'));
-  assert.ok(source.indexOf('processAssistantJob(processAssistantRun)') < source.indexOf('deliverStageReminders()'));
+  assert.ok(source.indexOf('processAssistantJob(processAssistantRun)') < source.indexOf('deliverConfiguredStageReminders({ now'));
+});
+
+type DeliverCall = [Date, string | undefined, string | undefined];
+
+// H. 企业模式投递保持原行为：只传企业范围，不传 pilotId。
+test('H. an unset mode delivers with the enterprise worker', async () => {
+  const calls: DeliverCall[] = [];
+  const checks = await deliverConfiguredStageReminders({ now, env: {},
+    deliver: async (at, enterpriseId, pilotId) => {
+      calls.push([at, enterpriseId, pilotId]);
+      return { delivered: 2, paused: 1, cancelled: 0, failed: 0 };
+    } });
+
+  assert.deepEqual(calls, [[now, undefined, undefined]]);
+  assert.deepEqual(checks, { mode: 'enterprise', pilotId: null, scopeVersion: null, scopeStatus: null,
+    scannedProjects: null, skippedProjects: null, delivered: 2, paused: 1, cancelled: 0, failed: 0,
+    errors: [] });
+});
+
+// I. pilot 模式把同一个企业和试点 ID 传入投递服务，并回传范围结果。
+test('I. a pilot mode delivers only the configured scope', async () => {
+  const calls: DeliverCall[] = [];
+  const checks = await deliverConfiguredStageReminders({ now, env: pilotEnv,
+    deliver: async (at, enterpriseId, pilotId) => {
+      calls.push([at, enterpriseId, pilotId]);
+      return { delivered: 3, paused: 0, cancelled: 1, failed: 0, errors: [],
+        pilotId: 'first-pilot', scopeVersion: 2, scopeStatus: 'active',
+        scannedProjects: 2, skippedProjects: 0 };
+    } });
+
+  assert.deepEqual(calls, [[now, '1454', 'first-pilot']]);
+  assert.deepEqual(checks, { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: 2,
+    scopeStatus: 'active', scannedProjects: 2, skippedProjects: 0, delivered: 3, paused: 0,
+    cancelled: 1, failed: 0, errors: [] });
+});
+
+// J. pilot 配置错误时零投递，不回退企业模式。
+test('J. an invalid pilot configuration never calls delivery', async () => {
+  let calls = 0;
+  const checks = await deliverConfiguredStageReminders({
+    now,
+    env: { XIAOK_STAGE_REMINDER_MODE: 'pilot', XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454' },
+    deliver: async () => { calls += 1; return { delivered: 99, paused: 0, cancelled: 0, failed: 0 }; },
+  });
+
+  assert.equal(calls, 0);
+  assert.deepEqual(checks, { mode: 'pilot', pilotId: null, scopeVersion: null, scopeStatus: null,
+    scannedProjects: 0, skippedProjects: 0, delivered: 0, paused: 0, cancelled: 0, failed: 0,
+    errors: [{ enterpriseId: '', projectId: '', code: 'stage_reminder_pilot_required' }] });
+});
+
+// K. 范围不可用时投递结果保留失败状态，不回退企业扫描。
+test('K. an unavailable scope is reported without enterprise fallback', async () => {
+  const checks = await deliverConfiguredStageReminders({ now, env: pilotEnv,
+    deliver: async () => ({ delivered: 0, paused: 0, cancelled: 0, failed: 0,
+      errors: [{ enterpriseId: '1454', projectId: '', code: 'pilot_scope_unavailable' }],
+      pilotId: 'first-pilot', scopeVersion: null, scopeStatus: 'unavailable',
+      scannedProjects: 0, skippedProjects: 0 }) });
+
+  assert.deepEqual(checks, { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: null,
+    scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0, delivered: 0, paused: 0,
+    cancelled: 0, failed: 0,
+    errors: [{ enterpriseId: '1454', projectId: '', code: 'pilot_scope_unavailable' }] });
 });

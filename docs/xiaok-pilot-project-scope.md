@@ -112,14 +112,14 @@ npx tsx --test src/lib/xiaok-v1/__tests__/pilot-scope-resolver.test.ts
 - 范围读取失败或范围项目查询失败：`unavailable`，`errors` 记录 `pilot_scope_unavailable`，不回退到全企业扫描。
 - 单个项目提醒计算失败：该项目记入 `errors`（`stage_reminder_unavailable` 或业务错误码），其他范围项目继续处理，范围外项目仍不处理。
 
-定向验证（9 项，覆盖普通模式、101/205 范围、306 范围外、试点不存在、停用、空范围、版本更新、同企业双试点隔离、Resolver 失败关闭）：
+定向验证（I7.4.5-B 的 9 项保留；I7.4.5-C3 追加投递用例后同一文件共 22 项）：
 
 ```powershell
 cd admin
 npx tsx --test src/lib/xiaok-v1/__tests__/reminder-service.test.ts
 ```
 
-测试结果：9 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。该验证使用内存替身，不连接数据库、不发送提醒；真实试点触达仍需单独的隔离环境验收。
+测试结果：I7.4.5-B 验收时 9 项通过，0 失败；C3 追加后当前 22 项通过（见下节）。`npx tsc --noEmit` 与定向 ESLint 通过。该验证使用内存替身，不连接数据库、不发送提醒；真实试点触达仍需单独的隔离环境验收。
 
 ## 提醒 Worker 模式配置（I7.4.5-C1）
 
@@ -173,21 +173,49 @@ npx tsx --test src/lib/xiaok-v1/__tests__/stage-reminder-config.test.ts
 隔离边界：
 
 - 提醒推进仍包在独立 `try/catch` 中，失败只写入 `stageReminderChecks`，不影响后续 Assistant Job。
-- 周报推进与投递、其他 Worker Job、`deliverStageReminders()` 的投递路径均未修改。
+- 周报推进与投递、其他 Worker Job 未修改；`deliverStageReminders()` 的投递路径在 C2 中未修改，C3 已把投递接入同一模式配置（见下节）。
 - 未授权请求仍在进入任何任务前返回 401。
 - 本轮未修改任何生产环境变量，未发送真实试点通知。
 
-定向验证（A–G 共 6 项：默认企业、显式企业、pilot 传参、配置错误零调用、Resolver 失败不回退、Route 其余 Job/401/投递保持）：
+定向验证（I7.4.5-C2 时 A–G 共 6 项；C3 追加投递用例后同一文件共 10 项）：
 
 ```powershell
 cd admin
 npx tsx --test src/lib/xiaok-v1/__tests__/stage-reminder-worker.test.ts
 ```
 
-测试结果：6 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。
+测试结果：C2 验收时 6 项通过，0 失败；C3 追加后当前 10 项通过（见下节）。`npx tsc --noEmit` 与定向 ESLint 通过。
+
+## 提醒投递试点范围（I7.4.5-C3）
+
+`admin/src/lib/xiaok-v1/reminder-service.ts` 的 `deliverStageReminders(now, enterpriseId, pilotId)` 增加可选 `pilotId`，与 `advanceStageReminders` 使用同一组企业和试点参数。`admin/src/lib/xiaok-v1/stage-reminder-worker.ts` 新增 `deliverConfiguredStageReminders({now})`；它先读取与提醒生成相同的 `readStageReminderConfig()`，再按模式投递。`route.ts` 只把原来的 `deliverStageReminders()` 调用替换为该入口，不重构其他 Worker Job。
+
+| 模式 | 投递范围 |
+| --- | --- |
+| 未配置 / `enterprise` | 保持原企业投递：按 `onlyEnterprise`（如配置）查询到期 pending/failed 提醒，逐项目投递。 |
+| `pilot` | 在调用方企业 ID 下通过 `resolvePilotScope()`（`tenantPilotScopeRead(tx)`）只读最新 active 范围；项目查询直接带 `project_id in (scope.projectIds)`，范围外项目不查询、不投递、不重试。 |
+| 配置错误 | 不调用投递服务，返回 C1 错误码，不执行企业投递。 |
+
+投递规则：
+
+- `not_found`、`inactive`、`empty` 均零投递；Resolver 读取失败或范围项目查询失败为 `unavailable`，同样零投递，不回退全企业。
+- 每个范围内项目仍走原有投递规则：阶段变更过期、收件人权限复核（`permission_revoked`）、暂停、会话缺失 `no_inbox`、Outbox 唯一键幂等和 savepoint。
+- 只查询并更新 `pending`/`failed`；已 `delivered` 的历史提醒不修改，范围外历史提醒不删除。
+- 提醒生成与投递分别调用同一个 `readStageReminderConfig()`，同一 Worker tick 内使用同一 `mode` 和 `pilotId`。
+- `stageReminderDeliveries` 记录 `mode`、`pilotId`、`scopeVersion`、`scopeStatus`、`scannedProjects`、`skippedProjects`、`delivered`、`paused`、`cancelled`、`failed`、`errors`。企业模式的试点字段为 `null`。
+- `skippedProjects` 只统计本 tick 范围内没有到期可投递提醒的项目，不统计范围外项目。
+
+测试使用内存替身和源码断言，不连接数据库、不发送真实通知。覆盖 A–J（企业模式原行为、试点只投递范围项目、范围外 pending、范围外 failed、试点不存在、停用、Resolver 故障、版本更新、delivered 历史、收件人撤权与 Outbox 幂等）以及空范围和范围查询失败。
+
+```powershell
+cd admin
+npx tsx --test src/lib/xiaok-v1/__tests__/reminder-service.test.ts src/lib/xiaok-v1/__tests__/stage-reminder-worker.test.ts
+```
+
+测试结果：两个文件共 32 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。本轮未合并 `main`、未部署生产、未修改生产环境变量、未发送真实试点通知。
 
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 按部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实处理；`pilot` 只处理该试点最新范围，配置错误时跳过本轮提醒（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算。空的企业周报项目清单表示全部符合条件的项目。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算。空的企业周报项目清单表示全部符合条件的项目。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。

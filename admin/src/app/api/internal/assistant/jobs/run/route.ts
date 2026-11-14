@@ -9,8 +9,7 @@ import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
 import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
 import { advanceConstructionReports, deliverConstructionReports } from '@/lib/construction/report-worker';
-import { advanceConfiguredStageReminders } from '@/lib/xiaok-v1/stage-reminder-worker';
-import { deliverStageReminders } from '@/lib/xiaok-v1/reminder-service';
+import { advanceConfiguredStageReminders, deliverConfiguredStageReminders } from '@/lib/xiaok-v1/stage-reminder-worker';
 import { nativeWorkflowEnabled } from '@/lib/native-workflow/live/tenant-allowlist';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -69,7 +68,7 @@ export async function POST(request: Request) {
     }
     const inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + await deliverConstructionReports();
     let stageReminderDeliveries: unknown;
-    try { stageReminderDeliveries = await deliverStageReminders(); }
+    try { stageReminderDeliveries = await deliverConfiguredStageReminders({ now: new Date() }); }
     catch { stageReminderDeliveries = { error: 'stage_reminder_delivery_unavailable' }; }
     const portfolioCopyClaimed = data.claimed ? false : await processPortfolioCopy();
     return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, stageReminderChecks, stageReminderDeliveries, nativeWorkflowSchedule, nativeWorkflowDelegations, nativeWorkflowTools }, requestId });
