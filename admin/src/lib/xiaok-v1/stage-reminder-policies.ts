@@ -17,6 +17,7 @@ export const stageReminderPolicies: readonly StageReminderPolicy[] = stageDefini
   dueSoonDays: 3,
   staleRecordDays: 7,
   issueOverdueGraceDays: 1,
+  bossEscalationDays: 3,
   cooldownHours: 24,
   quietHours,
   roles: [...roles],

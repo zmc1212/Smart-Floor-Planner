@@ -5,7 +5,8 @@ import { AiProviderError } from '@/lib/ai/provider-types';
 import { AssistantError, fail, safeText, type Evidence, type KnowledgeRetriever, type TextModelGateway } from '../contracts';
 import { retrieveKnowledge } from '../knowledge/retrieval';
 import { answerMessages, insufficientAnswer, parseSelection } from '../knowledge/answer';
-import { completeAnswer, completeGuidance, failRun, heartbeat, markProviderStarted, runContext, type Lease } from './job-queue';
+import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, heartbeat, markProviderStarted, runContext, type Lease } from './job-queue';
+import { isStageChatQuestion, stageChatForConversation } from '@/lib/xiaok-v1/stage-chat-service';
 import { configuredGuidance, conversationGuidance, guidanceProgress } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
 import { textGateway } from './model-gateway';
@@ -33,6 +34,28 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
   try {
     const context=await withTenantTransaction(lease.enterpriseId,tx=>runContext(tx,lease));
     const policy = context.run.policy_snapshot as Row;
+    // I7.2: an owner's ordinary stage question is answered from the current
+    // project stage inside the original C01 conversation. Deep professional
+    // topics still return null and keep the existing specialist/model route.
+    if (lease.actor.principal.kind === 'user' && context.run.purpose === 'reply'
+      && context.run.trigger_kind === 'user_message'
+      && ['customer_consultation', 'construction_followup'].includes(String(context.conversation.purpose))) {
+      const userId = lease.actor.principal.userId;
+      const question = await withTenantTransaction(lease.enterpriseId, async tx => {
+        await runContext(tx, lease);
+        const message = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
+          and conversation_id=${String(context.run.conversation_id)} and id=${String(context.run.trigger_message_id)}`);
+        return message ? Array.from(safeText(message.content as Parameters<typeof safeText>[0])).join('') : '';
+      });
+      if (isStageChatQuestion(question)) {
+        const reply = await withTenantTransaction(lease.enterpriseId, async tx => {
+          await runContext(tx, lease);
+          return stageChatForConversation({ tx, enterpriseId: lease.enterpriseId,
+            conversationId: String(context.run.conversation_id), userId, question });
+        });
+        if (reply) { await completeStageKnowledge(lease, reply); return; }
+      }
+    }
     // The run snapshot names its executor protocol; dispatch is exact and an
     // unknown protocol fails closed instead of entering another orchestrator.
     const agentRuntime = (policy.agentRuntime as Row | undefined)?.protocol !== undefined ? policy.agentRuntime as Row : undefined;

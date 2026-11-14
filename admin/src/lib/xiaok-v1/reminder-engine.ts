@@ -50,6 +50,9 @@ export type StageReminderPolicy = {
   /** No record means unknown, not stalled; null disables the stale trigger. */
   staleRecordDays: number | null;
   issueOverdueGraceDays: number;
+  /** Only a real exception this many days past a plan end or agreed deadline
+   * reaches the company boss. Ordinary todos stay with their own role. */
+  bossEscalationDays: number;
   cooldownHours: number;
   quietHours: { start: number; end: number } | null;
   roles: ReminderRole[];
@@ -65,6 +68,8 @@ export const reminderDraftSchema = z.strictObject({
   triggerEvidence: z.strictObject({
     kind: z.enum(['stage_event', 'plan_node', 'pending_item', 'issue', 'record_gap']),
     refId: z.string(), version: z.number().int().nonnegative().nullable(), at: z.string().nullable(),
+    /** Stable exception subject used to dedupe one company escalation across projects. */
+    subject: z.string().optional(),
   }),
   scheduledAt: z.string(), deliveredAt: z.string().nullable(),
   status: z.enum(reminderStatuses), dedupeKey: z.string().min(1), actionUrl: z.string().min(1),
@@ -267,6 +272,34 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
           subject: facts.stageName || stageId, dedupeSubject: stageId + ':' + weekBucket(now),
           detail: '最近一次现场记录距今已超过配置天数，请补充当前进展；未记录不等于未施工。' }));
       }
+    }
+  }
+
+  // Company exceptions. A boss sees only a real plan/deadline breach, never
+  // ordinary role todos. The same exception subject is deduped across projects
+  // by the persistence layer, so one company escalation is not repeated.
+  const bossRecipients = recipientsFor(facts, 'boss');
+  if (bossRecipients.length && policy.bossEscalationDays >= 0) {
+    if (facts.schedule.available) {
+      for (const node of facts.schedule.nodes) {
+        if (node.stageId !== stageId || node.completion === 'completed') continue;
+        if (dayDiff(today, node.plannedEnd) < policy.bossEscalationDays) continue;
+        for (const userId of bossRecipients) drafts.push(draft({ facts, policy, now, triggerType: 'plan_node_overdue',
+          targetRole: 'boss', targetUserId: userId, relatedTaskId: node.key,
+          evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString(),
+            subject: 'plan:' + node.key + ':' + node.plannedEnd },
+          itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+          dedupeSubject: 'boss:plan:' + node.key + ':' + node.plannedEnd,
+          detail: '计划结束日已超过公司介入阈值且没有完成证据，请公司核对是否需要协调资源或调整安排。' }));
+      }
+    }
+    for (const issue of facts.issues) {
+      if (!issue.dueAt || dayDiff(today, dateOnly(issue.dueAt)) < policy.bossEscalationDays) continue;
+      for (const userId of bossRecipients) drafts.push(draft({ facts, policy, now, triggerType: 'issue_overdue',
+        targetRole: 'boss', targetUserId: userId, relatedIssueId: issue.id,
+        evidence: { kind: 'issue', refId: issue.id, version: null, at: issue.updatedAt, subject: 'issue:' + issue.id },
+        itemId: issue.id, subject: issue.title, dedupeSubject: 'boss:issue:' + issue.id,
+        detail: '事项已超过真实约定期限，按项目规则需要公司介入核对；提醒不代表问题已解决。' }));
     }
   }
 

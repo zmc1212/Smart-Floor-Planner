@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { followupMiniActor } from '@/lib/construction/followup-http';
-import { listStageReminders, pauseStageReminders, resumeStageReminders } from '@/lib/xiaok-v1/reminder-service';
+import { cancelStageReminder, listStageReminders, pauseStageReminders, resumeStageReminders } from '@/lib/xiaok-v1/reminder-service';
 
 export const runtime = 'nodejs';
 
@@ -28,12 +28,14 @@ export async function POST(request: Request) {
     let body: unknown;
     try { body = JSON.parse(raw); } catch { fail('invalid_construction', 422); }
     if (!body || typeof body !== 'object' || Array.isArray(body)
-      || Object.keys(body).some(key => !['projectId', 'action', 'triggerType'].includes(key))) fail('invalid_construction', 422);
-    const value = body as { projectId?: unknown; action?: unknown; triggerType?: unknown };
-    if (!['pause', 'resume'].includes(String(value.action))) fail('invalid_construction', 422);
-    const data = String(value.action) === 'pause'
-      ? await pauseStageReminders(actor, value)
-      : await resumeStageReminders(actor, value);
+      || Object.keys(body).some(key => !['projectId', 'action', 'triggerType', 'reminderId'].includes(key))) fail('invalid_construction', 422);
+    const value = body as { projectId?: unknown; action?: unknown; triggerType?: unknown; reminderId?: unknown };
+    if (!['pause', 'resume', 'cancel'].includes(String(value.action))) fail('invalid_construction', 422);
+    const data = String(value.action) === 'cancel'
+      ? await cancelStageReminder(actor, value)
+      : String(value.action) === 'pause'
+        ? await pauseStageReminders(actor, value)
+        : await resumeStageReminders(actor, value);
     return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (!(error instanceof AssistantError)) console.error('[reminders] unexpected write failure', error);

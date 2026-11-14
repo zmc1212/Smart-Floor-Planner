@@ -291,6 +291,24 @@ export async function processAssistantJob(processRun: (lease: Lease) => Promise<
   return { claimed: leases.length>0 || knowledgeClaimed || cleanupClaimed };
 }
 /** Trusted configured interview copy is not a knowledge answer or provider invocation. */
+/** A deterministic stage-knowledge turn keeps the original conversation,
+ * message order and run receipt; it never calls the model. */
+export async function completeStageKnowledge(lease: Lease, text: string) {
+  if (!text.trim() || text.length > 4000) fail('invalid_message', 422);
+  return withTenantTransaction(lease.enterpriseId, async tx => {
+    const { conversation, job } = await runContext(tx, lease);
+    if (job.provider_started_at) fail('context_changed');
+    const message = await appendMessage(tx, lease.actor, String(conversation.id), {
+      author: 'assistant', runId: lease.runId, purpose: 'construction.stage_knowledge',
+      content: { version: 1, blocks: [{ type: 'text', text }] },
+    });
+    await tx.execute(sql`update app.assistant_quota_reservations set status='released',version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+    await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
+      values(${lease.enterpriseId},${lease.runId},${'stage_knowledge:' + lease.runId},'tokens',0,'observed',0,0)`);
+    await finish(tx, lease, 'succeeded', null, String(message.id)); return String(message.id);
+  });
+}
+
 export async function completeGuidance(lease: Lease, text: string) {
   if (!text.trim() || text.length > 2000) fail('invalid_message', 422);
   return withTenantTransaction(lease.enterpriseId, async tx => {

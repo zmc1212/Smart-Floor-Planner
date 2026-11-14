@@ -83,6 +83,29 @@ test('delivery failure remains retryable while the condition still exists', () =
   assert.deepEqual(dedupeDrafts([...drafts, ...drafts]).length, drafts.length);
 });
 
+test('only a real plan or issue breach reaches the company boss', () => {
+  const ordinary = buildReminderDrafts(facts(), policy, now);
+  assert.ok(!ordinary.some(item => item.targetRole === 'boss'));
+  const overdue = buildReminderDrafts(facts({ schedule: { available: true, version: 3, nodes: [{
+    key: 'utilities_bath', stageId: 'utilities', roomId: '9', roomName: '卫生间',
+    plannedStart: '2026-11-01', plannedEnd: '2026-11-09', color: 'red', completion: 'in_progress',
+  }] } }), policy, now);
+  const boss = overdue.filter(item => item.targetRole === 'boss');
+  assert.equal(boss.length, 1);
+  assert.equal(boss[0].triggerType, 'plan_node_overdue');
+  assert.equal(boss[0].triggerEvidence.subject, 'plan:utilities_bath:2026-11-09');
+  assert.match(boss[0].body, /公司介入/u);
+});
+
+test('an issue without an agreed deadline never escalates to the boss', () => {
+  const draft = buildReminderDrafts(facts({ issues: [{ id: 'i1', title: '墙面空鼓', status: 'awaiting_rectification',
+    updatedAt: '2026-11-01T00:00:00+08:00', dueAt: null }] }), policy, now);
+  assert.ok(!draft.some(item => item.targetRole === 'boss'));
+  const real = buildReminderDrafts(facts({ issues: [{ id: 'i1', title: '墙面空鼓', status: 'awaiting_rectification',
+    updatedAt: '2026-11-01T00:00:00+08:00', dueAt: '2026-11-08' }] }), policy, now);
+  assert.ok(real.some(item => item.targetRole === 'boss' && item.triggerType === 'issue_overdue'));
+});
+
 test('quiet hours shift rather than drop a reminder', () => {
   const night = new Date('2026-11-14T22:30:00+08:00');
   const drafts = buildReminderDrafts(facts(), policy, night);
