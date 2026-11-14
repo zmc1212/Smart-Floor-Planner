@@ -66,7 +66,7 @@ npm run check:pilot-readiness -- --enterprise-id 123 --project-ids 101,205
 - 读取函数已按企业和试点过滤；解析器再核对返回记录的企业和试点，外来或不匹配的记录按 `not_found` 处理，不返回其项目 ID。
 - 最新版本停用时返回 `inactive`。不存在时返回 `not_found`。
 - 最新版本为 active 但项目集合为空时返回 `empty`，不扩大到全企业。现有保存接口和数据库约束拒绝空清单，该状态用于防御历史或人工数据。
-- 解析器不读取项目明细、提醒、报告、会话或 Outbox，不产生任何数据库写入。提醒和周报本轮尚未接入，现有 Worker 规则不变。
+- 解析器不读取项目明细、提醒、报告、会话或 Outbox，不产生任何数据库写入。I7.4.5-A 只提供读取入口；I7.4.5-B 已把提醒 Worker 的显式试点模式接入该入口（见下节），周报尚未接入。
 
 定向验证：
 
@@ -75,8 +75,54 @@ cd admin
 npx tsx --test src/lib/xiaok-v1/__tests__/pilot-scope-resolver.test.ts
 ```
 
+## 提醒 Worker 试点范围（I7.4.5-B）
+
+`admin/src/lib/xiaok-v1/reminder-service.ts` 的 `advanceStageReminders(now, enterpriseId, pilotId)` 增加可选 `pilotId`。企业 ID 仍来自当前业务运行上下文（Worker 调用方），不从试点记录反推；传入 `pilotId` 但缺少企业 ID 时直接抛出 `pilot_scope_enterprise_required`，不执行任何查询。
+
+### 普通企业模式
+
+未传 `pilotId` 时保留原企业提醒 Worker 行为：按有效 active 项目和阶段事实逐个项目计算提醒，返回结构仍为 `{created, errors}`，不读取试点范围，也不改变历史已发送提醒。
+
+### 试点提醒模式
+
+传入 `pilotId` 时：
+
+| 步骤 | 规则 |
+| --- | --- |
+| 读取范围 | 在调用方企业 ID 的租户事务中通过 `resolvePilotScope()`（`tenantPilotScopeRead(tx)`）只读最新版本。 |
+| 项目筛选 | 只查询并处理 `scope.projectIds` 中的项目；范围外项目不查询、不计算、不写入。 |
+| 事务与 RLS | 范围读取和每个项目的提醒计算都复用 `withTenantTransaction()`，不新开租户范围。 |
+| 历史提醒 | 只按现有规则重整 pending/paused/failed 状态；delivered 历史提醒不修改。 |
+
+返回结果在 `created`、`errors` 之外增加：
+
+| 字段 | 含义 |
+| --- | --- |
+| `pilotId` | 本次运行的试点标识。 |
+| `scopeVersion` | 使用的最新版本号；试点不存在或读取失败时为 `null`。 |
+| `scopeStatus` | `active`、`inactive`、`not_found`、`empty`，或读取/项目查询失败时的 `unavailable`。 |
+| `scannedProjects` | 实际处理的范围项目数；处理失败的项目仍计入。 |
+| `skippedProjects` | 范围内未被现有 Worker 规则处理的数（缺失、已归档或非 active），不统计范围外项目。 |
+
+### 失败关闭规则
+
+- 试点不存在：`not_found`，不处理项目。
+- 最新版本停用：`inactive`，即使历史版本有项目也不处理。
+- 最新版本 active 但项目为空：`empty`，不扩大到全企业。
+- 范围读取失败或范围项目查询失败：`unavailable`，`errors` 记录 `pilot_scope_unavailable`，不回退到全企业扫描。
+- 单个项目提醒计算失败：该项目记入 `errors`（`stage_reminder_unavailable` 或业务错误码），其他范围项目继续处理，范围外项目仍不处理。
+
+定向验证（9 项，覆盖普通模式、101/205 范围、306 范围外、试点不存在、停用、空范围、版本更新、同企业双试点隔离、Resolver 失败关闭）：
+
+```powershell
+cd admin
+npx tsx --test src/lib/xiaok-v1/__tests__/reminder-service.test.ts
+```
+
+测试结果：9 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。该验证使用内存替身，不连接数据库、不发送提醒；真实试点触达仍需单独的隔离环境验收。
+
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 仍按有效 active 项目和阶段事实运作，周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算。空的企业周报项目清单表示全部符合条件的项目。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 缺省仍按有效 active 项目和阶段事实运作；显式传入试点 ID 时只处理该试点最新范围（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算。空的企业周报项目清单表示全部符合条件的项目。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。

@@ -8,6 +8,8 @@ import { readStageSettings } from '@/lib/construction/stages-store';
 import { projectSiteIssues } from '@/lib/construction/site-issues';
 import { stageForConstructionKey, type StageId } from './stages';
 import { reminderPolicyForStage } from './stage-reminder-policies';
+import { resolvePilotScope, tenantPilotScopeRead, type PilotScopeResolution,
+  type PilotScopeResolutionStatus } from './pilot-scope-resolver';
 import { buildReminderDrafts, reconcileReminders, reminderTriggerTypes, type ReminderDraft,
   type ReminderProjectFacts, type ReminderRole, type ReminderStatus, type ReminderTriggerType } from './reminder-engine';
 
@@ -166,22 +168,114 @@ export async function syncProjectReminders(tx: PostgresTransaction, eid: string,
     expired: changes.filter(item => item.status === 'expired').length, skipped: false };
 }
 
-export async function advanceStageReminders(now = new Date(), onlyEnterprise?: string) {
-  const projects = await withPlatformTransaction(tx => rows(tx, sql`select p.enterprise_id,p.id from app.construction_projects p
+type ReminderAdvanceError = { enterpriseId: string; projectId: string; code: string };
+export type ReminderPilotScopeStatus = PilotScopeResolutionStatus | 'unavailable';
+export type StageReminderAdvance = {
+  created: number;
+  errors: ReminderAdvanceError[];
+  /** Present only for a pilot-scoped run. */
+  pilotId?: string;
+  scopeVersion?: number | null;
+  scopeStatus?: ReminderPilotScopeStatus;
+  /** In-scope projects actually processed (failed projects stay counted). */
+  scannedProjects?: number;
+  /** In-scope projects the existing worker rules did not process (missing,
+   * archived or not active). Never counts out-of-scope projects. */
+  skippedProjects?: number;
+};
+
+type ReminderProjectTarget = { enterpriseId: string; projectId: string };
+
+/** The existing worker reads bound to the platform/tenant transactions. Tests
+ * replace them with in-memory fakes; production keeps RLS and tenant scope. */
+export type ReminderAdvanceRuntime = {
+  resolveScope: (enterpriseId: string, pilotId: string, now: Date) => Promise<PilotScopeResolution>;
+  listProjects: (enterpriseId: string | undefined, projectIds: readonly string[] | null) => Promise<ReminderProjectTarget[]>;
+  syncProject: (enterpriseId: string, projectId: string, now: Date) => Promise<number>;
+};
+
+const reminderAdvanceRuntime: ReminderAdvanceRuntime = {
+  resolveScope: (enterpriseId, pilotId, now) => withTenantTransaction(enterpriseId, tx => resolvePilotScope({
+    enterpriseId, pilotId, context: { read: tenantPilotScopeRead(tx), now },
+  })),
+  listProjects: (onlyEnterprise, projectIds) => withPlatformTransaction(async tx => (await rows(tx, sql`select p.enterprise_id,p.id
+    from app.construction_projects p
     join app.enterprises e on e.id=p.enterprise_id and e.status='active'
     join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
-    where p.status='active' and l.archived_at is null ${onlyEnterprise ? sql`and p.enterprise_id=${onlyEnterprise}` : sql``}
-    order by p.id limit 100`));
-  let created = 0; const errors: Array<{ enterpriseId: string; projectId: string; code: string }> = [];
-  for (const project of projects) {
-    const eid = String(project.enterprise_id), pid = String(project.id);
+    where p.status='active' and l.archived_at is null
+    ${onlyEnterprise ? sql`and p.enterprise_id=${onlyEnterprise}` : sql``}
+    ${projectIds?.length ? sql`and p.id in (${sql.join(projectIds.map(projectId => sql`${projectId}::bigint`), sql`,`)})` : sql``}
+    order by p.id limit 100`)).map(row => ({
+    enterpriseId: String(row.enterprise_id), projectId: String(row.id),
+  }))),
+  syncProject: async (enterpriseId, projectId, now) =>
+    (await withTenantTransaction(enterpriseId, tx => syncProjectReminders(tx, enterpriseId, projectId, now))).created,
+};
+
+function reminderErrorCode(error: unknown, fallback: string) {
+  return error instanceof Error && 'code' in error ? String((error as { code: string }).code) : fallback;
+}
+
+/** Advance deterministic stage reminders for one worker tick.
+ *
+ * Without `pilotId` the original enterprise-wide rules are unchanged. With
+ * `pilotId` only the latest saved scope of that enterprise is considered: the
+ * enterprise comes from the caller's business run context, out-of-scope
+ * projects are never scanned, and a missing, inactive, empty or unreadable
+ * scope processes nothing instead of falling back to the whole enterprise. */
+export async function advanceStageReminders(now = new Date(), onlyEnterprise?: string, pilotId?: string,
+  runtime: ReminderAdvanceRuntime = reminderAdvanceRuntime): Promise<StageReminderAdvance> {
+  if (!pilotId) {
+    const projects = await runtime.listProjects(onlyEnterprise, null);
+    let created = 0; const errors: ReminderAdvanceError[] = [];
+    for (const project of projects) {
+      try {
+        created += await runtime.syncProject(project.enterpriseId, project.projectId, now);
+      } catch (error) {
+        errors.push({ enterpriseId: project.enterpriseId, projectId: project.projectId,
+          code: reminderErrorCode(error, 'stage_reminder_unavailable') });
+      }
+    }
+    return { created, errors };
+  }
+  // A pilot run cannot invent its enterprise from the scope record.
+  if (!onlyEnterprise) throw new Error('pilot_scope_enterprise_required');
+  const enterpriseId = onlyEnterprise;
+  let scope: PilotScopeResolution;
+  try {
+    scope = await runtime.resolveScope(enterpriseId, pilotId, now);
+  } catch (error) {
+    return { created: 0, errors: [{ enterpriseId, projectId: '',
+      code: reminderErrorCode(error, 'pilot_scope_unavailable') }], pilotId, scopeVersion: null,
+      scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0 };
+  }
+  if (scope.status !== 'active') {
+    return { created: 0, errors: [], pilotId, scopeVersion: scope.scopeVersion, scopeStatus: scope.status,
+      scannedProjects: 0, skippedProjects: 0 };
+  }
+  const allowed = new Set(scope.projectIds);
+  let targets: ReminderProjectTarget[];
+  try {
+    targets = await runtime.listProjects(enterpriseId, scope.projectIds);
+  } catch (error) {
+    return { created: 0, errors: [{ enterpriseId, projectId: '',
+      code: reminderErrorCode(error, 'pilot_scope_unavailable') }], pilotId, scopeVersion: scope.scopeVersion,
+      scopeStatus: 'active', scannedProjects: 0, skippedProjects: allowed.size };
+  }
+  let created = 0; const errors: ReminderAdvanceError[] = []; const scanned = new Set<string>();
+  for (const target of targets) {
+    // Only the resolved enterprise and its saved scope may create reminders.
+    if (target.enterpriseId !== enterpriseId || !allowed.has(target.projectId) || scanned.has(target.projectId)) continue;
+    scanned.add(target.projectId);
     try {
-      created += (await withTenantTransaction(eid, tx => syncProjectReminders(tx, eid, pid, now))).created;
+      created += await runtime.syncProject(enterpriseId, target.projectId, now);
     } catch (error) {
-      errors.push({ enterpriseId: eid, projectId: pid, code: error instanceof Error && 'code' in error ? String((error as { code: string }).code) : 'stage_reminder_unavailable' });
+      errors.push({ enterpriseId, projectId: target.projectId,
+        code: reminderErrorCode(error, 'stage_reminder_unavailable') });
     }
   }
-  return { created, errors };
+  return { created, errors, pilotId, scopeVersion: scope.scopeVersion, scopeStatus: 'active',
+    scannedProjects: scanned.size, skippedProjects: allowed.size - scanned.size };
 }
 
 async function principalAccess(tx: PostgresTransaction, actor: ActorContext, eid: string, project: Row, role: ReminderRole) {
