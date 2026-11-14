@@ -22,15 +22,15 @@ I6.16 防水 Agent V1.1 候选，复用 I6.15 原咨询委托。V1 冻结值与�
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 家客来 I7.2，`codex/xiaok-integration` 单一负责人。把 I7.1 代码能力接入真实隔离数据库、Worker、小程序和四端业务；复用现有 Construction、Agent、Evidence、Native Workflow，不复制运行时。 |
-| 用户入口与结果 | 业主在 C01 连续对话中获得当前阶段知识、阶段提醒和本周周报；设计师工作台看待核对提醒和周报；老板看跨项目例外与周报；施工人员保留拍照/语音/当前任务并查看施工周报。 |
-| 已证缺口 | I7.1 提醒 SQL 列名不一致、老板收件人为空、阶段重入去重错误、业主无阶段提醒入口、周报未做真实四端验收、迁移未真实执行。 |
-| 已完成 | 隔离 PG17 执行 `0128`/`0129`；修复提醒回执与列名；老板例外；暂停/恢复/取消/失败重试；十阶段真实 tick；四角色周报生成、投递、重进、历史、版本化、撤权遮蔽；C01 阶段回答；四端入口；迁移与验收脚本。 |
-| 下一动作 | 生产部署前确认 Worker、Assistant 设置、非超级用户/Rls、企业报告计划和微信模板；真实小程序点击与订阅消息仍为 `not_run`。 |
-| 必要验收 | A–I 十阶段；J–M 角色待办；N 计划临近；O 记录停滞；P 真实期限（`limited`）；四角色周报；幂等；失败恢复；撤权；无计划灰色；AI 不可用降级；四端重进同一事实。 |
-| 失败与调用边界 | 真实模型固定百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`；阶段知识为确定性回答，本轮不重复采样；不改生产默认模型。未配置企业知识时明确“本次未核实”。范围外未提交改动保留。 |
-| 环境与资源 | 隔离 PostgreSQL 17 `127.0.0.1:55443/i72_accept`，业务账号 `sfp_app`；企业标记 `I7.2验收合成-*`；不部署生产。 |
-| 证据与后继 | [I7.2 验收](xiaok-i72-live-acceptance.md)、[发布就绪](xiaok-v1-release-readiness.md)、[产品范围](xiaok-v1-product-scope.md)、[阶段架构](xiaok-stage-agent-architecture.md)、[提醒引擎](xiaok-stage-reminder-engine.md)、[周报合同](xiaok-weekly-report-contract.md)、[知识包](xiaok-stage-knowledge-packs.md)。 |
+| 交付与负责人 | 家客来 I7.3 四端真实体验与试点验收，`codex/xiaok-integration` 单一负责人。只做真实页面验收、提醒跳转、周报降级、经理工作台和发布候选，不新增后台子系统或专业 Agent。方法约束：先验证真实回答，禁止补丁循环。 |
+| 用户入口与结果 | 业主在原 C01 看阶段知识、提醒和周报；设计师/老板/施工人员/项目经理在各自工作台看真实提醒、周报与待办并点击进入项目。 |
+| 已证缺口 | 提醒 `actionUrl` 无真实跳转、经理提醒 `no_inbox` 显示发送失败、业主提醒缺 entry 头、施工端路由被代理拦截、周报列表缺角色预览、提醒列表缺 issue/room 定位与撤权过滤。 |
+| 已完成 | 提醒深链字段与历史；经理工作台渠道；施工端 xiaok 路由白名单；业主 entry 头；周报事实模板与角色预览；I7.3 隔离库 `i73_accept`、21 项服务验收、四端 Stable 页面验收与截图；发布候选文档。 |
+| 下一动作 | 按 [I7.3 验收](xiaok-i73-pilot-acceptance.md) 第 10 节准备试点企业、项目、四端账号、报告计划与 Worker；生产部署另行授权。 |
+| 必要验收 | 四端登录/重进；提醒可见与点击；周报四角色章节、历史、版本与快照；无模型 facts-only；经理复核回执；撤权遮蔽；AI 不可用不阻塞；TypeScript、定向 ESLint、生产构建。 |
+| 失败与调用边界 | 真实微信订阅、真机、真实相机、事项期限、企业 RAG 未验证；部分截图 RPC 超时按 limited 保留；不改历史失败，不部署生产，不改模型。 |
+| 环境与资源 | 隔离 PG17 `127.0.0.1:55443/i73_accept` 业务账号 `sfp_app`；独立 API `127.0.0.1:3016`；Stable DevTools 390×844 automator `9421`；企业标记 `I7.3试点验收合成-*`。 |
+| 证据与后继 | [I7.3 验收](xiaok-i73-pilot-acceptance.md)、[发布就绪](xiaok-v1-release-readiness.md)、[产品范围](xiaok-v1-product-scope.md)、[提醒引擎](xiaok-stage-reminder-engine.md)、[周报合同](xiaok-weekly-report-contract.md)。 |
 
 ## 3. 复用哪些成果
 

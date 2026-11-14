@@ -1,5 +1,7 @@
 # 后台系统当前功能清单
 
+**I7.3 提醒跳转与经理工作台（Implemented）。** `GET /api/miniprogram/xiaok/reminders` 按当天项目成员/业主身份重新过滤，返回 `relatedIssueId`、`relatedTaskId`、`roomId`、`channel` 和独立 `history`；撤权后不再返回提醒正文。计划节点 `actionUrl` 携带真实 `roomId`，待办提醒携带真实事项 ID。项目经理没有私人会话时显示为工作台待办（`failed/no_inbox`），不再显示为发送失败。`construction_staff` 路由白名单包含 `xiaok/reminders` 与 `xiaok/stage-answer`。[验收](xiaok-i73-pilot-acceptance.md)。
+
 **I6.16 防水清单候选（Limited）。** 隔离发布的 Workflow revision 4 显式选用 `waterproof-specialist@2`。检查项保存项目、房间、Agent、Workflow revision/digest、所选来源版本和复核状态。官网原页通过核对后可用于待核对清单，目录现行性及托管检索故障单独保留。被拒终稿记录失败 Run，登记回执由原服务事件核验。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。
 
 Native 咨询复用获权官网原文通道。已知托管故障返回明确回执。LangGraph 配额准入区分本次待派发记录和历史未知账。[固定回归](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。

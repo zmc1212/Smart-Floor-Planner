@@ -99,3 +99,12 @@ enterpriseId:projectId:triggerType:stageId:targetRole:targetUserId:subject
 `admin/src/lib/xiaok-v1/__tests__/reminder-engine.test.ts` 覆盖：阶段进入、阶段重入、无计划不生成精确提醒、无记录不判定停滞、角色化待办、老板例外、无期限不升级老板、去重、阶段变化过期、权限撤销、暂停、失败保留、安静时段顺延。
 
 `admin/scripts/xiaok-i72-acceptance.ts` 在隔离 PostgreSQL 17 中验证真实 Worker tick、十阶段、站内回执、暂停/恢复/取消、撤权、失败重试、重复 Outbox 和老板例外。
+
+## 10. 四端跳转与工作台收件（I7.3）
+
+- `actionUrl` 为 `/packages/construction/projects/projects?project=<id>&item=<id>`；计划节点额外携带真实 `roomId`。
+- `GET /api/miniprogram/xiaok/reminders` 返回 `relatedIssueId`、`relatedTaskId`、`roomId`、`channel`、`history`，并按当天成员/业主身份重新过滤；撤权用户不再获得历史提醒正文。
+- `channel`：`conversation` 表示已有站内消息回执；`workbench` 表示项目经理通过现有工地工作台收件；`failed` 表示其他发送失败。`delivered` 明确保持未读，不显示为已读。
+- 当前待办只含 `pending/delivered/failed/paused`；`cancelled/expired` 进入历史并标记“已取消/已过期”。
+- 业主端提醒卡使用 C01 签发 entry 读取提醒；点击提醒进入对应项目的私人周报。项目经理没有私人会话时，提醒保留 `failed/no_inbox` 事实，但页面展示为“工作台待办”，不借用老板或施工人员会话。
+- `construction_staff` 的路由白名单包含 `xiaok/reminders` 与 `xiaok/stage-answer`，与工地工作台权限一致。

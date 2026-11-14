@@ -3,6 +3,7 @@
 > 基线：`codex/xiaok-integration`，源码 SHA `ccbe5e45`。
 > 状态：`passed`、`failed`、`limited`、`not_run`、`unknown`。
 > 本轮只在隔离 PostgreSQL 17 执行真实验收，未连接生产库、未部署生产、未发送真实微信订阅消息。
+> I7.3 已在新的隔离库和 Stable DevTools 上补跑四端真实页面、提醒跳转、周报降级和经理工作台；I7.2 的历史状态与失败记录保持不变，详见 [I7.3 试点验收](./xiaok-i73-pilot-acceptance.md)。
 
 ## 1. 隔离环境
 

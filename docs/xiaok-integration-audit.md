@@ -1,5 +1,15 @@
 # 小K三线集成审查
 
+## I7.3 四端真实体验、试点验收与发布候选（Limited）
+
+Integration 起点 `0593607da40a`，分支 `codex/xiaok-integration`。本轮只做四端真实页面验收、提醒跳转、周报无模型降级、项目经理工作台和发布候选；未新增后台子系统、专业 Agent 或装修阶段，未重建提醒/周报/Construction/Native Workflow，未开发 CAD/OCR/自动验收，未部署生产。
+
+真实 Stable DevTools 在 390×844 打开四端：业主 C01 原会话阶段问答与连续追问、提醒点击进入项目周报、退出重进；设计师真实密码登录、项目范围、工作台提醒、提醒跳转与设计周报；老板跨项目列表、公司例外、主动简报页、跨项目周报与例外章节；施工人员项目范围、阶段提醒、工地交流入口与文字现场记录；项目经理工作台待办、工作台收件、事项清单与复核入口。服务层隔离库 `i73_accept` 21 项检查全部 `passed`。
+
+代码切片：提醒 `actionUrl` 增加真实 `roomId`，列表返回 `relatedIssueId/relatedTaskId/roomId/channel/history` 并按当天权限过滤；项目经理无会话时以现有工作台为收件渠道；`construction_staff` 路由白名单增加 `xiaok/reminders` 与 `xiaok/stage-answer`；业主提醒请求携带签发 entry；周报列表增加角色章节预览与来源快照/版本；业主提醒卡可进入对应项目周报。
+
+未验证：真实微信订阅消息、真机/真实微信登录、真实相机/相册、事项真实期限、企业 KnowledgeRetriever、生产部署；部分截图 RPC 超时按 `limited` 保留。完整矩阵见 [I7.3 验收](xiaok-i73-pilot-acceptance.md)。
+
 ## I7.1 轻量阶段 Agent、主动提醒与四角色周报（Limited）
 
 Integration 起点 `a8948a11c72a`，分支 `codex/xiaok-integration`；提交 `e76d826e`（核心引擎）与 `e3597cdf`（服务与四端接入）。本轮按用户路线调整建设第一版基础服务：十阶段统一轻量 Agent、阶段知识问答、主动装修提醒、四角色周报和统一红黄绿。未删除防水/水电专业 Agent，未修改其注册、工作流、digest、Evidence 或 Native Workflow；未部署生产、未改生产默认模型、未合并 main。范围外未提交改动原样保留。

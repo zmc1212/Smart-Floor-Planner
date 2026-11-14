@@ -1,5 +1,7 @@
 # Mini Program: Current Module Inventory
 
+**I7.3 four-role pilot experience (Implemented).** Owner C01 keeps the original continuous conversation; tapping a real stage reminder opens that project's private weekly brief, and stage answers plus follow-ups stay in the same conversation. The construction workbench shows a cross-project "my todos" list; each reminder opens the right project, issue or room, closed items move to an explicit history, and a manager without a private conversation sees "workbench todo" instead of a failed send. Weekly reports render role-specific deterministic sections with source snapshot and version when no model is configured. Evidence: [I7.3 pilot acceptance](xiaok-i73-pilot-acceptance.md).
+
 **I6.16 waterproof checklist candidate (Limited).** C01 reopens the saved checklist with source citations and the same authorized Workflow Run. An independently saved registration receipt remains available after a model answer failure. The formal Construction review returns to the original message. Reentry and protected photos use current authorization. Stable verified this journey with synthetic site material submitted through the Construction service. [Integration verification](xiaok-integration-audit.md#i616-防水-agent-v11-候选).
 
 The pre-authorization citation journey remains limited. Ordinary dialogue and exact-bedroom progress have live results on both runtimes. [Fixed regression results](xiaok-integration-audit.md#i616-防水-agent-v11-候选).
@@ -1097,6 +1099,14 @@ C01 `packages/assistant/chat/chat` shows the waterproof answer, evidence-backed 
 Owner C01 (`packages/assistant/chat/chat`) keeps the continuous conversation as the default entry and adds a compact "小K提醒" card above the composer. It loads `GET /miniprogram/xiaok/reminders` for the current recipient, shows up to three delivered/pending/paused reminders and links to the saved weekly report through the existing `selectFollowup` entry. The card is hidden in professional followup mode and in the public-site flow.
 
 Designer and boss workbenches (`components/role-workbench`) add the same reminder projection plus "查看本周周报", which opens the existing professional followup (`packages/assistant/chat/chat?followup=1`). Construction staff keep photo, voice and current-task entries in `packages/construction/projects/projects` and add "本周周报" using the same professional followup entry. No new tab, dashboard, notification table or second report system is added. Real device/Stable clicks remain `not_run`; the new entry tests are deterministic. See [I7.2 acceptance](./xiaok-i72-live-acceptance.md).
+
+### Reminder deep links and weekly reading (I7.3, Implemented / Limited)
+
+`packages/construction/projects/projects` now parses `project/item/roomId/issueId/focus` in `onLoad`. An issue opens the existing site-chat review mode, a plan node opens the plan view for the real room, and a whole-project reminder highlights the target and states what needs attention. A closed or revoked target shows "提醒对应事项已完成或已关闭" without creating a business item. The page separates current todos from history (`已取消`/`已过期`), supports cancelling a reminder by `reminderId`, and adds "我的待办" for the manager workbench channel.
+
+`packages/assistant/chat/chat` keeps the owner C01 conversation as the default entry. Its reminder card requests with `X-Assistant-Entry`, shows `已送达 · 未读` rather than read, and opens the matching project brief; when the reminder has an issue or room the target is carried through. The professional followup view shows role-specific weekly previews with source snapshot and report version, and states that `facts_only` bodies are generated from project facts. Manager/designer/boss workbench entries reuse the same components; no new tab, dashboard or second report runtime is added.
+
+Evidence: [I7.3 acceptance](./xiaok-i73-pilot-acceptance.md), `tmp/xiaok-i73-ui/` (Stable 390×844, four roles) and `tmp/xiaok-i73-acceptance/latest.json`.
 
 ### Navigation measurement view rotation
 
