@@ -9,7 +9,8 @@ import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
 import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
 import { advanceConstructionReports, deliverConstructionReports } from '@/lib/construction/report-worker';
-import { advanceStageReminders, deliverStageReminders } from '@/lib/xiaok-v1/reminder-service';
+import { advanceConfiguredStageReminders } from '@/lib/xiaok-v1/stage-reminder-worker';
+import { deliverStageReminders } from '@/lib/xiaok-v1/reminder-service';
 import { nativeWorkflowEnabled } from '@/lib/native-workflow/live/tenant-allowlist';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -42,8 +43,10 @@ export async function POST(request: Request) {
     const knowledgeBatchChecks=await advanceKnowledgeBatches();
     const constructionReportChecks = await advanceConstructionReports();
     // I7.1 deterministic reminders are isolated from model and report failures.
+    // I7.4.5-C2 resolves the deployment mode first: a pilot run only scans its
+    // saved scope, and an invalid pilot configuration never runs as enterprise.
     let stageReminderChecks: unknown;
-    try { stageReminderChecks = await advanceStageReminders(); }
+    try { stageReminderChecks = await advanceConfiguredStageReminders({ now: new Date() }); }
     catch { stageReminderChecks = { error: 'stage_reminder_unavailable' }; }
     const data = await processAssistantJob(processAssistantRun);
     let nativeWorkflowDelegations: unknown = null;

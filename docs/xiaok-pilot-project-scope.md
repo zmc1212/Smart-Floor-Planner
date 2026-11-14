@@ -156,10 +156,38 @@ cd admin
 npx tsx --test src/lib/xiaok-v1/__tests__/stage-reminder-config.test.ts
 ```
 
-测试结果：8 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。本轮未接入 Worker，实际 Worker 仍按 I7.4.5-B 的调用方式运行。
+测试结果：8 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。C1 未接入 Worker；I7.4.5-C2 已接入，见下节。
+
+## Worker 接入（I7.4.5-C2）
+
+`admin/src/app/api/internal/assistant/jobs/run/route.ts` 在每次 Worker tick 的提醒推进处调用 `advanceConfiguredStageReminders({now})`。该函数位于 `admin/src/lib/xiaok-v1/stage-reminder-worker.ts`，先读取 C1 配置，再按模式调用现有 `advanceStageReminders()`：
+
+| 模式 | 调用 |
+| --- | --- |
+| 未配置 / `enterprise` | 调用原企业级提醒 Worker；配置了企业 ID 时作为 `onlyEnterprise` 传入，pilotId 不参与。 |
+| `pilot` | 传入明确的 `enterpriseId` 和 `pilotId`，只处理该试点最新范围。 |
+| 配置错误 | 记录错误并跳过本轮提醒，不调用提醒服务，不回退企业模式。 |
+
+`stageReminderChecks` 记录 `mode`、`pilotId`、`scopeVersion`、`scopeStatus`、`scannedProjects`、`skippedProjects`、`created`、`errors`。企业模式的试点范围字段为 `null`，表示不适用；配置错误的 `errors` 携带 C1 错误码，计数均为 0。
+
+隔离边界：
+
+- 提醒推进仍包在独立 `try/catch` 中，失败只写入 `stageReminderChecks`，不影响后续 Assistant Job。
+- 周报推进与投递、其他 Worker Job、`deliverStageReminders()` 的投递路径均未修改。
+- 未授权请求仍在进入任何任务前返回 401。
+- 本轮未修改任何生产环境变量，未发送真实试点通知。
+
+定向验证（A–G 共 6 项：默认企业、显式企业、pilot 传参、配置错误零调用、Resolver 失败不回退、Route 其余 Job/401/投递保持）：
+
+```powershell
+cd admin
+npx tsx --test src/lib/xiaok-v1/__tests__/stage-reminder-worker.test.ts
+```
+
+测试结果：6 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。
 
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 缺省仍按有效 active 项目和阶段事实运作；显式传入试点 ID 时只处理该试点最新范围（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算。空的企业周报项目清单表示全部符合条件的项目。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 按部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实处理；`pilot` 只处理该试点最新范围，配置错误时跳过本轮提醒（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算。空的企业周报项目清单表示全部符合条件的项目。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。
