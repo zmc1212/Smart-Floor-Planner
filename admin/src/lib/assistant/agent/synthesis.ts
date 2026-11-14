@@ -7,7 +7,7 @@ import type { BusinessSnapshot } from './business-tools';
 import type { ModelMessage } from '../contracts/model';
 import type { MaterialSource, MaterialSnapshot } from './materials';
 import type { IssueState, NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { reviewSynthesisResponse, synthesisComparisonRepairData, synthesisStatusCitationCandidates, unavailableOccupancyRooms, occupancyDiscussionRequested, occupancyReentryRequested, type SynthesisReviewContext } from './synthesis-review';
+import { quantityTokens, reviewSynthesisResponse, synthesisComparisonRepairData, synthesisStatusCitationCandidates, unavailableOccupancyRooms, occupancyDiscussionRequested, occupancyReentryRequested, type SynthesisReviewContext } from './synthesis-review';
 import type { HistorySnapshot, HistoryRef } from './history';
 import { modelCitationCatalog, resolveCatalogCitation, engineeringClaimText, selectedCatalogCitationIds } from './citation-catalog';
 import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase, isCatalogSynthesisDraft } from './synthesis-repair';
@@ -473,16 +473,67 @@ function unsupportedWordQuantities(text: string, quoted: string) {
 /** Diagnostic view for the single explanation repair. It names the exact
  * quantities a segment wrote outside its own cited quote; it never edits,
  * accepts or adds a citation. */
-export function synthesisNumericGaps(segments: SynthesisSegment[], sources: SynthesisSource[]) {
+export function synthesisNumericGaps(segments: SynthesisSegment[], sources: SynthesisSource[], checkUnits = false) {
   return segments.flatMap((segment, index) => {
     if (!segment || typeof segment.text !== 'string' || !Array.isArray(segment.citations)) return [];
     const quoted = segment.citations.map(citation => citation.quote).join('\n');
     const claim = synthesisQuantityText(segment, sources);
     const supported = new Set(groundedNumberTokens(quoted));
     const numbers = [...new Set(groundedNumberTokens(claim))].filter(number => !printedNumberSupported(number, supported));
-    const quantities = [...new Set(unsupportedWordQuantities(claim, quoted))];
+    const quantities = [...new Set([
+      ...unsupportedWordQuantities(claim, quoted),
+      ...(checkUnits ? unsupportedPrintedQuantities(claim, quoted).map(value => value.replace(':', ' ')) : []),
+    ])];
     return numbers.length || quantities.length ? [{ segment: index, numbers, quantities }] : [];
   });
+}
+
+function unsupportedPrintedQuantities(text: string, quoted: string) {
+  const supported = new Set(quantityTokens(quoted));
+  return quantityTokens(text).filter(value => !supported.has(value));
+}
+
+export const specialistParameterUncertainty = '这次可用的资料还不足以确认具体施工参数。请让施工团队结合适用条文、材料说明和现场方案核对。';
+
+export function splitSpecialistParagraphs(text: string) {
+  return text.split(/\n\s*\n/u).filter(paragraph => paragraph.trim());
+}
+
+/** Reuse the ordinary parser to inspect the complete draft and its original
+ * citations. Only a diagnosed quantity gap may trigger the partial answer. */
+export function specialistQuantityRejection(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext) {
+  const rejected: Array<{ path: string; code: string }> = [];
+  const draft = checkedSynthesis(raw, sources, context, rejected);
+  const gaps = synthesisNumericGaps(draft.segments, sources, true);
+  if (!gaps.length || rejected.some(item => !gaps.some(gap => item.path === `segments[${gap.segment}].text`))) return null;
+  const locations = gaps.map(gap => ({
+    paragraph: gap.segment + 1, path: `segments[${gap.segment}].text`,
+    numbers: gap.numbers, quantities: gap.quantities,
+    candidates: numericSourceCandidates([...gap.numbers, ...gap.quantities], sources),
+  }));
+  const feedback = '以下段落缺少支持同一施工对象、条件及单位的原文。公开要求用适用规范条文，企业做法用当前授权工艺。'
+    + '候选只用来核对。确无依据时去掉该量数及依赖它的结论，说明本次无法确认具体参数，保留其余获权解释。不能改称经验值。'
+    + '本轮可用来源：' + JSON.stringify(sources.filter(s => s.kind === 'knowledge' || s.kind === 'web')
+      .slice(0, 8).map(({ sourceId, kind, title }) => ({ sourceId, kind, title })))
+    + '。受影响段落：' + JSON.stringify(locations);
+  return { draft, gaps, issue: { code: 'unsupported_model_commitment', feedback } };
+}
+
+export function specialistQuantityPartial(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext) {
+  const rejected = specialistQuantityRejection(raw, sources, context);
+  if (!rejected) return null;
+  // A later uncited paragraph can still endorse a removed number by reference.
+  // The model repair can preserve independent advice. When it is exhausted,
+  // only independently sourced passages and the service's uncertainty remain.
+  const segments = rejected.draft.segments.filter((segment, index) => segment.basis === 'evidence'
+    && !rejected.gaps.some(gap => gap.segment === index));
+  segments.push({ basis: 'uncertainty', text: specialistParameterUncertainty, citations: [] });
+  const projected = JSON.stringify({ kind: 'synthesis', segments });
+  try { parseSynthesis(projected, sources, context); return projected; }
+  catch (error) {
+    if (!(error instanceof AssistantError)) throw error;
+    return null;
+  }
 }
 /** Quantity extraction shared by candidate indexing and the numeric guard. */
 export function groundedQuantityTokens(text: string) {
@@ -932,8 +983,9 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     const claimText = synthesisQuantityText(s, sources);
     const numericText = citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText;
     try {
-      const generalAdvice = context.generalKnowledge && s.basis === 'advice' && !s.citations.length;
+      const generalAdvice = context.generalKnowledge && !context.specialistAcceptance && s.basis === 'advice' && !s.citations.length;
       if (!generalAdvice && (groundedNumberTokens(numericText)).some(n => !printedNumberSupported(n, numbers))) fail('unsupported_model_commitment', 502);
+      if (context.specialistAcceptance && unsupportedPrintedQuantities(numericText, cited.join('\n')).length) fail('unsupported_model_commitment', 502);
       const missing = generalAdvice ? [] : unsupportedWordQuantities(numericText, cited.join('\n'));
       const passes = pending ? new Set(coatingPassQuantities(numericText)) : new Set<string>();
       if (missing.some(quantity => !passes.has(quantity))) fail('unsupported_model_commitment', 502);

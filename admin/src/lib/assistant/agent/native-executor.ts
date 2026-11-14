@@ -46,7 +46,7 @@ import { privateMemoryScope } from '../memory/scope';
 import { routedConsultationSpecialist, specialistConsultationTools, specialistPolicy } from '../specialists/consultation';
 import { bindSpecialistInput, specialistModel, specialistProtocol } from '../specialists/registry';
 import { reportContext } from '@/lib/construction/report-reference';
-import { parseSynthesis, synthesisNumericGaps } from './synthesis';
+import { parseSynthesis, specialistParameterUncertainty, specialistQuantityRejection, splitSpecialistParagraphs } from './synthesis';
 
 // Existing imports of the moved helpers keep resolving through the executor.
 export { nativeCitationFeedback, scanNativeCitationMarkers } from './native-citation-gate';
@@ -227,6 +227,13 @@ function executedBusinessCalls(messages: readonly ModelMessage[]) {
     executed.push(call);
   }
   return executed;
+}
+
+export function nativeSpecialistQuantityPartial(text: string, catalog: Iterable<RagCitationSource>, excluded: ReadonlySet<number>) {
+  const sources = [...catalog];
+  const paragraphs = splitSpecialistParagraphs(text).filter((paragraph, index) =>
+    !excluded.has(index) && assessNativeCitations(paragraph, sources).runCitations > 0);
+  return [...paragraphs, specialistParameterUncertainty].join('\n\n');
 }
 
 function executedBusinessReply(content: string) {
@@ -1063,32 +1070,31 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const history: ModelMessage[] = messages.map(m => m.role === 'user'
       ? { role: 'user', content: [{ type: 'text', text: m.content }] } : { role: 'assistant', content: m.content });
     const checkSpecialistDraft = (text: string) => {
-      if (!specialist || !delegationContext) return null;
+      if (!specialist || !delegationContext) return [];
       // Native uses its existing CITE carrier. Apply the same rules to each
       // paragraph and only the originals that paragraph selected.
-      for (const paragraph of text.split(/\n\s*\n/u).filter(value => value.trim())) {
+      return splitSpecialistParagraphs(text).flatMap((paragraph, index) => {
         const parts = ragAnswerParts(paragraph, [...catalog.values()]);
         const references = parts.flatMap(part => 'source' in part && part.source.sourceId && part.source.quote
           ? [{ sourceId: part.source.sourceId, quote: part.source.quote }] : []);
         const sources = context.sources.filter(source => references.some(ref => ref.sourceId === source.sourceId));
         const citations = references.filter(ref => sources.some(source => source.sourceId === ref.sourceId));
         const prose = parts.flatMap(part => 'text' in part ? [part.text] : []).join('').trim();
-        if (!prose) continue;
+        if (!prose) return [];
         const segment = { text: prose, basis: citations.length ? 'evidence' as const : 'advice' as const, citations };
+        const draft = JSON.stringify({ kind: 'synthesis', segments: [segment] });
+        const review = { currentQuestion: safeText(delegationContext.source.content as MessageContent),
+          currentRoom: specialist.room ?? undefined, specialistAcceptance: true, delegationReply: policy.longTermMemory === true };
         try {
-          parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [segment] }), sources, {
-            currentQuestion: safeText(delegationContext.source.content as MessageContent), currentRoom: specialist.room ?? undefined,
-            specialistAcceptance: true, delegationReply: policy.longTermMemory === true,
-          });
+          parseSynthesis(draft, sources, review);
         } catch (error) {
           if (!(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
-          const [gap] = synthesisNumericGaps([segment], sources);
-          if (!gap) throw error;
-          return { code: error.code, feedback: '这段正文的量数缺少对应原文依据：' + [...gap.numbers, ...gap.quantities].join('、')
-            + '。请删去无据量数及其推断，保留有依据的解释。原有引用和业务承诺校验继续适用。' };
+          const rejected = specialistQuantityRejection(draft, context.sources, review);
+          if (!rejected) throw error;
+          return [{ index, issue: { ...rejected.issue, feedback: `原正文第 ${index + 1} 段。请保留现有 CITE 格式。${rejected.issue.feedback}` } }];
         }
-      }
-      return null;
+        return [];
+      });
     };
     // The one-shot repair covers both invalid ids and a draft that ignores this
     // run's sources: once it was issued (or a previous process already spent it)
@@ -1099,6 +1105,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // tool messages. Project that model-visible copy exactly like the current
     // tool port; the persisted receipt and all bookkeeping stay untouched.
     const agentResume = resume && { ...resume, messages: projectLegacyBusinessToolMessages(resume.messages) };
+    let parameterPartial = false;
     const result = await runRenovationAgent({
       messages: [systemMessage, ...history], tools: modelTools, resume: agentResume,
       ports: { authorize: guard, model, tool: toolPort, validateTool,
@@ -1106,6 +1113,16 @@ export async function processNativeAgentAnswer(lease: Lease) {
           const { conversation } = await runContext(tx, lease);
           return (await longTermDelegationReceipt(tx, lease.actor, conversation, lease.runId, { standalone: true }))?.text ?? null;
         }) : undefined,
+        resolveFinal: async (text, state) => {
+          if (!specialist || specialist.progressRequested || delegationTool || state.finalFromTools
+            || !state.validationRepairs && state.turn + 1 < agentModelLimits.maxModelTurns) return text;
+          if (assessNativeCitations(text, catalog.values()).invalid.length) return text;
+          const issues = checkSpecialistDraft(text);
+          if (!issues.length) return text;
+          const excluded = new Set(issues.map(issue => issue.index));
+          parameterPartial = true;
+          return nativeSpecialistQuantityPartial(text, catalog.values(), excluded);
+        },
         // The saved 3026/3027 first drafts emitted citation ids without their
         // literal prefix. Validation moves into the graph's validate node so the
         // existing one-shot repair turn lets the model correct its own citation
@@ -1113,10 +1130,13 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // closed exactly as before, and the repair never reveals the fix.
         validateFinal: async (text, _turn, finalFromTools) => {
           if (finalFromTools) return null;
-          const { issue } = nativeCitationGate(text, catalog.values(), citationRepairIssued,
+          const { issue } = nativeCitationGate(text, catalog.values(), citationRepairIssued || parameterPartial,
             knowledgeRetrieved || webRetrieved);
           if (issue) citationRepairIssued = true;
-          return issue ?? checkSpecialistDraft(text);
+          const specialistIssues = issue ? [] : checkSpecialistDraft(text);
+          return issue ?? (specialistIssues.length
+            ? { code: specialistIssues[0].issue.code, feedback: specialistIssues.map(item => item.issue.feedback).join('\n') }
+            : null);
         },
         checkpoint: state => withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);
@@ -1155,12 +1175,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const finalAssessment = assessNativeCitations(finalText, catalog.values(), evidenceProvided);
     if (finalAssessment.invalid.length) fail('invalid_model_citation', 502);
     const runCitations = finalAssessment.runCitations;
-    const specialistIssue = checkSpecialistDraft(finalText);
-    if (specialistIssue) fail(specialistIssue.code, 502);
+    if (checkSpecialistDraft(finalText).length) fail('unsupported_model_commitment', 502);
     // A located-but-empty nearby result is delivered from the server receipt;
     // need_region never overrides the model draft (same rule as the bridge).
     const composed = publicSitesDelivery(
-      composeNativeDelivery(finalText, snapshotText, runCitations, evidenceProvided, { delegationReply: policy.longTermMemory === true }), sites.outcome());
+      composeNativeDelivery(finalText, snapshotText, runCitations, evidenceProvided && !parameterPartial, { delegationReply: policy.longTermMemory === true }), sites.outcome());
     const text = composed.text;
     // The earlier 1006.publicSite field remains readable by existing consumers
     // and history filters; it names the selected version this run actually

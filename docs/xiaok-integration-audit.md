@@ -4,7 +4,9 @@
 
 Integration 起点 `60b5be9e371a`。I6.16.1 协议切片定向 135/135（0 skipped）。Run 14 的供应商检查点零调用复放确认，混进 `output_text` 的字面 `<think>` 触发整稿拒绝，独立 `reasoning` 帧只留通道标记。Chat Completions、带工具回执的终稿、异常帧、流式拆帧及可见无据量数回归通过。历史首稿维持原判。证据 `admin/tmp/i6.16/{protocol-replay,protocol-binding-before,protocol-binding-after}.json` 与 `admin/tmp/i6.16-protocol-tests.log`。
 
-实模、清单、持续委托及 Stable 的 I6.16 验收见[唯一执行计划](xiaok-renovation-agent-development-plan.md#2-唯一当前任务)。
+I6.16.2 两条固定 Native C01 咨询用百炼 `deepseek-v4.1-flash-1017`。Run 1、2 均实际保存正文且委托写入为 0。10 次已返回 Responses（含 2 次附带建议），10,649 输入 / 4,086 输出 tokens，结算金额未知。两份首稿均有无据量数。Run 1 删除 200 mm 段后保留解释。Run 2 的先前投递仍间接认可师傅所报高度，业务判 `failed`。原驱动对 0 条委托的错断言保留。针对该证据收窄无据回答兜底至有当前引文的独立段，实际首稿仅零调用复放，按新代码的实模业务范围仍 `limited`。详见 `admin/tmp/i6.16/{advice,numeric,fixed-quantity-binding-before,fixed-quantity-binding-after}.json`。
+
+清单、持续委托及 Stable 的 I6.16 验收见[唯一执行计划](xiaok-renovation-agent-development-plan.md#2-唯一当前任务)。
 
 ## I6.15 统一执行器与正式防水委托（Limited）
 

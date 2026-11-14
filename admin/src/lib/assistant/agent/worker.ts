@@ -12,7 +12,7 @@ import { recordAgentModelUsage } from '../core/model-usage';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { agentRejectionAudited, isDefiniteAgentRejection } from './provider-rejection';
 import { AssistantError, fail, fingerprint, id, safeText, type Evidence } from '../contracts';
-import { modelTurnProtocolIssue, type ModelTool, type ModelTurnOutput, type ModelMessage } from '../contracts/model';
+import { agentModelLimits, modelTurnProtocolIssue, type ModelTool, type ModelTurnOutput, type ModelMessage } from '../contracts/model';
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { projectMessage, resolveEvidence } from '../knowledge/sources';
 import { delegationOwnerPurpose } from '@/lib/native-workflow/live/delegation-chat';
@@ -60,7 +60,7 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { assertUncitedEngineeringQuantities, businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, requiresSourceAnswer, referUnsupportedSiteObservation, synthesisInstructions, synthesisRepairFeedback, synthesisRepairIssue, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion, synthesisModelMessages } from './synthesis';
+import { assertUncitedEngineeringQuantities, businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, requiresSourceAnswer, referUnsupportedSiteObservation, specialistQuantityPartial, specialistQuantityRejection, splitSpecialistParagraphs, synthesisInstructions, synthesisRepairFeedback, synthesisRepairIssue, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion, synthesisModelMessages } from './synthesis';
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
@@ -82,7 +82,7 @@ import { sourceQuestionCoverageProtocol, sourceQuestionReadTool, sourceQuestionF
 import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, naturalKnowledgeInstructions, naturalKnowledgeReadTool, currentKnowledgeQuestion, knowledgeQuantityScopeProtocol, knowledgeExplanationInstructions, exactKnowledgeQuoteRequested, knowledgeExplanationReadTool, knowledgeExplanationFinalTool,
   prepareKnowledgeExplanation, acceptKnowledgeExplanation, knowledgeExplanationFailure, knowledgeNumericFailure, knowledgeStatusFailure, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget,
   naturalKnowledgeRuntimeBudget, naturalKnowledgeReadComplete, naturalKnowledgeScheduleProtocol,
-  parseNaturalKnowledgeAnswer, sourceBoundaryValidationProtocol } from './knowledge-explanation';
+  parseNaturalKnowledgeAnswer, partialNaturalSpecialistAnswer, sourceBoundaryValidationProtocol } from './knowledge-explanation';
 import { knowledgeContext, projectKnowledgeContextStep, projectKnowledgeContextAvailable } from '../knowledge/applicability-context';
 import { fitAgentContext, originalMessageId, agentRequestBudget, imageContextBudgetPolicy } from './context-budget';
 import { restoreAncestorSources, ancestorSourceMessages, checkAncestorWebSources, publicOnlySynthesisContext } from './ancestor-sources';
@@ -124,6 +124,12 @@ import { reviewCompletionProtocol, reviewCompletionTool, reviewCompletionPlan, r
 
 type ReviewMarker = { protocol: 'candidate-business-review-v1'; name: ReviewToolName;
   effect: 'proposal' | 'existing'; proposalId: string | null; digest: string | null; originals?: HistorySnapshot };
+
+function uncitedSpecialistDraft(raw: string, kind: 'general' | 'unavailable', delegationReply: boolean) {
+  const text = parseAgentReply(raw, { acceptanceQuotes: [], acceptanceAdvice: kind === 'general', delegationReply });
+  return JSON.stringify({ kind: 'synthesis', segments: splitSpecialistParagraphs(text)
+    .map(text => ({ basis: kind === 'general' ? 'advice' : 'uncertainty', text, citations: [] })) });
+}
 
 const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -1565,6 +1571,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       ...(specialist?.room ? { currentRoom: specialist.room } : {}),
       ...(r3Active ? { generalKnowledge: false } : {}), ...(r4Active ? { enterpriseKnowledgeAuthority: true } : {}),
     };
+    const ordinarySpecialist = specialist && !specialistChecklist && !specialist.progressRequested
+      && !specialistFollowup && !delegationTool && !photoObservation;
     const naturalReadBudget = (tools: ModelTool[]) => naturalKnowledgeRuntimeBudget({
       policy: (initial.run.policy_snapshot as Row).naturalKnowledgeSchedule, natural: sourceMode.naturalKnowledge,
       images: initial.mediaRefs.length, tools,
@@ -1777,6 +1785,25 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             try { kind = JSON.parse(raw).kind; } catch { /* Plaintext cannot bypass the source read. */ }
             if (initial.config.tools || kind !== 'unavailable') fail('source_read_required', 502);
           }
+          if (ordinarySpecialist && !state.finalFromTools && (state.validationRepairs
+            || state.turn + 1 >= (turnAllocation?.primaryModelTurns ?? agentModelLimits.maxModelTurns))) {
+            let kind: unknown;
+            try { kind = JSON.parse(raw)?.kind; } catch { /* The final validator owns malformed replies. */ }
+            if (kind === 'synthesis' || sourceBoundaryFinal && kind === 'knowledge_explanation') {
+              const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
+              let partial: string | null = null;
+              try {
+                partial = kind === 'synthesis' ? specialistQuantityPartial(raw, evidence.sources, sourceReviewContext)
+                  : partialNaturalSpecialistAnswer(raw, evidence.sources, sourceReviewContext);
+              } catch (error) {
+                if (!(error instanceof AssistantError)) throw error;
+              }
+              if (partial) return partial;
+            } else if (!sourceMode.knowledgeExplanation && (kind === 'general' || kind === 'unavailable')) {
+              const partial = specialistQuantityPartial(uncitedSpecialistDraft(raw, kind, !!initial.r5), [], sourceReviewContext);
+              if (partial) return partial;
+            }
+          }
           const available = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
           const partial = unavailableDeskReply(available, safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
           if (partial) {
@@ -1936,7 +1963,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                       : readSourceQuestionCoverage((retrieval.input_summary as Row)?.questionCoverage);
                     return error.code === 'standard_status_unverified'
                       ? knowledgeStatusFailure(raw, coverage, evidence.sources, sourceMode.naturalKnowledge)
-                      : knowledgeNumericFailure(raw, coverage, evidence.sources, sourceMode.naturalKnowledge);
+                      : knowledgeNumericFailure(raw, coverage, evidence.sources, sourceMode.naturalKnowledge, !!specialist);
                   }) : null;
               return numeric ?? knowledgeExplanationFailure(error, sourceMode.naturalKnowledge);
             }
@@ -2056,6 +2083,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                (await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId)).sources))
                : await scoped(async tx=>one(tx,sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
               and capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','web.search.v1','references.search.v1','designers.search.v1') limit 1`));
+             if (ordinarySpecialist && !used && (candidate.kind === 'general' || candidate.kind === 'unavailable')) {
+               const rejection = specialistQuantityRejection(uncitedSpecialistDraft(raw, candidate.kind, !!initial.r5), [], sourceReviewContext);
+               if (rejection) return rejection.issue;
+             }
              if (nativeWorkflow && !used) {
                try { parseAgentReply(raw, specialist ? { acceptanceQuotes: [] } : undefined); }
                catch (error) {
@@ -2076,8 +2107,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const review = { ...sourceReviewContext, currentNeeds };
             const projected = siteObservationReferral && !claimFinalization
               ? referUnsupportedSiteObservation(raw, evidence.sources, reviewContext) : raw;
-            const issue=reportScoped ? synthesisRepairIssue(projected,evidence.sources,review)
-              : synthesisRepairFeedback(projected,evidence.sources,review);
+             let rejectedQuantity: ReturnType<typeof specialistQuantityRejection> = null;
+             if (ordinarySpecialist) {
+               try { rejectedQuantity = specialistQuantityRejection(projected, evidence.sources, review); }
+               catch (error) { if (!(error instanceof AssistantError)) throw error; }
+             }
+             const issue=rejectedQuantity?.issue ?? (reportScoped ? synthesisRepairIssue(projected,evidence.sources,review)
+               : synthesisRepairFeedback(projected,evidence.sources,review));
             if(issue)await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
               values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:issue.code==='ungrounded_response_scope'?'authorized_response_scope':'authorized_citation_only',noBusinessTools:true})}::jsonb)
               on conflict(enterprise_id,run_id,step_seq) do nothing`);

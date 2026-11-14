@@ -13,7 +13,7 @@ import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 import { parseSourceQuestionQuery } from '../agent/source-question-coverage';
 import { acceptKnowledgeExplanation, exactKnowledgeQuoteRequested, knowledgeExplanationInstructions, knowledgeExplanationProtocol,
   prepareKnowledgeExplanation, knowledgeExplanationReadTool, parseKnowledgeExplanationQuery, assertExplanationDispatchBudget, knowledgeExplanationFailure,
-  knowledgeNumericFailure, knowledgeStatusFailure } from '../agent/knowledge-explanation';
+  knowledgeNumericFailure, knowledgeStatusFailure, parseNaturalKnowledgeAnswer, partialNaturalSpecialistAnswer } from '../agent/knowledge-explanation';
 
 const question = '我在看《精艺》，线管拐弯和穿线顺序该怎么理解？';
 const coverage = parseSourceQuestionQuery({ questions: ['线管拐弯', '穿线顺序'] }, question);
@@ -28,6 +28,44 @@ const raw = JSON.stringify({ kind: 'knowledge_explanation', answers: {
   Q2: [segment('顺序是先铺管再穿线，不能先把线穿好再铺管。')],
 } });
 const context = { currentQuestion: question };
+
+test('specialist quantity fallback preserves the justified segment and keeps the original draft private', () => {
+  const page = '管道穿过楼板时，应对管道与基层的交接处进行密封处理。';
+  const source = { sourceId: 'W1', kind: 'web' as const, title: '规范原文', text: page, fullTextCitable: true as const };
+  const selected = sourceCitationCatalog(source)[0].citationId;
+  const review = { currentQuestion: '卫生间管道穿楼板时，管根防水怎么处理？', specialistAcceptance: true };
+  const original = { basis: 'evidence', text: page, citations: [{ citationId: selected }] };
+  const draft = JSON.stringify({ kind: 'knowledge_explanation', segments: [
+    original, { basis: 'advice', text: '可以按经验上翻250 mm，墙边做30–50 mm。', citations: [] },
+    { basis: 'advice', text: '师傅这个高度也可以当经验参考。', citations: [] },
+  ] });
+  assert.throws(() => parseNaturalKnowledgeAnswer(draft, [source], review), /unsupported_model_commitment/);
+  const repair = knowledgeNumericFailure(draft, { ...coverage, questions: [coverage.questions[0]] }, [source], true, true);
+  assert.match(repair!.feedback, /"position":2/);
+  assert.match(repair!.feedback, /250 mm/);
+  assert.match(repair!.feedback, /规范原文/);
+  const projected = partialNaturalSpecialistAnswer(draft, [source], review)!;
+  assert.doesNotMatch(projected, /250|30–50|经验|师傅/);
+  const answer = parseNaturalKnowledgeAnswer(projected, [source], review);
+  assert.equal(answer.segments[0].text, original.text);
+  assert.equal(answer.segments[0].citations[0].quote, page);
+  assert.equal(answer.segments[1].basis, 'uncertainty');
+  assert.match(answer.segments[1].text, /这次可用的资料还不足以确认具体施工参数/);
+  assert.throws(() => partialNaturalSpecialistAnswer(draft.replace(selected, 'unknown'), [source], review), /invalid_model_citation/);
+});
+
+test('a cited number with an unrelated unit does not support the specialist claim', () => {
+  const source = { sourceId: 'W1', kind: 'web' as const, title: '规范原文', text: '长度为30 mm。', fullTextCitable: true as const };
+  const text = (value: string) => JSON.stringify({ kind: 'synthesis', segments: [
+    { basis: 'evidence', text: value, citations: [{ sourceId: source.sourceId, quote: source.text }] },
+  ] });
+  const specialist = { specialistAcceptance: true };
+  assert.throws(() => parseSynthesis(text('长度为30 cm。'), [source], specialist), /unsupported_model_commitment/);
+  assert.doesNotThrow(() => parseSynthesis(text('长度为30毫米。'), [source], specialist));
+  assert.throws(() => parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [
+    { basis: 'advice', text: '经验上长度30 mm。', citations: [] },
+  ] }), [], { ...specialist, generalKnowledge: true }), /unsupported_model_commitment/);
+});
 const verdict = (overrides: Record<string, unknown> = {}): ModelTurnOutput => ({ text: '', toolCalls: [{ id: 'review', name: 'final_response',
   arguments: JSON.stringify({ questionsComplete: true, checks: { Q1: { complete: true, supported: true, conditionsPreserved: true, reason: '' },
     Q2: { complete: true, supported: true, conditionsPreserved: true, reason: '' } }, ...overrides }) }],

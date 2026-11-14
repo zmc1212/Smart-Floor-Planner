@@ -2,7 +2,7 @@
 
 **I6.15 防水跟进（Limited）。** `packages/assistant/chat/chat` 沿原登记、取消、清单或资料缺项及正式复核消息显示结果。单独授权指令可直接以已存服务回执结束。`GET /api/miniprogram/assistant/conversations/:id/long-term` 读取当前获权的同一个 Run ID、版本与节点。原 C01 接收获准复核节选与受保护原件；`packages/construction/chat/chat`、`packages/construction/projects/projects` 按当前员工角色读取同一事项和复核。退出重进重新核对项目、参与人、来源和媒体权限。三个路由沿原批准布局。[Stable 与服务证据](xiaok-integration-audit.md#i615-统一执行器与正式防水委托limited)。
 
-**小K统一集成（Limited）。** C01 聊天和跟进复用获权会话及报告接口。公开工地上下文绑定已发布版本，切回本人项目和重进历史会话时重新核查当前来源、参与人及角色。原咨询展示本次登记回执、委托进展、已同意图纸和获准的施工回执。重进按当前授权读取同一委托和回传原图。原生 Markdown 从已校验的助手正文渲染。供应商推理字段及被拒草稿不进入 C01，历史刷新会重新投影没有新增消息的来源撤回。四端旅程及原生验收见[集成审查](xiaok-integration-audit.md)。
+**小K统一集成（Limited）。** C01 聊天和跟进复用获权会话及报告接口。公开工地上下文绑定已发布版本，切回本人项目和重进历史会话时重新核查当前来源、参与人及角色。原咨询展示本次登记回执、委托进展、已同意图纸和获准的施工回执。重进按当前授权读取同一委托和回传原图。原生 Markdown 从已校验的助手正文渲染。供应商推理字段及被拒草稿不进入 C01。防水专业咨询的量数沿同段 Evidence 检查。原有一次修复可定位段落、数值、单位及同轮来源。最后一稿仍有无据量数时，只投递经校验的独立引文段，并说明本次无法确认具体参数。历史刷新会重新投影没有新增消息的来源撤回。四端旅程及原生验收见[集成审查](xiaok-integration-audit.md)。
 
 <!-- xiaok-r3-web-tools -->
 **小K公开资料（Limited）。** C01 及获权项目或跟进会话可按需搜索、读取公开原文。完整重进和原引用接口 `GET /api/miniprogram/assistant/citations/:id` 重新核对来源，再返回已存原句、网址、读取时间及可核对的 PDF 页码。原文变化、删除或不可读时沿既有来源失效反馈。纯扫描附件引用前需要 OCR 或经核对的转录。[集成验收](xiaok-integration-audit.md)。

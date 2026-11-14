@@ -26,7 +26,7 @@ export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal
   knowledgeExplanation?: 'reviewed-knowledge-explanation-v1' | 'natural-knowledge-answer-v1';
   currentNeeds?: { version: number; facts: Array<{ sourceMessageId: string; sourceHash: string; quote: string; value: string }> } };
 
-function quantityTokens(text: string) {
+export function quantityTokens(text: string) {
   const units: Record<string, string> = { '毫米': 'mm', '㎜': 'mm', '厘米': 'cm', '公分': 'cm', '米': 'm' };
   return [...text.matchAll(/(\d+(?:\.\d+)?)\s*(mm|cm|m\b|毫米|㎜|厘米|公分|米|万元|元|小时|分钟|秒|天|%)/giu)]
     .map(match => match[1] + ':' + (units[match[2]] || match[2].toLowerCase()));

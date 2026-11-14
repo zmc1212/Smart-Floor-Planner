@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { composeNativeDelivery, explicitPublicSiteReference, nativeCitationFeedback, nativeExecutorPrompt, nativeReplySiteText, recoveredDialogueToolState,
   nativePublicSiteSelection, nativePublicSiteWithdrawnText, resumeUsedPublicSite, samePublicRef, nativeReadContract,
   nativeRunReadContract, restoreRunReadContract, runReadContractRecord, nativeFirstTurnRequiresTool,
-  stripUnboundCitationPlaceholders, synthesisHistoryFields, xiaokNativeExecutorProtocol } from '../agent/native-executor';
+  stripUnboundCitationPlaceholders, synthesisHistoryFields, nativeSpecialistQuantityPartial, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { nativeHistoryCheckpoint, priorAnswerBusinessObject } from '../fastgpt/rag-session';
 import { recoverableUnavailableRead, runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
@@ -27,6 +27,16 @@ test('knowledge retrieval without a model citation fails closed', () => {
   assert.throws(() => composeNativeDelivery('先排版再铺贴。', '', 0, true), (error: Code) => error.code === 'missing_citation');
   // The same text with its citation marker present is deliverable.
   assert.equal(composeNativeDelivery('先排版再铺贴[15](CITE)。', '', 1, true).modelIncluded, true);
+});
+
+test('specialist quantity fallback keeps only independent current citations', () => {
+  const sources = [{ nativeId: 'W1', sourceId: 'source', origin: 'current' }, { nativeId: 'H1', sourceId: 'history' }] as RagCitationSource[];
+  const cited = '先处理管根与基层的防水密封。[W1](CITE)';
+  const text = [cited, '建议沿墙上翻250 mm。[W1](CITE)', '师傅说的高度可以当作经验参考。', '旧建议照做。[H1](CITE)'].join('\n\n');
+  const partial = nativeSpecialistQuantityPartial(text, sources, new Set([1]));
+  assert.ok(partial.startsWith(cited));
+  assert.match(partial, /无法确认|不足以确认/);
+  assert.doesNotMatch(partial, /250|经验参考|旧建议/);
 });
 
 test('an uncited explanation now accompanies an authoritative snapshot when nothing was retrieved', () => {

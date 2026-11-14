@@ -1,6 +1,6 @@
 import { AssistantError, fail, fingerprint } from '../contracts';
 import type { ModelMessage, ModelTool, ModelTurnOutput } from '../contracts/model';
-import { parseSynthesis, prepareCoatingQuantityReview, synthesisRepairIssue, synthesisNumericGaps, groundedQuantityTokens, type PendingCoatingQuantity, type SynthesisAnswer, type SynthesisSource } from './synthesis';
+import { parseSynthesis, prepareCoatingQuantityReview, specialistQuantityPartial, synthesisRepairIssue, synthesisNumericGaps, groundedQuantityTokens, type PendingCoatingQuantity, type SynthesisAnswer, type SynthesisSource } from './synthesis';
 import { numericCitationCandidates } from './citation-coverage';
 import { resolveCatalogCitation, sourceCitationCatalog } from './citation-catalog';
 import { standardStatusClaims } from '../web-search/standards';
@@ -131,6 +131,15 @@ export function prepareKnowledgeExplanation(raw: string, sources: SynthesisSourc
 export function parseNaturalKnowledgeAnswer(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext): SynthesisAnswer {
   return checkedKnowledgeExplanation(raw, sources, currentKnowledgeQuestion(context.currentQuestion || ''), context,
     undefined, naturalKnowledgeProtocol).answer;
+}
+
+export function partialNaturalSpecialistAnswer(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext) {
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return null; }
+  if (!object(value) || value.kind !== 'knowledge_explanation' || Object.keys(value).some(k => !['kind', 'segments'].includes(k))) return null;
+  const partial = specialistQuantityPartial(JSON.stringify({ ...value, kind: 'synthesis' }), sources,
+    { ...context, knowledgeExplanation: naturalKnowledgeProtocol });
+  return partial ? JSON.stringify({ ...JSON.parse(partial), kind: 'knowledge_explanation' }) : null;
 }
 
 function checkedKnowledgeExplanation(raw: string, sources: SynthesisSource[], coverage: SourceQuestionCoverage,
@@ -277,7 +286,7 @@ export function knowledgeExplanationFailure(error: unknown, natural = false) {
  * quote, with same-run citation candidates. The guard stays authoritative;
  * this only makes the one bounded repair target the real defect instead of
  * repeating a generic instruction. */
-export function knowledgeNumericFailure(raw: string, coverage: SourceQuestionCoverage, sources: SynthesisSource[], natural = false) {
+export function knowledgeNumericFailure(raw: string, coverage: SourceQuestionCoverage, sources: SynthesisSource[], natural = false, specialist = false) {
   let value: { segments?: unknown; answers?: unknown };
   try { value = JSON.parse(raw); } catch { return null; }
   const groups: Array<[string, unknown]> = natural
@@ -297,7 +306,7 @@ export function knowledgeNumericFailure(raw: string, coverage: SourceQuestionCov
         try { return resolveCatalogCitation(citation as Record<string, unknown>, sources) ?? citation; } catch { return citation; }
       }) };
     });
-    for (const gap of synthesisNumericGaps(segments as SynthesisAnswer['segments'], sources)) {
+    for (const gap of synthesisNumericGaps(segments as SynthesisAnswer['segments'], sources, specialist)) {
       gaps.push({ question, position: gap.segment + 1, numbers: gap.numbers, quantities: gap.quantities });
     }
   }
@@ -307,7 +316,9 @@ export function knowledgeNumericFailure(raw: string, coverage: SourceQuestionCov
     .map(({ citationId, valuesInOriginal, sourceRole, quote }) => ({ citationId, valuesInOriginal, sourceRole, quote }));
   return { code: 'unsupported_model_commitment', feedback: JSON.stringify({ status: 'knowledge_numeric_rejected', protocol: coverage.protocol,
     gaps, citationCandidates: candidates,
-    instruction: '这是同轮唯一一次最终解释修复：上述段落的数字或量数没有本段引用支持。优先补选下面真正包含这些值的citationId（每段最多四条）；没有候选就在该段删除这些数字或量数，改用“按材料说明和施工方案执行”“合格后再进入下一道工序”等不含数值的表述。不能借用其他段的引用，不能换成汉字量数，也不能原样重复被拒稿。其余正文、问题编号与引用保持原样。' }) };
+    ...(specialist ? { availableSources: sources.filter(s => s.kind === 'knowledge' || s.kind === 'web')
+      .slice(0, 8).map(({ title, kind }) => ({ title, kind })) } : {}),
+    instruction: '这是同轮唯一一次最终解释修复：上述段落的数字或量数没有本段引用支持。优先补选支持同一施工对象、条件和单位的citationId（每段最多四条）；没有依据就删除该数值及其推断，说明本次无法确认具体参数。不能借用其他段的引用，不能改称经验值、换成汉字量数或原样重复被拒稿。保留其余有据正文和引用。' }) };
 }
 
 /** Name the exact segment whose present validity/withdrawal conclusion cites a
