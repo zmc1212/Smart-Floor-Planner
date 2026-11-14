@@ -43,6 +43,38 @@ npm run check:pilot-readiness -- --enterprise-id 123 --project-ids 101,205
 - 企业检查包括 Assistant、全局 Worker、迁移 0128–0130、业务账号和强制 RLS。试点项目检查分别给出缺阶段、缺有效计划、角色覆盖不完整和 C01 缺失的 ID。部分 C01 缺失沿用 warning，没有任何可用 C01 时阻断。
 - `outsideScope.activeProjects` 列出范围外 active 项目。范围外项目资料缺项独立于试点项目就绪结果。
 
+## 统一只读范围解析（I7.4.5-A）
+
+`admin/src/lib/xiaok-v1/pilot-scope-resolver.ts` 提供提醒与周报后续复用的统一读取入口。调用方传入当前企业、试点 ID 和本次业务运行的只读上下文；解析器只读取最新版本，不写库、不发送提醒或周报，也不改变现有 Worker。
+
+| 输入 | 约束 |
+| --- | --- |
+| `enterpriseId` | 正 bigint 字符串，来自当前业务运行的企业范围。 |
+| `pilotId` | 同一企业内的试点标识，1–128 个英文字母、数字或 `._:-`。 |
+| `context.read` | 绑定当前租户事务的只读查询；使用 `tenantPilotScopeRead(tx)` 复用调用方已有事务，不新开连接。 |
+| `context.now` | 本次业务运行的可信当前时间；缺省使用进程时间。 |
+
+| 输出 | 含义 |
+| --- | --- |
+| `enterpriseId`、`pilotId` | 规范化后的请求标识。 |
+| `scopeVersion` | 最新保存的版本号；试点不存在时为 `null`。 |
+| `projectIds` | 仅 `active` 返回保存的项目；其他状态为空数组。 |
+| `status` | `active`、`inactive`、`not_found` 或 `empty`。 |
+| `resolvedAt` | 本次解析时间，UTC ISO 8601。 |
+
+- 每次只读取指定企业、指定试点的最新版本，不回退到更早的 active 版本。
+- 读取函数已按企业和试点过滤；解析器再核对返回记录的企业和试点，外来或不匹配的记录按 `not_found` 处理，不返回其项目 ID。
+- 最新版本停用时返回 `inactive`。不存在时返回 `not_found`。
+- 最新版本为 active 但项目集合为空时返回 `empty`，不扩大到全企业。现有保存接口和数据库约束拒绝空清单，该状态用于防御历史或人工数据。
+- 解析器不读取项目明细、提醒、报告、会话或 Outbox，不产生任何数据库写入。提醒和周报本轮尚未接入，现有 Worker 规则不变。
+
+定向验证：
+
+```powershell
+cd admin
+npx tsx --test src/lib/xiaok-v1/__tests__/pilot-scope-resolver.test.ts
+```
+
 ## 通知边界
 
 `active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 仍按有效 active 项目和阶段事实运作，周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算。空的企业周报项目清单表示全部符合条件的项目。
