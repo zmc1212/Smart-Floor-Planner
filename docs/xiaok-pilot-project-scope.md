@@ -357,8 +357,20 @@ npx tsx --test src/lib/construction/__tests__/report-worker-pilot.test.ts src/li
 
 详见 [I7.4.5-F1 PG17 验收](./xiaok-i745-f1-live-acceptance.md)。限制：单企业单周、故障场景 facts 为合成最小事实、Resolver 故障通过临时权限撤销注入、未发送真实通知。
 
+## 主动提醒双项目真实隔离验收（I7.4.5-F2）
+
+在 F1 同一 PG17.10 数据库 `i745_f1_accept` 新建合成企业 `5`，复用 127 条迁移与强制 RLS，使用真实 `advanceConfiguredStageReminders()` / `deliverConfiguredStageReminders()` 完成提醒生成、站内投递、范围扩张/收缩、权限与故障验收。12 项 `passed`、0 `failed`、1 项 `limited`（空 active 范围被数据库约束拒绝，单元测试覆盖）。
+
+- 范围仅 101 时只为项目 101 生成提醒；项目 205 无提醒、无试点消息。
+- 范围扩至 101+205 后两个项目生成 pending；收缩为仅 101 后只投递 101，205 pending 保留且不删除。
+- delivered 提醒均有真实 messageId/conversationId；重复 tick 不重复生成/发送。
+- Pilot 不存在/停用/Resolver 失败零生成零投递；业主撤权取消；删除目标会话保持 failed/no_inbox，恢复后重试 delivered；enterprise 模式可投递 205。
+- F1 企业原始项目、记录和提醒不变。
+
+详见 [I7.4.5-F2 主动提醒 PG17 验收](./xiaok-i745-f2-reminder-acceptance.md)。
+
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：默认 `enterprise` 保持原有生成和投递行为；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。I7.4.5-F1 已在独立 PG17 数据库完成双项目真实生成、投递和范围收缩验收（见下节）。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：默认 `enterprise` 保持原有生成和投递行为；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。I7.4.5-F1 已在独立 PG17 数据库完成双项目周报真实生成、投递和范围收缩验收；I7.4.5-F2 已完成主动提醒的双项目生成、站内投递、范围收缩、权限与故障验收（见下节）。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。
