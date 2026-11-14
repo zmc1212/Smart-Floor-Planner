@@ -12,7 +12,7 @@ import { recordAgentModelUsage } from '../core/model-usage';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { agentRejectionAudited, isDefiniteAgentRejection } from './provider-rejection';
 import { AssistantError, fail, fingerprint, id, safeText, type Evidence } from '../contracts';
-import { type ModelTool, type ModelTurnOutput, type ModelMessage } from '../contracts/model';
+import { modelTurnProtocolIssue, type ModelTool, type ModelTurnOutput, type ModelMessage } from '../contracts/model';
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { projectMessage, resolveEvidence } from '../knowledge/sources';
 import { delegationOwnerPurpose } from '@/lib/native-workflow/live/delegation-chat';
@@ -1324,6 +1324,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             outcomeKnown = true;
             const saved = cached.private_checkpoint as ModelTurnOutput;
             if (consultation && !saved.usage) fail('provider_usage_unknown', 502);
+            if (purpose !== 'answer' && modelTurnProtocolIssue(saved)) fail('invalid_model_answer', 502);
             if(nativeFinalization&&purpose==='answer'&&!tools.length&&!dependencies.model
               && !await verifiedFinal(saved))assertNativeFinalOutput(saved, finalOutputMode);
             return claims ? { ...saved, text: resolveReviewClaims(saved.text, claims) } : saved;
@@ -1478,6 +1479,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           // schema even when a provider ignores required tool selection.
           if (consultation && !usageKnown) fail('provider_usage_unknown', 502);
           if (specialist && !injected && providerOutput.providerModel !== specialistModel.model) fail('assistant_model_configuration_invalid', 502);
+          if (purpose !== 'answer' && modelTurnProtocolIssue(providerOutput)) fail('invalid_model_answer', 502);
           if (purpose === 'answer' && providerOutput.toolCalls.some(call => !dispatchTools.some(tool => tool.name === call.name))
             && (ownerReads?.ownerScope || knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id),sourceMode.requiredKnowledge)
               || !recoverableUnavailableRead(providerOutput, dispatchTools)))

@@ -27,7 +27,13 @@ export type ModelTurnInput = {
   profile?: 'bailian-deepseek-flash-consultation-v1' | 'bailian-qwen37-flash-long-v1'; deadlineAt?: number;
 };
 export type ModelTurnOutput = {
-  text: string; toolCalls: ModelToolCall[]; finishReason: string | null; providerRequestId: string | null;
+  /** Assistant message content from the wire, still subject to final-answer validation. */
+  text: string;
+  /** Function arguments are a separate carrier. Application tool results are never model output. */
+  toolCalls: ModelToolCall[];
+  finishReason: string | null; providerRequestId: string | null;
+  /** Presence-only protocol diagnostic. Reasoning text is excluded from this contract. */
+  reasoningChannel?: 'responses.reasoning' | 'chat.reasoning_content';
   /** Actual wire identity. A configured model name is not a substitute for this field. */
   providerModel?: string;
   /** Provider-side native tool evidence (Bailian Responses API only). Absent on
@@ -49,6 +55,23 @@ export type ModelTurnOutput = {
   /** Application bridge metadata; never parsed from provider-controlled fields. */
   toolProtocolFeedback?: { code: 'mixed_final_response'; text: string };
 };
+
+export function hasReasoningMarkup(text: string) {
+  const marker = /<\/?\s*think(?=[\s/>]|$)/iu;
+  if (marker.test(text)) return true;
+  // A structured carrier can encode the same marker with JSON escapes.
+  const body = text.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+  if (!body.startsWith('{')) return false;
+  try { return marker.test(JSON.stringify(JSON.parse(body))); }
+  catch { return false; }
+}
+
+export function modelTurnProtocolIssue(output: Pick<ModelTurnOutput, 'text' | 'toolCalls' | 'finishReason'>) {
+  if (hasReasoningMarkup(output.text)
+    || output.toolCalls.some(call => call.name === 'final_response' && hasReasoningMarkup(call.arguments))) return 'inline_reasoning';
+  if (output.finishReason === 'length') return 'incomplete_response';
+  return null;
+}
 
 export function reportedProviderModel(value: unknown) {
   return typeof value === 'string' && /^[\w./:-]{1,200}$/.test(value) ? { providerModel: value } : {};

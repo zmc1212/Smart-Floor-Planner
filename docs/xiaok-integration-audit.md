@@ -1,5 +1,11 @@
 # 小K三线集成审查
 
+## I6.16 防水 Agent V1.1 候选
+
+Integration 起点 `60b5be9e371a`。I6.16.1 协议切片定向 135/135（0 skipped）。Run 14 的供应商检查点零调用复放确认，混进 `output_text` 的字面 `<think>` 触发整稿拒绝，独立 `reasoning` 帧只留通道标记。Chat Completions、带工具回执的终稿、异常帧、流式拆帧及可见无据量数回归通过。历史首稿维持原判。证据 `admin/tmp/i6.16/{protocol-replay,protocol-binding-before,protocol-binding-after}.json` 与 `admin/tmp/i6.16-protocol-tests.log`。
+
+实模、清单、持续委托及 Stable 的 I6.16 验收见[唯一执行计划](xiaok-renovation-agent-development-plan.md#2-唯一当前任务)。
+
 ## I6.15 统一执行器与正式防水委托（Limited）
 
 分支 `codex/xiaok-integration`，fetch 基线 `72777986d854`，业务切片 `2a84ef249fb881df84b020fe3775c6d91b48775d`。新建隔离 PG17 `xiaok_i615_validation`，企业 `4`、对照企业 `5`、业主 `1`、项目 `1`、卫生间 `1`、原 C01 `1`、取消对照 C01 `2`。保留历史事项 `8`、V1 Agent 与已发布的各版本，采用既有 JSON/事件存储，空库迁移已验证。

@@ -21,7 +21,7 @@ export type BailianResponsesExecuteOptions = {
   nativeTools?: readonly NativeToolName[];
   /** Streaming is opt-in; the non-streaming response is the default contract. */
   stream?: boolean;
-  /** Receives documented text deltas once each. Never used for retries. */
+  /** Receives matched text deltas after the terminal response passes protocol validation. */
   onTextDelta?: (delta: string) => void;
   onToolItem?: BailianResponsesStreamOptions['onToolItem'];
   /** Overrides the injected clock for deterministic evidence in tests. */

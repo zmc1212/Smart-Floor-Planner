@@ -1,4 +1,4 @@
-import type { ModelTurnOutput } from '../contracts/model';
+import { modelTurnProtocolIssue, type ModelTurnOutput } from '../contracts/model';
 
 export const ownerCitationCarrierProtocol = 'owner-citation-carrier-v1';
 
@@ -21,6 +21,9 @@ function projectOwnerCitationCarrier(raw: string): string {
  * The existing exact-ID carrier is also valid for a text-only final channel;
  * neither form supplies authority until the original catalog parser resolves it. */
 export function projectFinalToolOutput(output: ModelTurnOutput, ownerCitationCarrier = false): ModelTurnOutput {
+  // Preserve an invalid packet for the runtime to reject. Unwrapping a tool
+  // call could otherwise mask contaminated content in the same packet.
+  if (modelTurnProtocolIssue(output)) return output;
   const finals = output.toolCalls.filter(call => call.name === 'final_response');
   if (!finals.length) return ownerCitationCarrier && !output.toolCalls.length && output.text
     ? { ...output, text: projectOwnerCitationCarrier(output.text) } : output;

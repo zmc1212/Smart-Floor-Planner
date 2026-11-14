@@ -133,6 +133,8 @@ export function parseAgentChat(payload: Record<string, unknown>, requestId: stri
   const choices = Array.isArray(payload.choices) ? payload.choices : [];
   if (choices.length !== 1) return invalid();
   const choice = asObject(choices[0]), message = asObject(choice.message);
+  if (message.role !== undefined && message.role !== 'assistant'
+    || message.content != null && typeof message.content !== 'string') return invalid();
   // Compatible chat responses may explicitly encode the absence of calls as
   // null. This does not create a call or excuse an empty/truncated response.
   const rawCalls = message.tool_calls == null ? [] : message.tool_calls;
@@ -150,6 +152,7 @@ export function parseAgentChat(payload: Record<string, unknown>, requestId: stri
   if ((!text.trim() && !toolCalls.length) || text.length > 16000 || !['stop', 'tool_calls'].includes(String(choice.finish_reason))) return invalid();
   const usage = parseAgentUsage(payload.usage);
   return { text, toolCalls, finishReason: String(choice.finish_reason), usage, ...reportedProviderModel(payload.model),
+    ...(typeof message.reasoning_content === 'string' && message.reasoning_content ? { reasoningChannel: 'chat.reasoning_content' as const } : {}),
     providerRequestId: requestId?.slice(0, 200) || (typeof payload.id === 'string' ? payload.id.slice(0, 200) : null) };
 }
 

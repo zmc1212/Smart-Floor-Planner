@@ -1,5 +1,7 @@
 # 小K第二期：需求整理与人工交接
 
+**I6.16.1 终稿协议。** `ModelTurnOutput.text` 只取 Responses 的 assistant `output_text` 或 Chat Completions 的 `message.content`。独立推理只记录通道标记，应用工具回执沿原授权管线。新答复和恢复中的字面 `<think>` 终稿整稿拒绝，纯终稿可用原有的一次修复。异常内容只留原私有审计，修复输入不携带被拒正文。适用的 Evidence、承诺与施工量数校验继续执行。 [百炼 Responses](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [百炼 Chat 思考字段](https://help.aliyun.com/zh/model-studio/deep-thinking/) · [OpenAI SDK 解析](https://github.com/openai/openai-node/blob/main/src/lib/ResponsesParser.ts)。
+
 **I6.15 专业委托（Limited）。** Native Executor 与 LangGraph 共用 `start_delegation` 输入及 `DelegationService`。原业主咨询提供获权原话、活动项目和精确房间，登记回执与发布版 Workflow Run 同事务保存。单独授权消息以真实回执结束，混合咨询继续校验模型解释。状态、暂停、恢复、取消沿原 C01 指令并复核当前权限。后续 Run 读取旧回执时，沿原 C01 重进的业主、项目和来源校验。[工作流与证据](xiaok-waterproof-workflow.md#i615-原咨询运行与事项)。
 
 <!-- xiaok-r3-web-contract -->

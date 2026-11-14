@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { runRenovationAgent, type AgentCheckpoint, type AgentRuntimePorts } from '../agent/runtime';
 import { agentChatBody, parseAgentChat } from '@/lib/ai/providers/agent-chat';
+import { parseBailianResponses } from '@/lib/ai/providers/bailian-responses';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import { agentToolsForMessage, projectFinalToolOutput, projectNeedBatchOutput } from '../agent/worker';
+import { parseAgentReply } from '../agent/context';
+import { parseSynthesis } from '../agent/synthesis';
 import { reviewTurnMode, reviewDesignerOnly } from '../agent/review-runtime';
 
 const answer: ModelTurnOutput = { text: '建议', toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: null };
@@ -79,6 +82,77 @@ function fixture() {
     tools: [{ name: 'lookup', description: 'lookup', parameters: { type: 'object' } }], ports, resume });
   return { ports, run, saved, operations, revoke: () => { allowed = false; }, calls: () => calls };
 }
+
+test('a Responses draft with inline think is rejected as a whole and repaired once without replaying the draft', async () => {
+  const f = fixture();
+  const invalid = parseBailianResponses({ status: 'completed', output: [{ type: 'message', role: 'assistant',
+    content: [{ type: 'output_text', text: '<think>250 mm / 30–50 mm</think>请先检查管根周边。' }] }],
+  }, { requestId: 'run14-replay', nativeTools: [] });
+  let calls = 0;
+  f.ports.model = async (_turn, messages, tools) => {
+    if (++calls === 1) return invalid;
+    assert.doesNotMatch(JSON.stringify(messages), /250 mm|30–50 mm|请先检查管根周边/);
+    assert.deepEqual(tools, []);
+    return answer;
+  };
+  f.ports.validateFinal = async text => {
+    assert.equal(text, answer.text);
+    return null;
+  };
+  assert.equal((await f.run()).output?.text, answer.text);
+  assert.equal(f.saved[0].output?.text, invalid.text);
+  assert.equal(calls, 2);
+  assert.equal(f.operations.size, 0);
+
+  f.ports.model = async () => invalid;
+  await assert.rejects(f.run(f.saved[0]), /invalid_model_answer/);
+});
+
+test('the numeric guard sees only visible content and still rejects an unsupported visible parameter', async () => {
+  const evaluate = (text: string, reasoning: string) => parseBailianResponses({ status: 'completed', output: [
+    { type: 'reasoning', summary: [{ type: 'summary_text', text: reasoning }] },
+    { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] },
+  ] }, { requestId: null, nativeTools: [] });
+  const f = fixture();
+  f.ports.validateFinal = async text => {
+    parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [{ text, basis: 'advice', citations: [] }] }), [], {
+      currentQuestion: '卫生间管根防水怎么处理？', specialistAcceptance: true,
+    });
+    return null;
+  };
+  const visible = '先检查管根周边，处理空鼓和松动，再按获权施工做法核实细部。';
+  f.ports.model = async () => evaluate(visible, '250 mm');
+  assert.equal((await f.run()).output?.text, visible);
+  assert.equal(f.saved[0].output?.reasoningChannel, 'responses.reasoning');
+  assert.doesNotMatch(JSON.stringify(f.saved), /250 mm/);
+  f.ports.model = async () => evaluate('管根上翻应为250 mm。', '250 mm');
+  await assert.rejects(f.run(), /unsupported_model_commitment/);
+});
+
+test('a terminal final_response follows a paired tool receipt and rejects inline reasoning in either carrier', async () => {
+  const f = fixture();
+  const raw = { ...answer, text: '', toolCalls: [{ id: 'final', name: 'final_response',
+    arguments: JSON.stringify({ kind: 'general', text: '已读取到管根资料。' }) }] };
+  const model = f.ports.model;
+  f.ports.model = async (turn, messages, tools) => {
+    if (!turn) return model(turn, messages, tools);
+    assert.deepEqual(messages.at(-1), { role: 'tool', callId: 'a', content: 'done' });
+    return projectFinalToolOutput(raw);
+  };
+  const result = await f.run();
+  assert.equal(parseAgentReply(result.output!.text), '已读取到管根资料。');
+  assert.equal(f.operations.size, 1);
+  for (const invalid of [
+    { ...raw, text: '<think>private</think>' },
+    { ...raw, toolCalls: [{ ...raw.toolCalls[0], arguments: '{"kind":"general","text":"\\u003cthink>private</think>"}' }] },
+  ]) {
+    const g = fixture();
+    g.ports.model = async () => projectFinalToolOutput(invalid);
+    await assert.rejects(runRenovationAgent({ messages: [], tools: [{ name: 'final_response', description: '', parameters: {} }],
+      ports: g.ports }), /invalid_model_answer/);
+    assert.equal(g.operations.size, 0);
+  }
+});
 test('graph replays a saved response without repeating the provider request and uses stable tool slots', async () => {
   const f = fixture(); await f.run(); assert.equal(f.calls(), 2); assert.equal(f.operations.size, 1);
   const g = fixture(); g.ports.model = async () => answer;

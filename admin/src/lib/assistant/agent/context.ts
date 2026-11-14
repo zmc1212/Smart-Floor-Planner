@@ -1,4 +1,4 @@
-import type { ModelMessage } from '../contracts/model';
+import { hasReasoningMarkup, type ModelMessage } from '../contracts/model';
 import { difyDialogueInstructions, minimalDialogueInstructions } from './minimal-dialogue';
 import { currentBudgetRecallRequested, currentNeedView, type NeedMemory } from './memory';
 import { fail } from '../contracts';
@@ -82,6 +82,7 @@ export function buildAgentContext(turns: Array<{ id: string; role: 'user' | 'ass
 type CommitmentScope = { formalStatusEvidence?: boolean; acceptanceQuotes?: readonly string[]; acceptanceAdvice?: boolean; delegationReply?: boolean };
 
 export function guardAnswerCommitments(text: string, options: CommitmentScope = {}) {
+  if (hasReasoningMarkup(text)) fail('invalid_model_answer', 502);
   if (options.delegationReply && hasDelegationClaim(text)) fail('unsupported_model_commitment', 502);
   // Formal commitments always come from a business service, never free-form generation.
   // Project explicit absence/denial/question predicates, retaining other claims.

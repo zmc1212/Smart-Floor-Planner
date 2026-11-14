@@ -4,7 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { AssistantError, fail, fingerprint, safeText, type Evidence, type MessageContent } from '../contracts';
-import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
+import { agentModelLimits, modelTurnProtocolIssue, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import { recordAgentModelUsage } from '../core/model-usage';
 import { completeRun, completeDelegationReply, delegationAnswerRejected, failRun, heartbeat, markProviderStarted, runContext, type Lease } from '../infrastructure/job-queue';
 import { runKnowledgeEnabled } from '../knowledge-policy';
@@ -570,14 +570,15 @@ export async function processNativeAgentAnswer(lease: Lease) {
         },
       });
       if (!output.agentOutput) fail('invalid_model_answer', 502);
-      if (constraints.noCommitments) guardAnswerCommitments(output.agentOutput.text);
-      const text = validatePublicIntro(output.agentOutput.text, constraints);
       const usage = output.agentOutput.usage;
       await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`insert into app.assistant_usage_records
         (enterprise_id,run_id,provider_attempt_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
         values(${lease.enterpriseId},${lease.runId},${String(output.attemptId)},${'native-intro:' + lease.runId},'intro_tokens',
         ${usage ? usage.inputTokens + usage.outputTokens : null},${usage ? 'observed' : 'unavailable'},
         ${usage?.inputTokens ?? null},${usage?.outputTokens ?? null}) on conflict do nothing`));
+      if (modelTurnProtocolIssue(output.agentOutput)) fail('invalid_model_answer', 502);
+      if (constraints.noCommitments) guardAnswerCommitments(output.agentOutput.text);
+      const text = validatePublicIntro(output.agentOutput.text, constraints);
       await completeRun(lease, { content: { version: 1, blocks: [{ type: 'text', text }] }, usage: usage ?? null,
         attemptId: String(output.attemptId) }, async tx => {
         // The site may be withdrawn, replaced or left while the model ran.
@@ -1224,6 +1225,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // or a changed authorization may still reject delivery, but it must not
         // roll back tokens the provider already returned.
         await persistSuggestionUsage(lease.enterpriseId, lease.runId, operationKey, String(output.attemptId), usage ?? null);
+        if (modelTurnProtocolIssue(output.agentOutput)) fail('invalid_model_answer', 502);
         await withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);
           await tx.execute(sql`update app.assistant_run_steps set status='succeeded',provider_attempt_id=${String(output.attemptId)},

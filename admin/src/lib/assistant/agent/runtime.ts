@@ -1,6 +1,6 @@
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { fail, fingerprint } from '../contracts';
-import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
+import { agentModelLimits, modelTurnProtocolIssue, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import { finalAnswerRepairControl, finalAnswerRepairBase, type FinalAnswerRepairScope } from './synthesis-repair';
 import { assertToolPairs, toolSchemaIssue } from './tool-protocol';
 import {finishContextTool,contextReady,nativeFinalProtocol} from './native-final';
@@ -8,6 +8,7 @@ import { webToolNames } from '../web-search/contract';
 import { knowledgeToolNames } from '../knowledge/rag-tools';
 
 type ReadReceipt = { name: string; argumentsHash: string; messageIndex: number };
+type FinalAnswerIssue = { code: string; feedback: string; responseScope?: FinalAnswerRepairScope };
 export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; argumentFailures?: number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[]; finalFromTools?: boolean; turnSchedule?: typeof agentTurnScheduleProtocol; primaryModelTurns?: number; nativeFinalization?:typeof nativeFinalProtocol; finalizing?:boolean; nativeWorkflow?: 'fastgpt-native-knowledge-v1' };
 export type AgentToolResult = { content: string; stop?: boolean; exhausted?: boolean; cacheable?: boolean };
 export type AgentRuntimePorts = {
@@ -30,7 +31,7 @@ export type AgentRuntimePorts = {
   resolveToolReply?(state: AgentCheckpoint): Promise<string | null>;
   /** Deterministic final-response reconstruction only; no tools or dispatch. */
   resolveFinal?(text: string, state: AgentCheckpoint): Promise<string>;
-  validateFinal?(text:string,turn:number,finalFromTools?: boolean):Promise<{code:string;feedback:string;responseScope?:FinalAnswerRepairScope}|null>;
+  validateFinal?(text: string, turn: number, finalFromTools?: boolean): Promise<FinalAnswerIssue | null>;
 };
 const State = Annotation.Root({
   turn: Annotation<number>(), messages: Annotation<ModelMessage[]>(),
@@ -144,6 +145,7 @@ export async function runRenovationAgent(input: {
     })
     .addNode('tools', async state => {
       const output = state.output!;
+      if (modelTurnProtocolIssue(output)) fail('invalid_model_answer', 502);
       const messages: ModelMessage[] = output.toolCalls.length
         ? [...state.messages, { role: 'assistant', content: output.text, toolCalls: output.toolCalls }] : [...state.messages];
       const exhaustedTools = new Set(state.exhaustedTools);
@@ -212,22 +214,30 @@ export async function runRenovationAgent(input: {
     .addNode('validate',async state=>{
       await ports.authorize();
       const output = { ...state.output! };
+      const protocolIssue = state.finalFromTools ? null : modelTurnProtocolIssue(output);
       if (state.finalFromTools) {
         const text = await ports.resolveToolReply?.({ version: 1, turn: state.turn, messages: state.messages, output: state.output, finalFromTools: true });
         if (typeof text !== 'string' || !text.trim()) fail('context_changed', 409);
         await ports.authorize();
         output.text = text;
       }
-      if (ports.resolveFinal) output.text = await ports.resolveFinal(output.text, { version: 1, turn: state.turn,
+      if (!protocolIssue && ports.resolveFinal) output.text = await ports.resolveFinal(output.text, { version: 1, turn: state.turn,
         messages: state.messages, output: state.output, validationRepairs: state.validationRepairs, argumentFailures: state.argumentFailures, exhaustedTools: state.exhaustedTools, readReceipts: state.readReceipts, finalFromTools: state.finalFromTools });
-      const issue=await ports.validateFinal?.(output.text,state.turn,state.finalFromTools);
+      const issue: FinalAnswerIssue | null = protocolIssue
+        ? { code: 'invalid_model_answer', feedback: protocolIssue === 'inline_reasoning'
+          ? '上一次答复正文包含内部思考标记。请用当前问题和现有资料重新提交完整最终回答，只提交供客户阅读的正文。'
+          : '上一次答复未完整结束。请用当前问题和现有资料重新提交完整、简短的最终回答。' }
+        : (await ports.validateFinal?.(output.text,state.turn,state.finalFromTools)) ?? null;
       // Keep provider output or the explicitly marked server tool reply in the
       // durable checkpoint. A crash reconstructs without provider dispatch.
       if(!issue) return { output };
       if (state.finalFromTools) fail(issue.code, 502);
       if(state.validationRepairs>=1 || state.turn+1>=maxTurns)fail(issue.code,502);
-      const messages:ModelMessage[]=[...state.messages,{role:'assistant',content:state.output!.text},
-        {role:'system',content:[{type:'text',text:issue.feedback},finalAnswerRepairControl(state.output!.text,issue.responseScope)]}];
+      // Keep rejected wire content in the private provider checkpoint. It must
+      // not become assistant history, evidence, or a candidate repair draft.
+      const draft = protocolIssue ? '' : state.output!.text;
+      const messages:ModelMessage[]=[...state.messages,{role:'assistant',content:draft},
+        {role:'system',content:[{type:'text',text:issue.feedback},finalAnswerRepairControl(draft,issue.responseScope)]}];
       const next={version:1 as const,turn:state.turn+1,messages,output:null,validationRepairs:1,argumentFailures:state.argumentFailures,exhaustedTools:state.exhaustedTools,readReceipts:state.readReceipts,finalFromTools:false};
       await ports.authorize();await checkpoint(next);return next;
     })

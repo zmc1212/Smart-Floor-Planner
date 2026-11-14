@@ -1,5 +1,7 @@
 # XiaoK Phase Two: Requirements and Human Handoff
 
+**I6.16.1 final reply protocol.** `ModelTurnOutput.text` comes from Responses assistant `output_text` or Chat Completions `message.content`. Dedicated reasoning is recorded as a channel indicator only. Application tool results use the existing authorization path. A draft containing literal `<think>` fails on new turns and on recovery. A text-only final can use the existing single repair without replaying the rejected draft. Evidence, commitment and construction quantity checks still apply. [Bailian Responses](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [Bailian Chat reasoning](https://help.aliyun.com/zh/model-studio/deep-thinking/) · [OpenAI SDK parser](https://github.com/openai/openai-node/blob/main/src/lib/ResponsesParser.ts).
+
 **I6.15 specialist delegation (Limited).** Native Executor and LangGraph share the `start_delegation` schema and `DelegationService`. The existing owner consultation supplies the exact quote, active project and room. The service commits the registration receipt with the published Workflow Run. A standalone authorization turn ends on that receipt, and a mixed turn still validates the model explanation. Status, pause, resume and cancellation use the original C01 commands and current authorization. A later run can use earlier receipt history after the same original owner, project and source checks used on C01 reentry. [Workflow and evidence](xiaok-waterproof-workflow.md#i615-原咨询运行与事项).
 
 <!-- xiaok-r3-web-contract -->

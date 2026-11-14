@@ -12,6 +12,14 @@ test('documented nullable no-call frames preserve text and usage without inventi
   assert.throws(() => parseAgentChat({ ...packet, choices: [{ message: { content: '', tool_calls: null }, finish_reason: 'stop' }] }), /Invalid/);
   assert.throws(() => parseAgentChat({ ...packet, choices: [{ message: { content: '{"ok":', tool_calls: null }, finish_reason: 'length' }] }), /Invalid/);
 });
+test('Chat Completions exposes only content with a presence-only reasoning diagnostic', () => {
+  const message = { role: 'assistant', content: '先检查管根周边是否松动。', reasoning_content: '250 mm is speculation' };
+  const result = parseAgentChat({ ...packet, choices: [{ message, finish_reason: 'stop' }] });
+  assert.equal(result.text, message.content);
+  assert.equal(result.reasoningChannel, 'chat.reasoning_content');
+  assert.doesNotMatch(JSON.stringify(result), /250 mm/);
+  assert.throws(() => parseAgentChat({ ...packet, choices: [{ message: { ...message, content: null }, finish_reason: 'stop' }] }), /Invalid/);
+});
 test('invalid-frame diagnostics retain shape and quantities, never private prose or arguments', () => {
   const invalid = { ...packet, choices: [{ message: { content: 'private source text', tool_calls: [{ type: 'function', id: 'bad.id',
     function: { name: 'final_response', arguments: '{"private":"synthetic secret"}' } }] }, finish_reason: 'length' }] };

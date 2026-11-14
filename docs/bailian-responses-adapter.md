@@ -505,3 +505,7 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 图像轮仍走原 \conversation-images-v1\ 与 \inal_response\ \kind\/\	ext\ 工具合同，不把结构化字段加入工具参数。百炼目录精确 ID \deepseek-v4.1-flash-1017\ 标注 Text/Image 与 structured-outputs；Chat Completions \esponse_format=json_schema\ 实调通过（\chatcmpl-25c67c62-cc9a-9097-b394-1cac476a24e3\，281/139 tokens，图片 194）。产品路径先由服务端解析正文七节固定文本；未解析时执行一次独立文本归一化调用（\jsonOutput\，同一网关、同一模型、不重发图片），结果经服务端 Schema 与语义校验。
 
 真实回执：图片轮 \7137305c-4075-9e54-88ef-5af2c440c974\（2155/786，缓存 1536），归一化轮 \8692e3d3-5965-956f-b5d9-f3177bd25d4f\（682/723）。合成获权图 Run \8\ 解析成功；一次归一化超时为 \unknown\（Run 7），未重放。真实工地照片、真机和 BLE 仍未验。未新增第二套网关，未修改生产模型默认值。
+
+## 20. I6.16 最终正文与推理字段
+
+**I6.16.1 终稿协议。** `ModelTurnOutput.text` 只取 Responses 的 assistant `output_text` 或 Chat Completions 的 `message.content`。独立推理只记录通道标记，应用工具回执沿原授权管线。新答复和恢复中的字面 `<think>` 终稿整稿拒绝，纯终稿可用原有的一次修复。异常内容只留原私有审计，修复输入不携带被拒正文。适用的 Evidence、承诺与施工量数校验继续执行。 Responses 流式调用在终帧解析后才交付与正文一致的文本分片。通道标记和协议错误码可进供应商诊断，推理原文沿原私有审计策略。已配置的 Chat 结构化载体仍按实际协议记录。[百炼 Responses](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [百炼 Chat 思考字段](https://help.aliyun.com/zh/model-studio/deep-thinking/) · [OpenAI SDK 解析](https://github.com/openai/openai-node/blob/main/src/lib/ResponsesParser.ts)。

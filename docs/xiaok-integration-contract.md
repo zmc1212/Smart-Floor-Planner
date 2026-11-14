@@ -2,7 +2,7 @@
 
 | 入口和所有者 | 合同 |
 | --- | --- |
-| Assistant / AgentModelGateway | `ModelTurnInput`、`ModelTurnOutput` 保留现有调用形态、工具调用、文本流、完成原因与用量。现有 Chat Completions 为默认。Bailian Responses 按显式配置和已知模型能力分派。原生工具证据沿模型轮次返回，原生与应用工具重名时拒绝。 |
+| Assistant / AgentModelGateway | `ModelTurnOutput.text` 只取协议正文，函数调用独立，推理只记录通道标记。终稿拒绝字面 `<think>` 与未完成的 Responses。纯终稿可重用一次修复，异常正文留原私有审计。Chat Completions 默认，Responses 明确配置启用。原生工具证据沿模型轮次返回，原生与应用工具重名时拒绝。 |
 | Assistant 工具分派 | Agent 按租户、身份和原咨询获取当前获权项目、阶段和房间快照。持续跟进沿 `start_delegation`，核对原话、业主、房间及当前项目版本。工具回执绑定原运行和操作键。整条原话仅触发一次获权委托时，Agent 可用已持久化的登记回执结束本轮。供应商接受状态未知时保留 `indeterminate` 和待对账预约。 |
 | KnowledgeRetriever / Evidence | 企业或项目知识按当前受众、项目成员、版本与来源状态检索。托管库是检索适配器，应用保存授权快照与来源定位。引用打开、历史投影和委托复核重新检查权限与原件。 |
 | Construction | 项目、授权成员、有效计划、报告原始记录、精确版本方案、整改与复核由同一 Construction 服务及其事件投影维护。客户决定方案版本，工人提交获权现场原件，项目管理者核实并授权回传。四端依原角色读取获权视图。日周报读取相应周期的同源记录，每企业每周只领取一个调度槽并生成四个角色投递。 |

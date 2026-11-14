@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { getLines, getMessages } from '@langchain/core/utils/event_source_parse';
 import { AiProviderError } from '../provider-types';
 import {
-  agentModelLimits, reportedProviderModel, type ModelTool, type ModelTurnInput, type ModelTurnOutput,
+  agentModelLimits, modelTurnProtocolIssue, reportedProviderModel, type ModelTool, type ModelTurnInput, type ModelTurnOutput,
 } from '@/lib/assistant/contracts/model';
 import type { NativeToolName } from '@/lib/assistant/contracts/native-tools';
 import { assertToolPairs } from '@/lib/assistant/agent/tool-protocol';
@@ -208,16 +208,24 @@ export function parseBailianResponses(payload: Record<string, unknown>, context:
   const texts: string[] = [];
   const toolCalls: ModelTurnOutput['toolCalls'] = [];
   const seen = new Set<string>();
+  let reasoningChannel: ModelTurnOutput['reasoningChannel'];
+  let incompleteMessage = false;
   for (const raw of output) {
-    if (!raw || typeof raw !== 'object') return invalid();
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return invalid();
     const item = raw as Record<string, unknown>;
+    if (item.type === 'reasoning') {
+      reasoningChannel = 'responses.reasoning';
+      continue;
+    }
     if (item.type === 'message') {
-      const content = Array.isArray(item.content) ? item.content : [];
+      if (item.role !== 'assistant' || !Array.isArray(item.content)) return invalid();
+      if (item.status && item.status !== 'completed') incompleteMessage = true;
       const parts: string[] = [];
-      for (const part of content) {
+      for (const part of item.content) {
         if (!part || typeof part !== 'object') return invalid();
         const value = part as Record<string, unknown>;
-        if (value.type !== 'output_text' || typeof value.text !== 'string') continue;
+        if (value.type === 'refusal' && typeof value.refusal === 'string') continue;
+        if (value.type !== 'output_text' || typeof value.text !== 'string') return invalid();
         parts.push(value.text);
       }
       if (parts.length) texts.push(parts.join(''));
@@ -241,11 +249,12 @@ export function parseBailianResponses(payload: Record<string, unknown>, context:
   const text = texts.join('\n');
   if ((!text.trim() && !toolCalls.length) || text.length > 16000) return invalid();
 
-  const incomplete = status === 'incomplete';
+  const incomplete = status === 'incomplete' || incompleteMessage;
   const finishReason = incomplete ? 'length' : toolCalls.length ? 'tool_calls' : 'stop';
   const responseId = typeof payload.id === 'string' ? payload.id.slice(0, 200) : null;
   return {
     text, toolCalls, finishReason, ...reportedProviderModel(payload.model),
+    ...(reasoningChannel ? { reasoningChannel } : {}),
     providerRequestId: (context.requestId ?? responseId)?.slice(0, 200) ?? null,
     usage: parseBailianResponsesUsage(payload),
   };
@@ -262,7 +271,8 @@ export function bailianResponsesResponseDiagnostic(payload: Record<string, unkno
     status: typeof payload.status === 'string' ? payload.status : null,
     responseHash: createHash('sha256').update(encoded).digest('hex'),
     responseBytes: Buffer.byteLength(encoded),
-    outputTypes: output.map(item => String(item.type ?? 'unknown')),
+    outputTypes: output.map(item => ['message', 'reasoning', 'function_call', 'web_search_call',
+      'web_extractor_call', 'code_interpreter_call'].includes(String(item?.type)) ? String(item.type) : 'unknown'),
     inputTokens: nonNegativeInteger(usage.input_tokens),
     outputTokens: nonNegativeInteger(usage.output_tokens),
     toolCounts: parseBailianToolCounts(payload),
@@ -270,8 +280,7 @@ export function bailianResponsesResponseDiagnostic(payload: Record<string, unkno
 }
 
 export type BailianResponsesStreamOptions = {
-  /** Incremental text, emitted exactly once per documented delta frame. The
-   * terminal response payload stays the authoritative text source. */
+  /** Receives original deltas after the terminal payload passes protocol validation. */
   onTextDelta?: (delta: string) => void;
   /** Provider-side tool item completed. Only its identity is exposed here. */
   onToolItem?: (item: { itemType: string; itemId: string | null }) => void;
@@ -290,11 +299,8 @@ const streamInterrupted = (error: unknown): AiProviderError => error instanceof 
     `Responses stream was interrupted before a terminal event (${error instanceof Error ? error.name : 'stream_error'})`,
     'PROVIDER_STREAM_INTERRUPTED', 'unknown', 504);
 
-/** Consumes the documented SSE events. Text is delivered from
- * `response.output_text.delta` only: `response.output_text.done` repeats the
- * complete text and is never re-emitted, so a consumer that also renders the
- * final payload cannot duplicate output. A stream that ends without a terminal
- * event, or that is aborted mid-flight, is never reported as success. */
+/** Collects documented text deltas. The terminal payload is authoritative.
+ * Validate it before releasing any deltas, including tags split across frames. */
 export async function consumeBailianResponsesStream(
   response: Response,
   options: BailianResponsesStreamOptions = {},
@@ -308,6 +314,7 @@ export async function consumeBailianResponsesStream(
   const order: string[] = [];
   const textByItem = new Map<string, string>();
   const textOrder: string[] = [];
+  const deltas: string[] = [];
   const seenFrames = new Map<number, string>();
   let final: Record<string, unknown> | null = null;
   let terminal: 'completed' | 'incomplete' | null = null;
@@ -355,7 +362,7 @@ export async function consumeBailianResponsesStream(
       if (!textByItem.has(key)) textOrder.push(key);
       textByItem.set(key, (textByItem.get(key) ?? '') + delta);
       deltaCount++;
-      options.onTextDelta?.(delta);
+      if (options.onTextDelta) deltas.push(delta);
       return;
     }
     // `response.output_text.done` carries the whole text again; it is
@@ -394,17 +401,16 @@ export async function consumeBailianResponsesStream(
     }
     return output;
   };
-  if (final) {
-    const payload = final as Record<string, unknown>;
-    if (!Array.isArray(payload.output)) {
-      const output = fallbackOutput();
-      if (output.length) payload.output = output;
-    }
-    return { payload, streamedText, deltaCount, terminal };
-  }
   const requestId = response.headers.get('x-request-id');
-  return { payload: { object: 'response', status: terminal, id: requestId, output: fallbackOutput() },
-    streamedText, deltaCount, terminal: 'items' };
+  const payload: Record<string, unknown> = final ?? { object: 'response', status: terminal, id: requestId };
+  if (!Array.isArray(payload.output)) payload.output = fallbackOutput();
+  if (options.onTextDelta && deltas.length) {
+    const output = parseBailianResponses(payload, { requestId, nativeTools: [] });
+    if (!modelTurnProtocolIssue(output) && streamedText === output.text && deltas.join('') === output.text) {
+      for (const delta of deltas) options.onTextDelta(delta);
+    }
+  }
+  return { payload, streamedText, deltaCount, terminal: final ? terminal : 'items' };
 }
 
 export async function readBailianResponsesStream(

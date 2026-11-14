@@ -161,15 +161,26 @@ test('request diagnostic keeps hashes and shapes but never prompt or argument te
   assert.doesNotMatch(JSON.stringify(diagnostic), /系统约束|12 的 3 次方/);
 });
 
-test('documented response frame maps text, usage and reasoning evidence', () => {
+test('documented reasoning stays out of text and Evidence while its channel is observable', () => {
   const output = parseBailianResponses(completedPayload, { requestId: 'req_synthetic', nativeTools: [] });
   assert.equal(output.text, '1728');
   assert.deepEqual(output.toolCalls, []);
   assert.equal(output.finishReason, 'stop');
   assert.equal(output.providerRequestId, 'req_synthetic');
+  assert.equal(output.reasoningChannel, 'responses.reasoning');
+  assert.doesNotMatch(JSON.stringify(output), /thinking/);
+  assert.equal(collectNativeToolEvidence(completedPayload, { requestId: null, tools: [], capturedAt: '2026-11-14T00:00:00Z' }), null);
   assert.equal(parseBailianResponses({ ...completedPayload, model: 'deepseek-v4.1-flash-1017' },
     { requestId: 'req_synthetic', nativeTools: [] }).providerModel, 'deepseek-v4.1-flash-1017');
   assert.deepEqual(output.usage, { inputTokens: 53, outputTokens: 12, cacheWriteInputTokens: 0, cachedInputTokens: 0 });
+});
+
+test('Responses rejects a lookalike message with an incorrect role or malformed output text', () => {
+  const message = completedPayload.output[1];
+  for (const invalid of [{ ...message, role: 'tool' }, { ...message, content: [{ type: 'output_text', text: 250 }] }]) {
+    assert.throws(() => parseBailianResponses({ ...completedPayload, output: [invalid] },
+      { requestId: null, nativeTools: [] }), /Invalid/);
+  }
 });
 
 test('function_call items become runtime tool calls with stable call ids', () => {
@@ -400,6 +411,23 @@ test('a stream without a terminal payload falls back to delta text exactly once'
   const output = parseBailianResponses(result.payload, { requestId: null, nativeTools: [] });
   // Delta text and `output_text.done` text are never concatenated twice.
   assert.equal(output.text, 'hello');
+});
+
+test('stream does not emit hidden, inline or mismatched content even across frame boundaries', async () => {
+  const delta = { type: 'response.output_text.delta', item_id: 'msg_1', output_index: 0 };
+  const suspect = ['<thi', 'nk>250 mm</think>', '1728'];
+  for (const finalText of [suspect.join(''), '1728']) {
+    const frames = [
+      { type: 'response.reasoning_text.delta', delta: '30–50 mm' },
+      ...suspect.map(text => ({ ...delta, delta: text })),
+      { type: 'response.completed', response: { ...completedPayload, output: [completedPayload.output[0],
+        { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: finalText }] }] } },
+    ];
+    const seen: string[] = [];
+    await consumeBailianResponsesStream(new Response(sseBody(frames), {
+      status: 200, headers: { 'content-type': 'text/event-stream' } }), { onTextDelta: value => seen.push(value) });
+    assert.deepEqual(seen, []);
+  }
 });
 
 test('an interrupted stream stays unknown and is never reported as success', async () => {

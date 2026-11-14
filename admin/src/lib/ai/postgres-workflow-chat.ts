@@ -12,7 +12,7 @@ import { bailianResponsesBinding } from './providers/bailian-responses-capabilit
 import type { InvocationOwner } from '@/lib/assistant/contracts';
 import { AssistantError } from '@/lib/assistant/contracts';
 import { reportBodyFinalProtocol, reportNativeFinalProtocol } from '@/lib/assistant/agent/report-native-final';
-import { reportFinalOutputTokenLimit } from '@/lib/assistant/contracts/model';
+import { modelTurnProtocolIssue, reportFinalOutputTokenLimit } from '@/lib/assistant/contracts/model';
 import { nativeFinalProjection } from '@/lib/assistant/agent/native-final';
 import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { withTenantTransaction } from '@/db/transaction';
@@ -202,6 +202,7 @@ export async function executePostgresText(input: {
       dispatched = true;
       const callRuntime = input.owner.kind === 'generation' ? runtime : { ...runtime, timeoutMs: Math.min(runtime.timeoutMs, 90000, remainingMs) };
       const agentOutput = input.agent ? await executeAgentChat(callRuntime, { ...input.agent.input, model: remoteModel, enableThinking }) : undefined;
+      const outputProtocolIssue = agentOutput && modelTurnProtocolIssue(agentOutput);
       const content = agentOutput?.text ?? await getAiProviderAdapter(runtime.adapterType).chat(callRuntime, {
         model: remoteModel,
         messages: input.messages,
@@ -221,6 +222,8 @@ export async function executePostgresText(input: {
             usage: agentOutput.usage, providerRequestId: agentOutput.providerRequestId,
             ...(agentOutput.providerModel ? { providerModel: agentOutput.providerModel } : {}),
             finishReason: agentOutput.finishReason, observation: agentOutput.observation ?? null,
+            ...(agentOutput.reasoningChannel ? { reasoningChannel: agentOutput.reasoningChannel } : {}),
+            ...(outputProtocolIssue ? { outputProtocolIssue } : {}),
             // Native tool evidence is provider-side only; business tools keep
             // their own dispatcher records.
             ...(agentOutput.nativeTools ? { nativeTools: agentOutput.nativeTools } : {}),
