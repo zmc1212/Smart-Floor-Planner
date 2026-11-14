@@ -115,3 +115,13 @@ export function nativeCitationGate(draft: string, catalog: Iterable<RagCitationS
     return { assessment, issue: { code: 'missing_citation', feedback: nativeMissingRunCitationFeedback(draft, sources) } };
   return { assessment, issue: null };
 }
+
+/** Bailian may spell the same citation token as (CITE id) in a repaired
+ * answer. Accept only a complete marker for an issued same-run id. The
+ * normal citation, quantity and formal-claim validators still own delivery. */
+export function normalizeNativeCitationCarrier(text: string, sources: Iterable<RagCitationSource>) {
+  const issued = new Set([...sources].filter(source => source.origin === 'current' || source.origin === 'recovered')
+    .map(source => source.nativeId));
+  return text.replace(/\(CITE ([A-Za-z0-9_-]{1,80})\)/gu, (marker, id: string) =>
+    issued.has(id) ? '[' + id + '](CITE)' : marker);
+}

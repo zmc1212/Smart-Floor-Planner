@@ -118,7 +118,7 @@ export async function executePostgresText(input: {
   temperature?: number;
   maxTokens?: number;
   metadata?: Record<string, unknown>;
-  beforeProviderCall?: () => Promise<void>;
+  beforeProviderCall?: (attemptId: string) => Promise<void>;
   agent?: { config: AgentConfig; input: Omit<ModelTurnInput, 'model' | 'enableThinking'> };
 }) {
   if (input.owner.kind === 'knowledge_job') {
@@ -196,7 +196,7 @@ export async function executePostgresText(input: {
 
     let dispatched = false;
     try {
-      await input.beforeProviderCall?.();
+      await input.beforeProviderCall?.(String(attempt.id));
       const remainingMs = consultation ? Number(input.agent!.input.deadlineAt) - Date.now() : 90000;
       if (consultation && (!Number.isFinite(remainingMs) || remainingMs < 1)) throw new Error('agent_deadline_exceeded');
       dispatched = true;

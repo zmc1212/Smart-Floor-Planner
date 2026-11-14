@@ -509,3 +509,5 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 ## 20. I6.16 最终正文与推理字段
 
 **I6.16.1 终稿协议。** `ModelTurnOutput.text` 只取 Responses 的 assistant `output_text` 或 Chat Completions 的 `message.content`。独立推理只记录通道标记，应用工具回执沿原授权管线。新答复和恢复中的字面 `<think>` 终稿整稿拒绝，纯终稿可用原有的一次修复。异常内容只留原私有审计，修复输入不携带被拒正文。适用的 Evidence、承诺与施工量数校验继续执行。 Responses 流式调用在终帧解析后才交付与正文一致的文本分片。通道标记和协议错误码可进供应商诊断，推理原文沿原私有审计策略。已配置的 Chat 结构化载体仍按实际协议记录。[百炼 Responses](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [百炼 Chat 思考字段](https://help.aliyun.com/zh/model-studio/deep-thinking/) · [OpenAI SDK 解析](https://github.com/openai/openai-node/blob/main/src/lib/ResponsesParser.ts)。
+
+同一份百炼回复中，已签发的本轮引用 ID 可从独立的 `(CITE id)` 标记恢复为原格式，随后仍校验引用、正文数量及业务承诺。授权前咨询复用了已审核官网原件通道。受控恢复和实模原稿见[集成审查](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。LangGraph 配额准入只排除本次即将派发的尝试 ID，历史未知尝试继续要求对账。

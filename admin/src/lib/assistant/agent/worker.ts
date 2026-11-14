@@ -1339,7 +1339,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             return claims ? { ...saved, text: resolveReviewClaims(saved.text, claims) } : saved;
           }
           const requestedTokens = consultation ? consultationRequestReservation(modelMessages, dispatchTools, limits.maxOutputTokens) : null;
-          const beforeProviderCall = async () => { try { await scoped(async tx => {
+          const beforeProviderCall = async (pendingAttemptId?: string) => { try { await scoped(async tx => {
             // Semantic review consumes the same reserved dispatch envelope as
             // generation. Never turn the new validator into unmetered calls.
             if (!consultation && (explanationBound || reportNativeFinal || ownerReads?.ownerScope === 'knowledge_and_site'
@@ -1355,7 +1355,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               assertExplanationDispatchBudget(calls.map(call=>Number(call.estimate)),bounded.diagnostic.after.estimatedTokens,Number(held?.reserved_tokens));
             }
             const reservation = consultation ? await reserveConsultationDispatch(tx, { enterpriseId: lease.enterpriseId, runId: lease.runId,
-              binding: consultation, createdAt: String(initial.run.created_at), purpose,
+              binding: consultation, createdAt: String(initial.run.created_at), purpose, pendingAttemptId,
               estimatedRequestTokens: requestedTokens! }) : null;
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, consultation: consultation ? { profile, stage: consultation.stage, budgetGroup: consultation.budgetGroup, reservation } : null, promptVersion: agentPromptVersion, contextPolicy: messageScoped ? currentMessageScopeProtocol : adviceScoped ? independentAdviceContextProtocol : initial.minimalDialogue ? initial.dialogueProtocol : focused === messages ? 'conversation' : synthesisContextProjectionVersion, budget: bounded.diagnostic,

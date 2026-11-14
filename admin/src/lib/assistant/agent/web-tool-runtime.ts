@@ -14,7 +14,7 @@ import { configuredPublicRead, publicDocumentPages, publicDocumentReadFailures, 
 import { matchingReviewedStandard, type PublicStandard } from '../web-search/standards';
 
 export type AgentWebSearchOptions = Pick<WebToolDeps, 'provider' | 'readPage'>;
-const protocol = 'application-web-tools-v1';
+export const applicationWebToolProtocol = 'application-web-tools-v1';
 // The ordinary Agent tool slots occupy 1200–1233. These three reads are
 // server-selected originals and keep the existing web Evidence ID format.
 const reviewedStandardStep = { notice: 1297, attachment: 1298, catalog: 1299 };
@@ -165,7 +165,7 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
       if (!offered.some(tool => tool.name === call.name)) fail('assistant_capability_forbidden', 403);
       const reading = call.name === 'web_fetch';
       const capability = reading ? 'web.read.v1' : 'web.search.v1';
-      const binding = fingerprint({ protocol, provider: options.provider?.name, call });
+      const binding = fingerprint({ protocol: applicationWebToolProtocol, provider: options.provider?.name, call });
       const earlier = await scoped(async tx => {
         const cached = await one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps
           where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
@@ -182,7 +182,7 @@ export function createAgentWebTools(options: AgentWebSearchOptions & {
           .map(step => step.private_checkpoint as Receipt).filter(step => step?.r3) : [];
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,input_summary)
           values(${lease.enterpriseId},${lease.runId},${sequence},'retrieval',${capability},1,'running',
-            ${JSON.stringify({ protocol, binding, tool: call.name, callId: call.id })}::jsonb)`);
+            ${JSON.stringify({ protocol: applicationWebToolProtocol, binding, tool: call.name, callId: call.id })}::jsonb)`);
         return { cached: null, prior };
       });
       if (earlier.cached) return reply(earlier.cached, sequence);

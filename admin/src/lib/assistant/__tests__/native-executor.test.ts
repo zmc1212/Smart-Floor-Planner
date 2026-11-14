@@ -4,6 +4,7 @@ import { composeNativeDelivery, explicitPublicSiteReference, nativeCitationFeedb
   nativePublicSiteSelection, nativePublicSiteWithdrawnText, resumeUsedPublicSite, samePublicRef, nativeReadContract,
   nativeRunReadContract, restoreRunReadContract, runReadContractRecord, nativeFirstTurnRequiresTool,
   stripUnboundCitationPlaceholders, synthesisHistoryFields, nativeSpecialistQuantityPartial, xiaokNativeExecutorProtocol } from '../agent/native-executor';
+import { normalizeNativeCitationCarrier } from '../agent/native-citation-gate';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { nativeHistoryCheckpoint, priorAnswerBusinessObject } from '../fastgpt/rag-session';
 import { recoverableUnavailableRead, runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
@@ -37,6 +38,12 @@ test('specialist quantity fallback keeps only independent current citations', ()
   assert.ok(partial.startsWith(cited));
   assert.match(partial, /无法确认|不足以确认/);
   assert.doesNotMatch(partial, /250|经验参考|旧建议/);
+});
+
+test('the provider citation spelling resolves only same-run source IDs', () => {
+  const catalog = [{ nativeId: 'C-owned', origin: 'current' }, { nativeId: 'C-history', origin: 'history' }] as RagCitationSource[];
+  const text = '现场待核对 (CITE C-owned) (CITE C-unissued) (CITE C-history)';
+  assert.equal(normalizeNativeCitationCarrier(text, catalog), '现场待核对 [C-owned](CITE) (CITE C-unissued) (CITE C-history)');
 });
 
 test('an uncited explanation now accompanies an authoritative snapshot when nothing was retrieved', () => {

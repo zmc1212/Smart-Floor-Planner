@@ -21,7 +21,7 @@ export function consultationRequestReservation(messages: ModelMessage[], tools: 
 /** Existing settings/reservation rows remain the single serialization point.
  * No new quota table, tenant resolver, ledger or cross-tenant lookup. */
 export async function reserveConsultationDispatch(tx: PostgresTransaction, input: {
-  enterpriseId: string; runId: string; binding: ConsultationBinding; createdAt: string;
+  enterpriseId: string; runId: string; binding: ConsultationBinding; createdAt: string; pendingAttemptId?: string;
   estimatedRequestTokens: number; purpose: 'answer' | 'vision' | 'summary' | 'grounding';
 }) {
   const settings = await one(tx, sql`select daily_tokens,daily_cost_micros,extract(epoch from clock_timestamp())*1000 now_ms
@@ -80,11 +80,12 @@ export async function settleConsultationDispatch(tx: PostgresTransaction, enterp
 
 /** Read-only projection of the original tenant ledger for whole-scenario preflight.
  * Callers acquire the same settings row lock before starting serial acceptance. */
-export async function consultationBudgetSnapshot(tx: PostgresTransaction, input: { enterpriseId: string; binding: ConsultationBinding }) {
+export async function consultationBudgetSnapshot(tx: PostgresTransaction, input: { enterpriseId: string; binding: ConsultationBinding; pendingAttemptId?: string }) {
+  const unknown = unresolvedProviderOutcome(input.pendingAttemptId);
   const totals = await one(tx, sql`select coalesce(sum(u.observed),0)::text observed,
     coalesce(sum(case when ${confirmedUsageReview(sql`u.observed`)} then q.settled_tokens else u.observed end),0)::text accounted,
     coalesce(sum(case when ${confirmedUsageReview(sql`u.observed`)} then 0 else greatest(q.reserved_tokens-u.observed,0) end),0)::text held,
-    coalesce(bool_or(not ${confirmedUsageReview(sql`u.observed`)} and ${unresolvedProviderOutcome()}),false) unknown,
+    coalesce(bool_or(not ${confirmedUsageReview(sql`u.observed`)} and ${unknown}),false) unknown,
     coalesce(sum(case when r.policy_snapshot#>>'{agent,consultation,budgetGroup}'=${input.binding.budgetGroup}
       then case when ${confirmedUsageReview(sql`u.observed`)} then q.settled_tokens else u.observed end else 0 end),0)::text scenario_accounted,
     coalesce(sum(case when r.policy_snapshot#>>'{agent,consultation,budgetGroup}'=${input.binding.budgetGroup}
@@ -105,8 +106,8 @@ export async function consultationBudgetSnapshot(tx: PostgresTransaction, input:
   // neither a new stage nor a new run can reset the campaign's cash ceiling.
   const cash = 'metered' in input.binding ? await one(tx, sql`select coalesce(sum(case when ${confirmedUsageReview()} then q.settled_cost_micros else u.cost end),0)::text known,
     coalesce(sum(case when ${confirmedUsageReview()} then 0 else greatest(q.reserved_cost_micros-u.cost,0) end),0)::text held,
-    coalesce(bool_or(not ${confirmedUsageReview()} and (u.missing>0 or ${unresolvedProviderOutcome()})),false) unknown,
-    array_agg(r.id::text) filter(where not ${confirmedUsageReview()} and (u.missing>0 or ${unresolvedProviderOutcome()})) unknown_runs
+    coalesce(bool_or(not ${confirmedUsageReview()} and (u.missing>0 or ${unknown})),false) unknown,
+    array_agg(r.id::text) filter(where not ${confirmedUsageReview()} and (u.missing>0 or ${unknown})) unknown_runs
     from app.assistant_runs r join app.assistant_quota_reservations q on q.enterprise_id=r.enterprise_id and q.run_id=r.id
     cross join lateral(select coalesce(ceil(sum(input_tokens)*1.2+sum(output_tokens)*4.8),0) cost,
       count(*) filter(where quantity is null or input_tokens is null or output_tokens is null) missing

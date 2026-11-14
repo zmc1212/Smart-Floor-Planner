@@ -6,6 +6,7 @@ import { knowledgeSynthesisSources, businessSynthesisSources, type SynthesisCont
 import { synthesisContextAvailable } from './synthesis-sources';
 import { queryBusiness, type BusinessQuery, type BusinessSnapshot } from './business-tools';
 import { retrieveKnowledge } from '../knowledge/retrieval';
+import { BailianKnowledgeError, knowledgeProviderMode } from '../knowledge/bailian-provider';
 import { embeddingGateway } from '../infrastructure/embedding-gateway';
 import { runContext, type Lease } from '../infrastructure/job-queue';
 import { nativeCites } from '../fastgpt/native-cites';
@@ -59,18 +60,24 @@ export function dialogueEnterpriseSearch(rt: DialogueToolRuntime) {
     const created = (async (): Promise<DialogueToolReceipt> => {
       const state = await rt.authorize();
       const operation = 'agent-v2-query:' + lease.runId + ':' + sequence;
+      const hosted = knowledgeProviderMode() === 'bailian';
       await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`insert into app.assistant_usage_records
-        (enterprise_id,run_id,operation_key,category,measurement_kind) values(${lease.enterpriseId},${lease.runId},${operation},'query_embedding','unavailable')`));
-      const gateway = embeddingGateway();
-      const metered = { ...gateway, embed: async (...args: Parameters<typeof gateway.embed>) => {
+        (enterprise_id,run_id,operation_key,category,measurement_kind) values(${lease.enterpriseId},${lease.runId},${operation},${hosted ? 'knowledge_search' : 'query_embedding'},'unavailable')`));
+      const gateway = hosted ? null : embeddingGateway();
+      const metered = gateway ? { ...gateway, embed: async (...args: Parameters<typeof gateway.embed>) => {
         const result = await gateway.embed(...args);
         if (result.usage) await withTenantTransaction(lease.enterpriseId, tx => tx.execute(sql`update app.assistant_usage_records
           set quantity=${result.usage!.inputTokens},input_tokens=${result.usage!.inputTokens},measurement_kind='observed',updated_at=now(),version=version+1
           where enterprise_id=${lease.enterpriseId} and operation_key=${operation} and category='query_embedding'`));
         return result;
-      } };
-      const retrieved = await retrieveKnowledge(String(state.conversation.id), lease.actor, query, Number(state.run.knowledge_epoch), metered);
-      const evidence = retrieved.evidence;
+      } } : undefined;
+      const retrieved = await retrieveKnowledge(String(state.conversation.id), lease.actor, query, Number(state.run.knowledge_epoch), metered).catch(error => {
+        if (!(error instanceof BailianKnowledgeError) || error.code !== 'retrieval_unavailable') throw error;
+        if (!error.outcomeKnown) fail('provider_outcome_unknown', 503);
+        return { unavailable: { code: error.providerCode, requestId: error.requestId, operation: error.operation } };
+      });
+      const unavailable = 'unavailable' in retrieved ? retrieved.unavailable : undefined;
+      const evidence = 'evidence' in retrieved ? retrieved.evidence : [];
       if (evidence.length) rt.markKnowledgeRetrieved();
       const sources: RagCitationSource[] = evidence.map(e => ({ nativeId: citationId(e.ref.id), sourceId: citationId(e.ref.id),
         quote: quoteOf(e.text), evidence: e, origin: 'current' as const }));
@@ -78,7 +85,8 @@ export function dialogueEnterpriseSearch(rt: DialogueToolRuntime) {
       rt.context.knowledge.push(...evidence); rt.context.sources.push(...knowledgeSynthesisSources(evidence));
       // The receipt is persisted with the step so an interrupted run can reuse
       // it verbatim instead of re-issuing the same metered query.
-      const receipt: DialogueToolReceipt = { status: evidence.length ? 'ready' : 'empty', kind: 'enterprise',
+      const receipt: DialogueToolReceipt = { status: unavailable ? 'retrieval_unavailable' : evidence.length ? 'ready' : 'empty', kind: 'enterprise',
+        ...(unavailable ? { instructions: '本次托管企业知识检索不可用。可以使用另行取得的公开原文，并说明企业资料本次未核实。' } : {}),
         ...(evidence.length ? nativeCites(sources.map(s => ({ id: s.nativeId, sourceName: '企业工艺｜PPT原文', content: s.quote! }))) : {}) };
       await withTenantTransaction(lease.enterpriseId, async tx => {
         const current = await runContext(tx, lease);
@@ -87,7 +95,15 @@ export function dialogueEnterpriseSearch(rt: DialogueToolRuntime) {
           values(${lease.enterpriseId},${lease.runId},${1300 + sequence},'retrieval','knowledge.search.v1',1,'succeeded',
             ${JSON.stringify(evidence.map(e => ({ ref: e.ref, hash: e.hash })))}::jsonb,${JSON.stringify(evidence)}::jsonb,
             ${JSON.stringify({ protocol: rt.protocol, tool: 'search_enterprise', query,
-              candidates: retrieved.diagnostic.candidates.length, selected: evidence.length, receipt })}::jsonb)`);
+              candidates: 'diagnostic' in retrieved ? retrieved.diagnostic.candidates.length : 0, selected: evidence.length,
+              ...(unavailable ? { provider: unavailable } : {}), receipt })}::jsonb)`);
+        if (hosted) {
+          const noDispatch = unavailable?.operation === 'configuration' || 'diagnostic' in retrieved && !retrieved.diagnostic.managedIndex?.authorizedDocuments;
+          const observed = 'diagnostic' in retrieved && !!retrieved.diagnostic.managedIndex?.requestId || !!unavailable?.requestId;
+          if (noDispatch || observed) await tx.execute(sql`update app.assistant_usage_records set quantity=${observed ? 1 : 0},
+            measurement_kind='observed',updated_at=now(),version=version+1
+            where enterprise_id=${lease.enterpriseId} and operation_key=${operation} and category='knowledge_search'`);
+        }
       });
       return receipt;
     })();

@@ -2,6 +2,8 @@
 
 **I6.16 防水清单候选（Limited）。** 隔离发布的 Workflow revision 4 显式选用 `waterproof-specialist@2`。检查项保存项目、房间、Agent、Workflow revision/digest、所选来源版本和复核状态。官网原页通过核对后可用于待核对清单，目录现行性及托管检索故障单独保留。被拒终稿记录失败 Run，登记回执由原服务事件核验。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。
 
+Native 咨询复用获权官网原文通道。已知托管故障返回明确回执。LangGraph 配额准入区分本次待派发记录和历史未知账。[固定回归](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。
+
 **I6.15 专业跟进（Limited）。** Native Executor 与 LangGraph 共用 `start_delegation` 的输入、授权、幂等和服务。登记事务同时保存原 C01 回执及 PostgreSQL Workflow Run，绑定客户、项目、房间、原消息和发布 revision/digest。`consultation`、`structuredFinal` 的不兼容组合在模型派发前明确路由至 LangGraph 并保存原因。获权员工沿 Construction 读取来源绑定的事项与经理复核。平台 `specialist-status` 要求当前企业及项目权限。来源与复核保存为独立事件，读回复核当前授权及版本。后台任务按回执原业主和当前项目权限重验已保存的委托回执依赖。[验收与限制](xiaok-integration-audit.md#i615-统一执行器与正式防水委托limited)。
 
 **小K统一集成（Limited）。** Assistant 网关默认使用 Chat Completions，已确认能力的百炼模型和工具可显式启用 Responses。工具证据和用量沿原轮次合同返回。模型推理字段独立于正文与 Evidence，字面思考标记触发终稿拒绝并记录协议诊断。防水专业咨询的量数沿同段 Evidence 检查。原有一次修复可定位段落、数值、单位及同轮来源。最后一稿仍有无据量数时，只投递经校验的独立引文段，并说明本次无法确认具体参数。PostgreSQL runtime 与同一 Outbox 消费者处理房间任务、施工复核及原会话回执。公开工地与本人项目共用会话服务，读取及重试均核查当前来源权限。Construction 持有带日期的计划、核实记录、设计核对、整改和关闭。日周报共用获权记录，同一租户和周期只领取一次周槽，再向四个角色投递。PG17/pgvector 升级使用活动迁移 0124–0127。见[模块合同](xiaok-integration-contract.md)与[集成审查](xiaok-integration-audit.md)。

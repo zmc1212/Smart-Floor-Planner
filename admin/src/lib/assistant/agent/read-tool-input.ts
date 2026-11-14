@@ -69,7 +69,7 @@ export function explicitHumanHandoffRequested(text: string): boolean {
 
 // A public receipt cannot satisfy a request for the enterprise's own practice.
 export const companyPracticeRequested = (question: string) =>
-  /(?:本企业|(?:你们|我们)(?:这家)?公司|公司自己)(?:的|内部)?[^。；\n]{0,18}(?:工艺|标准|规范|防水|施工|资料|规定)/u.test(question);
+  /(?:本企业|(?:你们|我们)(?:这家|装修)?公司|公司自己)(?:的|内部)?[^。；\n]{0,18}(?:工艺|标准|规范|防水|施工|资料|规定)/u.test(question);
 
 export function knowledgeReadPending(question: string, messages: ModelMessage[], triggerId: string, required = false): boolean {
   if (!required && !knowledgeOriginalRequested(question) && !companyPracticeRequested(question)) return false;

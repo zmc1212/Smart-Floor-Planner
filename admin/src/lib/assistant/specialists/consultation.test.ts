@@ -55,6 +55,7 @@ test('advice, latest room corrections, company standards, other editions and pro
   assert.equal(specialistFollowupRequested('卫生间的防水不用跟进，我只想先问问。'), false);
   assert.equal(consultationSpecialist('刚才那个 GB 50108-2008 的防水条文呢？', prior)?.standard, undefined);
   assert.equal(consultationSpecialist('我们公司的卫生间防水标准是什么？', [])?.companyOnly, true);
+  assert.equal(consultationSpecialist('我们装修公司对卫生间管根做防水有什么明确要求吗？', [])?.companyOnly, true);
   assert.equal(consultationSpecialist('这个和国家通用要求有什么区别？', ['我们公司的卫生间防水标准是什么？'])?.companyPractice, true);
   assert.equal(consultationSpecialist('那国标对卫生间管根是怎么要求的？', ['我们这家公司安排卫生间防水和后面的检查是怎么做的？'])?.companyPractice, false);
   assert.equal(knowledgeReadPending('那国标对卫生间管根是怎么要求的？能给我原文出处吗？', [], '1'), false);

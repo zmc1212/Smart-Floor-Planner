@@ -21,6 +21,28 @@ I6.16.2 两条固定 Native C01 咨询用百炼 `deepseek-v4.1-flash-1017`。Run
 
 候选切片定向 Assistant、Specialist Registry、Workflow Validator/Compiler/Simulator、Construction 54/54（0 skipped），TypeScript、定向 ESLint 与计划校验通过。见 `checklist-targeted-final.log`、`checklist-tsc.log`、`checklist-lint.log`。
 
+| 固定案例 | 状态 | 执行结果 |
+| --- | --- | --- |
+| A 普通管根，C 无据参数 | limited | Run 1 未登记委托，拒绝无据 200 mm。Run 2 虽保存正文，仍间接认可无据高度，业务判 failed。两份原稿以新规则离线复放，具体参数待确认，未追加实模。 |
+| B 基层条件 | failed | Native Run 14 首稿把原文称为现行，唯一修复含字面思考标签且截断。LangGraph Run 27 达到输入上限。 |
+| D 企业标准 | failed | Run 15 未正确识别「我们装修公司」。Run 28 已实际读取托管故障回执，未调用公开来源，首稿仍称通常 250 mm，唯一修复保留该量数并混入思考标签。 |
+| E 企业与国标对比 | failed | Run 16 同轮已有正式原页和明确的企业 retrieval_unavailable，首稿引用含未签发 ID，修复含字面思考标签。 |
+| F 现行性 | failed | Run 17 实读公告和原页，同版目录未能确认。终稿修复仍未达到响应协议。 |
+| G 厨房更正卫生间 | failed | Run 18/19 工具正确切换房间。厨房正文触发项目事实校验，卫生间获权记录的自由备注含历史草稿文案，模型将已发布记录误称草稿并被拦截。 |
+| H 主卧项目进度、补充普通问答 | passed | Run 20/26 都读取唯一在施工项目及精确主卧，返回水电和当前无已发布主卧记录。普通家具问题 Run 21/25 都答复且无委托写入。 |
+| I 有据清单 | limited | 授权后的正式 Run、Stable 引用和复核回传通过。授权前 Run 3/10 业务失败，均无委托写入。Run 10 首稿截断，唯一修复使用非标准引文拼写。离线用每段来源重验，修复稿可保存五条直接引文，保留业务失败判定。 |
+| J 普通问答与委托区分 | passed | 未授权问答零委托。原 C01 明确跟进实际写入正式 Run 与站内回执，重放同消息保持原作用。 |
+| K 登记后模型失败 | passed | PG17 LangGraph 受控帧 Run 12 写入真实登记回执 39，终稿及一次修复触发 invalid_model_answer，未生成模型消息。 |
+| L 取消与中断恢复 | passed | 受控 Run 12/13 经原 C01 服务取消。Run 13 在登记回执 43 确认后结束进程，双 Worker 竞争到期租约时保留 indeterminate；原委托和回执读取、取消均通过，受控注入实际供应商调用为 0。 |
+
+跨运行时为 limited。保留第一批 LangGraph Run 22–24 的派发前阻断。配额检查原先将本次刚建立且未派发的账目视为旧未知账。修复仅排除本次已绑定的待派发 ID，其他未对账结果继续阻止派发。后续 Run 25 至 27 实际用百炼返回。原租户绑定文件前后字节相同。真实回归验证普通问答、同一主卧查询、Native 实模登记和 LangGraph 的真实 PG17 写入及取消。专业答复、企业知识 Scope 及正式复核的两个运行时均完整实跑仍未通过。
+
+双进程 PG17 的 Workflow Runtime、Durable Task、独立 Admin、同任务双 Worker、Outbox、回滚和强制 RLS 8/8。工人撤权后再次提交被拒，经理撤权后复核被拒，原权限恢复且已关闭 Run 原记录一致。固定场景、受控中断、权限和源码快照见 `fixed-status-summary.json`、`ordinary-c01-citation-offline.json`、`receipt-{rejected,interrupted}.json`、`staff-revocation.json`、`runtime-pg.log`。
+
+I6.16 隔离库保存 53 次成功的供应商响应（42 Responses、11 Chat Completions）。已归属实际尝试的计量为 127,132 输入与 27,026 输出 tokens，实际结算金额 unknown。三条派发前阻断及所有被拒终稿独立留存，未计入业务通过。最终定向 133/133，小程序 70/70，均无跳过。
+
+最终 TypeScript、定向 ESLint 与 Next.js 16.4.6 生产 Webpack 构建通过。构建使用锁文件相同的隔离源码副本，测量镜像 83 项核对、静态页 115/115；首两次类型阻断日志保留。旧 I6.15 Run 只读查询仍绑定 @1 / rev3，两个现场和复核 task 均已结束且无租约。证据见 `webpack-binding.json`、`webpack-final.log`、`version-and-waits-readback.json`。
+
 ## I6.15 统一执行器与正式防水委托（Limited）
 
 分支 `codex/xiaok-integration`，fetch 基线 `72777986d854`，业务切片 `2a84ef249fb881df84b020fe3775c6d91b48775d`。新建隔离 PG17 `xiaok_i615_validation`，企业 `4`、对照企业 `5`、业主 `1`、项目 `1`、卫生间 `1`、原 C01 `1`、取消对照 C01 `2`。保留历史事项 `8`、V1 Agent 与已发布的各版本，采用既有 JSON/事件存储，空库迁移已验证。

@@ -36,9 +36,10 @@ export function confirmedUsageReview(observedTokens?: SQL) {
  * dispatched but never finalized, so it is an unknown outcome too; created
  * rows default accepted=false and must not be confused with that definite
  * failed+accepted=false rejection. */
-export function unresolvedProviderOutcome() {
+export function unresolvedProviderOutcome(preDispatchAttemptId?: string) {
   return sql`(r.status='indeterminate' or r.error_code in ('provider_outcome_unknown','provider_usage_unknown')
-    or exists(select 1 from app.ai_provider_attempts a where a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id and a.status in ('unknown','created'))
+    or exists(select 1 from app.ai_provider_attempts a where a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id and a.status in ('unknown','created')
+       ${preDispatchAttemptId ? sql`and a.id<>${preDispatchAttemptId}` : sql``})
     or exists(select 1 from app.assistant_usage_records u
       left join app.ai_provider_attempts a on a.enterprise_id=u.enterprise_id and a.id=u.provider_attempt_id
       where u.enterprise_id=r.enterprise_id and u.run_id=r.id

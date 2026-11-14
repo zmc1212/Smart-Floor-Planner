@@ -2,6 +2,8 @@
 
 **I6.16 已发布清单候选（Limited）。** Workflow revision 4 显式选择 `waterproof-specialist@2`。清单取本轮引文并绑定发布摘要，托管检索和公开规范现行性分别留状态。混合咨询的模型终稿被拒后，原 C01 仍按授权展示独立登记回执。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。
 
+Native 预读沿本轮授权与原文目录。独立引用标记只解析本轮签发 ID。LangGraph 配额核验排除本次待派发记录，历史未知结果继续保留。
+
 **I6.16.1 终稿协议。** `ModelTurnOutput.text` 只取 Responses 的 assistant `output_text` 或 Chat Completions 的 `message.content`。独立推理只记录通道标记，应用工具回执沿原授权管线。新答复和恢复中的字面 `<think>` 终稿整稿拒绝，纯终稿可用原有的一次修复。异常内容只留原私有审计，修复输入不携带被拒正文。适用的 Evidence、承诺与施工量数校验继续执行。防水专业咨询的量数沿同段 Evidence 检查。原有一次修复可定位段落、数值、单位及同轮来源。最后一稿仍有无据量数时，只投递经校验的独立引文段，并说明本次无法确认具体参数。 [百炼 Responses](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [百炼 Chat 思考字段](https://help.aliyun.com/zh/model-studio/deep-thinking/) · [OpenAI SDK 解析](https://github.com/openai/openai-node/blob/main/src/lib/ResponsesParser.ts)。
 
 **I6.15 专业委托（Limited）。** Native Executor 与 LangGraph 共用 `start_delegation` 输入及 `DelegationService`。原业主咨询提供获权原话、活动项目和精确房间，登记回执与发布版 Workflow Run 同事务保存。单独授权消息以真实回执结束，混合咨询继续校验模型解释。状态、暂停、恢复、取消沿原 C01 指令并复核当前权限。后续 Run 读取旧回执时，沿原 C01 重进的业主、项目和来源校验。[工作流与证据](xiaok-waterproof-workflow.md#i615-原咨询运行与事项)。
