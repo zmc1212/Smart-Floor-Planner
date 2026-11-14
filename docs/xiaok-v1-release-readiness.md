@@ -96,3 +96,31 @@
 - `tmp/xiaok-i73-acceptance/latest.json`
 - `tmp/xiaok-i73-ui/`（四端页面结果与截图）
 - `admin/scripts/xiaok-i73-acceptance.ts`
+
+## 9. 试点企业只读预检（I7.4.2）
+
+> 基线：`codex/xiaok-integration`，`be361f66e5c9`。
+> 范围：只读预检工具。本轮不初始化企业、不部署生产、不修改生产数据。
+
+新增 `admin/src/lib/xiaok-v1/pilot-readiness.ts`、`admin/scripts/xiaok-pilot-readiness.ts` 和 `npm run check:pilot-readiness`。工具必须显式指定单个 `enterpriseId`，不会默认扫描全部企业；只读检查企业、项目、四端账号、十阶段、施工计划、C01、周报计划与受众、Worker 心跳、迁移 0128/0129、业务账号、提醒/周报 RLS 和站内消息入口。
+
+| 能力 | 状态 | 说明 |
+| --- | --- | --- |
+| 企业/项目/当前阶段 | `passed` | 只读读取，企业不可见时明确报告 |
+| 十阶段配置 | `passed` | 十个标准阶段、知识包、提醒策略完整性 |
+| 有效施工计划 | `passed` | 复用 `readSchedule`，要求已发布、结构有效、覆盖当前阶段 |
+| 四端账号与项目权限 | `passed` | 要求成员关系 + 施工访问；仅有账号不算通过 |
+| 项目经理工作台 | `passed` | 复用 `canManageConstructionProject` 与施工访问判断 |
+| 业主 C01 | `passed` | open/ai 的 `customer_consultation` 会话 |
+| 周报计划与四角色受众 | `passed` | 计划启用为 blocker；受众/会话缺失为 warning |
+| Worker 心跳 | `passed` | 复用 `readWorkerHeartbeat`，仅 fresh 通过 |
+| 迁移 0128/0129 与 RLS | `passed` | 结构、回执字段、FORCE RLS 与租户策略 |
+| 数据库业务账号 | `passed` | 非超级用户、无 `rolbypassrls` |
+| 站内消息入口 | `passed` | C01、经理工作台、四角色跟进会话 |
+| 只读与无副作用 | `passed` | 隔离库 20 张业务表检查前后一致 |
+| 生产预检执行 | `not_run` | 本轮不执行生产初始化或预检 |
+| 真实微信订阅消息 | `not_run` | 仍只承诺站内提醒 |
+
+隔离测试：PG17 `127.0.0.1:55432/pilot_readiness_eval`、`sfp_app` 非超级用户；A–F 六类企业、跨企业隔离、无写入、重复执行稳定、权限不足明确报告，9/9 passed。`xiaok-v1` 既有单测 34 passed（预检测试在未配置隔离库时 9 skipped），`tsc --noEmit` 和定向 ESLint 通过。证据：`tmp/xiaok-i742-pilot-readiness/result-summary.json`、`test.log` 与三份 CLI 报告。
+
+完整检查项、运行方式、输出结构和已知限制见 [试点企业只读预检](./xiaok-pilot-readiness-checker.md)。生产使用仍需数据库快照、非超级用户连接和明确授权；本工具不替代迁移与部署流程。

@@ -51,6 +51,7 @@
     "test:postgresql": "npx tsx --test src/lib/__tests__/postgresql.test.ts src/lib/__tests__/lead-lifecycle.test.ts src/lib/__tests__/lead-conversion.test.ts src/lib/__tests__/lead-source.test.ts src/lib/__tests__/lead-staff-visibility.test.ts src/lib/__tests__/subscription-notification.test.ts src/lib/__tests__/referral-attribution.test.ts src/lib/__tests__/wechat-access-token.test.ts src/lib/__tests__/miniprogram-request-log.test.ts src/lib/__tests__/customer-phone.test.ts src/db/__tests__/*.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/postgres-migrate.mjs",
+    "check:pilot-readiness": "tsx scripts/xiaok-pilot-readiness.ts",
     "db:check": "node scripts/postgres-check.mjs",
     "db:backup": "node scripts/postgres-backup.mjs",
     "db:restore-drill": "node scripts/postgres-restore-drill.mjs",
