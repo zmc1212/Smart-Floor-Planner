@@ -11,8 +11,8 @@ import { toolSchemaIssue } from '../agent/tool-protocol';
 test('only the active waterproof registration is selectable and can narrow authorized tools', () => {
   const active = specialists.active(waterproofAgentId)!;
   assert.equal(active.version, 1);
-  assert.equal(specialists.active('electrical-specialist'), undefined);
-  assert.equal(specialists.version('electrical-specialist', 1)?.status, 'draft');
+  assert.equal(specialists.active('electrical-specialist')?.version, 1);
+  assert.equal(specialists.version('electrical-specialist', 1)?.status, 'active');
   assert.throws(() => specialistRegistry([active, { ...active, version: 2 }]), /duplicate_specialist_registration/);
   const disabled = specialistRegistry([{ ...active, status: 'disabled' }]);
   assert.equal(disabled.active(active.agentId), undefined);
