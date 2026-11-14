@@ -10,6 +10,7 @@ import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker'
 import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
 import { advanceConfiguredConstructionReports, deliverConfiguredConstructionReports } from '@/lib/construction/report-worker';
 import { advanceConfiguredStageReminders, deliverConfiguredStageReminders } from '@/lib/xiaok-v1/stage-reminder-worker';
+import { checkPilotWorkerAlignment } from '@/lib/xiaok-v1/pilot-worker-alignment';
 import { nativeWorkflowEnabled } from '@/lib/native-workflow/live/tenant-allowlist';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -25,6 +26,11 @@ export async function POST(request: Request) {
     if ((await request.text()).trim() && (request.headers.get('content-length') !== '0')) {
       return NextResponse.json({ success: false, code: 'invalid_message', requestId }, { status: 422 });
     }
+    // Reminder and weekly-report workers must resolve to the same deployment
+    // mode (and, in pilot mode, the same enterprise and pilot) before either
+    // may generate or deliver. Other Assistant jobs stay independent.
+    const pilotScopeAlignment = checkPilotWorkerAlignment();
+    const pilotWorkersEnabled = pilotScopeAlignment.status === 'aligned';
     // The B5.9 weekly scheduler runs inside this existing Worker tick. It is
     // loaded only when the enterprise allowlist is explicitly enabled; a
     // failure is isolated and never blocks the existing assistant/report jobs.
@@ -40,13 +46,19 @@ export async function POST(request: Request) {
       }
     }
     const knowledgeBatchChecks=await advanceKnowledgeBatches();
-    const constructionReportChecks = await advanceConfiguredConstructionReports({ now: new Date() });
+    const constructionReportChecks = pilotWorkersEnabled
+      ? await advanceConfiguredConstructionReports({ now: new Date() })
+      : { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode };
     // I7.1 deterministic reminders are isolated from model and report failures.
     // I7.4.5-C2 resolves the deployment mode first: a pilot run only scans its
     // saved scope, and an invalid pilot configuration never runs as enterprise.
     let stageReminderChecks: unknown;
-    try { stageReminderChecks = await advanceConfiguredStageReminders({ now: new Date() }); }
-    catch { stageReminderChecks = { error: 'stage_reminder_unavailable' }; }
+    if (pilotWorkersEnabled) {
+      try { stageReminderChecks = await advanceConfiguredStageReminders({ now: new Date() }); }
+      catch { stageReminderChecks = { error: 'stage_reminder_unavailable' }; }
+    } else {
+      stageReminderChecks = { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode };
+    }
     const data = await processAssistantJob(processAssistantRun);
     let nativeWorkflowDelegations: unknown = null;
     if (nativeWorkflowEnabled(process.env.NATIVE_WORKFLOW_DELEGATION_ENABLED)) {
@@ -66,13 +78,22 @@ export async function POST(request: Request) {
         nativeWorkflowTools = { enabled: true, error: 'native_workflow_tools_unavailable' };
       }
     }
-    const constructionReportDeliveries = await deliverConfiguredConstructionReports({ now: new Date() });
-    const inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + constructionReportDeliveries.delivered;
+    const reportDelivery = pilotWorkersEnabled
+      ? await deliverConfiguredConstructionReports({ now: new Date() })
+      : null;
+    const constructionReportDeliveries = reportDelivery
+      ?? { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode, delivered: 0 };
+    const inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents()
+      + (reportDelivery?.delivered ?? 0);
     let stageReminderDeliveries: unknown;
-    try { stageReminderDeliveries = await deliverConfiguredStageReminders({ now: new Date() }); }
-    catch { stageReminderDeliveries = { error: 'stage_reminder_delivery_unavailable' }; }
+    if (pilotWorkersEnabled) {
+      try { stageReminderDeliveries = await deliverConfiguredStageReminders({ now: new Date() }); }
+      catch { stageReminderDeliveries = { error: 'stage_reminder_delivery_unavailable' }; }
+    } else {
+      stageReminderDeliveries = { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode };
+    }
     const portfolioCopyClaimed = data.claimed ? false : await processPortfolioCopy();
-    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, constructionReportDeliveries, stageReminderChecks, stageReminderDeliveries, nativeWorkflowSchedule, nativeWorkflowDelegations, nativeWorkflowTools }, requestId });
+    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, constructionReportDeliveries, stageReminderChecks, stageReminderDeliveries, pilotScopeAlignment, nativeWorkflowSchedule, nativeWorkflowDelegations, nativeWorkflowTools }, requestId });
   } catch {
     return NextResponse.json({ success: false, code: 'assistant_unavailable', requestId }, { status: 503 });
   }
