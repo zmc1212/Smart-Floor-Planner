@@ -1,6 +1,6 @@
 # 小K I7.4.5-F4 统一 Worker 配置与四项任务端到端验收
 
-> 基线：`codex/xiaok-integration`，源码 SHA `9fe0f6564d1d`。
+> 基线：`codex/xiaok-integration`，F4 源码 SHA `9fe0f6564d1d`，F4.1 源码 SHA `cedb805363fe`。
 > 状态：`passed`、`failed`、`limited`、`not_run`。
 > 复用 F1/F2 的隔离 PostgreSQL 17 数据库，未连接生产库、未部署生产、未修改微云真实企业配置、未发送真实微信/订阅通知。
 
@@ -13,29 +13,38 @@
 | 业务账号 | `sfp_app`，`rolsuper=false` |
 | RLS | 范围、提醒、报告设置、报告、报告版本、投递、站内消息均 `relrowsecurity=true`、`relforcerowsecurity=true` |
 | 合成企业 | `5`（F2 提醒企业），项目 `8`（试点内）、`9`（范围外） |
-| Pilot | `f2-pilot`，最新范围版本 `8`，`active`，`project_ids=[8]` |
+| Pilot | `f2-pilot`；F4 起始版本 `8`，F4.1 最新版本 `10`，`active`，`project_ids=[8]` |
 | F1 企业 | `1`，只读核验，未修改 |
 | 早前 F2 企业 | `4`，只读核验，未修改 |
-| 证据 | `tmp/xiaok-i745-f4/run-03/result.json`（run-01/run-02 失败记录同样保留） |
+| 证据 | `tmp/xiaok-i745-f4/run-03/`（F4 通过）；`tmp/xiaok-i745-f4/run-01`、`run-02`（F4 失败轮次）；`tmp/xiaok-i745-f4-1/run-02/`（F4.1 通过），`tmp/xiaok-i745-f4-1/run-01/` 同样保留 |
 
 复跑（在 `admin/`）：
 
 ```powershell
 npx tsx scripts/xiaok-i745-f4-worker-alignment-acceptance.ts --output=../tmp/xiaok-i745-f4/run-04
+npx tsx scripts/xiaok-i745-f4-1-http-route-acceptance.ts --output=../tmp/xiaok-i745-f4-1/run-03
 ```
 
 脚本只接受 `127.0.0.1:55432/i745_f1_accept` 且业务用户为 `sfp_app`；连接信息来自未提交的 `tmp/xiaok-i745-f2/connection.private.json`。
 
-## 2. Worker 编排抽取
+## 2. Worker 编排与 HTTP Handler
 
-`admin/src/app/api/internal/assistant/jobs/run/route.ts` 只保留 401 鉴权、请求体校验和响应封装。每次 tick 的编排抽取到 `admin/src/lib/assistant/infrastructure/jobs-tick.ts` 的 `runAssistantJobsTick()`：
+`admin/src/app/api/internal/assistant/jobs/run/route.ts` 只保留 `GET` 健康检查、`POST` 转交和 401/422/503 语义。每次 tick 的编排位于 `admin/src/lib/assistant/infrastructure/jobs-tick.ts` 的 `runAssistantJobsTick()`：
 
 - 默认依赖与抽取前完全相同，生产调用不传参数。
-- 可注入 `now`、`env` 及每个 Job 函数，用于按调用次数验证。
+- 可注入 `now`、`env` 及非目标 Job 函数，用于按调用次数验证。
+- 四项提醒/周报 Worker 始终使用真实实现；`env` 会原样传给这四个入口。
 - 顺序保持：Native Workflow 调度 → Knowledge Batch → 周报生成 → 提醒生成 → Assistant Job → Native Workflow 委派/工具 → 周报投递 → 站内通知/公开同意 → 提醒投递 → Portfolio Copy。
 - 周报生成与投递新增与提醒一致的独立 `try/catch`，单个 Worker 失败只记录错误，不跳过其他独立任务。
 
-未重写 API，未改变 401、422、503 语义。
+完整 POST Handler 位于 `admin/src/lib/assistant/infrastructure/jobs-post-handler.ts`：
+
+- 生产使用 `assistantJobsPost`，与改造前一样调用真实 `runAssistantJobsTick()`。
+- `createAssistantJobsPost()` 只允许注入固定 `now`、`env` 和非目标 Assistant Job；四项业务 Worker 不在可注入类型中。
+- 注入参数只存在于测试/验收进程内，HTTP 请求只能提供 `x-cron-secret` 和请求体，无法控制时钟、环境或依赖。
+- 保留 `CRON_SECRET` 与 `timingSafeEqual` 鉴权，保留 401、422、503 响应语义。
+
+未重写 API，未改变生产 Worker 配置。
 
 ## 3. 配置组合 A–H
 
@@ -141,15 +150,59 @@ D–H 的四项响应均包含 `skipped: true`、`reason: 'pilot_worker_alignmen
 - Knowledge Batch 与 Assistant Job 各执行 `1` 次。
 - 业务数据完全不变，四项响应均为 `skipped`，未回退企业模式。
 
+### 5.7 完整 HTTP Route 一致配置（I7.4.5-F4.1）
+
+通过 `createAssistantJobsPost()` 创建测试 Handler，固定时钟 `2026-11-16T20:00:00+08:00`、统一 `pilot` 环境和确定性非目标 Job；四项提醒/周报仍使用真实实现。请求只携带 `x-cron-secret`，无法传入时钟或依赖。
+
+| 项 | 值 |
+| --- | --- |
+| 第一次请求 ID | `eaa953f0-ab98-41d5-ba80-395ab03b19eb` |
+| 第二次请求 ID | `cd39e94d-64fe-4046-8900-766ed9b7b2ba` |
+| 第三次请求 ID | `964ef724-815f-40e0-b412-23d11b6841f3` |
+| 配置摘要 | 提醒 `pilot`、周报 `pilot`，企业 `5`，试点 `f2-pilot` |
+| alignment | `aligned` + `pilot` |
+| HTTP 状态 | 三次均 `200`，`success=true` |
+| 数据库最新范围 | 版本 `10`，`active`，`[8]` |
+| 两条链路 scopeVersion | 提醒 `10`、周报 `10`、提醒投递 `10`、周报投递 `10` |
+
+第一次 POST：
+
+- 提醒 `created=6`、`delivered=2`、`failed=1`；新提醒 `rem_36700a8b9a5669655a28c53c` → message `57`（业主会话 `15`），`rem_84cc5a88d7131ca1982db0a4` → message `58`（施工人员会话 `17`），经理 `rem_c5f8b073c37a854ddfb97edc` 为 `failed/no_inbox`。
+- 周报 `queued=1`，新报告 `21`（boss，run `16`，revision 1）。
+
+跨 Worker 边界准备 facts 后，第二次 POST：
+
+- 报告 `21` 变为 `facts_ready`，`facts.projectIds=[8]`，`facts_hash=3a40a106ddc834932b23815dbf75732c559cd15f84a9d3782a0b3af1298e6d43`。
+- 周报投递 `delivered=1`，delivery `21:1` → message `59`，老板会话 `21`。
+- 提醒投递 `delivered=0`，未重复发送。
+
+第三次 POST：
+
+- 周报 `queued=0`、投递 `0`、提醒投递 `0`。
+- 业务计数前后一致：`42 / 4 / 4 / 4 / 35 / 61`（项目 8 提醒、项目 9 提醒、报告、投递、消息、Outbox）。
+
+边界与失败语义：
+
+| 检查 | 结果 |
+| --- | --- |
+| 未授权 POST | `401` |
+| 错误请求体 | `422` |
+| Worker 异常 | `503` |
+| 范围外项目 9 | 提醒保持 4 条，无新增；所有周报 facts 均只含项目 8 |
+
+为在同一周报周期生成一份新报告，验收新增了一个合成 `enterprise_admin`（管理员 `16`），由既有 `discoverFollowups()` 创建新的老板绑定；未修改或替换已有客户/老板报告。F4.1 run-01 与 run-02 均通过，本文引用 run-02；每个 run 各自新增一个合成老板，历史运行不删除。
+
 ## 6. 工程回归
 
 | 项 | 结果 |
 | --- | --- |
 | `pilot-worker-alignment.test.ts` | 11 项通过 |
-| `worker-tick-alignment.test.ts` | 14 项通过（A–H 调用次数、异常隔离、Native Workflow、401/422） |
+| `worker-tick-alignment.test.ts` | 15 项通过（A–H 调用次数、异常隔离、Native Workflow、401/422/503、固定时钟 Handler） |
 | `stage-reminder-worker.test.ts`、`reminder-service.test.ts`、`pilot-scope-resolver.test.ts`、`stage-reminder-config.test.ts` | 通过 |
 | `report-worker-pilot.test.ts`、`report-store-pilot-scope.test.ts`、`pilot-report-scope.test.ts`、`weekly-report-config.test.ts` | 通过 |
-| 上述 10 个定向文件合计 | `121 passed / 0 failed` |
+| 上述 10 个定向文件合计 | `122 passed / 0 failed` |
+| F4.1 PG17 完整 HTTP 脚本 | 17 passed / 0 failed / 1 `not_run`（真实通知） |
+| F4 PG17 脚本（run-03 证据） | 22 passed / 0 failed；单次夹具，本轮未重复执行 |
 | TypeScript `npx tsc --noEmit` | 通过 |
 | 定向 ESLint | 通过 |
 | F1 企业 `1` 只读回归 | 项目 2、记录 2、提醒 0、报告 10、投递 10、设置 `project_ids=[]`，与 F1 记录一致 |
@@ -179,14 +232,14 @@ run-01 在 facts 生成前失败，产生了两条无 facts、无投递、无消
 | 两条链路同企业/试点并读取最新 scopeVersion | `passed` |
 | 范围外项目零新增 | `passed` |
 | 重复 tick 幂等 | `passed` |
-| 完整 Route（统一配置） | `limited`：时钟不可注入，且会处理队列中的报告正文 Job |
+| 完整 Route（统一配置） | `passed`（F4.1，三次 POST + 401/422/503） |
 | 完整 Route（配置不一致） | `passed` |
 | 真实微信/订阅通知、生产部署 | `not_run` |
 | 多企业并发、长周期压测 | `limited`（本轮单企业、单周） |
 
 ## 9. 明确限制
 
-- 统一配置下四项任务使用真实业务入口、真实数据库和抽取后的编排函数；完整 HTTP Route 只在配置不一致路径做真实执行。原因是 Route 使用进程时钟，无法固定周报周期，并会处理与本验收无关的排队任务。
+- F4.1 的完整 HTTP Route 使用真实 POST Handler 工厂，固定时钟和确定性非目标 Job 只存在于验收进程；四项提醒/周报仍为真实实现。原 F4 PG17 脚本是单次夹具（同一周报周期会与已存在报告幂等冲突），本轮保留其 run-03 证据，不重复执行；F4.1 在同一 PG17 数据库继续验证完整 HTTP Route。
 - 未发送真实微信/订阅通知；提醒和周报均为隔离数据库内的站内消息。
 - 未合并 `main`、未部署生产、未修改生产环境变量或微云真实企业配置。
 - 合成项目从 `completion` 归一化回 `油漆→软装`，仅用于让周报覆盖该 active 项目；该操作记录在验收证据中。

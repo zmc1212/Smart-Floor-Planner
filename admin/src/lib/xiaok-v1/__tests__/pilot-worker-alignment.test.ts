@@ -117,8 +117,8 @@ test('W. the worker tick skips all four pilot workers when alignment fails', () 
   const source = readFileSync(join(process.cwd(), 'src/lib/assistant/infrastructure/jobs-tick.ts'), 'utf8');
   const gate = source.indexOf('const pilotWorkersEnabled');
   assert.ok(gate > 0);
-  for (const call of ['advanceReports({ now })', 'deliverReports({ now })',
-    'advanceReminders({ now })', 'deliverReminders({ now })']) {
+  for (const call of ['advanceReports({ now, env })', 'deliverReports({ now, env })',
+    'advanceReminders({ now, env })', 'deliverReminders({ now, env })']) {
     const index = source.indexOf(call);
     assert.ok(index > gate, call + ' must run after the alignment gate');
   }
@@ -131,7 +131,7 @@ test('W. the worker tick skips all four pilot workers when alignment fails', () 
 test('W2. the route authenticates before the tick and keeps other jobs independent', () => {
   const route = readFileSync(join(process.cwd(), 'src/app/api/internal/assistant/jobs/run/route.ts'), 'utf8');
   assert.match(route, /if \(!authorized\(request\)\)[\s\S]*status: 401/);
-  assert.match(route, /const data = await runAssistantJobsTick\(\)/);
+  assert.match(route, /return assistantJobsPost\(request\)/);
 
   const tick = readFileSync(join(process.cwd(), 'src/lib/assistant/infrastructure/jobs-tick.ts'), 'utf8');
   assert.match(tick, /const knowledgeBatchChecks = await knowledgeBatches\(\)/);

@@ -98,7 +98,7 @@ export async function runAssistantJobsTick(
 
   let constructionReportChecks: unknown;
   if (pilotWorkersEnabled) {
-    try { constructionReportChecks = await advanceReports({ now }); }
+    try { constructionReportChecks = await advanceReports({ now, env }); }
     catch { constructionReportChecks = { error: 'construction_report_unavailable' }; }
   } else {
     constructionReportChecks = { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode };
@@ -107,7 +107,7 @@ export async function runAssistantJobsTick(
   // I7.1 deterministic reminders are isolated from model and report failures.
   let stageReminderChecks: unknown;
   if (pilotWorkersEnabled) {
-    try { stageReminderChecks = await advanceReminders({ now }); }
+    try { stageReminderChecks = await advanceReminders({ now, env }); }
     catch { stageReminderChecks = { error: 'stage_reminder_unavailable' }; }
   } else {
     stageReminderChecks = { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode };
@@ -140,7 +140,7 @@ export async function runAssistantJobsTick(
   let constructionReportDeliveries: unknown;
   let reportDelivery: { delivered?: number } | null = null;
   if (pilotWorkersEnabled) {
-    try { reportDelivery = await deliverReports({ now }); }
+    try { reportDelivery = await deliverReports({ now, env }); }
     catch { reportDelivery = null; }
     constructionReportDeliveries = reportDelivery
       ?? { error: 'construction_report_delivery_unavailable' };
@@ -153,7 +153,7 @@ export async function runAssistantJobsTick(
 
   let stageReminderDeliveries: unknown;
   if (pilotWorkersEnabled) {
-    try { stageReminderDeliveries = await deliverReminders({ now }); }
+    try { stageReminderDeliveries = await deliverReminders({ now, env }); }
     catch { stageReminderDeliveries = { error: 'stage_reminder_delivery_unavailable' }; }
   } else {
     stageReminderDeliveries = { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode };

@@ -206,9 +206,10 @@ test('native workflow enable conditions are unchanged', async () => {
   assert.equal(recovery.counts.delegations, 0);
 });
 
-// The route still rejects unauthenticated and malformed requests before the tick.
-test('the route rejects unauthorized and invalid requests before any job', async () => {
+// The route handler keeps authentication, validation and failure semantics.
+test('the route handler rejects unauthorized, invalid and failing ticks', async () => {
   const { POST } = await import('@/app/api/internal/assistant/jobs/run/route');
+  const { createAssistantJobsPost } = await import('@/lib/assistant/infrastructure/jobs-post-handler');
   const previous = process.env.CRON_SECRET;
   try {
     delete process.env.CRON_SECRET;
@@ -220,6 +221,54 @@ test('the route rejects unauthorized and invalid requests before any job', async
       method: 'POST', body: 'unexpected', headers: { 'x-cron-secret': 'f4-worker-secret' },
     }));
     assert.equal(invalid.status, 422);
+
+    const failing = createAssistantJobsPost({
+      now,
+      env: { ...stagePilot, XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' },
+      advanceKnowledgeBatches: async () => { throw new Error('knowledge_down'); },
+    });
+    const unavailable = await failing(new Request('http://localhost/api/internal/assistant/jobs/run', {
+      method: 'POST', headers: { 'x-cron-secret': 'f4-worker-secret' },
+    }));
+    assert.equal(unavailable.status, 503);
+  } finally {
+    if (previous === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = previous;
+  }
+});
+
+// A test handler can fix the clock/environment and replace non-pilot jobs
+// without exposing those parameters over HTTP.
+test('an injected route handler runs the tick with a fixed clock', async () => {
+  const { createAssistantJobsPost } = await import('@/lib/assistant/infrastructure/jobs-post-handler');
+  const previous = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'f4-worker-secret';
+  const counts = { knowledge: 0, assistant: 0 };
+  try {
+    const post = createAssistantJobsPost({
+      now,
+      env: { ...stagePilot, XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' },
+      advanceKnowledgeBatches: async () => { counts.knowledge += 1; return 0; },
+      processAssistantJob: async () => { counts.assistant += 1; return { claimed: false }; },
+      processAssistantRun: async () => undefined,
+      deliverSiteNotifications: async () => 0,
+      deliverPublicConsents: async () => 0,
+      processPortfolioCopy: async () => false,
+    });
+    const response = await post(new Request('http://localhost/api/internal/assistant/jobs/run', {
+      method: 'POST', headers: { 'x-cron-secret': 'f4-worker-secret' },
+    }));
+    assert.equal(response.status, 200);
+    const payload = await response.json() as { success: boolean; requestId: string;
+      data: Record<string, unknown> };
+    assert.equal(payload.success, true);
+    assert.ok(payload.requestId);
+    assert.equal((payload.data.pilotScopeAlignment as Record<string, unknown>).status, 'mismatch');
+    for (const key of ['constructionReportChecks', 'stageReminderChecks',
+      'constructionReportDeliveries', 'stageReminderDeliveries']) {
+      assert.equal((payload.data[key] as Record<string, unknown>).skipped, true);
+    }
+    assert.deepEqual(counts, { knowledge: 1, assistant: 1 });
   } finally {
     if (previous === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = previous;

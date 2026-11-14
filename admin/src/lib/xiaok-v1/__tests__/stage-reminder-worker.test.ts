@@ -100,12 +100,12 @@ test('F/G. the worker route keeps the other jobs, auth guard and delivery flow',
   const source = readFileSync(join(process.cwd(), 'src/lib/assistant/infrastructure/jobs-tick.ts'), 'utf8');
 
   assert.match(route, /if \(!authorized\(request\)\)[\s\S]*status: 401/);
-  assert.match(route, /const data = await runAssistantJobsTick\(\)/);
+  assert.match(route, /return assistantJobsPost\(request\)/);
   assert.doesNotMatch(route, /advanceConfiguredStageReminders\(/);
   assert.doesNotMatch(route, /deliverConfiguredStageReminders\(/);
   assert.match(source, /const pilotScopeAlignment = alignmentOf\(env\)/);
   assert.match(source, /const pilotWorkersEnabled = pilotScopeAlignment\.status === 'aligned'/);
-  assert.match(source, /advanceReminders\(\{ now \}\)/);
+  assert.match(source, /advanceReminders\(\{ now, env \}\)/);
   assert.doesNotMatch(source, /advanceStageReminders\(/);
   assert.match(source, /if \(pilotWorkersEnabled\) \{\s*\n\s*try \{ stageReminderChecks = await advanceReminders/);
   assert.match(source, /const knowledgeBatchChecks = await knowledgeBatches\(\)/);
@@ -118,8 +118,8 @@ test('F/G. the worker route keeps the other jobs, auth guard and delivery flow',
   assert.doesNotMatch(source, /deliverStageReminders\(/);
   assert.match(source, /skipped: true, reason: 'pilot_worker_alignment'/);
   assert.match(source, /pilotScopeAlignment,/);
-  assert.ok(source.indexOf('advanceReminders({ now })') < source.indexOf('assistantJob(assistantRun)'));
-  assert.ok(source.indexOf('assistantJob(assistantRun)') < source.indexOf('deliverReminders({ now })'));
+  assert.ok(source.indexOf('advanceReminders({ now, env })') < source.indexOf('assistantJob(assistantRun)'));
+  assert.ok(source.indexOf('assistantJob(assistantRun)') < source.indexOf('deliverReminders({ now, env })'));
 });
 
 type DeliverCall = [Date, string | undefined, string | undefined];
