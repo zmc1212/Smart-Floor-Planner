@@ -145,7 +145,29 @@ npx tsx scripts/xiaok-i72-acceptance.ts
 | 小程序全量测试 | `passed`（保留历史失败）2,249/2,250；唯一失败为既有测绘 Phase 0 审计 |
 | 生产 Webpack 构建 | `passed`，`/api/miniprogram/xiaok/stage-answer` 与 `/api/miniprogram/xiaok/reminders` 进入路由清单 |
 
-## 11. 已知边界
+## 11. 业务场景 A–Q
+
+| 编号 | 场景 | 状态 | 证据与边界 |
+| --- | --- | --- | --- |
+| A | 水电项目进入阶段，业主收到站内提醒 | `passed` | 项目 A 进入 `utilities`，业主提醒 `delivered` 且有 `message_id` |
+| B | 业主在原 C01 提问，得到水电阶段回答 | `passed`（服务层） | `stageChatForConversation` 返回水电知识；真实页面点击 `not_run` |
+| C | 施工人员提交普通现场记录，自动归档并关联 | `limited` | 通过现有 `SiteChatService` 真实提交并由项目经理发布；AI 自动整理未在本轮真实模型调用 |
+| D | 设计师收到待核对提醒 | `passed` | `designer_review` 目标为项目设计师 |
+| E | 老板收到跨项目周报和介入例外 | `passed` | 老板事实含两个项目；老板例外仅计划过期 |
+| F | 业主收到自己的项目周报 | `passed` | 业主事实仅一个项目，站内投递 |
+| G | 施工人员收到自己的施工周报 | `passed` | worker 绑定与章节 |
+| H | 设计师收到设计协作周报 | `passed` | designer 绑定与章节 |
+| I | 阶段变化，旧阶段提醒重新评估 | `passed` | `expired/stage_changed` |
+| J | 同一提醒重复运行不重复发送 | `passed` | 重复 tick 数量不变，重复 Outbox 一条消息 |
+| K | 同一周报重复运行不重复生成 | `passed` | 报告数量不变 |
+| L | 提醒失败后恢复 | `passed` | `failed/no_inbox` 后重新打开会话并重试送达 |
+| M | 周报生成失败后恢复 | `limited` | 复用现有 failed Run/重试合同；本轮未注入真实 Worker 崩溃 |
+| N | 权限撤销后停止后续投递 | `passed` | 待发提醒取消；历史周报按当前权限遮蔽 |
+| O | 没有计划时显示待核实 | `passed` | 十阶段项目无计划，未生成精确到期提醒；计划颜色为灰色 |
+| P | AI 不可用时原始记录和人工业务继续 | `passed` | 未配置模型仍生成阶段回答、提醒和周报事实 |
+| Q | 四端重新进入后读取同一事实 | `passed`（服务层） | `FollowupService.detail/reports` 返回同一报告版本；真实四端点击 `not_run` |
+
+## 12. 已知边界
 
 1. 站内 `delivered` 只表示进入接收人会话，不代表已读、承诺或完成。
 2. 项目经理没有独立 followup binding 时，提醒保留 `failed/no_inbox`，不借用其他角色会话。
