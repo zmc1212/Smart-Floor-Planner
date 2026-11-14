@@ -66,3 +66,11 @@ I6.17 补充：施工量数必须能追溯到标准原文、企业工艺、当�
 ### I6.13 解释修复与 PDF 页引用
 
 知识解释的 `unsupported_model_commitment` / `standard_status_unverified` 修复反馈现精确到问项、段号、缺失数字/量数与同轮 citationId 候选；状态守卫把“现行状态/情况/结论/信息/记录”识别为话题标签，不当作现行断言。`advice` 段由服务端显示为“一般建议”，语义复核据此承认一般专业解释。PDF 页引用 `w:99:1` 经 Stable 会话 `70` 点击与退出重进验证，原件与页 Hash 保持；Reader 超时与撤回分别返回 `source_unreadable` / `source_withdrawn`。施工端 Stable 提交、业主 Stable 再切换授权本轮 `not_run`，未以服务端通过代替 UI 通过。
+
+### I6.18 专业回答与 V1.1 合同
+
+专业终稿的施工量数视图统一移除版本号、记录编号和带修饰语的照片张数；这些字段只作为来源元数据。归属录备注中的“原话称已完成”只在服务端已核对发布快照存在时作为来源展示，模型自己的完成/验收表述仍失败关闭。“不能据此认为……完成/验收”的否定作用域不延伸到同一段后续的新完成断言。
+
+引用载体只接受本轮签发 id，兼容 `CITE[id]`、`[id](CITE id)` 与裸 `[id]`/`[id][id]`；未知 id 不归一、不计引用。单个专业段落最多 4 条签发引用，超出按 `invalid_model_answer` 失败关闭。原生项目快照可支撑无自身 CITE 的阶段观察，但只限服务端聚合的 project 来源，不扩大知识、网页或现场记录权限。
+
+V1.1 为独立 `waterproof-specialist@2` 候选与 Workflow revision 4 digest `dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0`；V1 的 @1 与 rev1–3 不变，旧 Run 继续按启动时 revision/digest 恢复。完整边界见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。

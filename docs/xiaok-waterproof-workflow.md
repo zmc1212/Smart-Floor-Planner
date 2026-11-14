@@ -81,3 +81,10 @@ ot_run\。公开 PDF 原件 Hash 与 Reader 故障分类通过；已保存 PDF �
 - G 场景保留 Run `84`/`91`/`97` 失败链；新增数字/状态精确修复诊断，状态守卫把“现行状态/记录”识别为话题标签。`97` 的修复稿确定性通过，受两次真实试验预算标 `limited`。
 - H 场景会话 `61` 五轮通过：厨房记录、卫生间更正、管根解释、处理条件、主卧记录；厨房 Evidence 未支持卫生间。
 - PDF 页引用 `w:99:1`（Run `99`）为真实第 27 页，Stable 会话 `70` 点击与退出重进通过；Reader 超时 `source_unreadable`、410 撤回 `source_withdrawn`。施工端 Stable 重新提交与业主 Stable 再切换本轮 `not_run`，真实工地照片 `not_run`。
+
+## I6.18 最终复验与 V1.1 冻结
+
+- 两批真实模型固定百炼 `deepseek-v4.1-flash-1017`，44 次尝试（42 Responses），97,646 输入 / 23,704 输出 / 36,096 缓存输入 tokens。第一批 B/D 通过，E 与 G 第 3/4 轮失败；第二批 B/D/E 与 G 第 1/2/4/5 轮失败，G 第 3/6 轮通过。未执行第三批。
+- 业务写入两批均为 0；企业托管检索持续 `retrieval_unavailable`，回答明确“本次未核实”。项目状态只来自服务端快照，未把阶段当作完工。
+- 第二批后离线修复记录元数据、归属录备注、裸引用载体、企业范围描述、原生快照观察与无引用段落修复诊断；D Run 52、G Run 54/58 原稿复验通过，E Run 53 仍受单段 4 引用上限，G Run 55/57 仍失败。
+- V1 不变；V1.1 为 `waterproof-specialist@2` + Workflow revision 4 digest `dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0`。隔离库 4 个 Run 绑定不变。交付边界见[V1.1 报告](xiaok-waterproof-agent-v1.1-release.md)。

@@ -93,3 +93,20 @@
 7. 厨房、卫生间、主卧未互相串用；已发布记录的服务端状态优先于自由备注。
 8. D、E、G 更正仍保留真实失败；第二批后的三处修复只完成离线复验，按 `limited` 记录，不再追加第三次同类采样。
 9. LangGraph 输入上限修复未在本轮追加真实采样，按 `not_run` 记录；I6.16 的 Run 27 失败证据保留。
+
+## 6. I6.18 最终复验与 V1.1 边界
+
+两批真实模型仍固定 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`，共 44 次尝试（42 Responses），97,646 输入 / 23,704 输出 / 36,096 缓存输入 tokens，结算金额 `unknown`。未执行第三批同类问题采样。
+
+| 场景 | 第一批 | 第二批 | 最终归属 |
+| --- | --- | --- | --- |
+| B 基层条件 | passed（Run 42） | failed（Run 51，修复含 `<think>` 且截断） | limited |
+| D 企业标准 | passed（Run 43） | failed（Run 52，企业归属误判；离线修复后通过） | limited |
+| E 企业/国标对比 | failed（Run 44，裸 `[id]` 载体 + `<think>`） | failed（Run 53，企业归属误判；离线修复后仍受单段 4 引用上限） | failed |
+| G 厨房/更正 | Run 45/46 passed | Run 54 failed（快照观察误判，离线修复后通过）、Run 55 failed（首稿 `<think>`） | limited |
+| G 管根/防水时机 | Run 47/48 failed（日期无引用、机理同段、修复 `<think>`） | Run 57 failed（单段 5 引用超限）；Run 56 passed | limited |
+| G 主卧/记录对比 | Run 49/50 passed | Run 58 failed（快照观察误判，离线修复后通过）、Run 59 passed | limited |
+
+第二轮后新增的离线修复：记录版本/编号/带修饰语照片张数统一视为元数据；归属录备注“原话称已完成”与“不能据此认为……完成/验收”不再当作模型完成声明；裸 `[id]`/`[id][id]` 仅在对应本轮签发引用时归一；企业标准范围描述、索要客户文件、以免误认公司规定的否定语境不再当作企业声明；原生项目快照可支撑无自身 CITE 的阶段观察；无引用段落无法生成修复诊断时返回可定位问题。离线复验 D Run 52、G Run 54/58 通过；E Run 53 仍因单段 9 条引用超过 4 条上限失败，G Run 55 首稿仍含 `<think>`，G Run 57 仍因单段 5 条引用超限失败。
+
+新增确定性测试：`provenanceMetadataText`、归属录备注与否定完成投影、裸括号引用载体、企业范围描述、原生快照观察、12,000 bytes 长网页节选合同。Assistant lib 1,075/1,076，保留书桌收纳历史失败；Native Workflow 477/477；Construction 113/113；Specialist 22/22；小程序 2,246/2,247，保留测绘 Phase 0 历史失败；TypeScript、定向 ESLint、Next.js 16.4.6 Webpack 生产构建通过。完整边界见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。

@@ -23,3 +23,15 @@ I6.16 的 @2 候选由显式发布的 Workflow revision 选中。子作业以当
 I6.12 把照片观察的结构化从模型工具参数移到服务端：图像轮仍只提交 \kind\/\	ext\，正文七节固定文本由服务端解析；解析失败时执行一次独立文本归一化调用，结果再经固定信封 Schema 与语义校验。该调用复用同一 \AgentModelGateway\、加密配置、用量台账和请求回执，不新增网关或生产默认值。真实回执见 \dmin/tmp/i6.12/photo-01/\；真实工地照片、真机与 BLE 仍未验。工作流、四端与冻结标识见[防水工作流](xiaok-waterproof-workflow.md)和[第一版交付](xiaok-waterproof-agent-v1-release.md)。
 
 I6.13 复核：知识解释的单次修复改为精确诊断——按 Q/段号列出未由本段引用支持的数字、量数与同轮 citationId 候选；`standard_status_unverified` 同样返回状态候选，避免删除真实状态结论。语义复核承认服务端对 `advice` 的“一般建议”展示标签。PDF 页引用在 Stable 业主会话完成点击与重进；施工端/业主授权 UI 本轮未重跑，保持 `limited`/`not_run`。证据见[集成审查](xiaok-integration-audit.md)。
+
+## I6.18 专业回答守卫边界
+
+- 施工量数视图统一使用 `provenanceMetadataText`：版本号、记录编号、带修饰语的照片张数（如“1 张现场照片”）是来源元数据，不是施工量数；最终数值校验与修复诊断共用同一视图。
+- 归属录备注中的“原话称已完成”只作为来源展示；`attributedRecordNotes` 仅在服务端已核对发布记录快照存在时启用，模型自己的“已完成/验收”仍失败关闭。
+- 否定完成投影覆盖“不能据此认为……已完成，或已经通过验收”；同一段后续出现新的完成断言仍拒绝。
+- 引用载体兼容 `CITE[id]`、`[id](CITE id)`、裸 `[id]`/`[id][id]`，但只在 id 是本轮签发引用时归一；未知 id 保持失败关闭。
+- 企业资料不可用时，企业标准范围描述、索要客户文件、以免误认公司规定的否定语境不当作企业声明；真实的要求谓词仍由 `unsupported_enterprise_claim` 拦截。
+- 原生项目快照可支撑没有自身 CITE 的阶段观察；该快照仅限 `kind=project` 且无 material/followup 的服务端聚合来源。
+- 无引用段落无法生成修复诊断时返回可定位修复问题，不再直接抛出 `ungrounded_response_scope`；修复后仍执行原有数值、承诺、引用与范围校验。
+
+上述边界由 `parameter-provenance.test.ts`、`formal-claim-scope.test.ts`、`synthesis-source-roles.test.ts`、`dialogue-web-tools.test.ts` 与 `agent-runtime.test.ts` 覆盖。真实模型仍保留 E 单段引用超限与 G `<think>` 协议失败，详见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。

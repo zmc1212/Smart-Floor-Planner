@@ -1,5 +1,19 @@
 # 小K三线集成审查
 
+## I6.18 防水 V1.1 最终整合验收（Limited）
+
+Integration 起点 `c3de28c29c0a`，分支 `codex/xiaok-integration`。本轮完成 I6.17 遗留 D/E/G 的最后一次有界修复、两批真实模型验收、V1.1 冻结核验和工程回归；未开发水电 Agent，未重写 Runtime/RAG/Evidence/PDF Reader/Native Workflow，未新增模型网关。范围外的 `AGENTS.md`、`source-manifest.json`、小程序未提交改动原样保留。
+
+真实模型两批固定百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`，共 44 次尝试（42 Responses），97,646 输入 / 23,704 输出 / 36,096 缓存输入 tokens，结算金额 `unknown`，未保存 API Key。第一批 Run 42–50：B passed，D passed，E failed，G 第 1/2/5/6 轮 passed、第 3/4 轮 failed。第二批 Run 51–59：B/D/E 与 G 第 1/2/4/5 轮 failed，G 第 3/6 轮 passed。两批业务写入均为 0。未执行第三批相同问题采样。
+
+失败根因：E Run 44 首稿使用 `[id][id]` 裸括号载体，唯一修复含字面 `<think>`；Run 53 被企业归属守卫误判“公司标准”范围描述与“以免把别家做法当成公司规定”，离线修复后仍因单段 9 条签发引用超过 4 条结构上限失败。D Run 52 同企业归属误判，离线修复后原稿通过。G Run 54/58 项目观察段落没有自身 CITE，离线修复后原稿通过；Run 55 首稿含 `<think></think>`；Run 57 单段 5 条引用超限。B Run 51 唯一修复含 `<think>` 且 `finishReason=length` 截断。
+
+第二批后只做离线复验：D Run 52、G Run 54/58 通过；E Run 53、G Run 55/57 仍失败。新增确定性覆盖记录元数据、归属录备注、裸引用载体、企业范围描述、原生快照观察与 12,000 bytes 长网页节选。
+
+V1.1 冻结：`waterproof-specialist@1` 仍为唯一 `active`，`@2` 为 `candidate`；Workflow rev1 `a34557…`、rev2 `d735ae…`、rev3 `44f15a…` 未改，rev4 digest `dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0` 由隔离库 4 个 Run 绑定，状态与 revision 未改写。托管 RAG 继续 `bailian_knowledge_not_configured`，真实工地照片、真机、真实微信登录、BLE 仍 `not_run`。完整边界见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。
+
+工程回归：Assistant lib 1,075/1,076（保留书桌收纳历史失败）；Native Workflow 477/477；Construction 113/113；Specialist 22/22；小程序 2,246/2,247（保留测绘 Phase 0）；TypeScript、定向 ESLint、Next.js 16.4.6 Webpack 生产构建通过。PostgreSQL live runtime、Durable Task live、WAIT_EVENT live、Outbox live 与双 Worker 争用本轮未在含验收数据的隔离库重跑，沿用 I6.17 证据。
+
 ## I6.17 专业回答根因修复与 Evidence 稳定化（Limited）
 
 Integration 起点 `491234564ffd`。根因矩阵见[I6.17 根因矩阵](xiaok-i617-root-cause-matrix.md)。本轮只修防水专业回答的资料、Evidence、房间状态与最终校验；未开发水电、未增加阶段、未重写 LangGraph/Native Workflow、未新建 RAG 或模型网关。范围外的小程序、`AGENTS.md`、`source-manifest.json` 等未提交改动原样保留。

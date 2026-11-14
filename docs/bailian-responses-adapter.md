@@ -511,3 +511,9 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 **I6.16.1 终稿协议。** `ModelTurnOutput.text` 只取 Responses 的 assistant `output_text` 或 Chat Completions 的 `message.content`。独立推理只记录通道标记，应用工具回执沿原授权管线。新答复和恢复中的字面 `<think>` 终稿整稿拒绝，纯终稿可用原有的一次修复。异常内容只留原私有审计，修复输入不携带被拒正文。适用的 Evidence、承诺与施工量数校验继续执行。 Responses 流式调用在终帧解析后才交付与正文一致的文本分片。通道标记和协议错误码可进供应商诊断，推理原文沿原私有审计策略。已配置的 Chat 结构化载体仍按实际协议记录。[百炼 Responses](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [百炼 Chat 思考字段](https://help.aliyun.com/zh/model-studio/deep-thinking/) · [OpenAI SDK 解析](https://github.com/openai/openai-node/blob/main/src/lib/ResponsesParser.ts)。
 
 同一份百炼回复中，已签发的本轮引用 ID 可从独立的 `(CITE id)` 标记恢复为原格式，随后仍校验引用、正文数量及业务承诺。授权前咨询复用了已审核官网原件通道。受控恢复和实模原稿见[集成审查](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。LangGraph 配额准入只排除本次即将派发的尝试 ID，历史未知尝试继续要求对账。
+
+## 21. I6.18 防水 V1.1 实模边界
+
+固定 `bailian` / `deepseek-flash` / 实际 `deepseek-v4.1-flash-1017`，Responses 优先。两批共 42 次 Responses 与 2 次未标 wire 的规划调用，97,646 输入 / 23,704 输出 / 36,096 缓存输入 tokens，44 次尝试全部有实际模型与请求 ID，用量 unknown 0，结算金额 `unknown`。原始回执在 `admin/tmp/i6.18/final/case-batch1-*.json`、`case-batch2-*.json` 与 `model-usage.json`。
+
+本轮确认的协议边界：裸 `[id]`/`[id][id]` 只有在 id 为本轮签发引用时才归一；字面 `<think>` 终稿仍整稿拒绝；单个专业段落最多 4 条签发引用；企业托管检索 `retrieval_unavailable` 时回答必须写明本次未核实。E Run 44/53、G Run 55/57、B Run 51 的失败均为协议/结构边界，未通过放宽校验掩盖。未新增网关、Provider 或生产默认值。完整结果见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。

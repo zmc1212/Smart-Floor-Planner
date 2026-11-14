@@ -186,3 +186,12 @@
 - 已发布记录：客户投影先写服务端正式状态与版本，再投影自由备注；历史备注中的“草稿/未发布”不再覆盖正式发布状态，真实待核对事实保留。
 - 真实模型：B、F、H、G 厨房通过；D、E、G 更正仍有失败，第二批后的三处修复只做离线复验，按 `limited` 保留；LangGraph 输入上限修复未追加真实采样，按 `not_run`。
 - V1 的 Agent 标识、活动版本、已发布 Workflow revision/digest、节点版本、Schema、事项与复核合同均未修改；旧 Run 继续绑定原版本。详见[I6.17 根因矩阵](xiaok-i617-root-cause-matrix.md)。
+
+## 17. I6.18 V1.1 冻结与交付
+
+- 已发布 V1 不变：`waterproof-specialist@1` 仍为唯一 `active`；rev1 `a34557dba7adee7f13a42822ab5c86dc041f08af0cee018c130ca4d369416100`、rev2 `d735ae4b762725de9b193bfa171223e86e3906ffc5adfa0092c85191216aab57`、rev3 `44f15a212dbff19cf9ab2cdd2f02029660f3def8d9fe30d4ac2d7bbacc65059d` 字节未改。
+- V1.1 使用独立 Agent Version：`waterproof-specialist@2` 为 `candidate`；Workflow revision 4 digest `dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0`。隔离库 4 个 `native_workflow_runs` 绑定该 revision/digest，状态 `cancelled`/`failed`/`cancelled`/`completed` 未改写。
+- 真实模型两批：B/D 第一批通过，E 两批失败，G 部分轮次通过；第二批多数失败。两批业务写入均为 0。第二批后仅离线修复与复验，未追加第三批采样。
+- 保持 `limited`：D 企业标准、E 企业/国标对比、G 更正与管根原因、B 第二批协议失败；保持 `not_run`：真实工地照片、真机、真实微信登录、BLE、托管 RAG、12–18k 真实长网页隔离读取。
+- 未将 Limited 能力标记 Released，未把真实工地照片 `not_run` 改成 passed，托管 RAG 继续如实记录配置缺失。
+- 生产默认模型与 Runtime 未变。完整交付评估见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。
