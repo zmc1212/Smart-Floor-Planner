@@ -96,3 +96,13 @@ V1.1 为独立 `waterproof-specialist@2` 候选与 Workflow revision 4 digest `d
 已核对公开标准只有 `GB55020-2021` 的给排水章节；强电/弱电公开条文未核实。企业托管 RAG 未配置时返回 `retrieval_unavailable` 并明确“本次未核实”。真实模型固定 `bailian / deepseek-flash / deepseek-v4.1-flash-1017`，沿用 Responses API、用量台账和 I6.18 的引用/`<think>` 限制。
 
 详细实现见[水电 Agent](xiaok-electrical-agent.md)与[水电工作流](xiaok-electrical-workflow.md)。
+
+### I7.2 真实运行合同
+
+提醒持久化继续使用 `app.construction_stage_reminders` 和 `app.construction_stage_reminder_pauses`。`0129` 增加 `conversation_id`、`message_id` 与 `delivered` 回执检查：只有写入接收人现有会话后才标记已送达；没有会话保留 `failed/no_inbox`。暂停同时覆盖待发和失败，恢复按当前事实重新生成，收件人可按 `reminderId` 取消。阶段重入按真实阶段事件 ID 去重，不复用旧阶段已过期提醒。
+
+老板收件人由 `app.construction_actor_access` 的跨项目查看权限决定，只接收真实计划过期和真实约定期限例外；同一主题 24 小时内跨项目去重。老板身份不自动获得设计审批、工程验收或项目成员权限。
+
+业主 C01 的阶段问答由 `stage-chat-service.ts` 解析唯一获权项目和当前阶段，经 `completeStageKnowledge` 写入原会话；多项目、无项目或阶段未知时不猜测，深入防水/水电问题继续走原专业 Agent。企业知识未接入时明确“本次未核实企业施工标准”。
+
+周报复用 `construction_reports`、`construction_report_versions`、`construction_report_deliveries` 和四角色 binding。真实 Worker 在隔离库生成事实、版本和站内投递；同一周期幂等，修订生成新版本，历史版本和撤权遮蔽沿当前权限。未配置模型时保留 `facts_only`，角色章节和统计仍可用。

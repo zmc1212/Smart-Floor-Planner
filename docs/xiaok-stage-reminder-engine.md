@@ -29,8 +29,11 @@
 - `scheduledAt`、`deliveredAt`
 - `status`：`pending`、`delivered`、`failed`、`paused`、`cancelled`、`acknowledged`、`expired`
 - `dedupeKey`、`actionUrl`、`title`、`body`
+- `conversationId`、`messageId`（站内回执，`0129` 迁移）
 
 文案由服务端事实和固定模板生成。提醒正文明确说明：提醒不代表对方已读、已承诺或已完成。
+
+只有站内消息成功写入接收人现有会话后才标记 `delivered`；没有会话时保留 `failed/no_inbox`，不借用其他角色会话。
 
 ## 3. 去重与重评
 
@@ -60,7 +63,16 @@ enterpriseId:projectId:triggerType:stageId:targetRole:targetUserId:subject
 - 恢复后下一 tick 按当前事实重新生成；不重放暂停期间的历史提醒。
 - 发送失败保留 `failed` 和原始回执，可在条件仍成立时重试；条件消失后取消。
 
-## 5. 发送
+## 5. 老板例外（I7.2）
+
+老板收件人来自 `app.construction_actor_access(admin_id, enterprise_id)='owner'`，与企业工地工作台相同的跨项目查看权限。老板只接收两类真实例外：
+
+1. 计划结束日超过 `bossEscalationDays`（默认 3 天）且没有完成证据。
+2. 事项超过真实约定期限 `bossEscalationDays`。
+
+普通阶段进入、角色待办、记录更新提醒不推送给老板。同一例外主题在 24 小时内跨项目去重。老板身份不自动获得设计审批、工程验收或项目成员权限。
+
+## 6. 发送
 
 第一版优先站内提醒和待办。微信订阅消息仅在以下条件同时满足时标记已发送：
 
@@ -70,10 +82,20 @@ enterpriseId:projectId:triggerType:stageId:targetRole:targetUserId:subject
 
 模型失败不影响提醒记录：提醒由确定性事实计算生成，模型只可参与自然语言表达。
 
-## 6. 安静时段
+## 7. 安静时段
 
 策略包含上海时间安静时段（默认 21:00–08:00）。落在安静时段的提醒顺延到下一个允许小时，不丢弃、不提前。
 
-## 7. 测试
+## 8. 失败、重试与暂停
 
-`admin/src/lib/xiaok-v1/__tests__/reminder-engine.test.ts` 覆盖：阶段进入、无计划不生成精确提醒、无记录不判定停滞、角色化待办、去重、阶段变化过期、权限撤销、暂停、失败保留、安静时段顺延。
+- 发送失败保留 `failed` 和 `last_error`，`delivery_attempts` 最多 10 次；条件仍成立时下一 tick 重试。
+- 暂停同时覆盖 `pending` 和 `failed`；恢复后按当前事实重新生成，不重放暂停期间历史提醒。
+- 收件人可按 `reminderId` 取消自己的待发提醒。
+- 重复 Outbox 使用确定性事件键；同一提醒只追加一条站内消息。
+- 阶段重入使用真实阶段事件 ID 去重，不复用旧阶段已过期提醒。
+
+## 9. 测试
+
+`admin/src/lib/xiaok-v1/__tests__/reminder-engine.test.ts` 覆盖：阶段进入、阶段重入、无计划不生成精确提醒、无记录不判定停滞、角色化待办、老板例外、无期限不升级老板、去重、阶段变化过期、权限撤销、暂停、失败保留、安静时段顺延。
+
+`admin/scripts/xiaok-i72-acceptance.ts` 在隔离 PostgreSQL 17 中验证真实 Worker tick、十阶段、站内回执、暂停/恢复/取消、撤权、失败重试、重复 Outbox 和老板例外。

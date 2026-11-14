@@ -938,13 +938,13 @@ AI 工作台参考图展示：`/ai-studio/scenarios` 在每轮生成结果旁渲
 
 2026-11-13，I6.13：助理知识解释单次修复精确定位数字/量数与状态缺口，`advice` 一般建议标签被复核承认；PDF 页引用 `w:99:1` 在 Stable 业主会话 `70` 点击与退出重进通过；施工端 Stable 照片补交、业主 Stable 再切换授权、真实工地照片本轮 `not_run`。代码提交 `9156e9a0`，证据 `tmp/i6.13/`、`admin/tmp/i6.13/`。
 
-### 轻量阶段 Agent、主动提醒与四端角色周报（I7.1，已实现 / 有限）
+### 轻量阶段 Agent、真实主动提醒与四端角色周报（I7.2，已实现 / 有限）
 
-`admin/src/lib/xiaok-v1/` 为十个装修阶段提供同一运行时。`stage-agent-registry.ts` 每阶段只登记一个 `active@1` Agent，并绑定知识包、提醒策略和周报模板；`stages.ts` 把新阶段 ID 映射到现有 Construction 键（`preparation`、`masonry_carpentry`、`move_in` 等），不迁移历史项目。`stage-answer.ts` 用版本化知识包回答普通阶段问题，企业知识缺失时明确“本次未核实企业施工标准”；防水、水电深入问题转交未改动的 `waterproof-specialist` / `electrical-specialist`。`POST /api/miniprogram/xiaok/stage-answer` 按现有 Construction 成员/业主权限返回项目范围回答，项目页新增“阶段知识”入口。
+`admin/src/lib/xiaok-v1/` 继续为十个阶段提供同一运行时。`stage-chat-service.ts` 从原 C01 会话、业主 customer binding 或唯一可访问项目中解析当前项目，再通过 `completeStageKnowledge` 在原会话回答普通阶段问题；多项目或阶段未知时不猜测，继续走现有模型/专业 Agent。防水、水电深入问题仍转交未改动的专业 Agent。
 
-`reminder-engine.ts` 只根据真实事实生成阶段进入、计划节点、角色待办、记录未更新和阶段将结束提醒。`reminder-service.ts` 将提醒保存到 `app.construction_stage_reminders`，暂停偏好保存到 `app.construction_stage_reminder_pauses`（迁移 `0128`），按服务端去重键防重，阶段变化/权限撤销时重评，并投递站内提醒。`GET/POST /api/miniprogram/xiaok/reminders` 支持读取、暂停和恢复本人提醒。Assistant Worker tick 隔离调用 `advanceStageReminders` / `deliverStageReminders`。本切片未启用微信订阅消息，只有站内投递标记为已送达；没有确认期限的问题不生成超期提醒，没有计划的项目不生成精确到期或阶段结束提醒。
+`reminder-service.ts` 将提醒保存到 `app.construction_stage_reminders`，暂停偏好保存到 `app.construction_stage_reminder_pauses`（`0128`），`0129` 增加 `conversation_id`、`message_id` 回执列。只有写入接收人现有会话后才标记 `delivered`；没有会话保留 `failed/no_inbox`。阶段重入使用真实阶段事件 ID，不复用旧阶段已过期提醒。暂停同时覆盖待发和失败，恢复按当前事实重算，收件人可按 `reminderId` 取消。老板收件人来自 `app.construction_actor_access(...)='owner'`，只接收真实计划/期限例外，同一主题 24 小时内跨项目去重；普通角色待办不推送给老板。Worker tick 继续隔离调用 `advanceStageReminders` / `deliverStageReminders`。微信订阅消息仍为 `not_run`；没有真实约定期限不生成超期提醒。
 
-周报复用现有 `construction_reports` 事实、版本和投递管线。周报事实快照新增每项目已发布计划 `weekSchedule`，`buildRoleWeeklyDigest` 把同一快照投影为业主、设计师、老板、施工人员四套角色章节，并携带 `sourceRefs`、`sourceSnapshotVersion`、报告版本和投递状态。跟进报告响应新增 `weeklyReport`，小程序详情页渲染其章节。本切片之前生成的旧周报没有计划快照，显示灰色/待核实，不伪造颜色。没有新增第二套周报运行时、模型网关或事实库。详见[产品范围](./xiaok-v1-product-scope.md)、[阶段架构](./xiaok-stage-agent-architecture.md)、[提醒引擎](./xiaok-stage-reminder-engine.md)、[周报合同](./xiaok-weekly-report-contract.md)与[知识包](./xiaok-stage-knowledge-packs.md)。
+周报复用 `construction_reports`、版本和投递管线。隔离 PostgreSQL 17 真实运行生成业主、设计师、老板、施工人员事实、`weekSchedule`、来源引用、站内投递消息，并验证退出重进、历史周报、revision 2 保留 revision 1、撤权遮蔽。未配置模型时正文保持 `facts_only`，角色章节和统计来自同一不可变事实快照。没有新增第二套周报运行时、事实库或通知系统。详见[I7.2 验收](./xiaok-i72-live-acceptance.md)、[发布就绪](./xiaok-v1-release-readiness.md)、[阶段架构](./xiaok-stage-agent-architecture.md)、[提醒引擎](./xiaok-stage-reminder-engine.md)、[周报合同](./xiaok-weekly-report-contract.md)与[知识包](./xiaok-stage-knowledge-packs.md)。
 
 ### 水电专业 Agent 与原生工作流（I7.0，已实现 / 有限）
 

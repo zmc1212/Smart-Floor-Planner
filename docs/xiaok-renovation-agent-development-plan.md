@@ -22,15 +22,15 @@ I6.16 防水 Agent V1.1 候选，复用 I6.15 原咨询委托。V1 冻结值与�
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | 家客来 I7.1，`codex/xiaok-integration` 单一负责人。方法约束：先验证真实回答，禁止补丁循环。十阶段轻量 Agent、主动提醒与四角色周报复用现有 Construction、Agent、Evidence、Native Workflow 能力，不复制运行时。 |
-| 用户入口与结果 | 四端既有入口：业主与小K连续对话并查看阶段提醒/周报；设计师核对事项；老板看跨项目简报；施工人员拍照记录。阶段问答入口在工地详情页，提醒支持站内暂停/恢复。 |
-| 已证缺口 | 十阶段 Agent 未统一；提醒主要依赖阶段事件；周报缺少四角色章节和计划快照；阶段知识未形成版本化知识包。 |
-| 已完成 | 十阶段注册表与知识包、阶段路由、阶段问答守卫、统一红黄绿、提醒引擎与站内投递、暂停/恢复、四角色周报摘要、周报计划快照、迁移 `0128`、Worker tick 与小程序入口；定向 31 项测试通过。 |
-| 下一动作 | 用隔离企业/项目验证 A–N；补齐真实企业知识接入、微信回执和旧周报回填边界；保留未执行项为 `limited`/`not_run`。 |
-| 必要验收 | A 阶段主动提醒；B 水电阶段问答；C 施工记录关联；D 设计师提醒；E 老板跨项目周报；F 业主周报；G 施工周报；H 设计周报；I 阶段变化重评；J 周报幂等；K 失败恢复；L 撤权停止；M 无计划不生成红黄绿；N AI 不可用不阻塞人工业务。 |
-| 失败与调用边界 | 真实模型固定百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`；本轮不新增模型对照，不改生产默认模型。未配置企业知识时明确“本次未核实”。范围外未提交改动保留。 |
-| 环境与资源 | 工作站 Integration 路径，隔离开发/测试企业 1454；数据库迁移 `0128` 需在隔离库验证；不部署生产。 |
-| 证据与后继 | [产品范围](xiaok-v1-product-scope.md)、[阶段架构](xiaok-stage-agent-architecture.md)、[提醒引擎](xiaok-stage-reminder-engine.md)、[周报合同](xiaok-weekly-report-contract.md)、[知识包](xiaok-stage-knowledge-packs.md)、[I7.1 验收](xiaok-i71-acceptance.md)。 |
+| 交付与负责人 | 家客来 I7.2，`codex/xiaok-integration` 单一负责人。把 I7.1 代码能力接入真实隔离数据库、Worker、小程序和四端业务；复用现有 Construction、Agent、Evidence、Native Workflow，不复制运行时。 |
+| 用户入口与结果 | 业主在 C01 连续对话中获得当前阶段知识、阶段提醒和本周周报；设计师工作台看待核对提醒和周报；老板看跨项目例外与周报；施工人员保留拍照/语音/当前任务并查看施工周报。 |
+| 已证缺口 | I7.1 提醒 SQL 列名不一致、老板收件人为空、阶段重入去重错误、业主无阶段提醒入口、周报未做真实四端验收、迁移未真实执行。 |
+| 已完成 | 隔离 PG17 执行 `0128`/`0129`；修复提醒回执与列名；老板例外；暂停/恢复/取消/失败重试；十阶段真实 tick；四角色周报生成、投递、重进、历史、版本化、撤权遮蔽；C01 阶段回答；四端入口；迁移与验收脚本。 |
+| 下一动作 | 生产部署前确认 Worker、Assistant 设置、非超级用户/Rls、企业报告计划和微信模板；真实小程序点击与订阅消息仍为 `not_run`。 |
+| 必要验收 | A–I 十阶段；J–M 角色待办；N 计划临近；O 记录停滞；P 真实期限（`limited`）；四角色周报；幂等；失败恢复；撤权；无计划灰色；AI 不可用降级；四端重进同一事实。 |
+| 失败与调用边界 | 真实模型固定百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`；阶段知识为确定性回答，本轮不重复采样；不改生产默认模型。未配置企业知识时明确“本次未核实”。范围外未提交改动保留。 |
+| 环境与资源 | 隔离 PostgreSQL 17 `127.0.0.1:55443/i72_accept`，业务账号 `sfp_app`；企业标记 `I7.2验收合成-*`；不部署生产。 |
+| 证据与后继 | [I7.2 验收](xiaok-i72-live-acceptance.md)、[发布就绪](xiaok-v1-release-readiness.md)、[产品范围](xiaok-v1-product-scope.md)、[阶段架构](xiaok-stage-agent-architecture.md)、[提醒引擎](xiaok-stage-reminder-engine.md)、[周报合同](xiaok-weekly-report-contract.md)、[知识包](xiaok-stage-knowledge-packs.md)。 |
 
 ## 3. 复用哪些成果
 

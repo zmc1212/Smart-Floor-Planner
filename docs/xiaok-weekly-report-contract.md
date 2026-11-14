@@ -98,6 +98,23 @@
 - 新增角色化摘要作为事实投影层，不另建模型运行时，不另建第二套报告事实库。
 - 现有日报、阶段提醒和模型正文生成保持兼容。
 
-## 6. 测试
+## 6. I7.2 真实运行
+
+隔离 PostgreSQL 17 中由现有 Worker 生成周报事实、版本、投递和站内消息，验证：
+
+- 四个角色（业主、设计师、老板、施工人员）均有独立报告绑定。
+- 老板事实覆盖授权范围内多个项目；业主事实只含自己的项目。
+- `weekSchedule` 快照和 `sourceRefs` 随事实保存。
+- 同一周期重复 tick 不重复生成报告。
+- 退出重新进入通过 `FollowupService.detail` 读取同一 `reportId`、`revision`、`sourceSnapshotVersion`。
+- 历史周报通过 `FollowupService.reports` 可读。
+- 修订生成 revision 2，revision 1 保留。
+- 撤权后历史周报项目范围按当前权限为空，报告不被改写。
+
+正文自然语言整理依赖模型；未配置模型时报告保持 `facts_only`，角色章节、统计和来源仍可用，不写虚假正文。
+
+## 7. 测试
 
 `admin/src/lib/xiaok-v1/__tests__/weekly-report.test.ts` 覆盖四角色章节、同一事实一致性、老板跨项目 `projectId=null`、周期幂等、快照版本变化、无计划灰色、空授权范围不编造事实。
+
+`admin/src/lib/xiaok-v1/__tests__/weekly-report-service.test.ts` 覆盖角色投影。`admin/scripts/xiaok-i72-acceptance.ts` 覆盖真实 Worker 生成、四角色投递、重新进入、历史、版本化和撤权遮蔽。

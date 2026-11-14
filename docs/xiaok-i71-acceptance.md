@@ -3,6 +3,8 @@
 > 状态：`passed`、`failed`、`limited`、`not_run`、`unknown`。
 > 本轮验证以确定性单元测试、TypeScript、定向 ESLint 和现有 Construction/Report 回归为主；未连接真实隔离数据库、未部署生产、未发送真实微信消息。
 
+> I7.2 已在隔离 PostgreSQL 17 中补跑真实迁移、Worker tick、十阶段提醒、四端周报、重新进入、版本化和撤权验收；I7.1 中标记为 `not_run` 的真实 tick/报告项以 [I7.2 验收](./xiaok-i72-live-acceptance.md) 为准。I7.1 历史失败、Limited 和 Not Run 不删除、不改写。
+
 ## 1. 功能矩阵
 
 | 编号 | 验收项 | 状态 | 证据与边界 |

@@ -676,3 +676,39 @@ I5 验收以 `b612ea0692acc5fac62ca8487029196bec7809cb` 为基线，测试前后
 | 经理复核与正式解决 | `admin/tmp/i7.0/final/manager-review-K2.json` |
 | C01 回传与四端一致 | `admin/tmp/i7.0/final/verify-result-K2.json` |
 | 隔离库 | `sfp-xiaok-i67-test` / `xiaok_i616_validation`，企业 `5`、项目 `1`、厨房 `2` |
+
+## I7.2 真实运行与四端交付
+
+### Released
+
+| 能力 | 证据 |
+| --- | --- |
+| 隔离迁移 | PostgreSQL 17 i72_accept 执行 `0128`、`0129`；账本 126 行；重复迁移安全；事务回滚探针无残留。 |
+| 强制 RLS | 提醒表与暂停表 `relrowsecurity` 和 `relforcerowsecurity` 均为真；业务连接为非超级用户 `sfp_app`。 |
+| 提醒 Worker | 真实 tick 覆盖十个阶段、计划临近/过期、角色待办、记录停滞、暂停/恢复/取消、撤权、失败重试和安静时段。 |
+| 老板例外 | 只发送真实计划/期限例外；跨项目同主题 24 小时去重；不扩大设计审批或验收权限。 |
+| 站内回执 | `delivered` 提醒写入接收人现有会话并保存 `conversation_id/message_id`；重复 Outbox 只产生一条消息。 |
+| 四端周报 | 真实 Worker 生成事实、版本和投递；四角色章节、老板跨项目、业主单项目、计划快照、历史重进、版本化和撤权遮蔽均通过。 |
+| C01 阶段知识 | 原会话内读取当前项目阶段并回答；多项目不猜测；深入专业问题继续转交。 |
+| 四端入口 | 业主 C01 提醒卡与周报入口；设计师/老板工作台提醒与周报入口；施工端保留拍照/语音/当前任务并新增周报入口。 |
+| 工程质量 | `tsc`、定向 ESLint、xiaok 34 项测试、小程序新增 3 项测试通过；小程序全量 2,249/2,250，唯一失败为既有测绘 Phase 0 审计。 |
+
+### Limited
+
+- 周报正文自然语言整理依赖模型；隔离环境未配置模型，报告保留 `facts_only`，角色章节和事实统计不受影响。
+- 事项超期提醒只在真实 `dueAt` 存在时生成；现有 Construction 事项没有约定期限字段，本轮不伪造期限。
+- 企业 `KnowledgeRetriever` 尚未注入阶段 API；回答明确声明未核实企业施工标准。
+- 项目经理没有独立 followup binding 时提醒保留 `failed/no_inbox`，不借用其他角色会话。
+
+### Not Run
+
+- 真实微信订阅消息、真实小程序点击、Stable 四端旅程、生产部署和大规模并发。
+
+### 证据索引
+
+| 内容 | 路径 |
+| --- | --- |
+| 迁移检查 | `tmp/xiaok-i72-acceptance/migration-result.json` |
+| 真实运行矩阵 | `tmp/xiaok-i72-acceptance/final-result.json` |
+| 迁移脚本 | `admin/scripts/xiaok-i72-migration-check.mjs` |
+| 验收脚本 | `admin/scripts/xiaok-i72-acceptance.ts` |

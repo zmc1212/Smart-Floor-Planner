@@ -900,6 +900,12 @@ Phase 7 最终治理已实现：纯 geometry/read-model 依赖方向、全模块
 
 ## 页面清单
 
+### 四端阶段提醒与周报入口（I7.2，已实现 / 有限）
+
+业主 C01（`packages/assistant/chat/chat`）继续以小K连续对话为默认入口，在输入区上方增加紧凑的“小K提醒”卡。卡片读取 `GET /miniprogram/xiaok/reminders`，最多展示三条已送达/待发送/已暂停提醒，并通过现有 `selectFollowup` 打开已保存的周报。专业跟进模式和公开围观流程不显示该卡。
+
+设计师、老板工作台（`components/role-workbench`）增加同一提醒投影和“查看本周周报”，复用专业跟进入口 `packages/assistant/chat/chat?followup=1`。施工端 `packages/construction/projects/projects` 保留拍照、语音和当前任务，新增“本周周报”入口。没有新增重复 Tab、仪表盘、通知表或第二套周报系统。真实真机/Stable 点击仍为 `not_run`，新增入口测试为确定性测试。详见[I7.2 验收](./xiaok-i72-live-acceptance.md)。
+
 ### 防水专业 Agent 四端视图（I6.12，Implemented / Limited）
 
 C01 `packages/assistant/chat/chat` 展示防水专业回答、有据检查清单、公开规范引用、持续跟进状态与经理复核结果；退出重进读取同一 Run、事项和回执。施工端 `packages/construction/projects/projects` 与 `chat/chat` 读取获权项目、待补充资料、现场记录和整改要求；老板端读取同一项目的事实与复核结果；设计师端只显示本人获权项目，未被强制加入防水流程。四端不在前端各自维护正式施工状态。照片观察只显示可见现象与待核实项，不显示验收或放行结论。真实工地照片、真机、BLE 与真实微信登录 `not_run`。合同见 [防水 Agent 第一版交付](./xiaok-waterproof-agent-v1-release.md)。

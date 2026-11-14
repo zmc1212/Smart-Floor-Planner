@@ -1092,6 +1092,12 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
 
 C01 `packages/assistant/chat/chat` shows the waterproof answer, evidence-backed checklist, public-standard citations, follow-up state and manager review result; exit and re-entry read the same run, issue and receipt. The construction role reads authorized projects, missing materials, site records and rectification requirements from `packages/construction/projects/projects` and `chat/chat`; the owner role reads the same project facts and review result; the designer role only sees authorized projects and is not forced into the waterproof flow. No client keeps its own formal construction state. Photo observation only shows visible phenomena and pending verification, never acceptance or release. Real site photos, physical devices, BLE and real WeChat login remain `not_run`. See the [waterproof agent v1 release](./xiaok-waterproof-agent-v1-release.md).
 
+### Four-end stage reminders and weekly reports (I7.2, Implemented / Limited)
+
+Owner C01 (`packages/assistant/chat/chat`) keeps the continuous conversation as the default entry and adds a compact "小K提醒" card above the composer. It loads `GET /miniprogram/xiaok/reminders` for the current recipient, shows up to three delivered/pending/paused reminders and links to the saved weekly report through the existing `selectFollowup` entry. The card is hidden in professional followup mode and in the public-site flow.
+
+Designer and boss workbenches (`components/role-workbench`) add the same reminder projection plus "查看本周周报", which opens the existing professional followup (`packages/assistant/chat/chat?followup=1`). Construction staff keep photo, voice and current-task entries in `packages/construction/projects/projects` and add "本周周报" using the same professional followup entry. No new tab, dashboard, notification table or second report system is added. Real device/Stable clicks remain `not_run`; the new entry tests are deterministic. See [I7.2 acceptance](./xiaok-i72-live-acceptance.md).
+
 ### Navigation measurement view rotation
 
 The absolute azimuth shown on the action (for example `231°`) is a reading and

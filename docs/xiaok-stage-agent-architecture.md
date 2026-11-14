@@ -17,7 +17,9 @@
 | `stage-agent-runtime.ts` | 共享运行时；进度/待办读取通过依赖注入复用现有业务服务。 |
 | `progress-status.ts` | 统一红黄绿、施工状态和问题状态。 |
 | `reminder-engine.ts` | 提醒生成、去重、重评和状态规约。 |
+| `reminder-service.ts` | 真实持久化、暂停、恢复、取消、站内回执和 Worker tick。 |
 | `weekly-report.ts` | 四角色周报事实投影、来源快照和版本合同。 |
+| `stage-chat-service.ts` | 业主 C01 当前项目/阶段解析与阶段知识回答。 |
 
 ## 2. 阶段与业务键
 
@@ -77,6 +79,18 @@
 - 水电阶段的普通点位、生活习惯问题由 `stage-utilities` 回答；防水、闭水、管径、线径、回路、隐蔽验收等深入问题转交专业 Agent。
 - 专业 Agent 的注册、工作流、Evidence、Durable Task 和权限合同不因轻量阶段入口而修改。
 
-## 7. 测试
+## 7. C01 阶段知识接入（I7.2）
 
-`admin/src/lib/xiaok-v1/__tests__/stage-registry.test.ts` 与 `stage-answer.test.ts` 覆盖十阶段注册、业务键映射、知识包匹配、企业边界、专业转交和无据参数拦截。
+`stage-chat-service.ts` 只处理业主普通阶段问题。解析顺序：
+
+1. 原会话 `construction_links` 中唯一获权项目。
+2. 业主 customer followup binding 的项目。
+3. 业主唯一可访问的进行中项目。
+
+多项目、无项目或阶段未知时返回 `null`，继续走现有模型/专业 Agent 路由，不猜测。深入防水/水电问题由 `stage-router` 判定 `specialist_handoff`，同样不拦截。
+
+回答由 `answerStageQuestion` 确定性生成，经 `completeStageKnowledge` 写入原会话（`purpose='construction.stage_knowledge'`），保留原消息顺序和连续追问。回答末尾明确“不替代企业书面标准、正式图纸和现场验收”；企业知识未接入时明确“本次未核实企业施工标准”。
+
+## 8. 测试
+
+`admin/src/lib/xiaok-v1/__tests__/stage-registry.test.ts` 与 `stage-answer.test.ts` 覆盖十阶段注册、业务键映射、知识包匹配、企业边界、专业转交和无据参数拦截。`admin/scripts/xiaok-i72-acceptance.ts` 在隔离库验证 C01 会话内的水电阶段回答。
