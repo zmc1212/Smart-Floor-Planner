@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { answerStageQuestion, selectStageFaq, stageAnswerViolations } from '../stage-answer';
 import { stageKnowledgeRegistry } from '../stage-knowledge';
 import { routeStageQuestion } from '../stage-router';
+import { constructionKeysForStage } from '../stages';
 
 const utilities = stageKnowledgeRegistry.get('utilities')!;
 const painting = stageKnowledgeRegistry.get('painting')!;
@@ -51,6 +52,19 @@ test('deep professional questions hand off to the existing specialist agents', (
   if (electrical.kind === 'specialist') assert.equal(electrical.agentId, 'electrical-specialist');
   const ordinary = routeStageQuestion({ constructionStageKey: 'utilities', message: '插座点位怎么结合生活需求？' });
   assert.equal(ordinary.kind, 'stage_agent');
+});
+
+test('all ten stage packs answer their own first question without unsafe parameters', () => {
+  for (const pack of stageKnowledgeRegistry.list()) {
+    const constructionKey = constructionKeysForStage(pack.stageId)[0];
+    const faq = pack.faqs[0];
+    const answer = answerStageQuestion({ constructionStageKey: constructionKey, question: faq.question,
+      audience: faq.audience === 'all' ? 'owner' : faq.audience });
+    assert.equal(answer.stageId, pack.stageId, pack.stageId);
+    assert.equal(answer.matchedFaqId, faq.id, pack.stageId);
+    assert.deepEqual(stageAnswerViolations(answer.answer), [], pack.stageId);
+    assert.equal(answer.answer.includes('本次未核实企业施工标准'), true, pack.stageId);
+  }
 });
 
 test('verified enterprise knowledge is cited but never invented', () => {

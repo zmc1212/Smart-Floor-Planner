@@ -6,7 +6,7 @@ Integration 起点 `a8948a11c72a`，分支 `codex/xiaok-integration`；提交 `e
 
 新增 `admin/src/lib/xiaok-v1/`：十阶段注册与知识包、阶段路由与问答守卫、统一红黄绿、提醒引擎/持久化/暂停恢复、周报角色摘要与来源快照。新增迁移 `0128_xiaok_v1_stage_reminders.sql`（提醒与暂停表，强制 RLS）。新增 `POST /api/miniprogram/xiaok/stage-answer`、`GET/POST /api/miniprogram/xiaok/reminders`；Assistant Worker tick 隔离调用提醒生成与投递。周报事实快照新增 `weekSchedule`，`followup` 周报响应新增 `weeklyReport`；小程序工地详情页新增阶段知识与当前提醒入口，周报详情渲染角色章节。
 
-验证：`npx tsx --test src/lib/xiaok-v1/__tests__/*.test.ts` 31/31；含 Construction 周报/计划回归 51/51；TypeScript 与定向 ESLint 通过。真实隔离数据库迁移、真实 Worker tick、小程序 Stable 点击、真实微信订阅消息、AI 故障注入均 `not_run`。详细矩阵见 [I7.1 验收](xiaok-i71-acceptance.md)。已知边界：阶段问答 API 暂未注入企业 KnowledgeRetriever；旧周报无计划快照显示灰色；现有问题无确认期限，`issue_overdue` 不生成；站内 `delivered` 不代表已读或承诺。
+验证：`npx tsx --test src/lib/xiaok-v1/__tests__/*.test.ts` 32/32；Construction 108/108；Assistant 周报 73/73；Native Workflow 477 通过/28 跳过（live）；TypeScript、定向 ESLint、生产构建通过。真实隔离数据库迁移、真实 Worker tick、小程序 Stable 点击、真实微信订阅消息、AI 故障注入均 `not_run`。详细矩阵见 [I7.1 验收](xiaok-i71-acceptance.md)。已知边界：阶段问答 API 暂未注入企业 KnowledgeRetriever；旧周报无计划快照显示灰色；现有问题无确认期限，`issue_overdue` 不生成；站内 `delivered` 不代表已读或承诺。
 
 ## I6.18 防水 V1.1 最终整合验收（Limited）
 

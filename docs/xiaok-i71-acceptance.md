@@ -28,8 +28,11 @@
 
 | 检查 | 状态 | 结果 |
 | --- | --- | --- |
-| `npx tsx --test src/lib/xiaok-v1/__tests__/*.test.ts` | `passed` | 31 项通过 |
-| `npx tsx --test`（含 site-schedule / report-composition / report-history） | `passed` | 51 项通过 |
+| `npx tsx --test src/lib/xiaok-v1/__tests__/*.test.ts` | `passed` | 32 项通过 |
+| `npx tsx --test`（含 site-schedule / report-composition / report-history） | `passed` | 52 项通过 |
+| Construction 定向测试 | `passed` | 108 项通过 |
+| Assistant 周报定向测试 | `passed` | 73 项通过 |
+| Native Workflow 测试 | `passed` | 477 通过、0 失败、28 跳过（live 用例） |
 | `npx tsc --noEmit` | `passed` | 无错误 |
 | 定向 ESLint | `passed` | 无错误/警告 |
 | 小程序全量测试 | `passed`（保留历史失败） | 2,246/2,247；唯一失败为既有的测绘 Phase 0 审计，本轮未新增失败 |
