@@ -209,11 +209,15 @@ module.exports = () => ({
 			|| this.data.professionalFollowup || this._ownerRemindersLoading) return;
 		this._ownerRemindersLoading = true;
 		try {
-			const response = await api.request('/miniprogram/xiaok/reminders', 'GET');
+			// Customer reminder reads require the same signed assistant entry as
+			// the private followup conversation.
+			const entry = await this.controller.ensureEntry();
+			const headers = entry ? { 'X-Assistant-Entry': entry.entryToken } : {};
+			const response = await api.request('/miniprogram/xiaok/reminders', 'GET', {}, { headers });
 			if (!this._alive || !this._shown) return;
 			const items = (response.data.items || [])
 				.filter(item => ['delivered', 'pending', 'paused'].includes(item.status))
-				.map(item => ({ ...item, statusLabel: item.status === 'paused' ? '已暂停' : item.status === 'pending' ? '待发送' : '已送达' }))
+				.map(item => ({ ...item, statusLabel: item.status === 'paused' ? '已暂停' : item.status === 'pending' ? '待发送' : '已送达 · 未读' }))
 				.slice(0, 3);
 			this.setData({ ownerStageReminders: items, ownerRemindersError: '' });
 		} catch (error) {
@@ -233,6 +237,18 @@ module.exports = () => ({
 		if (this._ownerRemindersLoading) return;
 		await this.loadOwnerStageReminders();
 		this.syncOwnerWeeklyEntry();
+	},
+
+	/** The owner has no staff workbench; the reminder opens the project brief
+	 * that this owner is allowed to read. No internal issue is exposed. */
+	async openOwnerReminder(event) {
+		if (this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.mediaBusy || this.data.mediaPending) return;
+		const reminder = (this.data.ownerStageReminders || []).find(item => item.reminderId === String(event.currentTarget.dataset.id));
+		if (!reminder) return;
+		const binding = (this.data.followupBindings || []).find(item => !item.hidden
+			&& (item.projects || []).some(project => String(project.id) === String(reminder.projectId)));
+		if (!binding) { wx.showToast({ title: '该工地的周报尚未生成', icon: 'none' }); return; }
+		return this.selectFollowup({ currentTarget: { dataset: { id: binding.bindingId } } });
 	},
 	onHide() { if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
 	onUnload() {

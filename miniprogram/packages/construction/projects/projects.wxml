@@ -31,8 +31,13 @@
         <view class="section-heading"><text class="fabric">当前提醒</text><text class="helper">{{reminders.length}}条 · {{reminderPaused ? '已暂停' : '按实际阶段和计划触发'}}</text><button class="text-action" bindtap="toggleReminders" disabled="{{busy || pending || remindersLoading}}">{{reminderPaused ? '恢复提醒' : '暂停提醒'}}</button></view>
         <text wx:if="{{remindersLoading}}" class="helper">正在读取提醒…</text>
         <text wx:elif="{{remindersError}}" class="helper">{{remindersError}}</text>
-        <view wx:for="{{reminders}}" wx:key="reminderId" class="issue-row"><view class="issue-head"><text class="label">{{item.title}}</text><text class="issue-status">{{item.statusLabel}}</text></view><text class="helper">{{item.body}}</text></view>
+        <view wx:for="{{reminders}}" wx:key="reminderId" class="issue-row reminder-row {{reminderFocus === item.reminderId ? 'is-focused' : ''}}" data-id="{{item.reminderId}}" bindtap="openReminder" aria-role="button" aria-label="{{item.projectName + '，' + item.title + '，' + item.statusLabel}}">
+          <view class="issue-head"><text class="label">{{item.title}}</text><text class="issue-status">{{item.statusLabel}}</text></view>
+          <text class="helper">{{item.body}}</text>
+          <view class="reminder-actions"><text class="helper">{{item.channel === 'workbench' ? '工作台待办，不另建聊天会话' : item.relatedIssueId ? '点按打开关联事项' : item.roomId ? '点按打开对应房间' : '点按定位这条提醒'}}</text><button wx:if="{{item.canCancel}}" class="text-action" data-id="{{item.reminderId}}" catchtap="cancelReminder" disabled="{{busy || pending || reminderCancelling}}">{{reminderCancelling === item.reminderId ? '取消中…' : '取消提醒'}}</button></view>
+        </view>
         <text wx:if="{{!remindersLoading && !remindersError && !reminders.length}}" class="helper">当前没有需要提醒的事项；没有计划或没有记录时不会生成精确到期提醒。</text>
+        <view wx:if="{{reminderHistory.length}}" class="reminder-history"><text class="helper">历史提醒 · 已关闭事项不再作为当前待办</text><view wx:for="{{reminderHistory}}" wx:key="reminderId" class="issue-head"><text class="helper">{{item.title}} · {{item.statusLabel}}</text></view></view>
         <text wx:if="{{reminderPaused}}" class="helper">暂停只影响你自己的站内提醒，不改变项目事实和其他人的提醒。</text>
       </view>
       <view wx:if="{{detail.issueSections.length}}" class="paper issue-paper">
@@ -76,6 +81,16 @@
     </block>
     <block wx:else>
       <view class="projects-header"><text class="page-title">我的工地</text><text class="helper">{{owner ? '企业工地' : '施工团队'}} · {{items.length}}个项目</text><image class="projects-art" src="../assets/notebook/xiaok-projects.png" mode="aspectFit" aria-hidden="true"/><button wx:if="{{canBrief}}" class="book-link brief-link" disabled="{{pending}}" bindtap="openBrief">项目简报 ↗</button><button wx:if="{{!owner}}" class="book-link weekly-link" bindtap="openWeeklyReport">本周周报 ↗</button></view>
+      <view wx:if="{{workbenchLoading || workbench.length || workbenchError}}" class="paper workbench-paper">
+        <view class="section-heading"><text class="fabric">我的待办</text><text class="helper">{{workbenchTotal}}条 · 来自你负责的工地</text><button class="text-action" bindtap="load" disabled="{{loading}}">刷新</button></view>
+        <text wx:if="{{workbenchLoading}}" class="helper">正在读取待办…</text>
+        <text wx:elif="{{workbenchError}}" class="helper">{{workbenchError}}</text>
+        <view wx:for="{{workbench}}" wx:key="reminderId" class="issue-row" data-id="{{item.reminderId}}" bindtap="openWorkbenchReminder" aria-role="button" aria-label="{{item.projectName + '，' + item.title}}">
+          <view class="issue-head"><text class="label">{{item.projectName}} · {{item.triggerLabel}}</text><text class="issue-status">{{item.statusLabel}}</text></view>
+          <text class="helper">{{item.title}}</text>
+        </view>
+        <text wx:if="{{!workbenchLoading && !workbenchError && !workbench.length}}" class="helper">当前没有需要你处理的提醒。</text>
+      </view>
       <view wx:if="{{items.length}}" class="project-filters"><button class="{{statusFilter === 'all' ? 'fabric' : ''}}" data-status="all" bindtap="chooseStatus">全部 {{items.length}}</button><button class="{{statusFilter === 'active' ? 'fabric' : ''}}" data-status="active" bindtap="chooseStatus">进行中 {{activeCount}}</button></view>
       <view wx:if="{{!items.length}}" class="surface state"><text class="section-title">暂时没有分配的工地</text><text class="helper">负责人分配后，你就能在这里查看现场与进展。</text><button class="primary" bindtap="load">重新读取</button></view>
       <view wx:elif="{{!filteredItems.length}}" class="state"><text>暂无进行中的工地。</text><button class="outline" data-status="all" bindtap="chooseStatus">查看全部工地</button></view>

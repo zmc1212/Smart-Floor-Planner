@@ -23,11 +23,26 @@ Page({
     workLabel: '', note: '', sendReminder: false, selectedIds: [], primaryOptions: [], selectedPrimary: 0, assignmentOptions: [],
     sheetOpen: false, statusFilter: 'all', filteredItems: [], activeCount: 0, preview: null, previewPhotos: [], previewLoading: false, previewError: '',
     stageAnswer: null, stageAnswerBusy: false, stageAnswerError: '',
-    reminders: [], reminderPaused: false, remindersLoading: false, remindersError: '' },
-  onLoad() { loadSiteFont(); this.setData(navigationMetrics()); },
+    reminders: [], reminderHistory: [], reminderPaused: false, remindersLoading: false, remindersError: '', reminderFocus: '', reminderCancelling: '',
+    workbench: [], workbenchLoading: false, workbenchError: '' },
+  onLoad(query) {
+    loadSiteFont(); this.setData(navigationMetrics());
+    this._deepLink = this.parseDeepLink(query || {});
+  },
+  parseDeepLink(query) {
+    const projectId = /^[1-9]\d*$/.test(String(query.project || '')) ? String(query.project) : '';
+    if (!projectId) return null;
+    return {
+      projectId,
+      item: String(query.item || '').slice(0, 80),
+      roomId: /^[1-9]\d*$/.test(String(query.roomId || '')) ? String(query.roomId) : '',
+      issueId: /^[1-9]\d*$/.test(String(query.issueId || '')) ? String(query.issueId) : '',
+      focus: String(query.focus || '').slice(0, 40),
+    };
+  },
   async onShow() {
     this._visible = true;
-    this.setData({ busy: false });
+    this.setData({ busy: false, reminderCancelling: '', reminderFocus: '' });
     const app = getApp();
     if (app.hydrateStoredSession) await app.hydrateStoredSession();
     if (!this._visible) return;
@@ -43,6 +58,8 @@ Page({
       this._storageKey = 'construction:pending:' + current.key;
       this.setData({ projectId: '', detail: null, items: [], sheet: '', name: current.name, portalLabel: current.portalLabel, pending: wx.getStorageSync(this._storageKey) || null });
     }
+    // A reminder link resolves only after the signed identity is ready.
+    if (this._deepLink && !this.data.projectId) this.setData({ projectId: this._deepLink.projectId, detail: null });
     await this.load();
   },
   onHide() { this._visible = false; this._generation = (this._generation || 0) + 1; this.clearPreview(); clearTimeout(this._sheetTimer); this.setData({ sheet: '', sheetOpen: false }); },
@@ -57,11 +74,12 @@ Page({
       const response = await api.request('/miniprogram/construction/projects' + (pid ? '/' + pid : ''), 'GET');
       if (!this.current(g)) return;
       const data = response.data;
-      if (pid) { this.setData({ detail: decorateDetail(data) }); void this.loadPreview(g); void this.loadReminders(g); }
+      if (pid) { this.setData({ detail: decorateDetail(data) }); void this.loadPreview(g); void this.loadReminders(g); void this.applyDeepLink(g); }
       else { const items = data.items.map(p => decorateProject(p, data.stages || [])); this.clearPreview();
         this.setData({ items, owner: data.owner, detail: null, managementBrief: data.collaboration && (data.owner || items.some(p => p.my_role === 'manager')), activeCount: items.filter(p => p.status === 'active').length,
           filteredItems: items.filter(p => this.data.statusFilter !== 'active' || p.status === 'active'),
-          canBrief: data.owner || data.items.some(p => p.status !== 'archived') }); }
+          canBrief: data.owner || data.items.some(p => p.status !== 'archived') });
+        void this.loadWorkbench(g); }
     } catch (error) { if (this.current(g)) { this.clearPreview(); this.setData({ error: errorText(error), detail: null, items: [], filteredItems: [] }); } }
     finally { if (this.current(g)) this.setData({ loading: false }); }
   },
@@ -75,14 +93,117 @@ Page({
     try {
       const response = await api.request('/miniprogram/xiaok/reminders?projectId=' + encodeURIComponent(pid), 'GET');
       if (!this.current(g) || this.data.projectId !== pid) return;
-      const labels = { pending: '待发送', delivered: '已送达', failed: '发送失败', paused: '已暂停' };
-      this.setData({ reminders: (response.data.items || []).map(item => ({ ...item, statusLabel: labels[item.status] || item.status })),
+      const labels = { pending: '待发送', delivered: '已送达 · 未读', failed: '发送失败', paused: '已暂停' };
+      const historyLabels = { cancelled: '已取消', expired: '已过期' };
+      const decorate = item => ({
+        ...item,
+        statusLabel: item.channel === 'workbench' ? '工作台待办' : labels[item.status] || item.status,
+        canCancel: ['pending', 'paused', 'failed'].includes(item.status),
+        targetLabel: item.relatedIssueId ? '打开关联事项' : item.roomId ? '打开对应房间' : '查看提醒',
+      });
+      this.setData({ reminders: (response.data.items || []).map(decorate),
+        reminderHistory: (response.data.history || []).map(item => ({ ...item, statusLabel: historyLabels[item.status] || item.status })),
         reminderPaused: !!response.data.paused });
     } catch (error) {
       if (this.current(g) && this.data.projectId === pid) this.setData({ remindersError: errorText(error) });
     } finally {
-      if (this.current(g) && this.data.projectId === pid) this.setData({ remindersLoading: false });
+      if (this.current(g) && this.data.projectId === pid) { this.setData({ remindersLoading: false }); void this.applyDeepLink(g); }
     }
+  },
+  async loadWorkbench(g) {
+    if (!this.current(g) || this.data.projectId) return;
+    this.setData({ workbenchLoading: true, workbenchError: '' });
+    try {
+      const response = await api.request('/miniprogram/xiaok/reminders', 'GET');
+      if (!this.current(g) || this.data.projectId) return;
+      const labels = { pending: '待发送', delivered: '已送达 · 未读', failed: '发送失败', paused: '已暂停' };
+      const items = (response.data.items || []).map(item => ({ ...item,
+        statusLabel: item.channel === 'workbench' ? '工作台待办' : labels[item.status] || item.status }));
+      const known = new Set(this.data.items.map(p => p.id));
+      const visible = items.filter(item => known.has(item.projectId));
+      this.setData({ workbench: visible.slice(0, 6), workbenchTotal: visible.length });
+    } catch (error) {
+      if (this.current(g) && !this.data.projectId) this.setData({ workbenchError: '当前待办暂不可用。' });
+    } finally {
+      if (this.current(g) && !this.data.projectId) this.setData({ workbenchLoading: false });
+    }
+  },
+  reminderTarget(reminder) {
+    const project = this.data.detail?.project;
+    if (!reminder || !project || project.status === 'archived' || this._opening) return false;
+    const base = '/packages/construction/chat/chat?projectId=' + encodeURIComponent(project.id);
+    if (reminder.relatedIssueId && /^[1-9]\d*$/.test(String(reminder.relatedIssueId)))
+      return this.go(base + '&issueId=' + reminder.relatedIssueId + '&mode=review');
+    if (reminder.roomId && /^[1-9]\d*$/.test(String(reminder.roomId)))
+      return this.go(base + '&mode=plan&roomId=' + reminder.roomId);
+    return false;
+  },
+  go(url) {
+    if (this._opening) return false;
+    this._opening = true;
+    wx.navigateTo({ url, complete: () => { setTimeout(() => { this._opening = false; }, 600); } });
+    return true;
+  },
+  openReminder(e) {
+    const reminder = this.data.reminders.find(item => item.reminderId === String(e.currentTarget.dataset.id));
+    if (!reminder || this.data.busy || this.data.pending || this.data.remindersLoading) return;
+    if (this.reminderTarget(reminder)) return;
+    // A whole-stage reminder has no single room/issue; keep the user on the
+    // project and point at the row instead of opening an unrelated page.
+    this.setData({ reminderFocus: reminder.reminderId });
+    wx.showToast({ title: '已定位到这条提醒', icon: 'none' });
+  },
+  async cancelReminder(e) {
+    const id = String(e.currentTarget.dataset.id || ''), pid = this.data.projectId;
+    if (!/^rem_[a-f0-9]{24}$/.test(id) || !pid || this.data.busy || this.data.pending || this.data.reminderCancelling) return;
+    const accepted = await new Promise(resolve => wx.showModal({
+      title: '取消提醒', content: '取消后这条提醒不再出现在当前待办，项目事实不受影响。',
+      success: r => resolve(r.confirm), fail: () => resolve(false) }));
+    if (!accepted || !this.current()) return;
+    const g = this._generation;
+    this.setData({ reminderCancelling: id, remindersError: '' });
+    try {
+      await api.request('/miniprogram/xiaok/reminders', 'POST', { projectId: pid, action: 'cancel', reminderId: id });
+      if (this.current(g)) await this.loadReminders(g);
+    } catch (error) {
+      if (this.current(g)) this.setData({ remindersError: errorText(error) });
+    } finally {
+      if (this.current(g)) this.setData({ reminderCancelling: '' });
+    }
+  },
+  openWorkbenchReminder(e) {
+    if (this.data.busy || this.data.pending || this._opening) return;
+    const reminder = this.data.workbench.find(item => item.reminderId === String(e.currentTarget.dataset.id));
+    if (!reminder) return;
+    if (!this.data.items.some(project => project.id === reminder.projectId)) {
+      wx.showToast({ title: '该工地当前不可用', icon: 'none' });
+      return;
+    }
+    // Reuse the same deep-link path as a reminder URL so workbench and
+    // notification clicks behave identically.
+    this._deepLink = { projectId: reminder.projectId, item: reminder.relatedIssueId || reminder.relatedTaskId || reminder.reminderId,
+      roomId: reminder.roomId || '', issueId: reminder.relatedIssueId || '', focus: '' };
+    this._deepLinkApplied = false;
+    this.clearPreview();
+    this.setData({ projectId: reminder.projectId, detail: null, stageAnswer: null, stageAnswerError: '' });
+    void this.load();
+  },
+  applyDeepLink(g) {
+    const link = this._deepLink;
+    if (!link || this._deepLinkApplied || !this.current(g) || link.projectId !== this.data.projectId || !this.data.detail) return;
+    const project = this.data.detail.project;
+    if (link.issueId) { this._deepLinkApplied = true; this.reminderTarget({ relatedIssueId: link.issueId }); return; }
+    if (link.roomId) { this._deepLinkApplied = true; this.reminderTarget({ roomId: link.roomId }); return; }
+    if (!link.item && !link.focus) { this._deepLinkApplied = true; return; }
+    if (this.data.remindersLoading) return;
+    const reminder = this.data.reminders.find(item => item.reminderId === link.item
+      || item.relatedIssueId === link.item || item.relatedTaskId === link.item);
+    this._deepLinkApplied = true;
+    if (reminder && this.reminderTarget(reminder)) return;
+    if (reminder) { this.setData({ reminderFocus: reminder.reminderId }); wx.showToast({ title: '已定位到相关提醒', icon: 'none' }); return; }
+    // The linked task/issue is closed or no longer belongs to this project.
+    this.setData({ reminderFocus: '' });
+    wx.showToast({ title: '提醒对应事项已完成或已关闭', icon: 'none' });
   },
   async toggleReminders() {
     const pid = this.data.projectId, g = this._generation;

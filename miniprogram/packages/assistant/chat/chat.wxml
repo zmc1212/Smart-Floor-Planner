@@ -123,7 +123,7 @@
     <button wx:if="{{ownerWeeklyBindingId}}" class="owner-stage-weekly" data-id="{{ownerWeeklyBindingId}}" bindtap="selectFollowup">本周项目周报 ↗</button>
     <button class="owner-stage-refresh" bindtap="refreshOwnerReminders" disabled="{{ownerRemindersLoading}}">{{ownerRemindersLoading ? '读取中' : '刷新'}}</button>
   </view>
-  <view wx:for="{{ownerStageReminders}}" wx:key="reminderId" class="owner-stage-item">
+  <view wx:for="{{ownerStageReminders}}" wx:key="reminderId" class="owner-stage-item" data-id="{{item.reminderId}}" bindtap="openOwnerReminder" aria-role="button" aria-label="{{item.projectName + '，' + item.title}}">
     <text class="owner-stage-project">{{item.projectName}} · {{item.triggerLabel}} · {{item.statusLabel}}</text>
     <text class="owner-stage-title">{{item.title}}</text>
     <text class="owner-stage-body">{{item.body}}</text>

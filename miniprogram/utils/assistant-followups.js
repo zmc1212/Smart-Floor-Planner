@@ -53,8 +53,16 @@ function reportForView(report, context, projectId = '', now = Date.now()) {
   const ownerDaily = report.kind === 'daily' && context?.audience === 'customer';
   const bossWeekly = report.kind === 'weekly' && context?.audience === 'boss';
   const day = Math.floor((new Date(report.periodStart).getTime() + 28800000) / 86400000) === Math.floor((now + 28800000) / 86400000) ? '今天' : dateLabel(report.periodStart);
+  // The server builds one deterministic digest per role. Preview its first
+  // lines even when no model body exists, so a facts-only weekly report is
+  // readable instead of appearing empty.
+  const weekly = report.weeklyReport;
+  const weeklyPreview = (weekly && Array.isArray(weekly.sections) ? weekly.sections : [])
+    .flatMap(section => (section.lines || []).slice(0, 1).map(line => section.label + '：' + line.text)).slice(0, 2);
+  const snapshot = weekly && weekly.contract && weekly.contract.sourceSnapshotVersion;
   return { ...report, projects, kindLabel, takeoverTitle: dateLabel(report.periodStart) + kindLabel, title: dateLabel(report.periodStart) + ' · ' + kindLabel,
-    bossWeekly, ownerDaily, hasArrangements: projects.some(p => p.arrangements.length),
+    bossWeekly, ownerDaily, hasArrangements: projects.some(p => p.arrangements.length), weeklyPreview,
+    sourceSnapshotLabel: /^[a-f0-9]{64}$/u.test(String(snapshot || '')) ? String(snapshot).slice(0, 12) : '',
     detailProgressLabel: ownerDaily ? day === '今天' ? '今日进展' : '当日进展' : '',
     detailPeriodLabel: ownerDaily ? '统计' + (dateLabel(report.periodStart) === dateLabel(report.cutoffAt) ? dateLabel(report.periodStart, true).split(' ')[1] + '—' + dateLabel(report.cutoffAt, true).split(' ')[1] : dateLabel(report.periodStart, true) + '—' + dateLabel(report.cutoffAt, true)) : '',
     arrangementsComplete: report.facts?.arrangementsStatus === 'aggregated' && !report.facts.projectsTruncated && projects.every(p => !p.arrangementsTruncated),
