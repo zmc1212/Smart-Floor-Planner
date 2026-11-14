@@ -15,71 +15,65 @@ const weeklyPilot = {
   XIAOK_WEEKLY_REPORT_PILOT_ID: 'first-pilot',
 };
 
-// A. Both workers are unscoped enterprise workers.
-test('A. both enterprise ids empty stay aligned', () => {
+// A. 两边均 enterprise、均未指定企业。
+test('F4 A. both enterprise without an enterprise id stay aligned', () => {
   const result = checkPilotWorkerAlignment({});
   assert.deepEqual([result.status, result.mode, result.enterpriseId, result.pilotId, result.errorCode],
     ['aligned', 'enterprise', null, null, null]);
 });
 
-// B. Both workers name the same enterprise.
-test('B. identical enterprise ids stay aligned', () => {
+// B. 两边均 enterprise、企业 ID 相同。
+test('F4 B. identical enterprise ids stay aligned', () => {
   const result = checkPilotWorkerAlignment({ XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454',
     XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' });
   assert.deepEqual([result.status, result.mode, result.enterpriseId, result.pilotId, result.errorCode],
     ['aligned', 'enterprise', '1454', null, null]);
 });
 
-// C. Only the reminder worker is enterprise-scoped.
-test('C. a reminder-only enterprise id is a mismatch', () => {
-  const result = checkPilotWorkerAlignment({ XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454' });
-  assert.deepEqual([result.status, result.mode, result.enterpriseId, result.pilotId, result.errorCode],
-    ['mismatch', 'enterprise', '1454', null, 'pilot_worker_enterprise_mismatch']);
-});
-
-// D. Only the weekly-report worker is enterprise-scoped.
-test('D. a weekly-report-only enterprise id is a mismatch', () => {
-  const result = checkPilotWorkerAlignment({ XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' });
-  assert.deepEqual([result.status, result.mode, result.enterpriseId, result.pilotId, result.errorCode],
-    ['mismatch', 'enterprise', '1454', null, 'pilot_worker_enterprise_mismatch']);
-});
-
-// E. The two enterprise workers name different enterprises.
-test('E. different enterprise ids are a mismatch', () => {
-  const result = checkPilotWorkerAlignment({ XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454',
-    XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1455' });
-  assert.deepEqual([result.status, result.mode, result.enterpriseId, result.errorCode],
-    ['mismatch', 'enterprise', '1454', 'pilot_worker_enterprise_mismatch']);
-});
-
-// F. Identical pilot configurations are still aligned.
-test('F. identical pilot configurations stay aligned', () => {
+// C. 两边均 pilot、enterpriseId 和 pilotId 相同。
+test('F4 C. identical pilot configurations stay aligned', () => {
   const result = checkPilotWorkerAlignment({ ...stagePilot, ...weeklyPilot });
   assert.deepEqual([result.status, result.mode, result.enterpriseId, result.pilotId, result.errorCode],
     ['aligned', 'pilot', '1454', 'first-pilot', null]);
 });
 
-test('F2. mixed pilot and enterprise modes remain a mismatch', () => {
-  const reminderPilot = checkPilotWorkerAlignment({ ...stagePilot });
-  assert.deepEqual([reminderPilot.status, reminderPilot.errorCode, reminderPilot.mode],
-    ['mismatch', 'pilot_worker_mode_mismatch', 'pilot']);
-  assert.deepEqual([reminderPilot.enterpriseId, reminderPilot.pilotId], ['1454', 'first-pilot']);
-
-  const weeklyPilotOnly = checkPilotWorkerAlignment({ ...weeklyPilot });
-  assert.deepEqual([weeklyPilotOnly.status, weeklyPilotOnly.errorCode, weeklyPilotOnly.mode],
-    ['mismatch', 'pilot_worker_mode_mismatch', 'pilot']);
+// D. 提醒 pilot、周报 enterprise。
+test('F4 D. a pilot reminder with an enterprise report is a mismatch', () => {
+  const result = checkPilotWorkerAlignment({ ...stagePilot, XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' });
+  assert.deepEqual([result.status, result.mode, result.enterpriseId, result.pilotId, result.errorCode],
+    ['mismatch', 'pilot', '1454', 'first-pilot', 'pilot_worker_mode_mismatch']);
 });
 
-// G. The pilot ids differ.
-test('G. different pilot ids are a mismatch', () => {
+// E. 提醒 enterprise、周报 pilot。
+test('F4 E. an enterprise reminder with a pilot report is a mismatch', () => {
+  const result = checkPilotWorkerAlignment({ ...weeklyPilot, XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454' });
+  assert.deepEqual([result.status, result.mode, result.enterpriseId, result.pilotId, result.errorCode],
+    ['mismatch', 'pilot', '1454', 'first-pilot', 'pilot_worker_mode_mismatch']);
+});
+
+// F. 两边 enterpriseId 不同。
+test('F4 F. different enterprise ids are a mismatch', () => {
+  const result = checkPilotWorkerAlignment({ XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454',
+    XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1455' });
+  assert.deepEqual([result.status, result.mode, result.enterpriseId, result.pilotId, result.errorCode],
+    ['mismatch', 'enterprise', '1454', null, 'pilot_worker_enterprise_mismatch']);
+
+  const pilotSide = checkPilotWorkerAlignment({ ...stagePilot, ...weeklyPilot,
+    XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1455' });
+  assert.deepEqual([pilotSide.status, pilotSide.errorCode, pilotSide.mode],
+    ['mismatch', 'pilot_worker_enterprise_mismatch', 'pilot']);
+});
+
+// G. 两边 pilotId 不同。
+test('F4 G. different pilot ids are a mismatch', () => {
   const result = checkPilotWorkerAlignment({ ...stagePilot, ...weeklyPilot,
     XIAOK_WEEKLY_REPORT_PILOT_ID: 'second-pilot' });
   assert.deepEqual([result.status, result.errorCode, result.enterpriseId, result.pilotId],
     ['mismatch', 'pilot_worker_pilot_mismatch', '1454', 'first-pilot']);
 });
 
-// H. Invalid configurations fail closed and never become enterprise.
-test('H. invalid configurations fail closed', () => {
+// H. 任意一边配置非法。
+test('F4 H. any invalid side fails closed and never becomes enterprise', () => {
   const reminderInvalid = checkPilotWorkerAlignment({ ...weeklyPilot,
     XIAOK_STAGE_REMINDER_MODE: 'tenant' });
   assert.deepEqual([reminderInvalid.status, reminderInvalid.mode, reminderInvalid.enterpriseId,
@@ -107,27 +101,41 @@ test('H. invalid configurations fail closed', () => {
   }
 });
 
-// I. The Worker route gates all four reminder/report entries.
-test('I. the worker route skips all four pilot workers when alignment fails', () => {
-  const source = readFileSync(join(process.cwd(), 'src/app/api/internal/assistant/jobs/run/route.ts'), 'utf8');
+// A one-sided enterprise id is not an implicit default.
+test('parse. one-sided enterprise ids are mismatches', () => {
+  const reminderOnly = checkPilotWorkerAlignment({ XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454' });
+  assert.deepEqual([reminderOnly.status, reminderOnly.errorCode],
+    ['mismatch', 'pilot_worker_enterprise_mismatch']);
+
+  const weeklyOnly = checkPilotWorkerAlignment({ XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' });
+  assert.deepEqual([weeklyOnly.status, weeklyOnly.errorCode],
+    ['mismatch', 'pilot_worker_enterprise_mismatch']);
+});
+
+// The Worker tick gates all four reminder/report entries behind alignment.
+test('W. the worker tick skips all four pilot workers when alignment fails', () => {
+  const source = readFileSync(join(process.cwd(), 'src/lib/assistant/infrastructure/jobs-tick.ts'), 'utf8');
   const gate = source.indexOf('const pilotWorkersEnabled');
   assert.ok(gate > 0);
-  for (const call of ['advanceConfiguredConstructionReports({ now', 'advanceConfiguredStageReminders({ now',
-    'deliverConfiguredConstructionReports({ now', 'deliverConfiguredStageReminders({ now']) {
+  for (const call of ['advanceReports({ now })', 'deliverReports({ now })',
+    'advanceReminders({ now })', 'deliverReminders({ now })']) {
     const index = source.indexOf(call);
     assert.ok(index > gate, call + ' must run after the alignment gate');
   }
-  assert.match(source, /const pilotScopeAlignment = checkPilotWorkerAlignment\(\)/);
+  assert.match(source, /const pilotScopeAlignment = alignmentOf\(env\)/);
   assert.match(source, /skipped: true, reason: 'pilot_worker_alignment'/);
-  assert.match(source, /pilotScopeAlignment, nativeWorkflowSchedule/);
+  assert.match(source, /pilotScopeAlignment,/);
 });
 
-// J. Other Assistant jobs and the 401 guard remain outside the gate.
-test('J. other assistant jobs remain unaffected', () => {
-  const source = readFileSync(join(process.cwd(), 'src/app/api/internal/assistant/jobs/run/route.ts'), 'utf8');
-  assert.match(source, /if \(!authorized\(request\)\)[\s\S]*status: 401/);
-  assert.match(source, /const knowledgeBatchChecks=await advanceKnowledgeBatches\(\)/);
-  assert.match(source, /const data = await processAssistantJob\(processAssistantRun\)/);
-  assert.match(source, /deliverSiteNotifications\(\) \+ await deliverPublicConsents\(\)/);
-  assert.match(source, /runNativeWorkflowScheduleTick/);
+// Other Assistant jobs and the 401 guard remain outside the gate.
+test('W2. the route authenticates before the tick and keeps other jobs independent', () => {
+  const route = readFileSync(join(process.cwd(), 'src/app/api/internal/assistant/jobs/run/route.ts'), 'utf8');
+  assert.match(route, /if \(!authorized\(request\)\)[\s\S]*status: 401/);
+  assert.match(route, /const data = await runAssistantJobsTick\(\)/);
+
+  const tick = readFileSync(join(process.cwd(), 'src/lib/assistant/infrastructure/jobs-tick.ts'), 'utf8');
+  assert.match(tick, /const knowledgeBatchChecks = await knowledgeBatches\(\)/);
+  assert.match(tick, /const data = await assistantJob\(assistantRun\)/);
+  assert.match(tick, /siteNotifications\(\) \+ await publicConsents\(\)/);
+  assert.match(tick, /runNativeWorkflowScheduleTick/);
 });

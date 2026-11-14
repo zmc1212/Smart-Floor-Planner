@@ -93,28 +93,33 @@ test('E. an unavailable resolver never falls back to the enterprise scan', async
     errors: [{ enterpriseId: '1454', projectId: '', code: 'pilot_scope_unavailable' }] });
 });
 
-// F/G. Worker Route 只替换提醒推进入口；其余 Job、401 守卫和投递调用保持原样。
+// F/G. Worker Route 只做鉴权与响应，四项 Worker 由抽取的编排函数统一调用；
+// 其余 Job、401 守卫和投递调用保持原样。
 test('F/G. the worker route keeps the other jobs, auth guard and delivery flow', () => {
-  const source = readFileSync(join(process.cwd(), 'src/app/api/internal/assistant/jobs/run/route.ts'), 'utf8');
+  const route = readFileSync(join(process.cwd(), 'src/app/api/internal/assistant/jobs/run/route.ts'), 'utf8');
+  const source = readFileSync(join(process.cwd(), 'src/lib/assistant/infrastructure/jobs-tick.ts'), 'utf8');
 
-  assert.match(source, /if \(!authorized\(request\)\)[\s\S]*status: 401/);
-  assert.match(source, /const pilotScopeAlignment = checkPilotWorkerAlignment\(\)/);
+  assert.match(route, /if \(!authorized\(request\)\)[\s\S]*status: 401/);
+  assert.match(route, /const data = await runAssistantJobsTick\(\)/);
+  assert.doesNotMatch(route, /advanceConfiguredStageReminders\(/);
+  assert.doesNotMatch(route, /deliverConfiguredStageReminders\(/);
+  assert.match(source, /const pilotScopeAlignment = alignmentOf\(env\)/);
   assert.match(source, /const pilotWorkersEnabled = pilotScopeAlignment\.status === 'aligned'/);
-  assert.match(source, /advanceConfiguredStageReminders\(\{ now: new Date\(\) \}\)/);
+  assert.match(source, /advanceReminders\(\{ now \}\)/);
   assert.doesNotMatch(source, /advanceStageReminders\(/);
-  assert.match(source, /if \(pilotWorkersEnabled\) \{\s*\n\s*try \{ stageReminderChecks = await advanceConfiguredStageReminders/);
-  assert.match(source, /const knowledgeBatchChecks=await advanceKnowledgeBatches\(\)/);
-  assert.match(source, /pilotWorkersEnabled\s*\n\s*\? await advanceConfiguredConstructionReports\(\{ now: new Date\(\) \}\)/);
+  assert.match(source, /if \(pilotWorkersEnabled\) \{\s*\n\s*try \{ stageReminderChecks = await advanceReminders/);
+  assert.match(source, /const knowledgeBatchChecks = await knowledgeBatches\(\)/);
+  assert.match(source, /pilotWorkersEnabled\) \{\s*\n\s*try \{ constructionReportChecks = await advanceReports/);
   assert.doesNotMatch(source, /advanceConstructionReports\(/);
-  assert.match(source, /pilotWorkersEnabled\s*\n\s*\? await deliverConfiguredConstructionReports\(\{ now: new Date\(\) \}\)/);
+  assert.match(source, /pilotWorkersEnabled\) \{\s*\n\s*try \{ reportDelivery = await deliverReports/);
   assert.doesNotMatch(source, /deliverConstructionReports\(/);
   assert.match(source, /inAppDeliveries = [\s\S]*reportDelivery\?\.delivered \?\? 0/);
-  assert.match(source, /if \(pilotWorkersEnabled\) \{\s*\n\s*try \{ stageReminderDeliveries = await deliverConfiguredStageReminders/);
+  assert.match(source, /if \(pilotWorkersEnabled\) \{\s*\n\s*try \{ stageReminderDeliveries = await deliverReminders/);
   assert.doesNotMatch(source, /deliverStageReminders\(/);
   assert.match(source, /skipped: true, reason: 'pilot_worker_alignment'/);
-  assert.match(source, /pilotScopeAlignment, nativeWorkflowSchedule/);
-  assert.ok(source.indexOf('advanceConfiguredStageReminders({ now') < source.indexOf('processAssistantJob(processAssistantRun)'));
-  assert.ok(source.indexOf('processAssistantJob(processAssistantRun)') < source.indexOf('deliverConfiguredStageReminders({ now'));
+  assert.match(source, /pilotScopeAlignment,/);
+  assert.ok(source.indexOf('advanceReminders({ now })') < source.indexOf('assistantJob(assistantRun)'));
+  assert.ok(source.indexOf('assistantJob(assistantRun)') < source.indexOf('deliverReminders({ now })'));
 });
 
 type DeliverCall = [Date, string | undefined, string | undefined];

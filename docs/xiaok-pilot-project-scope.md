@@ -402,8 +402,36 @@ npx tsx --test src/lib/xiaok-v1/__tests__/pilot-worker-alignment.test.ts src/lib
 
 测试结果：47 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。本轮未修改生产环境变量、真实企业配置，未发送真实通知。
 
+## Worker 统一配置端到端验收（I7.4.5-F4）
+
+Worker 编排从 `jobs/run/route.ts` 抽取到 `admin/src/lib/assistant/infrastructure/jobs-tick.ts` 的 `runAssistantJobsTick()`。Route 仅保留 401 鉴权、请求体校验与响应封装；编排函数默认依赖不变，并可注入 `now`、`env` 和各 Job 函数以验证真实调用次数。周报生成与投递补上与提醒一致的独立 `try/catch`，单个 Worker 失败不再跳过其他独立任务。
+
+配置组合与行为：
+
+| 组合 | 配置 | 四项 Worker |
+| --- | --- | --- |
+| A/B | 两边 `enterprise`，企业 ID 均为空或相同 | 各执行 1 次 |
+| C | 两边 `pilot`，`enterpriseId` 与 `pilotId` 相同 | 各执行 1 次 |
+| D/E | 一边 `pilot`、一边 `enterprise` | 均 0 次，`pilot_worker_mode_mismatch` |
+| F | 两边 `enterpriseId` 不同 | 均 0 次，`pilot_worker_enterprise_mismatch` |
+| G | 两边 `pilotId` 不同 | 均 0 次，`pilot_worker_pilot_mismatch` |
+| H | 任意一边配置非法 | 均 0 次，解析错误码，`mode=null` |
+
+不一致时四项均返回 `skipped`，Knowledge Batch、Assistant Job、站内通知与 Native Workflow 继续按原条件运行；401 仍在任何任务前拒绝；任何情况都不回退 `enterprise`。
+
+PG17 复用 `i745_f1_accept` 与 F2 合成企业 `5`、`f2-pilot`、项目 `8`/`9`，统一配置执行：
+
+- 提醒 scopeVersion 与周报 scopeVersion 均为数据库最新的 `8`；提醒新增 3 行（业主/施工投递，经理 `no_inbox`），周报 `queued=2`。
+- 业主周报 `13`（message `52`）与老板周报 `14`（message `53`）均 `delivered`，facts 与 policy 只含项目 `8`。
+- 范围外项目 `9` 无新增提醒或周报；重复 tick 业务计数完全不变。
+- 真实 HTTP Route 在提醒 `pilot`、周报 `enterprise` 时返回 200，四项全部跳过，其他 Job 正常执行且业务数据零变化。
+
+定向验证（10 个文件，121 项）：`pilot-worker-alignment.test.ts`、`worker-tick-alignment.test.ts`、`stage-reminder-worker.test.ts`、`reminder-service.test.ts`、`report-worker-pilot.test.ts`、`report-store-pilot-scope.test.ts`、`pilot-scope-resolver.test.ts`、`pilot-report-scope.test.ts`、`stage-reminder-config.test.ts`、`weekly-report-config.test.ts`。测试结果：121 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。完整统一配置 HTTP Route 因时钟不可注入标记为 `limited`，未发送真实通知、未部署生产、未合并 `main`。
+
+详见 [I7.4.5-F4 统一 Worker 配置验收](./xiaok-i745-f4-worker-alignment-acceptance.md)。
+
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：默认 `enterprise` 保持原有生成和投递行为；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。I7.4.5-F1 已在独立 PG17 数据库完成双项目周报真实生成、投递和范围收缩验收；I7.4.5-F2 已完成主动提醒的双项目生成、站内投递、范围收缩、权限与故障验收；I7.4.5-F3 增加提醒/周报统一配置校验，不一致或非法时四个 Worker 入口均跳过（见下节）。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：默认 `enterprise` 保持原有生成和投递行为；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。I7.4.5-F1 已在独立 PG17 数据库完成双项目周报真实生成、投递和范围收缩验收；I7.4.5-F2 已完成主动提醒的双项目生成、站内投递、范围收缩、权限与故障验收；I7.4.5-F3 增加提醒/周报统一配置校验，不一致或非法时四个 Worker 入口均跳过（见 I7.4.5-F3 节）；I7.4.5-F4 已抽取统一 Worker 编排并完成四项任务端到端验收（见上节）。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。
