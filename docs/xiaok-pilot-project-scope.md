@@ -214,8 +214,41 @@ npx tsx --test src/lib/xiaok-v1/__tests__/reminder-service.test.ts src/lib/xiaok
 
 测试结果：两个文件共 32 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。本轮未合并 `main`、未部署生产、未修改生产环境变量、未发送真实试点通知。
 
+## 周报试点范围交集（I7.4.5-D1）
+
+`admin/src/lib/xiaok-v1/pilot-report-scope.ts` 新增纯函数 `computePilotReportScope()`，只计算试点项目范围与企业周报 `construction_report_settings.project_ids` 的交集。本轮不接入 `report-worker.ts`、`report-store.ts` 或周报服务，不读取数据库，不生成或发送周报。
+
+| 输入 | 含义 |
+| --- | --- |
+| `pilotProjectIds` | 试点最新 active 范围内的项目 ID。 |
+| `reportProjectIds` | 企业原有周报项目筛选；空数组表示不限制企业项目范围。 |
+
+| 输出 | 含义 |
+| --- | --- |
+| `projectIds` | 交集项目 ID，按试点输入顺序去重；新建数组，不修改输入。 |
+| `status` | `active` 或 `empty`。 |
+| `pilotScopeApplied` | 试点范围始终作为上限，固定为 `true`。 |
+| `reportFilterApplied` | 企业周报筛选非空时为 `true`；空数组时为 `false`。 |
+
+规则：
+
+- 试点项目范围始终是上限；企业筛选为空时返回全部试点项目，但不会扩大到企业其他项目。
+- 企业筛选非空时只返回两者交集；交集为空返回 `empty`，不回退全企业。
+- 两个输入都去重，并统一使用现有 `id()` 的正 bigint 字符串格式；非法项目 ID 返回 `invalid_message`/422，非数组输入返回 `pilot_report_scope_invalid`/422。
+- 不跨企业推断项目：函数只比较 ID，不查询项目归属。
+- 输出顺序固定为试点输入顺序，重复调用结果稳定。
+
+定向验证（8 项，覆盖 A–H：无企业限制、部分重叠、完全不重叠、空试点、重复 ID、非法 ID、不修改输入、稳定顺序）：
+
+```powershell
+cd admin
+npx tsx --test src/lib/xiaok-v1/__tests__/pilot-report-scope.test.ts
+```
+
+测试结果：8 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。D1 未接入周报 Worker，未修改企业周报配置，未生成或发送真实周报。
+
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算。空的企业周报项目清单表示全部符合条件的项目。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算，空的企业周报项目清单表示全部符合条件的项目；I7.4.5-D1 只提供试点范围与 `project_ids` 的纯函数交集计算器，尚未接入周报 Worker，实际周报行为不变。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。
