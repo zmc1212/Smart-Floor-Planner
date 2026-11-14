@@ -121,6 +121,43 @@ npx tsx --test src/lib/xiaok-v1/__tests__/reminder-service.test.ts
 
 测试结果：9 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。该验证使用内存替身，不连接数据库、不发送提醒；真实试点触达仍需单独的隔离环境验收。
 
+## 提醒 Worker 模式配置（I7.4.5-C1）
+
+`admin/src/lib/xiaok-v1/stage-reminder-config.ts` 提供纯配置解析。本轮不接入 Worker，不读取数据库，不发送通知，不修改任何环境变量。
+
+| 环境变量 | 含义 |
+| --- | --- |
+| `XIAOK_STAGE_REMINDER_MODE` | `enterprise` 或 `pilot`；未配置时默认 `enterprise`。 |
+| `XIAOK_STAGE_REMINDER_ENTERPRISE_ID` | 正 bigint 企业 ID；pilot 模式必填，enterprise 模式可选。 |
+| `XIAOK_STAGE_REMINDER_PILOT_ID` | 1–128 个英文字母、数字或 `._:-`；pilot 模式必填，enterprise 模式忽略。 |
+
+解析结果 `readStageReminderConfig(env)`：
+
+| 结果 | 含义 |
+| --- | --- |
+| `{ok:true, mode:'enterprise', enterpriseId, pilotId:null}` | 普通企业模式；未配置模式时也返回此项。 |
+| `{ok:true, mode:'pilot', enterpriseId, pilotId}` | 完整试点配置。 |
+| `{ok:false, mode, code}` | 明确配置错误，调用方不得自行回退。 |
+
+失败关闭规则：
+
+- 未知模式：`stage_reminder_mode_invalid`，`mode` 为 `null`。
+- pilot 缺少企业 ID（未设置、空串或空白）：`stage_reminder_enterprise_required`。
+- 企业 ID 非法（前导零、非数字、小数或超出 bigint）：`stage_reminder_enterprise_invalid`。
+- pilot 缺少试点 ID：`stage_reminder_pilot_required`。
+- 试点 ID 非法：`stage_reminder_pilot_invalid`。
+- enterprise 模式提供非法企业 ID 时同样返回 `stage_reminder_enterprise_invalid`；显式 enterprise 模式下残留的 pilotId 被忽略，不会切换成试点。
+- 任何错误都不会自动回退到 enterprise。
+
+定向验证（8 项）：
+
+```powershell
+cd admin
+npx tsx --test src/lib/xiaok-v1/__tests__/stage-reminder-config.test.ts
+```
+
+测试结果：8 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。本轮未接入 Worker，实际 Worker 仍按 I7.4.5-B 的调用方式运行。
+
 ## 通知边界
 
 `active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 缺省仍按有效 active 项目和阶段事实运作；显式传入试点 ID 时只处理该试点最新范围（见上节）。周报仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算。空的企业周报项目清单表示全部符合条件的项目。
