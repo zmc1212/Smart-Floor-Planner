@@ -1,5 +1,7 @@
 # 后台系统当前功能清单
 
+**I7.4.4 试点项目配置和预检（Implemented）。** 有施工管理权限的企业管理员在选定企业下使用 `GET` 或 `PUT /api/construction/pilot-scopes/{pilotId}`。迁移 `0130` 在强制租户 RLS 下保存项目清单、操作人、状态和不可变版本。只读 `check:pilot-readiness` 输出企业安全项、所选项目缺项及范围外提醒和周报影响。实际投递沿用现有 Worker 规则和报告计划。验证使用独立 PG17。[范围合同](xiaok-pilot-project-scope.md)、[首家试点预检](xiaok-first-pilot-enterprise-readiness.md)。
+
 **I7.3 提醒跳转与经理工作台（Implemented）。** `GET /api/miniprogram/xiaok/reminders` 按当天项目成员/业主身份重新过滤，返回 `relatedIssueId`、`relatedTaskId`、`roomId`、`channel` 和独立 `history`；撤权后不再返回提醒正文。计划节点 `actionUrl` 携带真实 `roomId`，待办提醒携带真实事项 ID。项目经理没有私人会话时显示为工作台待办（`failed/no_inbox`），不再显示为发送失败。`construction_staff` 路由白名单包含 `xiaok/reminders` 与 `xiaok/stage-answer`。[验收](xiaok-i73-pilot-acceptance.md)。
 
 **I6.16 防水清单候选（Limited）。** 隔离发布的 Workflow revision 4 显式选用 `waterproof-specialist@2`。检查项保存项目、房间、Agent、Workflow revision/digest、所选来源版本和复核状态。官网原页通过核对后可用于待核对清单，目录现行性及托管检索故障单独保留。被拒终稿记录失败 Run，登记回执由原服务事件核验。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。

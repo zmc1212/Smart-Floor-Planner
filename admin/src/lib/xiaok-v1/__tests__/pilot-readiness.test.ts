@@ -9,23 +9,36 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { sql } from 'drizzle-orm';
+import { SignJWT } from 'jose';
+import { NextRequest } from 'next/server';
+import { Client } from 'pg';
 import type { PostgresTransaction } from '@/db/transaction';
+import type { PilotReadinessOptions } from '@/lib/xiaok-v1/pilot-readiness';
 
 const configured = process.env.PILOT_READINESS_TEST_DATABASE_URL?.trim();
 const allowedTarget = (() => {
   if (!configured) return null;
   try {
     const url = new URL(configured);
-    return ['127.0.0.1', 'localhost'].includes(url.hostname) && url.port === '55432'
+    return ['127.0.0.1', 'localhost'].includes(url.hostname) && ['55432', '55448'].includes(url.port)
       && url.pathname === '/pilot_readiness_eval' && url.username === 'sfp_app';
   } catch {
     return false;
   }
 })();
 if (configured && !allowedTarget) {
-  throw new Error('Refuse to run: PILOT_READINESS_TEST_DATABASE_URL must point to 127.0.0.1:55432/pilot_readiness_eval as sfp_app');
+  throw new Error('Use the isolated pilot_readiness_eval database on loopback port 55432 or 55448 as sfp_app');
 }
 const skip = configured ? false : 'PILOT_READINESS_TEST_DATABASE_URL is not configured';
+const migrationUrl = process.env.PILOT_READINESS_TEST_MIGRATION_URL?.trim();
+if (migrationUrl) {
+  const migration = new URL(migrationUrl);
+  const app = configured && new URL(configured);
+  if (!app || migration.hostname !== app.hostname || migration.port !== app.port
+    || migration.pathname !== app.pathname || migration.username !== 'sfp_migrator') {
+    throw new Error('Use the migrator for the same isolated pilot readiness database');
+  }
+}
 
 type Transaction = PostgresTransaction;
 type Fixture = {
@@ -39,6 +52,7 @@ type Fixture = {
   bossId: string;
 };
 type FixtureOptions = {
+  enterprise?: Fixture;
   reportPlan?: boolean;
   manager?: boolean;
   designerMembership?: boolean;
@@ -47,6 +61,9 @@ type FixtureOptions = {
   bossRole?: 'enterprise_admin' | 'designer';
   plan?: boolean;
   bindings?: boolean;
+  stage?: boolean;
+  c01?: boolean;
+  name?: string;
 };
 
 let one: typeof import('@/db/repositories/assistant-repository').one;
@@ -54,6 +71,7 @@ let withPlatformTransaction: typeof import('@/db/transaction').withPlatformTrans
 let withTenantTransaction: typeof import('@/db/transaction').withTenantTransaction;
 let closePostgresPool: typeof import('@/lib/postgresql').closePostgresPool;
 let checkPilotReadiness: typeof import('@/lib/xiaok-v1/pilot-readiness').checkPilotReadiness;
+let PilotProjectScopeService: typeof import('@/lib/xiaok-v1/pilot-project-scope').PilotProjectScopeService;
 let defaultConstructionStages: typeof import('@/lib/construction/stages').defaultConstructionStages;
 
 const now = new Date('2026-11-14T10:00:00+08:00');
@@ -71,14 +89,19 @@ const day = (offset: number) => {
 };
 
 async function fixture(tx: Transaction, label: string, options: FixtureOptions = {}): Promise<Fixture> {
-  const enterprise = await one<{ id: string }>(tx, sql`insert into app.enterprises(name,code,status,registration_mode)
+  const enterprise = options.enterprise ? { id: options.enterprise.enterpriseId }
+    : await one<{ id: string }>(tx, sql`insert into app.enterprises(name,code,status,registration_mode)
     values(${'PilotReadiness ' + label + ' ' + runId},${'pilot-readiness-' + label + '-' + runId},'active','manual') returning id::text as id`);
   const enterpriseId = String(enterprise!.id);
   // The followup access functions compare this tenant GUC even inside a
   // platform transaction, so bindings must be seeded with the same scope.
   await tx.execute(sql`select set_config('app.current_enterprise_id',${enterpriseId},true)`);
-  await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,retention_days,daily_requests,daily_tokens,daily_cost_micros)
-    values(${enterpriseId},true,365,100000,1000000000,1000000000)`);
+  if (!options.enterprise) {
+    await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,retention_days,daily_requests,daily_tokens,daily_cost_micros)
+      values(${enterpriseId},true,365,100000,1000000000,1000000000)`);
+    await tx.execute(sql`insert into app.construction_stage_settings(enterprise_id,stages)
+      values(${enterpriseId},${JSON.stringify(defaultConstructionStages)}::jsonb)`);
+  }
   await tx.execute(sql`insert into app.system_roles(role_key,label,menu_keys)
     values('designer','合成设计师',array['construction-projects']) on conflict do nothing`);
 
@@ -94,13 +117,12 @@ async function fixture(tx: Transaction, label: string, options: FixtureOptions =
   const managerId = options.manager === false ? '' : await admin('construction_staff', '项目经理');
   const designerId = await admin('designer', '设计师');
   const workerId = await admin('construction_staff', '施工人员');
-  const bossId = options.boss === false ? '' : options.bossRole === 'designer' ? designerId : await admin('enterprise_admin', '老板');
+  const bossId = options.boss === false ? '' : options.bossRole === 'designer' ? designerId
+    : options.enterprise?.bossId ?? await admin('enterprise_admin', '老板');
 
   const project = await one<{ id: string }>(tx, sql`insert into app.construction_projects(enterprise_id,lead_id,name,current_stage_key)
-    values(${enterpriseId},${String(lead!.id)},${'工地 ' + label},'utilities') returning id::text as id`);
+    values(${enterpriseId},${String(lead!.id)},${options.name ?? '工地 ' + label},${options.stage === false ? null : 'utilities'}) returning id::text as id`);
   const projectId = String(project!.id);
-  await tx.execute(sql`insert into app.construction_stage_settings(enterprise_id,stages)
-    values(${enterpriseId},${JSON.stringify(defaultConstructionStages)}::jsonb)`);
   const room = await one<{ id: string }>(tx, sql`insert into app.construction_rooms(enterprise_id,project_id,name)
     values(${enterpriseId},${projectId},'卫生间') returning id::text as id`);
 
@@ -124,12 +146,14 @@ async function fixture(tx: Transaction, label: string, options: FixtureOptions =
         ${JSON.stringify({ kind: 'admin', id: managerId || bossId })}::jsonb,${projectId},${JSON.stringify(payload)}::jsonb)`);
   }
 
-  const c01 = await one<{ id: string }>(tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,entry_snapshot,policy_version)
-    values(${enterpriseId},'customer_consultation',${JSON.stringify({ kind: 'lead', id: String(lead!.id) })}::jsonb,1) returning id::text as id`);
-  await tx.execute(sql`insert into app.assistant_participants(enterprise_id,conversation_id,principal_kind,user_id,grant_basis)
-    values(${enterpriseId},${String(c01!.id)},'user',${String(owner!.id)},${JSON.stringify({ kind: 'customer_consultation' })}::jsonb)`);
+  if (options.c01 !== false) {
+    const c01 = await one<{ id: string }>(tx, sql`insert into app.assistant_conversations(enterprise_id,purpose,entry_snapshot,policy_version)
+      values(${enterpriseId},'customer_consultation',${JSON.stringify({ kind: 'lead', id: String(lead!.id) })}::jsonb,1) returning id::text as id`);
+    await tx.execute(sql`insert into app.assistant_participants(enterprise_id,conversation_id,principal_kind,user_id,grant_basis)
+      values(${enterpriseId},${String(c01!.id)},'user',${String(owner!.id)},${JSON.stringify({ kind: 'customer_consultation' })}::jsonb)`);
+  }
 
-  if (options.reportPlan !== false) {
+  if (!options.enterprise && options.reportPlan !== false) {
     await tx.execute(sql`insert into app.construction_report_settings(enterprise_id,enabled,daily_time,weekly_time,project_ids,stage_keys,
         next_daily_at,next_weekly_at,weekly_day,audiences)
       values(${enterpriseId},true,'20:00','08:00',${JSON.stringify([projectId])}::jsonb,'[]'::jsonb,
@@ -153,7 +177,7 @@ async function fixture(tx: Transaction, label: string, options: FixtureOptions =
           ${JSON.stringify({ kind: 'construction_followup', bindingId: String(binding!.id) })}::jsonb)`);
     };
     await bind('customer', { kind: 'user', id: String(owner!.id) }, projectId);
-    if (bossId && options.boss !== false && options.bossRole !== 'designer') await bind('boss', { kind: 'admin', id: bossId }, null);
+    if (bossId && !options.enterprise && options.boss !== false && options.bossRole !== 'designer') await bind('boss', { kind: 'admin', id: bossId }, null);
     if (options.designerMembership !== false) await bind('designer', { kind: 'admin', id: designerId }, null);
     if (options.workerMembership !== false) await bind('worker', { kind: 'admin', id: workerId }, null);
   }
@@ -170,6 +194,7 @@ async function digest(enterpriseIds: string[]) {
   const ids = sql.raw(enterpriseIds.map(id => `'${id}'`).join(','));
   return withPlatformTransaction(async tx => {
     const targets: Array<[string, string]> = [
+      ['enterprises', 'id'],
       ['construction_projects', 'id'], ['construction_members', 'admin_id,project_id'],
       ['construction_rooms', 'id'], ['construction_stage_settings', 'enterprise_id'],
       ['construction_report_settings', 'enterprise_id'], ['construction_followup_bindings', 'id'],
@@ -177,13 +202,14 @@ async function digest(enterpriseIds: string[]) {
       ['assistant_conversations', 'id'], ['assistant_messages', 'id'], ['assistant_participants', 'id'],
       ['assistant_enterprise_settings', 'enterprise_id'], ['admin_users', 'id'], ['users', 'id'], ['leads', 'id'],
       ['domain_event_outbox', 'id'], ['construction_reports', 'id'], ['construction_report_versions', 'report_id,revision'],
-      ['assistant_runs', 'id'], ['assistant_jobs', 'id'],
+      ['assistant_runs', 'id'], ['assistant_jobs', 'id'], ['construction_report_deliveries', 'event_id'],
+      ['xiaok_pilot_project_scopes', 'enterprise_id,pilot_id,scope_version'],
     ];
     const result: Record<string, unknown> = {};
     for (const [table, order] of targets) {
       result[table] = await one(tx, sql`select count(*)::int as count,
         coalesce(md5(string_agg(t::text,'|' order by ${sql.raw(order)})),'') as digest
-        from ${sql.raw('app.' + table)} t where enterprise_id in (${ids})`);
+        from ${sql.raw('app.' + table)} t where ${sql.raw(table === 'enterprises' ? 'id' : 'enterprise_id')} in (${ids})`);
     }
     return result;
   });
@@ -196,18 +222,20 @@ before(async () => {
   const repository = await import('@/db/repositories/assistant-repository');
   const postgres = await import('@/lib/postgresql');
   const checker = await import('@/lib/xiaok-v1/pilot-readiness');
+  const scope = await import('@/lib/xiaok-v1/pilot-project-scope');
   const stages = await import('@/lib/construction/stages');
   withPlatformTransaction = transaction.withPlatformTransaction;
   withTenantTransaction = transaction.withTenantTransaction;
   one = repository.one;
   closePostgresPool = postgres.closePostgresPool;
   checkPilotReadiness = checker.checkPilotReadiness;
+  PilotProjectScopeService = scope.PilotProjectScopeService;
   defaultConstructionStages = stages.defaultConstructionStages;
   drizzleFolder = path.resolve(process.cwd(), 'drizzle');
 
-  const identity = await withPlatformTransaction(tx => one<{ role: string; database: string }>(tx,
-    sql`select current_user as role,current_database() as database`));
-  assert.deepEqual(identity, { role: 'sfp_app', database: 'pilot_readiness_eval' });
+  const identity = await withPlatformTransaction(tx => one(tx,
+    sql`select current_user as role,current_database() as database,current_setting('server_version_num')::int / 10000 as major`));
+  assert.deepEqual(identity, { role: 'sfp_app', database: 'pilot_readiness_eval', major: 17 });
 
   healthDirectory = await mkdtemp(path.join(tmpdir(), 'pilot-readiness-'));
   freshHealthFile = path.join(healthDirectory, 'fresh-health.json');
@@ -223,6 +251,13 @@ before(async () => {
     values.E = await fixture(tx, 'E', { plan: false });
     values.F = await fixture(tx, 'F', { boss: false, designerMembership: false, workerMembership: false });
     values.G = await fixture(tx, 'G');
+    values.scope = await fixture(tx, 'scope-primary');
+    values.second = await fixture(tx, 'scope-complete', { enterprise: values.scope, name: '合成·带测试字样的工地' });
+    values.incomplete = await fixture(tx, 'scope-incomplete', {
+      enterprise: values.scope, stage: false, plan: false, c01: false, workerMembership: false, bindings: false,
+    });
+    await tx.execute(sql`update app.construction_report_settings set project_ids='[]',stage_keys='["utilities"]'
+      where enterprise_id=${values.scope.enterpriseId}`);
     return values;
   });
   Object.assign(fixtures, created);
@@ -235,7 +270,7 @@ after(async () => {
 });
 
 const run = (fixtureValue: Fixture, health = freshHealthFile) => checkPilotReadiness({
-  enterpriseId: fixtureValue.enterpriseId, now, env: healthEnv(health), migrationsFolder: drizzleFolder,
+  enterpriseId: fixtureValue.enterpriseId, enterpriseAudit: true, now, env: healthEnv(health), migrationsFolder: drizzleFolder,
 });
 
 test('A complete pilot enterprise is ready', { skip }, async () => {
@@ -359,4 +394,297 @@ test('a non-existent or invisible enterprise is reported explicitly', { skip }, 
   assert.ok(report.blockers.some(item => item.checkId === 'enterprise.status'));
   assert.deepEqual(report.projects, []);
   assert.deepEqual(report.roleAccounts.owner, []);
+});
+
+const scopeRun = (options: Partial<PilotReadinessOptions> = {}) => checkPilotReadiness({
+  enterpriseId: fixtures.scope.enterpriseId, now, env: healthEnv(freshHealthFile), migrationsFolder: drizzleFolder, ...options,
+});
+const scopeService = () => new PilotProjectScopeService({ enterpriseId: fixtures.scope.enterpriseId, adminId: fixtures.scope.bossId });
+const saveScope = (pilotId: string, projectIds: string[], expectedVersion = 0, status = 'active') =>
+  scopeService().save(pilotId, { projectIds, expectedVersion, status });
+const securityChecks = ['assistant.enabled', 'worker.heartbeat', 'database.account', 'database.migrations', 'database.rls'];
+const checkStatuses = (report: Awaited<ReturnType<typeof scopeRun>>) =>
+  Object.fromEntries(report.enterpriseChecks.map(check => [check.id, check.status]));
+
+test('A one explicitly configured pilot project is checked without choosing other active projects', { skip }, async () => {
+  const { scope, second, incomplete } = fixtures;
+  const config = await saveScope('pilot-a', [scope.projectId]);
+  assert.deepEqual(config, { enterpriseId: scope.enterpriseId, pilotId: 'pilot-a', projectIds: [scope.projectId],
+    createdBy: scope.bossId, createdAt: config.createdAt, scopeVersion: 1, status: 'active' });
+  assert.ok(Number.isFinite(Date.parse(config.createdAt)));
+  assert.deepEqual(await scopeService().read('pilot-a'), config);
+  const report = await scopeRun({ pilotId: 'pilot-a' });
+  assert.deepEqual(report.pilotScope.configuration, config);
+  assert.deepEqual(report.projects.map(project => project.id), [scope.projectId]);
+  assert.deepEqual(report.roleAccounts.owner.map(account => account.id), [scope.ownerId]);
+  assert.deepEqual(report.outsideScope.activeProjects.map(project => project.projectId), [second.projectId, incomplete.projectId]);
+  assert.deepEqual(report.blockers, []);
+  assert.deepEqual(report.warnings.map(warning => warning.checkId), ['pilot.outside_delivery']);
+  assert.deepEqual(report.outsideScope.reminders.candidateProjectIds, [second.projectId]);
+  assert.deepEqual(report.outsideScope.weeklyReports.planCandidateProjectIds, [second.projectId]);
+  const states = checkStatuses(report);
+  assert.ok(securityChecks.every(check => states[check] === 'passed'));
+  const preview = await scopeRun({ projectIds: [scope.projectId] });
+  assert.deepEqual(preview.projects, report.projects);
+  assert.equal(preview.pilotScope.configuration, null);
+  assert.ok(preview.warnings.some(warning => warning.checkId === 'pilot.scope'));
+});
+
+test('B two selected projects are checked independently, with the remaining active project outside', { skip }, async () => {
+  const { scope, second, incomplete } = fixtures;
+  const projectIds = [scope.projectId, second.projectId];
+  await saveScope('pilot-b', projectIds);
+  const report = await scopeRun({ pilotId: 'pilot-b' });
+  assert.equal(report.readiness, 'ready');
+  assert.deepEqual(report.projects.map(project => project.id), projectIds);
+  assert.deepEqual(report.outsideScope.activeProjects.map(project => project.projectId), [incomplete.projectId]);
+  assert.ok(report.projects.every(project => project.plan.structurallyValid && project.members.worker.length === 1));
+  assert.deepEqual(report.roleAccounts.boss[0].projectIds, projectIds);
+});
+
+test('C foreign IDs are indistinguishable from unavailable IDs, even in a mixed scope', { skip }, async () => {
+  const { scope, G } = fixtures;
+  const projectIds = [scope.projectId, G.projectId];
+  await assert.rejects(async () => saveScope('pilot-c', projectIds), { code: 'pilot_project_unavailable' });
+  await assert.rejects(async () => saveScope('pilot-c', ['999999999']), { code: 'pilot_project_unavailable' });
+  const preview = await scopeRun({ projectIds });
+  assert.equal(preview.readiness, 'blocked');
+  assert.deepEqual(preview.pilotScope.unavailableProjectIds, [G.projectId]);
+  assert.deepEqual(preview.projects, []);
+  assert.deepEqual(preview.roleAccounts.owner, []);
+  assert.ok(preview.outsideScope.activeProjects.every(project => project.projectId !== G.projectId));
+  assert.ok(!JSON.stringify(preview).includes('工地 G'));
+  // Even a direct insert with app credentials cannot persist an invalid reference.
+  await assert.rejects(() => withTenantTransaction(scope.enterpriseId, tx => tx.execute(sql`
+    insert into app.xiaok_pilot_project_scopes(enterprise_id,pilot_id,project_ids,created_by,scope_version,status)
+    values(${scope.enterpriseId},'invalid-direct',array[${G.projectId}::bigint],${scope.bossId},1,'active')`)),
+  error => (error as { cause?: { constraint?: string } }).cause?.constraint === 'xiaok_pilot_projects_available');
+  await new PilotProjectScopeService({ enterpriseId: G.enterpriseId, adminId: G.bossId })
+    .save('pilot-c', { projectIds: [G.projectId], expectedVersion: 0, status: 'active' });
+  assert.equal((await scopeRun({ pilotId: 'pilot-c' })).pilotScope.configuration, null);
+  const direct = await withTenantTransaction(scope.enterpriseId, tx => one(tx, sql`select count(*)::int as count
+    from app.xiaok_pilot_project_scopes where enterprise_id=${G.enterpriseId}`));
+  assert.equal(direct?.count, 0);
+});
+
+test('D empty, omitted and missing scopes never select defaults and still check enterprise safety', { skip }, async () => {
+  await assert.rejects(async () => saveScope('pilot-d', []), { code: 'pilot_scope_invalid' });
+  for (const input of [{ projectIds: [] }, {}, { pilotId: 'pilot-d' }]) {
+    const report = await scopeRun({ ...input, env: healthEnv(missingHealthFile) });
+    assert.equal(report.readiness, 'blocked');
+    assert.deepEqual(report.projects, []);
+    assert.deepEqual(report.pilotScope.requestedProjectIds, []);
+    assert.ok(report.blockers.some(item => item.checkId === 'pilot.scope'));
+    const states = checkStatuses(report);
+    assert.equal(states['worker.heartbeat'], 'failed');
+    assert.ok(securityChecks.every(check => states[check]));
+  }
+});
+
+test('E selected incomplete project is visible even when a second project has the missing roles and C01', { skip }, async () => {
+  const { scope, incomplete } = fixtures;
+  const beforeSave = await digest([scope.enterpriseId]);
+  await saveScope('pilot-e', [scope.projectId, incomplete.projectId]);
+  const afterSave = await digest([scope.enterpriseId]);
+  const { xiaok_pilot_project_scopes: savedScopes, ...savedFacts } = afterSave;
+  assert.notDeepEqual(savedScopes, beforeSave.xiaok_pilot_project_scopes);
+  for (const [table, value] of Object.entries(savedFacts)) assert.deepEqual(value, beforeSave[table], table);
+  const report = await scopeRun({ pilotId: 'pilot-e' });
+  assert.equal(report.readiness, 'blocked');
+  assert.deepEqual(report.projectGaps, {
+    missingStageProjectIds: [incomplete.projectId],
+    missingPlanProjectIds: [incomplete.projectId],
+    incompleteRoleProjects: [{ projectId: incomplete.projectId, missingRoles: ['worker'] }],
+    missingC01ProjectIds: [incomplete.projectId],
+  });
+  assert.equal(report.pilotProjectChecks.find(check => check.id === 'owner.c01')?.status, 'warning');
+});
+
+test('F an outside project with no stage remains active and cannot block project readiness', { skip }, async () => {
+  const { scope, second, incomplete } = fixtures;
+  await saveScope('pilot-f', [scope.projectId, second.projectId]);
+  const report = await scopeRun({ pilotId: 'pilot-f' });
+  assert.equal(report.readiness, 'ready');
+  assert.deepEqual(report.projectGaps, {
+    missingStageProjectIds: [], missingPlanProjectIds: [], incompleteRoleProjects: [], missingC01ProjectIds: [],
+  });
+  assert.deepEqual(report.outsideScope.activeProjects.map(project => [project.projectId, project.currentStageKey]), [[incomplete.projectId, null]]);
+  const live = await withTenantTransaction(scope.enterpriseId, tx => one(tx, sql`select status from app.construction_projects
+    where enterprise_id=${scope.enterpriseId} and id=${incomplete.projectId}`));
+  assert.equal(live?.status, 'active');
+});
+
+test('G existing outside reminders and queued weekly facts are reported without causing writes', { skip }, async () => {
+  const { scope, second } = fixtures;
+  await saveScope('pilot-g', [scope.projectId]);
+  await withTenantTransaction(scope.enterpriseId, async tx => {
+    for (const [suffix, status] of [['1', 'pending'], ['2', 'failed'], ['3', 'paused'], ['4', 'acknowledged']]) {
+      const reminderId = 'rem_' + second.projectId.padStart(23, '0') + suffix;
+      await tx.execute(sql`insert into app.construction_stage_reminders
+        (reminder_id,enterprise_id,project_id,target_role,target_principal_kind,target_principal_id,trigger_type,trigger_evidence,scheduled_at,status,dedupe_key,action_url,title,body)
+        values(${reminderId},${scope.enterpriseId},${second.projectId},'owner','user',${second.ownerId},'stage_entered','{}',${now},
+          ${status},${reminderId},'/test','Synthetic outside reminder','Synthetic fixture')`);
+    }
+    const binding = await one(tx, sql`select id,conversation_id from app.construction_followup_bindings
+      where enterprise_id=${scope.enterpriseId} and project_id=${second.projectId} and audience='customer'`);
+    const report = await one(tx, sql`insert into app.construction_reports
+      (enterprise_id,binding_id,report_key,kind,period_start,period_end,cutoff_at,scheduled_at)
+      values(${scope.enterpriseId},${String(binding!.id)},${'outside-weekly-' + runId},'weekly',${now},${now},${now},${now}) returning id`);
+    const run = await one(tx, sql`insert into app.assistant_runs
+      (enterprise_id,conversation_id,trigger_kind,trigger_schedule_key,purpose,policy_snapshot,context_revision,knowledge_epoch)
+      values(${scope.enterpriseId},${String(binding!.conversation_id)},'scheduled_task',${'outside-weekly-' + runId},'construction.report.facts','{}',0,1)
+      returning id`);
+    await tx.execute(sql`insert into app.construction_report_versions
+      (enterprise_id,report_id,revision,run_id,status,facts,facts_hash,generated_at,period_end,cutoff_at)
+      values(${scope.enterpriseId},${String(report!.id)},1,${String(run!.id)},'facts_ready',
+        ${JSON.stringify({ projects: [{ id: second.projectId }] })}::jsonb,'synthetic',${now},${now},${now})`);
+    const event = await one(tx, sql`insert into app.domain_event_outbox
+      (enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+      values(${scope.enterpriseId},'construction.report.facts_ready.v1','construction_report',${String(report!.id)},1,'{"kind":"system"}',
+        ${String(run!.id)},'{}') returning id`);
+    await tx.execute(sql`insert into app.construction_report_deliveries(enterprise_id,report_id,revision,binding_id,event_id)
+      values(${scope.enterpriseId},${String(report!.id)},1,${String(binding!.id)},${String(event!.id)})`);
+  });
+  const beforeRun = await digest([scope.enterpriseId]);
+  const report = await scopeRun({ pilotId: 'pilot-g' });
+  assert.deepEqual(await scopeRun({ pilotId: 'pilot-g' }), report);
+  assert.deepEqual(await digest([scope.enterpriseId]), beforeRun);
+  assert.equal(report.readiness, 'limited');
+  assert.deepEqual(report.reminderStatus.byStatus, {});
+  assert.deepEqual(report.outsideScope.reminders.unfinishedByProject, [
+    { projectId: second.projectId, byStatus: { failed: 1, paused: 1, pending: 1 } },
+  ]);
+  assert.deepEqual(report.outsideScope.weeklyReports.pendingOrHeldByProject, [{ projectId: second.projectId, count: 1 }]);
+  assert.deepEqual(report.outsideScope.weeklyReports.planCandidateProjectIds, [second.projectId]);
+  const scoped = await scopeRun({ pilotId: 'pilot-b' });
+  assert.deepEqual(scoped.reminderStatus.byStatus, { acknowledged: 1, failed: 1, paused: 1, pending: 1 });
+});
+
+test('H multiple pilots keep independent latest versions, preserve history and reject concurrent overwrites', { skip }, async () => {
+  const { scope, second } = fixtures;
+  const first = await saveScope('pilot-h-1', [scope.projectId]);
+  const sibling = await saveScope('pilot-h-2', [second.projectId]);
+  const both = await Promise.allSettled([
+    saveScope('pilot-h-1', [second.projectId], 1),
+    saveScope('pilot-h-1', [scope.projectId, second.projectId], 1),
+  ]);
+  assert.equal(both.filter(result => result.status === 'fulfilled').length, 1);
+  const rejected = both.find(result => result.status === 'rejected');
+  assert.equal(rejected?.reason.code, 'version_conflict');
+  const updated = await scopeService().read('pilot-h-1');
+  assert.equal(updated.scopeVersion, 2);
+  assert.deepEqual(await scopeService().read('pilot-h-2'), sibling);
+  const history = await withTenantTransaction(scope.enterpriseId, tx => one(tx, sql`select project_ids::text[] as projects from app.xiaok_pilot_project_scopes
+    where enterprise_id=${scope.enterpriseId} and pilot_id='pilot-h-1' and scope_version=1`));
+  assert.deepEqual(history?.projects, first.projectIds);
+  await saveScope('pilot-h-1', updated.projectIds, 2, 'inactive');
+  const disabled = await scopeRun({ pilotId: 'pilot-h-1' });
+  assert.equal(disabled.pilotScope.configuration?.status, 'inactive');
+  assert.deepEqual(disabled.projects, []);
+  assert.equal(disabled.readiness, 'blocked');
+  assert.deepEqual((await scopeRun({ pilotId: 'pilot-h-2' })).projects.map(project => project.id), [second.projectId]);
+});
+
+test('inactive projects retain their outside backlog and cannot make a saved scope impossible to deactivate', { skip }, async () => {
+  const { scope, second } = fixtures;
+  const pilotId = 'pilot-archive';
+  await saveScope(pilotId, [second.projectId]);
+  const state = (status: string) => withTenantTransaction(scope.enterpriseId, tx => tx.execute(sql`update app.construction_projects set status=${status}
+    where enterprise_id=${scope.enterpriseId} and id=${second.projectId}`));
+  await state('archived');
+  try {
+    const scoped = await scopeRun({ pilotId });
+    assert.equal(scoped.readiness, 'blocked');
+    assert.deepEqual(scoped.pilotScope.unavailableProjectIds, [second.projectId]);
+    assert.deepEqual(scoped.projects, []);
+    const outside = await scopeRun({ pilotId: 'pilot-a' });
+    assert.ok(!outside.outsideScope.activeProjects.some(project => project.projectId === second.projectId));
+    assert.deepEqual(outside.outsideScope.reminders.unfinishedByProject?.map(project => project.projectId), [second.projectId]);
+    assert.deepEqual(outside.outsideScope.weeklyReports.pendingOrHeldByProject, [{ projectId: second.projectId, count: 1 }]);
+    assert.equal((await saveScope(pilotId, [second.projectId], 1, 'inactive')).status, 'inactive');
+    await assert.rejects(async () => saveScope(pilotId, [second.projectId], 2), { code: 'pilot_project_unavailable' });
+  } finally {
+    await state('active');
+  }
+});
+
+test('configuration API requires the selected enterprise and live management permission', { skip }, async () => {
+  const { GET, PUT } = await import('@/app/api/construction/pilot-scopes/[pilotId]/route');
+  const { scope, G } = fixtures;
+  const pilotId = 'route-test';
+  const ctx = { params: Promise.resolve({ pilotId }) };
+  const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
+  const request = async (adminId: string, role: string, method = 'PUT', audience?: string, enterpriseId = scope.enterpriseId) => {
+    const jwt = new SignJWT({ id: adminId, role, enterpriseId }).setProtectedHeader({ alg: 'HS256' });
+    if (audience) jwt.setAudience(audience);
+    const token = await jwt.sign(secret);
+    return new NextRequest('http://localhost/api/construction/pilot-scopes/' + pilotId, {
+      method, headers: { cookie: 'auth_token=' + token }, ...(method === 'PUT' ? {
+        body: JSON.stringify({ expectedVersion: 0, status: 'active', projectIds: [scope.projectId] }),
+      } : {}),
+    });
+  };
+  assert.equal((await PUT(await request(scope.designerId, 'designer'), ctx)).status, 403);
+  // A stale elevated session and a valid manager of a different enterprise are both denied by the DB gate.
+  assert.equal((await PUT(await request(scope.designerId, 'enterprise_admin'), ctx)).status, 403);
+  assert.equal((await PUT(await request(G.bossId, 'enterprise_admin'), ctx)).status, 403);
+  assert.equal((await PUT(await request(scope.bossId, 'enterprise_admin', 'PUT', 'miniprogram'), ctx)).status, 401);
+  assert.equal((await GET(await request(scope.bossId, 'enterprise_admin', 'GET'), ctx)).status, 404);
+  const saved = await PUT(await request(scope.bossId, 'enterprise_admin'), ctx);
+  assert.equal(saved.status, 200);
+  assert.equal(saved.headers.get('Cache-Control'), 'no-store');
+  const reentry = await GET(await request(scope.bossId, 'enterprise_admin', 'GET'), ctx);
+  assert.deepEqual(await reentry.json(), await saved.json());
+
+  await withTenantTransaction(scope.enterpriseId, tx => tx.execute(sql`update app.admin_users set must_change_password=true where id=${scope.bossId}`));
+  try {
+    assert.equal((await GET(await request(scope.bossId, 'enterprise_admin', 'GET'), ctx)).status, 403);
+  } finally {
+    await withTenantTransaction(scope.enterpriseId, tx => tx.execute(sql`update app.admin_users set must_change_password=false where id=${scope.bossId}`));
+  }
+  for (const role of ['admin', 'super_admin']) {
+    const platform = await withPlatformTransaction(tx => one(tx, sql`insert into app.admin_users
+      (enterprise_id,username,password_hash,role,status,must_change_password,display_name)
+      values(null,${'pilot-platform-' + role + '-' + runId},'unusable-synthetic',${role},'active',false,'Synthetic platform admin') returning id`));
+    const id = String(platform!.id);
+    assert.equal((await PUT(await request(id, role, 'PUT', undefined, ''), ctx)).status, 400);
+    const selected = { params: Promise.resolve({ pilotId: role + '-route-test' }) };
+    const configured = await PUT(await request(id, role), selected);
+    assert.equal(configured.status, 200);
+    assert.equal((await configured.json()).data.createdBy, id);
+  }
+});
+
+test('empty scope still reports absent migration, missing FORCE RLS, unavailable Assistant and Worker', {
+  skip: skip || (!migrationUrl && 'PILOT_READINESS_TEST_MIGRATION_URL is not configured'),
+}, async () => {
+  const migrator = new Client({ connectionString: migrationUrl, connectionTimeoutMillis: 4000 });
+  await migrator.connect();
+  const { scope } = fixtures;
+  try {
+    await withTenantTransaction(scope.enterpriseId, tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=false
+      where enterprise_id=${scope.enterpriseId}`));
+    await migrator.query('alter table app.construction_stage_reminder_pauses no force row level security');
+    await migrator.query('alter table app.construction_stage_reminders rename to i744_hidden_reminders');
+    try {
+      const report = await scopeRun({ projectIds: [], env: healthEnv(missingHealthFile) });
+      const states = checkStatuses(report);
+      assert.equal(report.readiness, 'blocked');
+      assert.equal(states['database.migrations'], 'failed');
+      assert.equal(states['database.rls'], 'failed');
+      assert.equal(states['assistant.enabled'], 'failed');
+      assert.equal(states['worker.heartbeat'], 'failed');
+      assert.equal(states['database.account'], 'passed');
+      assert.deepEqual(report.projects, []);
+      assert.equal(report.checks.find(check => check.id === 'reminder.state')?.status, 'skipped');
+      assert.equal(report.outsideScope.reminders.unfinishedByProject, null);
+    } finally {
+      await migrator.query('alter table app.i744_hidden_reminders rename to construction_stage_reminders');
+    }
+  } finally {
+    await migrator.query('alter table app.construction_stage_reminder_pauses force row level security');
+    await withTenantTransaction(scope.enterpriseId, tx => tx.execute(sql`update app.assistant_enterprise_settings set enabled=true
+      where enterprise_id=${scope.enterpriseId}`));
+    await migrator.end();
+  }
 });

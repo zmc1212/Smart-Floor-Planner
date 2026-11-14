@@ -15,6 +15,7 @@ const suffix = randomBytes(5).toString('hex');
 const database = (label) => `xiaok_i4_${label}_${suffix}`;
 const journal = JSON.parse(readFileSync(new URL('meta/_journal.json', folder))).entries;
 const common = journal.filter(({ idx }) => idx < 120);
+const stageAndPilotMigrations = ['0128', '0129', '0130'];
 const read = (name) => readFileSync(new URL(name + '.sql', folder), 'utf8');
 const hash = (sql) => createHash('sha256').update(sql).digest('hex');
 const userStates = {
@@ -361,8 +362,8 @@ for (const legacy of ['native', 'bailian']) {
       ? { ...delegationTables, native_workflow_durable_tasks: 'id' } : delegationTables);
     const run = migrate(name);
     assert.equal(run.code, 0, run.output);
-    await verifyUpgrade(name, legacy, before, snapshotBefore, legacy === 'native'
-      ? ['0124', '0125', '0126', '0127'] : ['0124', '0125', '0127']);
+    const reconciliation = legacy === 'native' ? ['0124', '0125', '0126', '0127'] : ['0124', '0125', '0127'];
+    await verifyUpgrade(name, legacy, before, snapshotBefore, [...reconciliation, ...stageAndPilotMigrations]);
     await verifySchemaAndWrites(name, ref);
   });
 }
@@ -374,7 +375,7 @@ live('valid Bailian records from the same user message retain both original iden
   const before = await ledger(name), snapshotBefore = await snapshot(name, delegationTables);
   const run = migrate(name);
   assert.equal(run.code, 0, run.output);
-  await verifyUpgrade(name, 'bailian', before, snapshotBefore, ['0124', '0125', '0127']);
+  await verifyUpgrade(name, 'bailian', before, snapshotBefore, ['0124', '0125', '0127', ...stageAndPilotMigrations]);
   await asApp(name, async (db) => {
     const { rows: [column] } = await db.query(`select atttypid::regtype::text type,attnotnull
       from pg_attribute where attrelid='app.assistant_knowledge_chunks'::regclass and attname='embedding'`);
@@ -383,7 +384,7 @@ live('valid Bailian records from the same user message retain both original iden
   await verifySchemaAndWrites(name, ref);
 });
 
-live('an already integrated database applies only the new migration', async (t) => {
+live('an integrated delegation database applies the pending reconciliation, stage and pilot migrations', async (t) => {
   const name = await prepare('integrated', 'bailian', true);
   t.diagnostic(name);
   const ref = await seed(name, 'bailian');
@@ -391,8 +392,32 @@ live('an already integrated database applies only the new migration', async (t) 
   const before = await ledger(name), snapshotBefore = await snapshot(name, delegationTables);
   const run = migrate(name);
   assert.equal(run.code, 0, run.output);
-  await verifyUpgrade(name, 'bailian', before, snapshotBefore, ['0127']);
+  await verifyUpgrade(name, 'bailian', before, snapshotBefore, ['0127', ...stageAndPilotMigrations]);
   await verifySchemaAndWrites(name, ref);
+});
+
+live('the 0129 baseline applies only the pilot scope migration', async (t) => {
+  const name = await prepare('pilot_scope');
+  t.diagnostic(name);
+  await asMigrator(name, db => applyOriginal(db, journal.filter(({ idx }) => idx >= 120 && idx <= 125)));
+  await asApp(name, foundations);
+  const before = await ledger(name);
+  const facts = { enterprises: 'id', construction_projects: 'id', construction_stage_reminders: 'reminder_id',
+    construction_report_settings: 'enterprise_id' };
+  const snapshotBefore = await snapshot(name, facts);
+  const run = migrate(name);
+  assert.equal(run.code, 0, run.output);
+  const applied = await ledger(name);
+  assert.deepEqual(applied.slice(0, -1), before);
+  assert.equal(applied.length, before.length + 1);
+  assert.equal(applied.at(-1).hash, hash(read('0130_xiaok_pilot_project_scopes')));
+  assert.deepEqual(await snapshot(name, facts), snapshotBefore);
+  await asApp(name, async db => {
+    const result = await db.query(`select relrowsecurity,relforcerowsecurity from pg_class
+      where oid='app.xiaok_pilot_project_scopes'::regclass`);
+    assert.deepEqual(result.rows[0], { relrowsecurity: true, relforcerowsecurity: true });
+    assert.equal((await db.query('select * from app.xiaok_pilot_project_scopes')).rowCount, 0);
+  });
 });
 
 live('an actually applied unknown migration cannot hide earlier pending migrations', async (t) => {

@@ -35,11 +35,12 @@ async function setTransactionScope(
 
 async function withScopedTransaction<T>(
   scope: TransactionScope,
-  callback: (transaction: PostgresTransaction) => Promise<T>
+  callback: (transaction: PostgresTransaction) => Promise<T>,
+  options?: { isolationLevel?: 'repeatable read' }
 ) {
   const client = await getPostgresPool().connect();
   try {
-    await client.query('begin');
+    await client.query(options?.isolationLevel === 'repeatable read' ? 'begin isolation level repeatable read' : 'begin');
     await setTransactionScope(client, scope);
     const transaction = drizzle(client, { schema });
     const result = await callback(transaction);
@@ -55,11 +56,13 @@ async function withScopedTransaction<T>(
 
 export function withTenantTransaction<T>(
   enterpriseId: bigint | number | string,
-  callback: (transaction: PostgresTransaction) => Promise<T>
+  callback: (transaction: PostgresTransaction) => Promise<T>,
+  options?: { isolationLevel?: 'repeatable read' }
 ) {
   return withScopedTransaction(
     { kind: 'tenant', enterpriseId },
-    callback
+    callback,
+    options
   );
 }
 

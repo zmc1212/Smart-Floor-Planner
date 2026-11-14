@@ -883,6 +883,13 @@
       "when": 1795766400000,
       "tag": "0129_xiaok_v1_stage_reminder_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1795852800000,
+      "tag": "0130_xiaok_pilot_project_scopes",
+      "breakpoints": true
     }
   ]
 }

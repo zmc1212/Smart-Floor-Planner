@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { assistantWritesEnabled, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { isEnterpriseManagementRole } from '@/lib/admin-user-roles';
+import { id, key } from '@/lib/assistant/contracts';
 import { readWorkerHeartbeat, type WorkerHeartbeat } from '@/lib/assistant/operations';
 import { canManageConstructionProject } from '@/lib/construction/contracts';
 import { followupAvailable } from '@/lib/construction/report-scope';
@@ -15,6 +16,8 @@ import { defaultConstructionStages, type ConstructionStage } from '@/lib/constru
 import { reminderPolicyForStage } from './stage-reminder-policies';
 import { stageDefinitions, stageForConstructionKey, stageIds, type StageId } from './stages';
 import { stageKnowledgeRegistry } from './stage-knowledge';
+import { pilotProjectIds, pilotScopeTable, readPilotProjectScope, type PilotProjectScope } from './pilot-project-scope';
+import { stageProjectForConversation } from './stage-chat-service';
 
 /** A read-only pilot readiness report. It never mutates business data and only
  * reads the explicitly requested enterprise inside a tenant transaction. */
@@ -34,6 +37,7 @@ export type PilotIssue = {
 export type PilotCheck = {
   id: string;
   label: string;
+  scope: 'enterprise' | 'pilot';
   status: PilotCheckStatus;
   actual: string;
   evidence?: Record<string, unknown>;
@@ -81,12 +85,51 @@ export type PilotProjectReport = {
   members: { manager: string[]; designer: string[]; worker: string[] };
 };
 
+type PilotSelection =
+  | { mode: 'pilot'; pilotId: string }
+  | { mode: 'preview'; projectIds: string[] }
+  | { mode: 'enterprise_audit' }
+  | { mode: 'unspecified' };
+
+type PilotScopeResult = {
+  mode: PilotSelection['mode'];
+  pilotId: string | null;
+  configuration: PilotProjectScope | null;
+  requestedProjectIds: string[];
+  unavailableProjectIds: string[];
+};
+
 export type PilotReadinessReport = {
   enterpriseId: string;
   enterpriseName: string | null;
   checkedAt: string;
   readiness: PilotReadiness;
+  pilotScope: PilotScopeResult;
+  enterpriseChecks: PilotCheck[];
+  pilotProjectChecks: PilotCheck[];
   projects: PilotProjectReport[];
+  projectGaps: {
+    missingStageProjectIds: string[];
+    missingPlanProjectIds: string[];
+    incompleteRoleProjects: Array<{ projectId: string; missingRoles: PilotAccountRole[] }>;
+    missingC01ProjectIds: string[];
+  };
+  outsideScope: {
+    activeProjects: Array<{
+      projectId: string;
+      name: string;
+      currentStageKey: string | null;
+      leadArchived: boolean;
+    }>;
+    reminders: {
+      candidateProjectIds: string[];
+      unfinishedByProject: Array<{ projectId: string; byStatus: Record<string, number> }> | null;
+    };
+    weeklyReports: {
+      planCandidateProjectIds: string[] | null;
+      pendingOrHeldByProject: Array<{ projectId: string; count: number }> | null;
+    };
+  };
   activeStage: {
     expectedStages: string[];
     configuredStages: string[];
@@ -156,6 +199,9 @@ export type PilotReadinessReport = {
 
 export type PilotReadinessOptions = {
   enterpriseId: string;
+  pilotId?: string;
+  projectIds?: readonly string[];
+  enterpriseAudit?: boolean;
   now?: Date;
   env?: NodeJS.ProcessEnv;
   migrationsFolder?: string;
@@ -171,11 +217,13 @@ const rlsTables = [
   'construction_report_deliveries',
   'assistant_conversations',
   'assistant_messages',
+  pilotScopeTable,
 ] as const;
 
 const migrations = [
   { id: '0128', name: '0128_xiaok_v1_stage_reminders.sql' },
   { id: '0129', name: '0129_xiaok_v1_stage_reminder_receipts.sql' },
+  { id: '0130', name: '0130_xiaok_pilot_project_scopes.sql' },
 ] as const;
 
 type EnterpriseRow = { id: string; name: string; status: string };
@@ -185,7 +233,6 @@ type ProjectRow = {
   id: string; name: string; status: string; customer_access: boolean; current_stage_key: string | null;
   progress_revision: number; lead_id: string; lead_archived: boolean; customer_user_id: string | null;
 };
-type OwnerRow = { customer_user_id: string; lead_id: string; project_id: string; customer_access: boolean };
 type BindingRow = { id: string; audience: string; user_id: string | null; admin_id: string | null; project_id: string | null; conversation_id: string };
 
 const text = (value: unknown) => String(value ?? '');
@@ -204,17 +251,32 @@ function issue(checkId: string, check: string, actual: string, reason: string, f
 function check(
   id: string, label: string, status: PilotCheckStatus, actual: string,
   evidence?: Record<string, unknown>,
+  scope: PilotCheck['scope'] = 'pilot',
 ): PilotCheck {
-  return { id, label, status, actual, ...(evidence ? { evidence } : {}) };
+  return { id, label, scope, status, actual, ...(evidence ? { evidence } : {}) };
 }
+
+const enterpriseCheck: typeof check = (id, label, status, actual, evidence) =>
+  check(id, label, status, actual, evidence, 'enterprise');
 
 /** Optional tables may be absent on an older database. The checker must still
  * return an explicit blocked report instead of failing the whole run. */
 async function optionalRows<T>(tx: PostgresTransaction, query: Parameters<typeof rows>[1]): Promise<T[] | null> {
+  return optionalRead(tx, () => rows<T>(tx, query));
+}
+
+async function optionalRead<T>(tx: PostgresTransaction, read: () => Promise<T>): Promise<T | null> {
+  // PostgreSQL aborts the transaction on a missing table or a denied SELECT.
+  await tx.execute(sql`savepoint pilot_optional_read`);
   try {
-    return await rows<T>(tx, query);
-  } catch {
-    return null;
+    return await read();
+  } catch (error) {
+    await tx.execute(sql`rollback to savepoint pilot_optional_read`);
+    const code = (error as { cause?: { code?: string } })?.cause?.code;
+    if (code === '42P01' || code === '42501' || code === '42703') return null;
+    throw error;
+  } finally {
+    await tx.execute(sql`release savepoint pilot_optional_read`);
   }
 }
 
@@ -232,16 +294,23 @@ async function migrationHashes(folder: string) {
 
 async function c01For(tx: PostgresTransaction, eid: string, project: ProjectRow) {
   if (!project.customer_user_id || !project.customer_access) return null;
-  const row = await one(tx, sql`select c.id::text as id from app.assistant_conversations c
+  const conversations = await rows<{ id: string; lead_linked: boolean }>(tx, sql`select c.id::text as id,
+    coalesce(c.entry_snapshot->>'kind'='lead',false) as lead_linked from app.assistant_conversations c
     join app.assistant_participants ap on ap.enterprise_id=c.enterprise_id and ap.conversation_id=c.id
     where c.enterprise_id=${eid} and c.purpose='customer_consultation' and c.status='open' and c.mode='ai'
-    and ap.user_id=${project.customer_user_id} and ap.status='active'
+    and ap.user_id=${project.customer_user_id} and ap.status='active' and ap.participant_role='owner'
+    and coalesce(c.entry_snapshot->>'retentionRedacted','false')<>'true'
     and (coalesce(c.entry_snapshot->>'kind','')<>'lead' or c.entry_snapshot->>'id'=${project.lead_id})
-    order by c.id desc limit 1`);
-  return row ? text(row.id) : null;
+    order by c.id desc`);
+  for (const conversation of conversations) {
+    if (conversation.lead_linked) return conversation.id;
+    const linked = await stageProjectForConversation(tx, eid, conversation.id, project.customer_user_id);
+    if (linked && String(linked.id) === project.id) return conversation.id;
+  }
+  return null;
 }
 
-async function collect(tx: PostgresTransaction, eid: string, now: Date, env: NodeJS.ProcessEnv, folder: string) {
+async function collect(tx: PostgresTransaction, eid: string, selection: PilotSelection, now: Date, env: NodeJS.ProcessEnv, folder: string) {
   const checks: PilotCheck[] = [];
   const blockers: PilotIssue[] = [];
   const warnings: PilotIssue[] = [];
@@ -253,12 +322,13 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
       else if (entry.status === 'warning') warnings.push(item);
     }
   };
+  const audit = selection.mode === 'enterprise_audit';
 
   // ---------------------------------------------------------------- enterprise
   const enterprise = await one<EnterpriseRow>(tx, sql`select id::text as id,name,status
     from app.enterprises where id=${eid}`);
   const enterpriseActive = enterprise?.status === 'active';
-  record(check('enterprise.status', '企业状态', enterpriseActive ? 'passed' : 'failed',
+  record(enterpriseCheck('enterprise.status', '企业状态', enterpriseActive ? 'passed' : 'failed',
     enterprise ? `status=${enterprise.status}` : 'not_visible', { enterpriseId: eid, name: enterprise?.name ?? null }),
   enterpriseActive ? [] : [issue('enterprise.status', '企业状态',
     enterprise ? 'status=' + enterprise.status : '当前连接账号不可见该企业',
@@ -269,7 +339,7 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
   const assistant = await one(tx, sql`select enabled,policy_version,retention_days,daily_requests,daily_tokens,daily_cost_micros
     from app.assistant_enterprise_settings where enterprise_id=${eid}`);
   const assistantEnabled = assistantWritesEnabled(assistant);
-  record(check('assistant.enabled', 'Assistant 启用', assistantEnabled ? 'passed' : 'failed',
+  record(enterpriseCheck('assistant.enabled', 'Assistant 启用', assistantEnabled ? 'passed' : 'failed',
     assistant ? `enabled=${Boolean(assistant.enabled)},retentionDays=${count(assistant.retention_days)}` : 'not_configured',
     assistant ? {
       policyVersion: count(assistant.policy_version), retentionDays: count(assistant.retention_days),
@@ -288,14 +358,45 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
     join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid}
     order by p.id`);
-  const validProjects = projects.filter(project => !project.lead_archived && project.status !== 'archived');
+  const enterpriseProjects = projects.filter(project => !project.lead_archived && project.status !== 'archived');
+  const enterpriseProjectIds = new Set(enterpriseProjects.map(project => project.id));
+  const configuration = selection.mode === 'pilot'
+    ? await optionalRead(tx, () => readPilotProjectScope(tx, eid, selection.pilotId))
+    : null;
+  const requestedProjectIds = selection.mode === 'preview' ? selection.projectIds : configuration?.projectIds ?? [];
+  const requested = new Set(requestedProjectIds);
+  const unavailableProjectIds = requestedProjectIds.filter(projectId => !enterpriseProjectIds.has(projectId));
+  const scopeValid = requested.size > 0 && unavailableProjectIds.length === 0
+    && (selection.mode !== 'pilot' || configuration?.status === 'active');
+  const pilotScope: PilotScopeResult = {
+    mode: selection.mode, pilotId: selection.mode === 'pilot' ? selection.pilotId : null,
+    configuration, requestedProjectIds, unavailableProjectIds,
+  };
+  if (!audit) {
+    const unapprovedPreview = selection.mode === 'preview' && scopeValid;
+    const scopeStatus = unapprovedPreview ? 'warning' : scopeValid ? 'passed' : 'failed';
+    const scopeReason = unavailableProjectIds.length ? '项目在当前企业不可用。'
+      : configuration?.status === 'inactive' ? '该试点范围的最新版本已停用。'
+      : !requested.size ? '缺少已明确指定的非空试点项目范围。'
+      : unapprovedPreview ? '本次只按传入项目试算，尚未读取企业管理员保存的范围。' : '';
+    record(check('pilot.scope', '试点项目范围', scopeStatus,
+      `mode=${selection.mode},projects=${requested.size},unavailable=${unavailableProjectIds.length}`, pilotScope),
+    scopeReason ? [issue('pilot.scope', '试点项目范围', `projects=${requested.size}`, scopeReason,
+      '由具备施工管理权限的企业管理员提交项目 ID，使用 pilotId 预检保存的范围。')] : []);
+  }
+  const validProjects = audit ? enterpriseProjects : scopeValid ? enterpriseProjects.filter(project => requested.has(project.id)) : [];
+  const validProjectIds = new Set(validProjects.map(project => project.id));
+  const outsideProjects = audit ? [] : projects.filter(project => !validProjectIds.has(project.id));
+  const outsideActiveProjects = outsideProjects.filter(project => project.status === 'active');
   const activeProjects = validProjects.filter(project => project.status === 'active');
   const hasProjects = validProjects.length > 0;
-  record(check('project.exists', '有效项目', hasProjects ? (activeProjects.length ? 'passed' : 'warning') : 'failed',
-    `valid=${validProjects.length},active=${activeProjects.length},total=${projects.length}`,
+  const projectCheck = (id: string, label: string, status: PilotCheckStatus, actual: string, evidence?: Record<string, unknown>) =>
+    check(id, label, !audit && !hasProjects ? 'skipped' : status, actual, evidence);
+  record(projectCheck('project.exists', '有效项目', hasProjects ? (activeProjects.length ? 'passed' : 'warning') : 'failed',
+    `valid=${validProjects.length},active=${activeProjects.length}`,
     { valid: validProjects.map(project => project.id) }),
   !hasProjects ? [issue('project.exists', '有效项目', '0 个有效项目',
-    '企业没有未归档且线索未归档的施工项目。', '先创建真实项目、关联客户线索并设置当前装修阶段。')]
+    '检查范围内没有未归档且线索未归档的施工项目。', '核对项目及对应客户线索。')]
     : activeProjects.length ? [] : [issue('project.exists', '有效项目', '0 个 active 项目',
       '现有项目均非 active，提醒、周报与进度事实不会推进。', '确认试点项目状态并恢复为 active；如项目已完工，明确不纳入试点范围。')]);
 
@@ -313,7 +414,7 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
   const missingKnowledge = stageIds.filter(stageId => !activeKnowledge.includes(stageId));
   const missingPolicies = stageIds.filter(stageId => !activePolicies.includes(stageId));
   const stagesComplete = missingKeys.length === 0 && missingKnowledge.length === 0 && missingPolicies.length === 0;
-  record(check('stages.configured', '十阶段配置', stagesComplete ? 'passed' : 'failed',
+  record(enterpriseCheck('stages.configured', '十阶段配置', stagesComplete ? 'passed' : 'failed',
     `configured=${configuredKeys.length},missingKeys=${missingKeys.length},missingKnowledge=${missingKnowledge.length},missingPolicies=${missingPolicies.length}`,
     { configured: configuredKeys, missingKeys, missingKnowledge, missingPolicies }),
   stagesComplete ? [] : [issue('stages.configured', '十阶段配置',
@@ -382,91 +483,89 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
 
     const c01 = await c01For(tx, eid, project);
     if (c01) c01Available++;
-    if (project.customer_user_id && project.customer_access) {
-      customerProjects++;
-      if (!c01) {
-        c01Warnings.push(issue('owner.c01', '业主 C01', `项目 ${project.id} 客户 ${project.customer_user_id} 无开放 C01 会话`,
-          '客户可进入项目，但没有可用的 customer_consultation 会话。',
-          '检查 Assistant 启用状态和客户会话初始化；需要时由企业发起新的 C01 会话。', project.id));
-      }
+    if (project.customer_user_id && project.customer_access) customerProjects++;
+    if (!c01) {
+      c01Warnings.push(issue('owner.c01', '业主 C01', `项目 ${project.id} 无开放 C01 会话`,
+        '缺少可访问项目的业主或可用的 customer_consultation 会话。',
+        '核对现有客户绑定、customer_access 与 C01 初始化。', project.id));
     }
-
-    const members = await rows<MembershipRow>(tx, sql`select admin_id::text as admin_id,project_id::text as project_id,role
-      from app.construction_members where enterprise_id=${eid} and project_id=${project.id} and active order by admin_id`);
-    const roleIds = (role: string) => members.filter(member => member.role === role).map(member => member.admin_id);
 
     projectReports.push({
       id: project.id, name: project.name, status: project.status, reportable,
       customerAccess: project.customer_access, currentStageKey: stageKey, currentStageName: stage?.name ?? null,
       stageValid, ...(stageReason ? { stageReason } : {}), plan,
       c01: { available: !!c01, conversationId: c01 },
-      members: { manager: roleIds('manager'), designer: roleIds('designer'), worker: roleIds('worker') },
+      members: { manager: [], designer: [], worker: [] },
     });
   }
 
   const stageBlocked = stageIssues.length > 0;
-  record(check('project.stage', '项目当前装修阶段', stageBlocked ? 'failed' : stageWarnings.length ? 'warning' : 'passed',
+  record(projectCheck('project.stage', '项目当前装修阶段', stageBlocked ? 'failed' : stageWarnings.length ? 'warning' : 'passed',
     `projects=${validProjects.length},invalid=${stageIssues.length},custom=${stageWarnings.length}`,
     { perProject: projectReports.map(project => ({ projectId: project.id, stageKey: project.currentStageKey, valid: project.stageValid })) }),
   stageBlocked ? stageIssues : stageWarnings);
   if (stageBlocked) warnings.push(...stageWarnings);
 
   const planFailed = planIssues.length > 0;
-  record(check('project.schedule', '有效施工计划', planFailed ? 'failed' : 'passed',
+  record(projectCheck('project.schedule', '有效施工计划', planFailed ? 'failed' : 'passed',
     `required=${projectReports.filter(project => project.plan.required).length},invalid=${planIssues.length}`,
     { plans: projectReports.map(project => ({ projectId: project.id, ...project.plan })) }), planIssues);
 
   // ---------------------------------------------------------------- role accounts
-  const admins = await rows<AdminRow>(tx, sql`select a.id::text as id,a.display_name,a.role,a.must_change_password,
-      app.construction_actor_access(a.id,${eid}::bigint) as access_role
-    from app.admin_users a where a.enterprise_id=${eid} and a.status='active' order by a.id`);
+  const projectSet = JSON.stringify([...validProjectIds]);
   const memberships = await rows<MembershipRow>(tx, sql`select m.admin_id::text as admin_id,m.project_id::text as project_id,m.role
     from app.construction_members m join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id
-    where m.enterprise_id=${eid} and m.active and a.status='active' order by m.admin_id,m.project_id`);
-  const validProjectIds = new Set(validProjects.map(project => project.id));
-  const membershipFor = (adminId: string) => memberships
-    .filter(member => member.admin_id === adminId && validProjectIds.has(member.project_id));
+    where m.enterprise_id=${eid} and m.active and a.status='active'
+    and ${projectSet}::jsonb ? m.project_id::text order by m.admin_id,m.project_id`);
+  const membershipsByAdmin = new Map<string, MembershipRow[]>();
+  for (const member of memberships) {
+    const assigned = membershipsByAdmin.get(member.admin_id);
+    if (assigned) assigned.push(member);
+    else membershipsByAdmin.set(member.admin_id, [member]);
+  }
+  const memberAdminIds = JSON.stringify([...membershipsByAdmin.keys()]);
+  const admins = await rows<AdminRow>(tx, sql`select a.id::text as id,a.display_name,a.role,a.must_change_password,
+      app.construction_actor_access(a.id,${eid}::bigint) as access_role
+    from app.admin_users a where a.enterprise_id=${eid} and a.status='active'
+    and (${audit} or a.role in ('enterprise_admin','admin','super_admin') or ${memberAdminIds}::jsonb ? a.id::text)
+    order by a.id`);
   const rejected: PilotRejectedAccount[] = [];
+  const reportById = new Map(projectReports.map(project => [project.id, project]));
 
   const ownerAccounts: PilotRoleAccount[] = [];
   // Customers are platform-level identities; app.users is tenant-scoped and
   // often hides them from the enterprise transaction. Bind owners from the
   // lead/project relationship instead of treating an invisible user row as no
   // owner. C01 availability below still verifies the real conversation.
-  const owners = await rows<OwnerRow>(tx, sql`select l.customer_user_id::text as customer_user_id,l.id::text as lead_id,
-      p.id::text as project_id,p.customer_access
-    from app.leads l
-    join app.construction_projects p on p.enterprise_id=l.enterprise_id and p.lead_id=l.id
-    where p.enterprise_id=${eid} and p.status<>'archived' and l.archived_at is null and l.customer_user_id is not null
-    order by l.customer_user_id,p.id`);
-  for (const owner of owners) {
-    const project = projects.find(candidate => candidate.id === owner.project_id);
-    if (!project || project.lead_archived || project.status === 'archived') continue;
-    const ownerName = '客户 ' + owner.customer_user_id;
-    if (!owner.customer_access) {
-      rejected.push({ kind: 'user', id: owner.customer_user_id, name: ownerName,
-        reason: 'customer_access_disabled', projectIds: [owner.project_id] });
+  for (const project of validProjects) {
+    const ownerId = project.customer_user_id;
+    if (!ownerId) continue;
+    const ownerName = '客户 ' + ownerId;
+    if (!project.customer_access) {
+      rejected.push({ kind: 'user', id: ownerId, name: ownerName,
+        reason: 'customer_access_disabled', projectIds: [project.id] });
       continue;
     }
-    const existing = ownerAccounts.find(account => account.id === owner.customer_user_id);
-    const c01 = await c01For(tx, eid, project);
+    const existing = ownerAccounts.find(account => account.id === ownerId);
+    const c01 = reportById.get(project.id)?.c01.conversationId;
     if (existing) {
-      if (!existing.projectIds.includes(owner.project_id)) existing.projectIds.push(owner.project_id);
+      existing.projectIds.push(project.id);
       if (c01 && !existing.c01ConversationId) existing.c01ConversationId = c01;
       continue;
     }
-    ownerAccounts.push({ kind: 'user', id: owner.customer_user_id, name: ownerName,
-      projectIds: [owner.project_id], access: 'customer', ...(c01 ? { c01ConversationId: c01 } : {}) });
+    ownerAccounts.push({ kind: 'user', id: ownerId, name: ownerName,
+      projectIds: [project.id], access: 'customer', ...(c01 ? { c01ConversationId: c01 } : {}) });
   }
 
   const bossAccounts: PilotRoleAccount[] = [];
   const managerAccounts: PilotRoleAccount[] = [];
   const designerAccounts: PilotRoleAccount[] = [];
   const workerAccounts: PilotRoleAccount[] = [];
+  const staffRoles = { manager: managerAccounts, designer: designerAccounts, worker: workerAccounts };
 
   for (const admin of admins) {
     const adminId = admin.id;
-    const projectsForAdmin = membershipFor(adminId);
+    const projectsForAdmin = membershipsByAdmin.get(adminId) ?? [];
     const projectIds = projectsForAdmin.map(member => member.project_id);
     const access = admin.access_role === 'owner' || admin.access_role === 'member' ? admin.access_role : null;
     const base = { kind: 'admin' as const, id: adminId, name: admin.display_name || '未命名员工', projectIds };
@@ -484,20 +583,16 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
       }
     }
 
-    if (roles.has('manager')) {
-      if (access && !admin.must_change_password) {
-        managerAccounts.push({ ...base, access, workbench: canManageConstructionProject(false, 'manager') });
-      } else {
+    for (const role of ['manager', 'designer', 'worker'] as const) {
+      if (!roles.has(role)) continue;
+      if (!access || admin.must_change_password) {
         reject(admin.must_change_password ? 'must_change_password' : 'no_construction_actor_access');
+        continue;
       }
-    }
-    if (roles.has('designer')) {
-      if (access && !admin.must_change_password) designerAccounts.push({ ...base, access });
-      else reject(admin.must_change_password ? 'must_change_password' : 'no_construction_actor_access');
-    }
-    if (roles.has('worker')) {
-      if (access && !admin.must_change_password) workerAccounts.push({ ...base, access });
-      else reject(admin.must_change_password ? 'must_change_password' : 'no_construction_actor_access');
+      const roleProjects = projectsForAdmin.filter(member => member.role === role).map(member => member.project_id);
+      staffRoles[role].push({ ...base, access, projectIds: roleProjects,
+        ...(role === 'manager' ? { workbench: canManageConstructionProject(false, role) } : {}) });
+      for (const projectId of roleProjects) reportById.get(projectId)?.members[role].push(adminId);
     }
     if (!roles.size && ['designer', 'construction_staff'].includes(admin.role)) {
       reject(admin.must_change_password ? 'must_change_password' : 'no_active_project_membership');
@@ -513,7 +608,8 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
   ];
   for (const role of roleChecks) {
     const passed = role.accounts.length > 0;
-    record(check(`role.${role.role}`, role.label, passed ? 'passed' : 'failed',
+    const checkRole = role.role === 'boss' ? enterpriseCheck : projectCheck;
+    record(checkRole(`role.${role.role}`, role.label, passed ? 'passed' : 'failed',
       `authorized=${role.accounts.length}`, { accounts: role.accounts.map(account => ({ id: account.id, projectIds: account.projectIds })) }),
     passed ? [] : [issue(`role.${role.role}`, role.label, '没有具备项目权限的账号',
       '企业可能存在同名角色账号，但没有有效的项目成员关系或施工访问权限。',
@@ -521,15 +617,32 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
   }
 
   const workbenchManagers = managerAccounts.filter(account => account.workbench);
-  record(check('manager.workbench', '项目经理工作台', workbenchManagers.length ? 'passed' : 'failed',
+  record(projectCheck('manager.workbench', '项目经理工作台', workbenchManagers.length ? 'passed' : 'failed',
     `workbenchManagers=${workbenchManagers.length}`, { managers: workbenchManagers.map(account => account.id) }),
   workbenchManagers.length ? [] : [issue('manager.workbench', '项目经理工作台', '没有可用的经理工作台成员',
     '项目经理没有在有效项目上形成 manager 成员关系，工地工作台不会出现该项目的待办。',
     '为项目经理建立 active 的 manager 成员关系，并确认其可访问 construction-projects。')]);
 
+  const projectsWithOwner = new Set(ownerAccounts.flatMap(account => account.projectIds));
+  const roleGaps = projectReports.map(project => {
+    const missingRoles: PilotAccountRole[] = [];
+    if (!projectsWithOwner.has(project.id)) missingRoles.push('owner');
+    if (!bossAccounts.length) missingRoles.push('boss');
+    for (const role of ['manager', 'designer', 'worker'] as const) {
+      if (!project.members[role].length) missingRoles.push(role);
+    }
+    return { projectId: project.id, missingRoles };
+  }).filter(project => project.missingRoles.length);
+  if (!audit) {
+    record(projectCheck('project.role_coverage', '试点项目角色成员', roleGaps.length ? 'failed' : 'passed',
+      `incomplete=${roleGaps.length}`, { projects: roleGaps }), roleGaps.map(({ projectId, missingRoles }) =>
+      issue('project.role_coverage', '试点项目角色成员', missingRoles.join(','), '该项目缺少有效角色账号或成员关系。',
+        '核对当前项目的业主、经理、设计师和施工人员，并检查企业管理权限。', projectId)));
+  }
+
   // ---------------------------------------------------------------- C01
   const c01Failed = customerProjects === 0 || c01Available === 0;
-  record(check('owner.c01', '业主 C01', c01Failed ? 'failed' : c01Warnings.length ? 'warning' : 'passed',
+  record(projectCheck('owner.c01', '业主 C01', c01Failed ? 'failed' : c01Warnings.length ? 'warning' : 'passed',
     `customerProjects=${customerProjects},available=${c01Available}`,
     { conversations: projectReports.map(project => ({ projectId: project.id, available: project.c01.available })) }),
   c01Failed ? [issue('owner.c01', '业主 C01',
@@ -546,18 +659,18 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
   const missingAudiences = reportAudiences.filter(audience => !configuredAudiences.includes(audience));
   const configuredProjectIds = Array.isArray(settings?.project_ids) ? settings!.project_ids.map(String) : [];
   const configuredStageKeys = Array.isArray(settings?.stage_keys) ? settings!.stage_keys.map(String) : [];
-  const unknownProjectIds = configuredProjectIds.filter(id => !validProjectIds.has(id));
+  const unknownProjectIds = configuredProjectIds.filter(id => !enterpriseProjectIds.has(id));
   const unknownStageKeys = configuredStageKeys.filter(key => !configuredKeys.includes(key));
-  const reportScopeProjects = configuredProjectIds.length
-    ? validProjects.filter(project => configuredProjectIds.includes(project.id))
-    : validProjects;
-  const reportableInScope = reportScopeProjects.filter(project => project.status === 'active'
-    && !['completion', 'move_in'].includes(project.current_stage_key || ''));
+  const matchesWeeklyPlan = (project: ProjectRow) => reportEnabled && !project.lead_archived && project.status === 'active'
+    && !['completion', 'move_in'].includes(project.current_stage_key || '')
+    && (!configuredProjectIds.length || configuredProjectIds.includes(project.id))
+    && (!configuredStageKeys.length || configuredStageKeys.includes(project.current_stage_key || ''));
+  const reportableInScope = enterpriseProjects.filter(matchesWeeklyPlan);
   const planWarnings: PilotIssue[] = [];
   if (reportEnabled) {
     if (unknownProjectIds.length) {
       planWarnings.push(issue('report.plan', '企业报告计划', `项目范围包含不可用项目 ${unknownProjectIds.join(',')}`,
-        '报告计划指向已归档或不属于该企业的项目。', '更新报告计划项目范围，只保留有效项目。'));
+        '报告计划含当前企业内不可用的项目引用。', '由企业管理员核对现有报告计划。'));
     }
     if (!reportableInScope.length) {
       planWarnings.push(issue('report.plan', '企业报告计划', '当前范围内没有可生成周报的 active 项目',
@@ -568,7 +681,7 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
         '报告计划引用了当前阶段设置中不存在的阶段 key。', '清理报告计划阶段范围或补齐阶段配置。'));
     }
   }
-  record(check('report.plan', '企业报告计划', reportEnabled ? (planWarnings.length ? 'warning' : 'passed') : 'failed',
+  record(enterpriseCheck('report.plan', '企业报告计划', reportEnabled ? (planWarnings.length ? 'warning' : 'passed') : 'failed',
     settings ? `enabled=${reportEnabled},projects=${configuredProjectIds.length},stages=${configuredStageKeys.length}` : 'not_configured',
     settings ? { version: count(settings.version), audiences: configuredAudiences } : undefined),
   reportEnabled ? planWarnings : [issue('report.plan', '企业报告计划',
@@ -576,12 +689,22 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
     '周报依赖企业报告计划；未启用时不会生成或投递周报。',
     '在周报设置中启用报告计划，配置项目范围、四角色受众和周期。')]);
 
+  if (!audit) {
+    const missingCoverage = validProjects.filter(project => reportById.get(project.id)?.reportable && !matchesWeeklyPlan(project));
+    record(projectCheck('pilot.weekly_plan', '试点项目周报计划覆盖',
+      !reportEnabled ? 'skipped' : missingCoverage.length ? 'warning' : 'passed',
+      `outsidePlan=${missingCoverage.length}`, { projectIds: missingCoverage.map(project => project.id) }),
+    reportEnabled ? missingCoverage.map(project => issue('pilot.weekly_plan', '试点项目周报计划覆盖',
+      '企业当前周报计划未覆盖该项目', '项目或阶段不在现有报告计划范围内。',
+      '由企业管理员核对报告计划的项目和阶段条件。', project.id)) : []);
+  }
+
   const audienceWarnings = reportEnabled && missingAudiences.length
     ? [issue('report.audiences', '四角色周报受众', `缺少受众 ${missingAudiences.join(',')}`,
       '报告计划受众未覆盖四端角色，对应角色不会收到周报。',
       '在报告计划中启用 customer/worker/designer/boss 四类受众。')]
     : [];
-  record(check('report.audiences', '四角色周报受众', !reportEnabled ? 'skipped' : missingAudiences.length ? 'warning' : 'passed',
+  record(enterpriseCheck('report.audiences', '四角色周报受众', !reportEnabled ? 'skipped' : missingAudiences.length ? 'warning' : 'passed',
     !reportEnabled ? 'skipped' : `configured=${configuredAudiences.length},missing=${missingAudiences.length}`,
     { audiences: configuredAudiences }), audienceWarnings);
 
@@ -590,6 +713,12 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
     from app.construction_followup_bindings where enterprise_id=${eid} and status='enabled' order by id`);
   const availableBindings: BindingRow[] = [];
   for (const binding of bindings || []) {
+    if (!audit) {
+      const eligible = binding.audience === 'customer' ? binding.project_id && validProjectIds.has(binding.project_id)
+        : binding.audience === 'boss' ? hasProjects && bossAccounts.some(account => account.id === binding.admin_id)
+        : binding.admin_id && membershipsByAdmin.has(binding.admin_id);
+      if (!eligible) continue;
+    }
     if (await followupAvailable(tx, eid, binding as unknown as Row)) availableBindings.push(binding);
   }
   const bindingAudiences = [...new Set(availableBindings.map(binding => binding.audience))];
@@ -599,7 +728,7 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
       '受众已配置，但没有启用且可访问的 construction_followup 会话，周报无法投递。',
       '启用报告计划后由现有发现流程创建会话，或按现有跟进会话流程补齐；不要手工伪造消息。')]
     : [];
-  if (bindingWarnings.length) {
+  if (audit && bindingWarnings.length) {
     const target = checks.find(entry => entry.id === 'report.audiences');
     if (target) {
       target.status = 'warning';
@@ -607,11 +736,16 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
       warnings.push(...bindingWarnings);
     }
   }
+  if (!audit) {
+    record(projectCheck('report.bindings', '试点项目周报会话',
+      !reportEnabled ? 'skipped' : bindingWarnings.length ? 'warning' : 'passed',
+      `coveredAudiences=${bindingAudiences.length}`, { bindingAudiences, missingBindingAudiences }), bindingWarnings);
+  }
 
   // ---------------------------------------------------------------- worker
   const heartbeat = await readWorkerHeartbeat(env, undefined, now.getTime());
   const workerFresh = heartbeat.freshness === 'fresh';
-  record(check('worker.heartbeat', 'Assistant Worker 心跳', workerFresh ? 'passed' : 'failed',
+  record(enterpriseCheck('worker.heartbeat', 'Assistant Worker 心跳', workerFresh ? 'passed' : 'failed',
     `freshness=${heartbeat.freshness},ageSeconds=${heartbeat.ageSeconds}`,
     { lastSuccessAt: heartbeat.lastSuccessAt, healthFileConfigured: Boolean(env.ASSISTANT_WORKER_HEALTH_FILE?.trim()) }),
   workerFresh ? [] : [issue('worker.heartbeat', 'Assistant Worker 心跳',
@@ -621,12 +755,7 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
 
   // ---------------------------------------------------------------- migrations
   const hashes = await migrationHashes(folder);
-  let ledger: Array<{ hash: string; created_at: string }> | null = null;
-  try {
-    ledger = await rows<{ hash: string; created_at: string }>(tx, sql`select hash,created_at::text from app.__drizzle_migrations order by id`);
-  } catch {
-    ledger = null;
-  }
+  const ledger = await optionalRows<{ hash: string }>(tx, sql`select hash from app.__drizzle_migrations order by id`);
   const migration0128 = await one(tx, sql`select
       (to_regclass('app.construction_stage_reminders') is not null) as reminders,
       (to_regclass('app.construction_stage_reminder_pauses') is not null) as pauses`);
@@ -634,9 +763,13 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
       exists(select 1 from pg_attribute where attrelid=to_regclass('app.construction_stage_reminders') and attname='conversation_id' and not attisdropped) as conversation_id,
       exists(select 1 from pg_attribute where attrelid=to_regclass('app.construction_stage_reminders') and attname='message_id' and not attisdropped) as message_id,
       exists(select 1 from pg_constraint where conrelid=to_regclass('app.construction_stage_reminders') and conname='construction_stage_reminders_receipt_check') as receipt_check`);
+  const migration0130 = await one(tx, sql`select
+      exists(select 1 from pg_trigger where tgrelid=to_regclass('app.xiaok_pilot_project_scopes')
+        and tgname='xiaok_pilot_projects_available' and tgenabled in ('O','A') and not tgisinternal) as project_guard`);
   const schemaApplied: Record<string, boolean> = {
     '0128': Boolean(migration0128?.reminders && migration0128?.pauses),
     '0129': Boolean(migration0129?.conversation_id && migration0129?.message_id && migration0129?.receipt_check),
+    '0130': Boolean(migration0130?.project_guard),
   };
   const migrationResults = migrations.map(migration => {
     const expected = hashes.get(migration.id) || new Set<string>();
@@ -646,27 +779,22 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
       schemaApplied: schemaApplied[migration.id], ledgerApplied,
     };
   });
-  const migrationBlocked = migrationResults.some(migration => !migration.schemaApplied);
-  const migrationLedgerWarning = !migrationBlocked && migrationResults.some(migration => migration.ledgerApplied === false);
-  record(check('database.migrations', '迁移 0128/0129',
-    migrationBlocked ? 'failed' : migrationLedgerWarning ? 'warning' : 'passed',
+  const missingMigrations = migrationResults.filter(migration => !migration.schemaApplied || migration.ledgerApplied === false);
+  const migrationLabel = '迁移 0128/0129/0130';
+  record(enterpriseCheck('database.migrations', migrationLabel, missingMigrations.length ? 'failed' : 'passed',
     migrationResults.map(migration => `${migration.id}:schema=${migration.schemaApplied},ledger=${migration.ledgerApplied}`).join(';'),
     { ledgerReadable: ledger !== null, appliedMigrations: ledger?.length ?? null }),
-  migrationBlocked ? [issue('database.migrations', '迁移 0128/0129',
-    migrationResults.filter(migration => !migration.schemaApplied).map(migration => migration.id).join(',') + ' 结构缺失',
-    '数据库缺少 I7.1/I7.2 提醒表或提醒回执字段。',
-    '先做数据库快照，再执行 npm run db:migrate；确认 0128、0129 已应用后再试点。')]
-    : migrationLedgerWarning ? [issue('database.migrations', '迁移 0128/0129',
-      '结构存在但迁移账本未匹配到 0128/0129',
-      '数据库结构已包含提醒表，但迁移账本缺失或哈希不一致，后续迁移可能重复执行。',
-      '核对 app.__drizzle_migrations 与 drizzle 文件哈希；不要直接补写账本，先确认结构来源。')] : []);
+  missingMigrations.length ? [issue('database.migrations', migrationLabel,
+    missingMigrations.map(migration => migration.id).join(','),
+    '提醒或试点配置迁移的结构缺失，或可读迁移账本与文件哈希不匹配。',
+    '核对迁移文件和数据库结构，按部署流程备份并执行已授权的迁移。')] : []);
 
   // ---------------------------------------------------------------- account + RLS
   const account = (await one(tx, sql`select current_user as role,current_database() as database,
       (select rolsuper from pg_roles where rolname=current_user) as superuser,
       (select rolbypassrls from pg_roles where rolname=current_user) as bypass_rls`))!;
   const accountSafe = !account.superuser && !account.bypass_rls;
-  record(check('database.account', '数据库业务账号', accountSafe ? 'passed' : 'failed',
+  record(enterpriseCheck('database.account', '数据库业务账号', accountSafe ? 'passed' : 'failed',
     `role=${text(account.role)},superuser=${Boolean(account.superuser)},bypassRls=${Boolean(account.bypass_rls)}`,
     { database: text(account.database) }),
   accountSafe ? [] : [issue('database.account', '数据库业务账号', `role=${text(account.role)} 为超级用户或可绕过 RLS`,
@@ -683,46 +811,97 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
     const row = rlsRows.find(candidate => candidate.relname === table);
     return { table, exists: !!row, rls: Boolean(row?.rls), forced: Boolean(row?.forced), policies: count(row?.policies) };
   });
-  const rlsMissing = rlsResults.filter(row => !row.exists || !row.rls || row.policies === 0);
-  const rlsUnforced = rlsResults.filter(row => row.exists && row.rls && !row.forced);
-  record(check('database.rls', '提醒/周报相关表 RLS',
-    rlsMissing.length ? 'failed' : rlsUnforced.length ? 'warning' : 'passed',
-    `tables=${rlsResults.length},missingOrNoPolicy=${rlsMissing.length},unforced=${rlsUnforced.length}`,
+  const rlsInvalid = rlsResults.filter(row => !row.exists || !row.rls || !row.forced || row.policies === 0);
+  record(enterpriseCheck('database.rls', '提醒/周报/试点范围 RLS',
+    rlsInvalid.length ? 'failed' : 'passed',
+    `tables=${rlsResults.length},invalid=${rlsInvalid.length}`,
     { tables: rlsResults }),
-  rlsMissing.length ? [issue('database.rls', '提醒/周报相关表 RLS',
-    rlsMissing.map(row => `${row.table}(exists=${row.exists},rls=${row.rls},policies=${row.policies})`).join(';'),
-    '提醒或周报相关表缺少 RLS 或企业隔离策略，跨企业数据可能泄露。',
-    '保持 ENABLE/FORCE ROW LEVEL SECURITY 和 tenant_scope 策略；不要为业务账号关闭 RLS。')]
-    : rlsUnforced.length ? [issue('database.rls', '提醒/周报相关表 RLS',
-      rlsUnforced.map(row => row.table).join(','), 'RLS 已启用但未强制，表 owner 仍可绕过。',
-      '对这些表执行 ALTER TABLE ... FORCE ROW LEVEL SECURITY。')] : []);
+  rlsInvalid.length ? [issue('database.rls', '提醒/周报/试点范围 RLS',
+    rlsInvalid.map(row => `${row.table}(exists=${row.exists},rls=${row.rls},forced=${row.forced},policies=${row.policies})`).join(','),
+    '相关表或强制租户 RLS 未就绪。',
+    '核对迁移并确认租户策略、ENABLE 和 FORCE ROW LEVEL SECURITY。')] : []);
 
   // ---------------------------------------------------------------- reminders + inbox
-  const reminderRows = await optionalRows<{ status: string; count: number }>(tx, sql`select status,count(*)::int as count
-    from app.construction_stage_reminders where enterprise_id=${eid} group by status order by status`);
-  const reminderByRoleRows = await optionalRows<{ target_role: string; status: string; count: number }>(tx, sql`select target_role,status,count(*)::int as count
-    from app.construction_stage_reminders where enterprise_id=${eid} group by target_role,status order by target_role,status`);
-  const reminderFailedRows = await optionalRows<{ last_error: string | null; count: number }>(tx, sql`select last_error,count(*)::int as count
-    from app.construction_stage_reminders where enterprise_id=${eid} and status='failed' group by last_error order by last_error`);
-  const pauseRow = await optionalRows<{ count: number }>(tx, sql`select count(*)::int as count from app.construction_stage_reminder_pauses where enterprise_id=${eid}`);
+  const reminderRows = await optionalRows<{ target_role: string; status: string; last_error: string | null; count: number }>(tx,
+    sql`select target_role,status,case when status='failed' then last_error end as last_error,count(*)::int as count
+      from app.construction_stage_reminders where enterprise_id=${eid}
+      and (${audit} or ${projectSet}::jsonb ? project_id::text)
+      group by 1,2,3 order by 1,2,3`);
+  const pauseRow = await optionalRows<{ count: number }>(tx, sql`select count(*)::int as count
+    from app.construction_stage_reminder_pauses where enterprise_id=${eid} and (${audit} or ${projectSet}::jsonb ? project_id::text)`);
   const byStatus: Record<string, number> = {};
-  for (const row of reminderRows || []) byStatus[row.status] = count(row.count);
   const byRole: Record<string, Record<string, number>> = {};
-  for (const row of reminderByRoleRows || []) {
+  const failedReasons = new Map<string, number>();
+  for (const row of reminderRows || []) {
+    byStatus[row.status] = count(byStatus[row.status]) + count(row.count);
     byRole[row.target_role] = byRole[row.target_role] || {};
-    byRole[row.target_role][row.status] = count(row.count);
+    byRole[row.target_role][row.status] = count(byRole[row.target_role][row.status]) + count(row.count);
+    if (row.status === 'failed') {
+      const reason = row.last_error || 'unknown';
+      failedReasons.set(reason, count(failedReasons.get(reason)) + count(row.count));
+    }
   }
-  const failedReasons: Record<string, number> = {};
-  for (const row of reminderFailedRows || []) failedReasons[row.last_error || 'unknown'] = count(row.count);
+  const failedReasonCounts = Object.fromEntries(failedReasons);
   const reminderTotal = Object.values(byStatus).reduce((sum, value) => sum + value, 0);
   const failedReminders = count(byStatus.failed);
   const reminderAvailable = reminderRows !== null;
-  record(check('reminder.state', '提醒运行状态', !reminderAvailable ? 'skipped' : failedReminders ? 'warning' : 'passed',
+  record(projectCheck('reminder.state', '提醒运行状态', !reminderAvailable ? 'skipped' : failedReminders ? 'warning' : 'passed',
     !reminderAvailable ? '提醒表不可用（由迁移检查阻断）' : `total=${reminderTotal},failed=${failedReminders},paused=${count(byStatus.paused)}`,
-    reminderAvailable ? { byStatus, byRole, failedReasons } : undefined),
+    reminderAvailable ? { byStatus, byRole, failedReasons: failedReasonCounts } : undefined),
   reminderAvailable && failedReminders ? [issue('reminder.state', '提醒运行状态', `存在 ${failedReminders} 条 failed 提醒`,
     '提醒投递失败，可能缺少站内会话、收件人权限被撤销或 Worker 未运行。',
-    `按 last_error 修复收件入口: ${Object.keys(failedReasons).join(',') || 'unknown'}。`)] : []);
+    `按 last_error 修复收件入口: ${[...failedReasons.keys()].join(',') || 'unknown'}。`)] : []);
+
+  const outsideIds = JSON.stringify(outsideProjects.map(project => project.id));
+  const outsideReminders = outsideProjects.length
+    ? await optionalRows<{ project_id: string; status: string; count: number }>(tx, sql`select project_id::text,status,count(*)::int as count
+        from app.construction_stage_reminders where enterprise_id=${eid} and ${outsideIds}::jsonb ? project_id::text
+        and status in ('pending','failed','paused') group by project_id,status order by project_id,status`)
+    : [];
+  const existingDeliveries = outsideProjects.length
+    ? await optionalRows<{ project_id: string; count: number }>(tx, sql`select p.project->>'id' as project_id,count(distinct d.event_id)::int as count
+        from app.construction_report_deliveries d join app.construction_reports r
+          on r.enterprise_id=d.enterprise_id and r.id=d.report_id
+        join app.construction_report_versions v
+          on v.enterprise_id=d.enterprise_id and v.report_id=d.report_id and v.revision=d.revision
+        cross join lateral jsonb_array_elements(case when jsonb_typeof(v.facts->'projects')='array'
+          then v.facts->'projects' else '[]'::jsonb end) p(project)
+        where d.enterprise_id=${eid} and r.kind='weekly' and d.state in ('pending','held')
+        and ${outsideIds}::jsonb ? (p.project->>'id') group by 1 order by 1`)
+    : [];
+  const remindersByProject = new Map<string, Record<string, number>>();
+  for (const row of outsideReminders || []) {
+    const statusCounts = remindersByProject.get(row.project_id) ?? {};
+    statusCounts[row.status] = count(row.count);
+    remindersByProject.set(row.project_id, statusCounts);
+  }
+  const reminderCandidates = outsideActiveProjects.filter(project => {
+    const stage = stageForConstructionKey(project.current_stage_key);
+    return !project.lead_archived && !!stage && reminderPolicyForStage(stage.stageId)?.status === 'active';
+  }).map(project => project.id);
+  const weeklyPlanCandidates = reportSettings === null ? null : outsideActiveProjects.filter(matchesWeeklyPlan).map(project => project.id);
+  const outsideScope: PilotReadinessReport['outsideScope'] = {
+    activeProjects: outsideActiveProjects.map(project => ({
+      projectId: project.id, name: project.name, currentStageKey: project.current_stage_key, leadArchived: project.lead_archived,
+    })),
+    reminders: {
+      candidateProjectIds: reminderCandidates,
+      unfinishedByProject: outsideReminders === null ? null : [...remindersByProject].map(([projectId, byStatus]) => ({ projectId, byStatus })),
+    },
+    weeklyReports: {
+      planCandidateProjectIds: weeklyPlanCandidates,
+      pendingOrHeldByProject: existingDeliveries?.map(row => ({ projectId: row.project_id, count: count(row.count) })) ?? null,
+    },
+  };
+  const outsideImpact = new Set([...reminderCandidates, ...(weeklyPlanCandidates ?? []), ...remindersByProject.keys(),
+    ...(outsideScope.weeklyReports.pendingOrHeldByProject?.map(project => project.projectId) ?? [])]);
+  if (outsideImpact.size) {
+    record(check('pilot.outside_delivery', '范围外提醒与周报', 'warning', `projects=${outsideImpact.size}`, {
+      projectIds: [...outsideImpact],
+    }), [issue('pilot.outside_delivery', '范围外提醒与周报', `${outsideImpact.size} 个范围外项目有现有规则或待处理投递`,
+      '现有 Worker 和企业报告计划独立运行，试点范围没有约束这些规则或存量投递。',
+      '试点触达启用前，单独核定通知边界及存量投递。')]);
+  }
 
   const c01Channel = projectReports.filter(project => project.c01.available).length;
   const customerBindingChannel = availableBindings.filter(binding => binding.audience === 'customer').length;
@@ -747,9 +926,10 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
       '对应角色没有可写的站内会话；提醒或周报会进入 failed/no_inbox。',
       '为缺少入口的角色建立现有跟进会话，或接受该角色只使用经理工作台；不要伪造消息回执。')]
     : [];
-  record(check('inbox.channel', '站内消息入口', !anyChannel ? 'failed' : inboxWarnings.length ? 'warning' : 'passed',
+  const enabledBindingCount = audit ? bindings?.length ?? 0 : availableBindings.length;
+  record(projectCheck('inbox.channel', '站内消息入口', !anyChannel ? 'failed' : inboxWarnings.length ? 'warning' : 'passed',
     `owner=${ownerChannel},manager=${managerChannel},boss=${bossChannel},designer=${designerChannel},worker=${workerChannel}`,
-    { expectedRoles, missingChannels, enabledBindings: (bindings || []).length }),
+    { expectedRoles, missingChannels, enabledBindings: enabledBindingCount }),
   anyChannel ? inboxWarnings : [issue('inbox.channel', '站内消息入口', '没有任何可写的站内入口',
     '业主 C01、经理工作台和四角色跟进会话均不可用，提醒与周报无法送达。',
     '至少恢复业主 C01 或经理工作台入口，并为四端角色建立可用的站内会话。')]);
@@ -773,7 +953,17 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
     enterpriseName: enterprise?.name ?? null,
     checkedAt: now.toISOString(),
     readiness,
+    pilotScope,
+    enterpriseChecks: checks.filter(entry => entry.scope === 'enterprise'),
+    pilotProjectChecks: audit ? [] : checks.filter(entry => entry.scope === 'pilot'),
     projects: projectReports,
+    projectGaps: {
+      missingStageProjectIds: stageIssues.flatMap(item => item.projectId ? [item.projectId] : []),
+      missingPlanProjectIds: planIssues.flatMap(item => item.projectId ? [item.projectId] : []),
+      incompleteRoleProjects: roleGaps,
+      missingC01ProjectIds: projectReports.filter(project => !project.c01.available).map(project => project.id),
+    },
+    outsideScope,
     activeStage: {
       expectedStages: expectedKeys,
       configuredStages: configuredKeys,
@@ -801,7 +991,7 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
       ...heartbeat, scope: 'global', healthFileConfigured: Boolean(env.ASSISTANT_WORKER_HEALTH_FILE?.trim()),
     },
     reminderStatus: {
-      total: reminderTotal, byStatus, byRole, failedReasons, pauses: count(pauseRow?.[0]?.count),
+      total: reminderTotal, byStatus, byRole, failedReasons: failedReasonCounts, pauses: count(pauseRow?.[0]?.count),
     },
     weeklyReportStatus: {
       configured: !!settings, enabled: reportEnabled, projectIds: configuredProjectIds, stageKeys: configuredStageKeys,
@@ -818,20 +1008,26 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
     },
     inboxStatus: {
       channels, expectedRoles, missingChannels, managerWorkbench: managerChannel,
-      ownerC01: c01Channel, enabledBindings: (bindings || []).length,
+      ownerC01: c01Channel, enabledBindings: enabledBindingCount,
     },
     blockers, warnings, checks,
   };
   return report;
 }
 
-/** Check one explicitly named enterprise. There is no enterprise-wide scan and
- * no default enterprise; callers must pass a positive bigint. */
+/** An unspecified or empty selection checks the enterprise without choosing projects. */
 export async function checkPilotReadiness(options: PilotReadinessOptions): Promise<PilotReadinessReport> {
-  const enterpriseId = String(options.enterpriseId);
-  if (!/^[1-9]\d*$/u.test(enterpriseId)) throw new Error('enterpriseId must be an explicit positive bigint');
+  const enterpriseId = id(options.enterpriseId);
+  const selections = [options.pilotId !== undefined, options.projectIds !== undefined, options.enterpriseAudit === true];
+  if (selections.filter(Boolean).length > 1) throw new Error('Choose one of pilotId, projectIds or enterpriseAudit');
+  const selection: PilotSelection = options.pilotId !== undefined ? { mode: 'pilot', pilotId: key(options.pilotId) }
+    : options.projectIds !== undefined ? { mode: 'preview', projectIds: pilotProjectIds(options.projectIds) }
+    : options.enterpriseAudit ? { mode: 'enterprise_audit' } : { mode: 'unspecified' };
   const now = options.now || new Date();
   const env = options.env || process.env;
   const folder = options.migrationsFolder || path.resolve(process.cwd(), 'drizzle');
-  return withTenantTransaction(enterpriseId, tx => collect(tx, enterpriseId, now, env, folder));
+  // Existing authorization helpers take shared locks. Use one repeatable
+  // snapshot so the scope, project facts and diagnostics agree.
+  return withTenantTransaction(enterpriseId, tx => collect(tx, enterpriseId, selection, now, env, folder),
+    { isolationLevel: 'repeatable read' });
 }
