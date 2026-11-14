@@ -1,26 +1,96 @@
-import { writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { rename, unlink, writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import nextEnv from '@next/env';
+import { loadAssistantWorkerConfig, readAssistantWorkerHealth } from './assistant-worker-health.mjs';
 
-// Match `next dev` locally; explicitly supplied container environment still wins.
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-nextEnv.loadEnvConfig(root, process.env.NODE_ENV !== 'production');
+const { endpoint, secret, healthFile } = loadAssistantWorkerConfig();
 
-const endpoint = process.env.ASSISTANT_WORKER_ENDPOINT || 'http://localhost:3006/api/internal/assistant/jobs/run';
-const secret = process.env.CRON_SECRET;
-if (!secret) throw new Error('CRON_SECRET is required');
-const healthFile = process.env.ASSISTANT_WORKER_HEALTH_FILE || path.join(tmpdir(), 'assistant-worker-health.json');
 let stopping = false;
 process.on('SIGTERM', () => { stopping = true; });
 process.on('SIGINT', () => { stopping = true; });
-while (!stopping) {
+
+const { health: previous } = await readAssistantWorkerHealth(healthFile);
+const health = {
+  workerPid: process.pid,
+  lastRequestAt: previous?.lastRequestAt ?? null,
+  lastSuccessAt: previous?.lastSuccessAt ?? null,
+  lastFailureAt: previous?.lastFailureAt ?? null,
+  consecutiveFailures: previous?.consecutiveFailures ?? 0,
+  lastHttpStatus: previous?.lastHttpStatus ?? null,
+  lastErrorCode: previous?.lastErrorCode ?? null,
+};
+const temporaryHealthFile = `${healthFile}.${randomUUID()}.tmp`;
+
+async function saveHealth() {
   try {
-    const response = await fetch(endpoint, { method: 'POST', headers: { 'x-cron-secret': secret }, signal: AbortSignal.timeout(180000) });
-    if (!response.ok || !(await response.json()).success) throw new Error('worker_request_failed');
-    await writeFile(healthFile, JSON.stringify({ lastSuccessAt: Date.now() }));
-  } catch { console.error('[assistant-worker] request failed; persisted jobs recover by lease'); }
-  if (!stopping) await delay(2000);
+    await writeFile(temporaryHealthFile, JSON.stringify(health));
+    await rename(temporaryHealthFile, healthFile);
+  } catch {
+    await unlink(temporaryHealthFile).catch(() => {});
+    console.error('[assistant-worker] health_file_unavailable');
+  }
+}
+
+function recordFailure(errorCode) {
+  health.lastFailureAt = Date.now();
+  health.consecutiveFailures = Math.min(health.consecutiveFailures + 1, Number.MAX_SAFE_INTEGER);
+  health.lastErrorCode = errorCode;
+  console.error('[assistant-worker]', JSON.stringify({
+    errorCode, at: health.lastFailureAt, httpStatus: health.lastHttpStatus,
+  }));
+}
+
+const httpErrors = new Map([
+  [401, 'unauthorized'],
+  [422, 'invalid_request'],
+  [503, 'worker_unavailable'],
+]);
+
+async function requestTick() {
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'x-cron-secret': secret },
+      signal: AbortSignal.timeout(180000),
+    });
+  } catch {
+    return { status: null, errorCode: 'endpoint_unreachable' };
+  }
+
+  const status = response.status;
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    return { status, errorCode: httpErrors.get(status) ?? 'job_execution_failed' };
+  }
+  try {
+    if ((await response.json())?.success === true) return { status, errorCode: null };
+  } catch {
+    // A successful tick requires a valid acknowledgement. Keep raw responses out of diagnostics.
+  }
+  return { status, errorCode: 'job_execution_failed' };
+}
+
+if (!secret?.trim()) {
+  health.lastHttpStatus = null;
+  recordFailure('missing_secret');
+  await saveHealth();
+  process.exitCode = 1;
+} else {
+  while (!stopping) {
+    health.lastRequestAt = Date.now();
+    await saveHealth();
+    if (stopping) break;
+    const { status, errorCode } = await requestTick();
+    health.lastHttpStatus = status;
+    if (errorCode) {
+      recordFailure(errorCode);
+    } else {
+      health.lastSuccessAt = Date.now();
+      health.consecutiveFailures = 0;
+      health.lastErrorCode = null;
+    }
+    await saveHealth();
+    if (!stopping) await delay(2000);
+  }
 }
