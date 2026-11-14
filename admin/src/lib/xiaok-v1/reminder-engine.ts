@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+﻿import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { stageForConstructionKey, type StageId } from './stages';
 
@@ -131,17 +131,21 @@ function bodyFor(trigger: ReminderTriggerType, role: ReminderRole, facts: Remind
     + '\n提醒只说明当前需要关注的事项，不代表对方已读、已承诺或已完成。';
 }
 
-function actionUrl(facts: ReminderProjectFacts, trigger: ReminderTriggerType, itemId?: string) {
-  const base = '/packages/construction/projects/projects?project=' + encodeURIComponent(facts.projectId);
-  if (itemId) return base + '&item=' + encodeURIComponent(itemId);
-  return base + '&focus=' + trigger;
+function actionUrl(facts: ReminderProjectFacts, trigger: ReminderTriggerType, itemId?: string, roomId?: string | null) {
+  let url = '/packages/construction/projects/projects?project=' + encodeURIComponent(facts.projectId);
+  if (itemId) url += '&item=' + encodeURIComponent(itemId);
+  else url += '&focus=' + trigger;
+  // A plan node always belongs to a real room; the client uses it to open that
+  // room instead of dropping the recipient on the project list.
+  if (roomId) url += '&roomId=' + encodeURIComponent(roomId);
+  return url;
 }
 
 function draft(input: {
   facts: ReminderProjectFacts; policy: StageReminderPolicy; now: Date;
   triggerType: ReminderTriggerType; targetRole: ReminderRole; targetUserId: string | null;
   relatedTaskId?: string | null; relatedIssueId?: string | null;
-  evidence: ReminderDraft['triggerEvidence']; subject: string; detail: string; itemId?: string;
+  evidence: ReminderDraft['triggerEvidence']; subject: string; detail: string; itemId?: string; roomId?: string | null;
   dedupeSubject?: string;
 }): ReminderDraft {
   const { facts } = input;
@@ -158,7 +162,7 @@ function draft(input: {
     triggerType: input.triggerType, triggerEvidence: input.evidence,
     scheduledAt: applyQuietHours(input.now.toISOString(), input.policy.quietHours),
     deliveredAt: null, status: 'pending', dedupeKey: key,
-    actionUrl: actionUrl(facts, input.triggerType, input.itemId),
+    actionUrl: actionUrl(facts, input.triggerType, input.itemId, input.roomId),
     title: triggerTitles[input.triggerType],
     body: bodyFor(input.triggerType, input.targetRole, facts, input.subject, input.detail),
   });
@@ -201,7 +205,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
           for (const userId of recipientsFor(facts, role)) drafts.push(draft({ facts, policy, now, triggerType: 'plan_node_due_soon',
             targetRole: role, targetUserId: userId, relatedTaskId: node.key,
             evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString() },
-            itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+            itemId: node.key, roomId: node.roomId, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
             dedupeSubject: node.key + ':' + node.plannedEnd,
             detail: '计划节点临近结束日，请核对现场进展并补充需要的资料。' }));
         }
@@ -212,7 +216,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
           for (const userId of recipientsFor(facts, role)) drafts.push(draft({ facts, policy, now, triggerType: 'plan_node_overdue',
             targetRole: role, targetUserId: userId, relatedTaskId: node.key,
             evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString() },
-            itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+            itemId: node.key, roomId: node.roomId, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
             dedupeSubject: node.key + ':' + node.plannedEnd,
             detail: '计划结束日已过且当前没有完成证据，请核对实际进展，不要直接认定未施工。' }));
         }
@@ -223,7 +227,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
           for (const userId of recipientsFor(facts, role)) drafts.push(draft({ facts, policy, now, triggerType: 'stage_ending',
             targetRole: role, targetUserId: userId, relatedTaskId: node.key,
             evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString() },
-            itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+            itemId: node.key, roomId: node.roomId, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
             dedupeSubject: node.key + ':end',
             detail: '当前阶段即将结束，请整理待补资料、遗留事项和下一阶段衔接条件。' }));
         }
@@ -234,7 +238,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
           for (const userId of recipientsFor(facts, role)) drafts.push(draft({ facts, policy, now, triggerType: 'plan_node_due_soon',
             targetRole: role, targetUserId: userId, relatedTaskId: node.key + ':mid',
             evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString() },
-            itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+            itemId: node.key, roomId: node.roomId, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
             dedupeSubject: node.key + ':mid',
             detail: '当前阶段已进行一段时间，请查看本阶段关注事项和现场记录。' }));
         }
@@ -255,7 +259,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
       const recipientIds = recipientsFor(facts, group.role);
       if (!recipientIds.length) continue;
       for (const userId of recipientIds) drafts.push(draft({ facts, policy, now, triggerType: group.trigger, targetRole: group.role,
-        targetUserId: userId, relatedTaskId: item.id,
+        targetUserId: userId, relatedTaskId: item.id, relatedIssueId: item.id,
         evidence: { kind: 'pending_item', refId: item.id, version: null, at: item.createdAt },
         itemId: item.id, subject: item.title, dedupeSubject: item.dedupeSubject ?? item.id, detail: group.detail }));
     }
@@ -289,7 +293,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
           targetRole: 'boss', targetUserId: userId, relatedTaskId: node.key,
           evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString(),
             subject: 'plan:' + node.key + ':' + node.plannedEnd },
-          itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+          itemId: node.key, roomId: node.roomId, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
           dedupeSubject: 'boss:plan:' + node.key + ':' + node.plannedEnd,
           detail: '计划结束日已超过公司介入阈值且没有完成证据，请公司核对是否需要协调资源或调整安排。' }));
       }

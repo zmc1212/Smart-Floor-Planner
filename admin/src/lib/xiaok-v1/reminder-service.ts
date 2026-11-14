@@ -191,13 +191,17 @@ async function principalAccess(tx: PostgresTransaction, actor: ActorContext, eid
   }
   const admin = await one(tx, sql`select role from app.admin_users where enterprise_id=${eid} and id=${actor.principal.adminId} and status='active' for share`);
   if (!admin) return false;
+  // A company owner is reached through the same cross-project construction
+  // access that produced boss recipients; this does not grant approval or
+  // acceptance rights and does not require project membership.
+  if (role === 'boss') return ['enterprise_admin', 'admin', 'super_admin'].includes(String(admin.role))
+    && String((await one(tx, sql`select app.construction_actor_access(${actor.principal.adminId}::bigint,${eid}::bigint) as role`))?.role || '') === 'owner';
   const member = await one(tx, sql`select role from app.construction_members where enterprise_id=${eid}
     and project_id=${String(project.id)} and admin_id=${actor.principal.adminId} and active for share`);
   if (!member) return false;
   if (role === 'manager') return member.role === 'manager';
   if (role === 'designer') return member.role === 'designer';
   if (role === 'worker') return member.role === 'worker' || admin.role === 'construction_staff';
-  if (role === 'boss') return ['enterprise_admin', 'admin', 'super_admin'].includes(String(admin.role));
   return false;
 }
 
@@ -328,6 +332,10 @@ export async function deliverStageReminders(now = new Date(), onlyEnterprise?: s
   return { delivered, paused, cancelled, failed };
 }
 
+/** Read the recipient's current reminder inbox. Project access is rechecked
+ * against today's membership/ownership so a revoked user cannot keep reading
+ * content from a project they no longer belong to. Closed items stay available
+ * as explicit history instead of being mixed into the current todo list. */
 export async function listStageReminders(actor: ActorContext, projectId?: string) {
   return withTenantTransaction(actor.enterpriseId, async tx => {
     const eid = actor.enterpriseId, kind = actor.principal.kind;
@@ -337,26 +345,53 @@ export async function listStageReminders(actor: ActorContext, projectId?: string
       if (kind === 'user') {
         if (!project.customer_access || String(project.customer_user_id) !== principalId) fail('construction_not_found', 404);
       } else if (!await one(tx, sql`select 1 from app.construction_members where enterprise_id=${eid} and project_id=${String(project.id)}
-        and admin_id=${principalId} and active`)) fail('construction_not_found', 404);
+        and admin_id=${principalId} and active`)
+        && String((await one(tx, sql`select app.construction_actor_access(${principalId}::bigint,${eid}::bigint) as role`))?.role || '') !== 'owner')
+        fail('construction_not_found', 404);
     }
     const pauses = await rows(tx, sql`select trigger_type from app.construction_stage_reminder_pauses
       where enterprise_id=${eid} and principal_kind=${kind} and principal_id=${principalId}
       ${projectId ? sql`and project_id=${projectId}` : sql``} order by trigger_type`);
-    const items = await rows(tx, sql`select r.*,p.name as project_name from app.construction_stage_reminders r
+    const found = await rows(tx, sql`select r.*,p.name as project_name,
+        case when ${kind}='user' then (p.customer_access and l.customer_user_id=${principalId})
+          else (exists (select 1 from app.construction_members m where m.enterprise_id=r.enterprise_id
+                 and m.project_id=r.project_id and m.admin_id=${principalId} and m.active)
+               or app.construction_actor_access(${principalId}::bigint,r.enterprise_id)='owner')
+        end as accessible
+      from app.construction_stage_reminders r
       join app.construction_projects p on p.enterprise_id=r.enterprise_id and p.id=r.project_id
+      join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
       where r.enterprise_id=${eid} and r.target_principal_kind=${kind} and r.target_principal_id=${principalId}
-      and r.status in ('pending','delivered','failed','paused') ${projectId ? sql`and r.project_id=${projectId}` : sql``}
-      order by r.scheduled_at desc limit 50`);
-    return { paused: pauses.length > 0, pauses: pauses.map(row => String(row.trigger_type)), items: items.map(row => ({
-      reminderId: String(row.reminder_id), projectId: String(row.project_id), projectName: String(row.project_name),
-      stageId: row.stage_id, triggerType: String(row.trigger_type),
-      triggerLabel: reminderTriggerLabels[String(row.trigger_type) as ReminderTriggerType] || '提醒',
-      role: String(row.target_role), status: String(row.status),
-      title: String(row.title), body: String(row.body), actionUrl: String(row.action_url),
-      scheduledAt: new Date(String(row.scheduled_at)).toISOString(),
-      deliveredAt: row.delivered_at ? new Date(String(row.delivered_at)).toISOString() : null,
-      lastError: row.last_error ? String(row.last_error) : null,
-    })) };
+      and r.status in ('pending','delivered','failed','paused','cancelled','expired') and l.archived_at is null
+      ${projectId ? sql`and r.project_id=${projectId}` : sql``}
+      order by r.scheduled_at desc limit 100`);
+    const visible = found.filter(row => row.accessible === true).map(row => {
+      let roomId: string | null = null;
+      try { roomId = new URL(String(row.action_url), 'https://xiaok.local').searchParams.get('roomId'); } catch { /* Stored URL is server-built. */ }
+      const status = String(row.status), lastError = row.last_error ? String(row.last_error) : null;
+      // A manager has no private assistant conversation; the existing project
+      // workbench is their in-app inbox. Pending and failed manager reminders
+      // are both workbench todos, never a failed send. No conversation or
+      // message id is invented.
+      const channel = status === 'delivered' && row.message_id ? 'conversation'
+        : String(row.target_role) === 'manager' && (['pending', 'paused'].includes(status)
+          || status === 'failed' && (lastError === 'no_inbox' || lastError === null)) ? 'workbench'
+        : status === 'failed' ? 'failed' : null;
+      return {
+        reminderId: String(row.reminder_id), projectId: String(row.project_id), projectName: String(row.project_name),
+        stageId: row.stage_id, stageKey: row.construction_stage_key, triggerType: String(row.trigger_type),
+        triggerLabel: reminderTriggerLabels[String(row.trigger_type) as ReminderTriggerType] || '提醒',
+        role: String(row.target_role), status, channel, title: String(row.title), body: String(row.body),
+        actionUrl: String(row.action_url), relatedTaskId: row.related_task_id ? String(row.related_task_id) : null,
+        relatedIssueId: row.related_issue_id ? String(row.related_issue_id) : null, roomId,
+        scheduledAt: new Date(String(row.scheduled_at)).toISOString(),
+        deliveredAt: row.delivered_at ? new Date(String(row.delivered_at)).toISOString() : null,
+        lastError,
+      };
+    });
+    const current = visible.filter(row => ['pending', 'delivered', 'failed', 'paused'].includes(row.status)).slice(0, 50);
+    const history = visible.filter(row => ['cancelled', 'expired'].includes(row.status)).slice(0, 20);
+    return { paused: pauses.length > 0, pauses: pauses.map(row => String(row.trigger_type)), items: current, history };
   });
 }
 

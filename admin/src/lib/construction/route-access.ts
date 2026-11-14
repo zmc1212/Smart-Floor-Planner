@@ -8,6 +8,9 @@ export function constructionRouteAllowed(pathname: string, miniProgram: boolean)
   ] : ['/api/auth/me', '/api/auth/password', '/api/auth/logout', '/construction-projects', '/change-password', '/login'];
   const root = miniProgram ? '/api/miniprogram/construction' : '/api/construction';
   return exact.includes(pathname) || pathname === root || pathname.startsWith(root + '/')
+    // Stage reminders and stage knowledge are part of the construction
+    // workbench for construction_staff, not a separate lead/finance surface.
+    || (miniProgram && (pathname === '/api/miniprogram/xiaok/reminders' || pathname === '/api/miniprogram/xiaok/stage-answer'))
     || (miniProgram && (pathname === '/api/miniprogram/assistant/followups' || pathname.startsWith('/api/miniprogram/assistant/followups/')))
     || (miniProgram && /^\/api\/miniprogram\/profile\/avatar\/[1-9]\d*$/.test(pathname))
     || (miniProgram && /^\/api\/branding\/[1-9]\d*$/.test(pathname));
