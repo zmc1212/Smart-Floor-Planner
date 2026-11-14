@@ -199,6 +199,7 @@
 ## 11. I7.4.1 老板端主动简报入口与周报导航修复
 
 > 基线：`codex/xiaok-integration`，`dc946a4c5d37`；本节省略的四端结论仍以第 10 节为准。
+> 本轮修复源码：`13b59e7360a92fb5658f1b8bbbd98d178561abfb`（`fix(xiaok): route boss brief entry to the company project brief`）。
 > 本轮只修复老板端主动简报入口与周报导航，并完成老板端真实页面验收；不新增后台子系统、不新增专业 Agent、不增加装修阶段、不重建提醒/周报/Construction/Native Workflow、不开发 CAD/OCR/自动验收、不部署生产、不合并 main。
 
 ### 11.1 环境与账号
