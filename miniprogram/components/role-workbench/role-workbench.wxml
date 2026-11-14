@@ -42,6 +42,19 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
 
         </view>
 
+        <view wx:if="{{(role === 'enterprise_admin' || role === 'designer') && (xiaokReminders.length || xiaokReminderError)}}" class="xiaok-reminder-card">
+          <view class="xiaok-reminder-head">
+            <text class="xiaok-reminder-label">小K主动提醒</text>
+            <button class="xiaok-reminder-link" bindtap="openXiaokFollowup">查看本周周报 ↗</button>
+          </view>
+          <view wx:for="{{xiaokReminders}}" wx:key="reminderId" class="xiaok-reminder-item">
+            <text class="xiaok-reminder-project">{{item.projectName}} · {{item.triggerLabel}} · {{item.statusLabel}}</text>
+            <text class="xiaok-reminder-title">{{item.title}}</text>
+            <text class="xiaok-reminder-body">{{item.body}}</text>
+          </view>
+          <text wx:if="{{xiaokReminderError}}" class="xiaok-reminder-error">{{xiaokReminderError}}</text>
+        </view>
+
         <view class="enterprise-action-hub">
           <button wx:if="{{role === 'designer' || role === 'enterprise_admin'}}" class="assistant-handoff-entry" bindtap="openAssistantHandoffs">小K咨询接管</button>
           <text class="enterprise-action-hub-title">{{role === 'enterprise_admin' ? '获客与团队' : '获客与推广'}}</text>

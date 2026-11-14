@@ -111,6 +111,9 @@ Page({
       if (this.current(g)) this.setData({ stageAnswerBusy: false });
     }
   },
+  openWeeklyReport() {
+    if (this.current()) wx.navigateTo({ url: '/packages/assistant/chat/chat?followup=1' });
+  },
   openSiteCamera(e) { const p = this.data.items.find(p => p.id === String(e.currentTarget.dataset.id));
     if (this.current() && !this.data.busy && !this.data.pending && p?.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(p.id) }); },
   openSiteChat(e) { const p = this.data.items.find(p => p.id === String(e.currentTarget.dataset.id));

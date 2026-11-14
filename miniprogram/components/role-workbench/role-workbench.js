@@ -265,6 +265,8 @@ Component({
     staffName: '',
     claimPoolSummary: null,
     withdrawalNotices: [],
+    xiaokReminders: [],
+    xiaokReminderError: '',
   },
 
   observers: {
@@ -574,6 +576,7 @@ Component({
           loading: false,
         }, () => this.renderContractAmountTrend());
         if (payload.role === 'designer') this.loadClaimPoolSummary();
+        this.loadXiaokReminders(payload.role);
         this.scheduleWechatProfilePrompt();
       } catch (error) {
         this.setData({
@@ -711,6 +714,24 @@ Component({
       } catch (error) {
         wx.showToast({ title: error.message || '确认失败', icon: 'none' });
       }
+    },
+
+    async loadXiaokReminders(role) {
+      if (!['enterprise_admin', 'designer'].includes(role || this.properties.role)) return;
+      try {
+        const result = await api.request('/miniprogram/xiaok/reminders', 'GET');
+        const items = (result.data.items || [])
+          .filter(item => ['delivered', 'pending', 'paused'].includes(item.status))
+          .slice(0, 3)
+          .map(item => ({ ...item, statusLabel: item.status === 'paused' ? '已暂停' : item.status === 'pending' ? '待发送' : '已送达' }));
+        this.setData({ xiaokReminders: items, xiaokReminderError: '' });
+      } catch (error) {
+        this.setData({ xiaokReminders: [], xiaokReminderError: '主动提醒暂不可用。' });
+      }
+    },
+
+    openXiaokFollowup() {
+      wx.navigateTo({ url: '/packages/assistant/chat/chat?followup=1' });
     },
 
     async loadClaimPoolSummary() {
