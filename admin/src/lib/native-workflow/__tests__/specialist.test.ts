@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createWorkflowService } from '../service';
 import { createMemoryWorkflowStore } from '../store/memory-store';
-import { createWaterproofInspectionDefinition } from '../specialist-template';
+import { createSpecialistInspectionDefinition, createWaterproofInspectionDefinition } from '../specialist-template';
 import { compileDefinition } from '../compile';
 import type { WorkflowDefinition } from '../types';
 import { readFile } from 'node:fs/promises';
@@ -10,7 +10,7 @@ import { validateDefinition } from '../validate';
 import { specialistFixtures, specialistScenario } from '../fixtures/specialist';
 import { runPublishedLive } from '../live/runner';
 import { LiveOperationWaiting, type LiveRunRecord, type LiveRunStore } from '../live/types';
-import { specialists, waterproofAgentId } from '@/lib/assistant/specialists/registry';
+import { specialists, waterproofAgentId, waterproofChecklistAgentVersion } from '@/lib/assistant/specialists/registry';
 
 const definitionId = 'waterproof-inspection-v1';
 
@@ -59,12 +59,14 @@ test('vNext publication keeps older published definitions and their digests unch
   const draft = await service.createFromTemplate(definitionId);
   const first = await service.publishDraft({ definitionId, expectedDraftRevision: draft.draft.draftRevision });
   const edited = await service.saveDraft({ definitionId, expectedDraftRevision: draft.draft.draftRevision,
-    definition: { ...draft.draft.definition, nodes: draft.draft.definition.nodes.map(node => node.nodeId === 'analysis_ready'
-      ? { ...node, config: { evidencePolicy: 'both' } } : node) } });
+    definition: createSpecialistInspectionDefinition(specialists.version(waterproofAgentId, waterproofChecklistAgentVersion)!) });
   const second = await service.publishDraft({ definitionId, expectedDraftRevision: edited.draft.draftRevision });
   assert.ok(second.version.revision > first.version.revision);
   assert.equal(compileDefinition(first.version.definition).digest, first.version.digest);
   assert.notEqual(second.version.digest, first.version.digest);
+  assert.equal(specialists.active(waterproofAgentId)?.version, 1);
+  assert.equal(second.version.definition.nodes.find(node => node.nodeId === 'analysis')?.config?.agentVersion, 2);
+  assert.equal(first.version.definition.nodes.find(node => node.nodeId === 'analysis')?.config?.agentVersion, 1);
   assert.deepEqual(first.version.definition.edges, createWaterproofInspectionDefinition().edges);
 });
 

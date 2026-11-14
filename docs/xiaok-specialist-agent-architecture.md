@@ -16,6 +16,8 @@ LangGraph 的恢复机制以检查点和可幂等的任务为边界。仓库继�
 
 I6.15 在 `xiaok-native-executor-v1` 和 LangGraph 装配同一 `delegationToolForQuestion`、`dispatchDelegationTool` 和 `DelegationService`。当前业主、原咨询、项目、精确房间、原话授权、操作键、活动注册与发布版本均由服务端决定。`consultation` 或 `structuredFinal` 与 Native 配置的组合在建 Run 时显式路由到 LangGraph，并保留路由诊断；已固定且不兼容的旧快照在模型派发前给出配置错误。持久化的登记回执可直接结束一条独立授权消息。模型首稿、工具执行和服务回执分别保留，混合咨询的正文继续走原来源及承诺校验。
 
+I6.16 的 @2 候选由显式发布的 Workflow revision 选中。子作业以当前 Run 的审核原页及获权项目上下文为输入，省去副作用无关的委托状态历史选择。Evidence Assessment 匹配实际选中引文与 Workflow 已读原附件的指纹、页码及标准编号。公开原页技术内容和同版现行性各有独立状态，托管检索不可用时也分别留痕。独立登记和混合问题的回执均重验原事务事件，混合终稿被拒时退回其实际失败码。
+
 节点、操作及验收见[防水工作流](xiaok-waterproof-workflow.md)和[集成审查](xiaok-integration-audit.md)。
 
 I6.12 把照片观察的结构化从模型工具参数移到服务端：图像轮仍只提交 \kind\/\	ext\，正文七节固定文本由服务端解析；解析失败时执行一次独立文本归一化调用，结果再经固定信封 Schema 与语义校验。该调用复用同一 \AgentModelGateway\、加密配置、用量台账和请求回执，不新增网关或生产默认值。真实回执见 \dmin/tmp/i6.12/photo-01/\；真实工地照片、真机与 BLE 仍未验。工作流、四端与冻结标识见[防水工作流](xiaok-waterproof-workflow.md)和[第一版交付](xiaok-waterproof-agent-v1-release.md)。

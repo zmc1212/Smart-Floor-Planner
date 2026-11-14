@@ -100,7 +100,7 @@ import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from './ho
 import { specialistPublicSections } from '../specialists/evidence';
 import { consultationSpecialist, routedConsultationSpecialist, specialistConsultationTools, specialistDelegationRoom, specialistPhotoModel, specialistPhotoRequested, specialistPolicy } from '../specialists/consultation';
 import { parsePhotoObservationText, parseSpecialistPhotoAnalysis, photoObservationTextProtocol, type SpecialistPhotoAnalysis } from '../specialists/photo-analysis';
-import { bindSpecialistInput, specialistModel, specialistProtocol, specialists, type SpecialistInput, type SpecialistRunBinding } from '../specialists/registry';
+import { bindSpecialistInput, specialistModel, specialistProtocol, specialists, waterproofChecklistAgentVersion, type SpecialistInput, type SpecialistRunBinding } from '../specialists/registry';
 import { ownerArchiveReadProtocol, ownerArchiveReadRequested, ownerProjectStatusReadProtocol, ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol,
   ownerReadToolAllowed, readOwnerMaterialInput, readOwnerQuestionScope } from './owner-question-scope';
 import { consultationAcceptanceProfile } from '../contracts/consultation';
@@ -584,7 +584,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           : staffFollowup || staffPreview ? sql`(author_kind='assistant' or (author_kind='admin' and admin_id=${lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : null} and purpose='reply'))`
           : sql`((m.author_kind='user' and (m.id=${String(trigger.id)} or ${publicHistoryScope(context.conversation, publicSelectionLive)}))
             or (m.author_kind='assistant' and ${publicHistoryScope(context.conversation, publicSelectionLive, 'assistant')})
-            or (${!selectedPublicSite} and m.author_kind='system' and m.purpose in ('construction.followup','construction.record','construction.result',${delegationOwnerPurpose})))`}
+             or (${!selectedPublicSite} and m.author_kind='system' and m.purpose in ('construction.followup','construction.record','construction.result',${delegationOwnerPurpose})
+               and (${context.run.purpose !== 'specialist.workflow'} or m.purpose<>${delegationOwnerPurpose})))`}
         order by seq desc limit 30`);
       const turns = [];
       const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
@@ -958,12 +959,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const specialistBinding = (initial.run.policy_snapshot as Row).specialistRun as SpecialistRunBinding | undefined;
     const boundSpecialist = specialistBinding?.agentId && specialistBinding.agentVersion
       ? specialists.version(specialistBinding.agentId, specialistBinding.agentVersion) : undefined;
+    const versionedChecklist = specialistChecklist && boundSpecialist?.version === waterproofChecklistAgentVersion;
     const routedSpecialist = (initial.run.policy_snapshot as Row).specialist === specialistProtocol
       && initial.config.providerKey === specialistModel.providerKey && initial.config.model === specialistModel.model
       && !review && !reportSource && !homeEntry.activePublicSite
       ? routedConsultationSpecialist(reviewContext.currentQuestion, initial.precedingQuestions, boundSpecialist) : null;
     const specialist = routedSpecialist && specialistBinding?.roomName
       ? { ...routedSpecialist, room: specialistBinding.roomName,
+        ...(versionedChecklist && boundSpecialist.publicStandardId ? { standard: namedReviewedStandard(boundSpecialist.publicStandardId) } : {}),
         ...(specialistBinding.publicCoverage ? { reviewedSections: specialistPublicSections(specialistBinding.publicCoverage) } : {}) } : routedSpecialist;
     const homeSourceView = siteObservationReferral && !nativeFinalization && homeEntry.kind === 'lead'
       && (initial.run.policy_snapshot as Row).homeSourceView === homeSourceViewProtocol
@@ -1111,7 +1114,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         if (initial.knowledgeEnabled && (!specialist.standard || specialist.companyPractice || specialistChecklist)) {
           knowledgeScopes.push('enterprise'); toolPermissions.push('knowledge');
         }
-        if (webAvailable && !specialist.companyOnly) { knowledgeScopes.push('public_standard'); toolPermissions.push('public_read'); }
+        if (webAvailable && (!specialist.companyOnly || versionedChecklist)) { knowledgeScopes.push('public_standard'); toolPermissions.push('public_read'); }
         if (projectStatusRead || specialistFollowup) {
           knowledgeScopes.push('project');
           if (projectStatusRead) toolPermissions.push('project_progress');
@@ -1582,7 +1585,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     // before the existing discovery/read/final sequence within four calls.
     if (!initial.resume && initial.savedSummary?.status === 'succeeded') {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
-    } else if (!r3Active && !initial.minimalDialogue && !naturalReadBudget(initialTools) && !initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
+    } else if (!versionedChecklist && !r3Active && !initial.minimalDialogue && !naturalReadBudget(initialTools) && !initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
       && !initialTools.some(t => summaryWrites.includes(t.name))) {
       const bounded = fitAgentContext(projectSynthesisPolicy(synthesisModelMessages(initial.messages)), [...initialTools, finalTool], { profile: initial.config.consultation?.profile, imageContextBudget });
       const first = bounded.messages.map(originalMessageId).find(Boolean);
@@ -1919,7 +1922,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               if (sourceBoundaryFinal) {
                 await scoped(async (tx, context) => {
                   const read = await one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-                    and run_id=${lease.runId} and kind='retrieval' and status='succeeded' limit 1`);
+                    and run_id=${lease.runId} and kind='retrieval' and (status='succeeded'
+                      or (${versionedChecklist} and status='failed' and input_summary->>'knowledgeStatus'='retrieval_unavailable')) limit 1`);
                   if (!read) fail('source_read_required', 502);
                   const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
                   parseNaturalKnowledgeAnswer(raw, evidence.sources, sourceReviewContext);
@@ -2562,13 +2566,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 code: executionError.providerCode, requestId: executionError.requestId, status: executionError.httpStatus,
                 outcomeKnown: executionError.outcomeKnown } } : {}) };
             await scoped(async tx => {
-              if (!outcome.ok) await tx.execute(sql`update app.assistant_run_steps set status='failed',private_checkpoint=null,source_refs='[]'::jsonb
+              if (!outcome.ok) await tx.execute(sql`update app.assistant_run_steps set status='failed',private_checkpoint=null,source_refs='[]'::jsonb,
+                input_summary=input_summary || ${JSON.stringify(executionError instanceof AssistantError && executionError.code === 'retrieval_unavailable'
+                  ? { knowledgeStatus: 'retrieval_unavailable' } : {})}::jsonb
                 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
               await tx.execute(sql`update app.assistant_run_steps set input_summary=coalesce(input_summary,'{}'::jsonb) || ${JSON.stringify({ audit })}::jsonb
                 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
             });
             return packet.result ? { content: JSON.stringify(packet.result) }
               : { content: JSON.stringify({ knowledgeStatus: 'unavailable', evidence: [], synthesisSources: [],
+                ...(executionError instanceof AssistantError && executionError.code === 'retrieval_unavailable'
+                  ? { retrievalStatus: 'retrieval_unavailable' } : {}),
                 instructions: '本次企业资料读取失败，无法确认企业标准。可按已取得的其他来源说明，不得声称已核实企业规定。' }), cacheable: false };
           }
           if (name !== 'record_need') fail('assistant_capability_forbidden', 403);
@@ -2635,7 +2643,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         if (reply.kind === 'knowledge_explanation') {
           if (!sourceMode.knowledgeExplanation) fail('invalid_model_answer', 502);
           const retrieval = await one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
-            and run_id=${lease.runId} and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`);
+            and run_id=${lease.runId} and kind='retrieval' and (status='succeeded'
+              or (${versionedChecklist} and status='failed' and input_summary->>'knowledgeStatus'='retrieval_unavailable'))
+              order by step_seq desc limit 1`);
           if (!retrieval) fail('source_read_required', 502);
           if (sourceBoundaryFinal) answer = parseNaturalKnowledgeAnswer(result.output?.text || '', evidence.sources, sourceReviewContext);
           else {

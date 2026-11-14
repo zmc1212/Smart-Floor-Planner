@@ -64,6 +64,9 @@ const checkSchema = z.strictObject({
   agentId: z.string().min(1).optional(),
   agentVersion: z.number().int().positive().optional(),
   workflowRunId: z.string().min(1).optional(),
+  workflowRevision: z.number().int().positive().optional(),
+  workflowDigest: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
+  publicEditionStatus: z.enum(['current', 'unknown']).optional(),
   evidenceVersions: z.array(z.string().min(1)).optional(),
   sourceType: z.enum(['enterprise_standard', 'public_standard', 'project_record', 'general_advice', 'mixed', 'unverified']).optional(),
   applicability: z.enum(['applicable', 'not_applicable', 'unknown']).optional(),
@@ -114,8 +117,8 @@ const registration = z.strictObject({
   inputSchema: z.literal('stage-specialist-input-v1'),
   outputSchema: z.literal('stage-specialist-output-v1'),
   version: z.number().int().positive(),
-  status: z.enum(['active', 'disabled', 'draft']),
-}).refine(value => value.status !== 'active' || value.workflowTemplateId !== null);
+  status: z.enum(['active', 'candidate', 'disabled', 'draft']),
+}).refine(value => !['active', 'candidate'].includes(value.status) || value.workflowTemplateId !== null);
 
 export type SpecialistRegistration = z.infer<typeof registration>;
 export type SpecialistInput = z.infer<typeof inputSchema>;
@@ -140,6 +143,7 @@ export function specialistRegistry(registrations: readonly SpecialistRegistratio
 }
 
 export const waterproofAgentId = 'waterproof-specialist';
+export const waterproofChecklistAgentVersion = 2;
 
 export type SpecialistRunBinding = {
   delegationId: string;
@@ -159,13 +163,16 @@ const schemaVersions = {
   inputSchema: 'stage-specialist-input-v1', outputSchema: 'stage-specialist-output-v1',
 } as const;
 
+const waterproofV1: SpecialistRegistration = {
+  ...schemaVersions, agentId: waterproofAgentId, version: 1, status: 'active',
+  name: '防水阶段专业 Agent', description: '解释施工准备、节点密封、验收与后续工序，并协助跟进待复核事项。',
+  supportedStages: ['waterproof'], supportedIntents: [...intents], knowledgeScopes: [...scopes],
+  workflowTemplateId: waterproofWorkflowTemplateId, publicStandardId: 'GB55030-2022', toolPermissions: [...permissions],
+};
+
 export const specialists = specialistRegistry([
-  {
-    ...schemaVersions, agentId: waterproofAgentId, version: 1, status: 'active',
-    name: '防水阶段专业 Agent', description: '解释施工准备、节点密封、验收与后续工序，并协助跟进待复核事项。',
-    supportedStages: ['waterproof'], supportedIntents: [...intents], knowledgeScopes: [...scopes],
-    workflowTemplateId: waterproofWorkflowTemplateId, publicStandardId: 'GB55030-2022', toolPermissions: [...permissions],
-  },
+  waterproofV1,
+  { ...waterproofV1, version: waterproofChecklistAgentVersion, status: 'candidate' },
   ...([
     ['electrical', '水电'], ['masonry', '泥木'], ['painting', '油漆'],
     ['installation', '安装'], ['handover', '竣工验收'],
@@ -175,6 +182,12 @@ export const specialists = specialistRegistry([
     supportedIntents: ['advice'], knowledgeScopes: [], workflowTemplateId: null, toolPermissions: [],
   })),
 ]);
+
+/** Candidates are reachable only through an explicit published workflow
+ * version. Ordinary consultation continues to resolve the active registry. */
+export function isPublishedSpecialistVersion(agent: Readonly<SpecialistRegistration> | undefined): agent is Readonly<SpecialistRegistration> {
+  return !!agent && (agent.status === 'active' || agent.status === 'candidate');
+}
 
 export function bindSpecialistInput(agent: Readonly<SpecialistRegistration>, input: SpecialistInput): SpecialistInput {
   return inputSchema.parse({

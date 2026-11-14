@@ -6,6 +6,10 @@ I6.15 接通 Native Executor 与 LangGraph 的同一 `start_delegation` 服务�
 
 ## I6.15 原咨询、运行与事项
 
+隔离 Workflow revision 4 显式选用 `waterproof-specialist@2`。新检查项绑定 Workflow revision 和 digest，以及项目、精确房间、Agent 版本、已选引文、实际页和来源版本。托管失败标记 `retrieval_unavailable`。公告附件经原件指纹与实际页核对后可供现场待核对清单使用，目录超时时保存 `publicEditionStatus: unknown`。当前项目的实际状态及正式复核仍由 Construction 证据决定。
+
+混合问题完成登记后，服务端登记消息与模型终稿分别保存。终稿被拒时，模型 Run 记录失败码，已提交事项和原 C01 回执继续可查。重进按当前成员、授权、原始消息和对应 Outbox 事件验证。
+
 - `DelegationService` 从客户原话、当前项目及精确房间取得授权；在同一事务写入委托、首条 Outbox 事件和正式 Run。Run 固定客户、会话、原消息、Agent 版本和发布 revision/digest；重复派送从原检查点接续。
 - 登记、暂停、恢复及取消使用原会话控制与服务回执。取消终止未完成的 Run、等待任务及仍在队列中的专业作业。已存在的施工记录和事项仍可追溯。历史委托沿原兼容读取。
 - 同房间、当前对客且带有效原件的现场记录才能登记专业事项。事项的首次事件保存来源关联与 Evidence 引用，后续修订继承。经理复核保存独立的复核 ID、版本与明确选择的回传节选及原件；工作流将获准结果回复到原消息。读回重验客户授权、房间、现场原件、人员和版本。

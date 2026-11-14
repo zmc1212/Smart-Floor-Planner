@@ -6,7 +6,20 @@ Integration 起点 `60b5be9e371a`。I6.16.1 协议切片定向 135/135（0 skipp
 
 I6.16.2 两条固定 Native C01 咨询用百炼 `deepseek-v4.1-flash-1017`。Run 1、2 均实际保存正文且委托写入为 0。10 次已返回 Responses（含 2 次附带建议），10,649 输入 / 4,086 输出 tokens，结算金额未知。两份首稿均有无据量数。Run 1 删除 200 mm 段后保留解释。Run 2 的先前投递仍间接认可师傅所报高度，业务判 `failed`。原驱动对 0 条委托的错断言保留。针对该证据收窄无据回答兜底至有当前引文的独立段，实际首稿仅零调用复放，按新代码的实模业务范围仍 `limited`。详见 `admin/tmp/i6.16/{advice,numeric,fixed-quantity-binding-before,fixed-quantity-binding-after}.json`。
 
-清单、持续委托及 Stable 的 I6.16 验收见[唯一执行计划](xiaok-renovation-agent-development-plan.md#2-唯一当前任务)。
+隔离 PG17 `xiaok_i616_validation` 使用企业 `5`、对照 `6`、业主 `3`、项目 `1`、卫生间 `1`。通过 WorkflowService 发布 `waterproof-specialist@2` 对应的 `waterproof-inspection-v1` revision `4`（`dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0`），rev1–3 原定义和摘要全文相等。原活动版本仍为 @1。发布和模拟见 `workflow-publication.json`。
+
+| 场景 | 状态 | 实际结果 |
+| --- | --- | --- |
+| 授权前的公开清单 | failed | Native Run `3` 未创建委托；四个 Responses 返回后仍断言 JGJ 298 当前状态，终稿拒绝 `standard_status_unverified`。 |
+| 首个正式委托 | failed | Native Run `4` 保存登记 `7`，子 Run `5` 因公网读原文和企业托管读取前提失败而止于 `source_read_required`。原回执和失败均保留。 |
+| 第二个正式委托及有据清单 | passed | 原 C01 `2` 的授权原话 `10`、Native Run `6`、登记回执 `11` 和子 Run `7`。托管检索明确 `retrieval_unavailable`；已复核住建部公告附件原件，按实际选中的 GB 55030-2022 第 27、28、31 页生成四项清单。目录超时保留现行性 `unknown`。Stable 重进读到相同清单 `13` 及三条可用引用。 |
+| 清单等候、复核与返回原 C01 | passed | 正式 Run `specialist:eed84ff3-25ef-4cf9-a0f5-bd6c99bf4af0` 走有据分支，完成现场与复核两个等待。Worker 和经理使用同一业务服务写入记录 `1`、`2`、事项 `35`、复核 `50`（修订 2）、Outbox `51`。原会话回执 `30` 回复原消息 `10`。老板端读同一事项，Stable 业主重进核对回执、受保护原件和同一个 Run。 |
+| 原会话、业主授权及租户 | passed | 对照企业、另一业主和另一 C01 无该 Run 或原件权限。撤销项目对客授权后 Stable 遮蔽结果且原件 404，恢复后读回同一结果。 |
+| Stable 工人选图上传、真实材料及真机 | limited | Stable 的模拟图片先遇存储限额，再遇相册临时路径准备失败。隔离驱动用工人身份通过同一 Construction 服务提交合成图，之后在 Stable 经理发布、员工整改、经理复核及老板、业主读回。真机、真实现场照片、真实微信授权、BLE 为 `not_run`。 |
+
+两次正式执行使用实际百炼 `deepseek-v4.1-flash-1017`，原咨询走 Responses，固定结构化专业子作业走 Chat Completions。实跑证据在 `admin/tmp/i6.16/` 下的 `checklist-consult.log`、`checklist-assistant-5.json`、`checklist_second.json`、`checklist-second-assistant-7.json`、`public-workflow-second-binding-{before,after}.json`、`c01-checklist-reentry.json` 和 `closed-loop.json`。Stable 各阶段保留前后摘要、原生请求和独立失败日志。原件来源见[住建部公告](https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2022/art_17339_768499.html)。
+
+候选切片定向 Assistant、Specialist Registry、Workflow Validator/Compiler/Simulator、Construction 54/54（0 skipped），TypeScript、定向 ESLint 与计划校验通过。见 `checklist-targeted-final.log`、`checklist-tsc.log`、`checklist-lint.log`。
 
 ## I6.15 统一执行器与正式防水委托（Limited）
 

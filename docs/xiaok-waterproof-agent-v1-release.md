@@ -170,3 +170,10 @@
 ## 14. I6.15 集成验证
 
 统一执行器工具、登记回执及正式 Run 属于集成运行层。`waterproof-specialist@1` 的注册及冻结表中发布 revision/digest、节点能力与输入输出 Schema 保持原值。新原咨询委托在原 PostgreSQL Store 登记 Run，按同一 Construction 事项和经理复核事实回传。历史事项 8 保留原来源。当前通过范围、首稿失败、Stable 和真实素材限制见[I6.15 集成审查](xiaok-integration-audit.md#i615-统一执行器与正式防水委托limited)。
+
+
+## 15. I6.16 V1.1 隔离候选
+
+防水 V1.1 注册为 `waterproof-specialist@2` 候选。隔离 Workflow revision `4` 显式调用此版本，摘要为 `dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0`。当前普通咨询继续选择活动注册 @1。Workflow rev1–3 和原始业务事项沿各自版本及摘要恢复。
+
+候选在真实 PG17 完成公开规范清单、现场等候、经理复核和原咨询回传。企业托管检索缺失，标准目录未在本次读取内确认现行性。Stable 的原件上传用实际 Construction 服务补测。授权前咨询、运行时一致性和真实素材的状态见[集成审查](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。

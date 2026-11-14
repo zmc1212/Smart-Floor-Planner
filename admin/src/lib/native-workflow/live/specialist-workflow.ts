@@ -8,7 +8,7 @@ import { currentSynthesisContext } from '@/lib/assistant/agent/synthesis-sources
 import { checkWebSources } from '@/lib/assistant/agent/web-evidence';
 import { validResult, syncSiteResults } from '@/lib/construction/site-results';
 import { specialistPolicy } from '@/lib/assistant/specialists/consultation';
-import { parseSpecialistOutput, specialists, type SpecialistEvidenceRef, type SpecialistRunBinding } from '@/lib/assistant/specialists/registry';
+import { isPublishedSpecialistVersion, parseSpecialistOutput, specialists, waterproofChecklistAgentVersion, type SpecialistEvidenceRef, type SpecialistRunBinding } from '@/lib/assistant/specialists/registry';
 import { specialistChecks, specialistPublicSections, type SpecialistEnterpriseRead, type SpecialistProjectEvidence, type SpecialistPublicRead } from '@/lib/assistant/specialists/evidence';
 import type { SynthesisAnswer, SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { configuredPublicRead, publicDocumentPages, publicDocumentReadFailures } from '@/lib/assistant/agent/public-research';
@@ -35,7 +35,7 @@ import { LiveOperationFailure, LiveOperationUnknownError, LiveOperationWaiting }
 async function specialistRunRegistration(tx: PostgresTransaction, d: ReviewDelegation) {
   const binding = d.scope.workflow!;
   const agent = specialists.version(binding.agentId, binding.agentVersion);
-  if (!agent || agent.status !== 'active' || agent.workflowTemplateId !== binding.templateId) fail('specialist_workflow_unavailable', 503);
+  if (!isPublishedSpecialistVersion(agent) || agent.workflowTemplateId !== binding.templateId) fail('specialist_workflow_unavailable', 503);
   const { record } = await getNativeWorkflowService().getDefinition(binding.templateId);
   const published = record.versions.find(version => version.revision === binding.revision && version.digest === binding.digest);
   if (!published) fail('specialist_workflow_unavailable', 503);
@@ -149,7 +149,7 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
   event: ReviewDelegationEvent, now: Date): Promise<DelegationOutcome> {
   const binding = d.scope.workflow!;
   const agent = specialists.version(binding.agentId, binding.agentVersion);
-  if (!agent || agent.status !== 'active' || agent.workflowTemplateId !== binding.templateId) return outcome('waiting_for_authorization');
+  if (!isPublishedSpecialistVersion(agent) || agent.workflowTemplateId !== binding.templateId) return outcome('waiting_for_authorization');
   const settings = await one(tx, sql`select agent_config,knowledge_epoch from app.assistant_enterprise_settings where enterprise_id=${d.enterpriseId}`);
   if (!specialistPolicy(d.enterpriseId, settings?.agent_config as Parameters<typeof specialistPolicy>[1] ?? { tools: false, providerKey: '', model: '' }))
     return outcome('waiting_for_authorization');
@@ -231,10 +231,12 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
         }
         case 'read.specialist_knowledge': {
           const scope = operation.config?.scope;
-          const enterprise = await checkDelegationStandards(tx, d, conversation, AbortSignal.timeout(6_000), {
+          const read = await checkDelegationStandards(tx, d, conversation, AbortSignal.timeout(6_000), {
             scope: scope === 'enterprise' || scope === 'project' ? scope : undefined,
             topK: Number(operation.config?.topK ?? 3),
           });
+          const enterprise = agent.version === waterproofChecklistAgentVersion && read.status === 'unavailable'
+            ? { ...read, retrievalStatus: 'retrieval_unavailable' } : read;
           return { enterprise };
         }
         case 'read.specialist_public_standard':
@@ -303,7 +305,8 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
             sources: consulted.filter(item => !item.web || !webChecks.get(item.web.hash)),
             project: verifiedProject, enterprise: operation.input.enterprise as SpecialistEnterpriseRead,
             publicStandard, knowledgeEpoch: Number(settings?.knowledge_epoch),
-            binding: { agentId: agent.agentId, agentVersion: agent.version, workflowRunId: runId },
+            binding: { agentId: agent.agentId, agentVersion: agent.version, workflowRunId: runId,
+              ...(agent.version === waterproofChecklistAgentVersion ? { workflowRevision: published.revision, workflowDigest: published.digest } : {}) },
           });
           const record = await specialistSiteRecord(tx, d, { requireCurrentStaff: true, managerOnly });
           const analysis = parseSpecialistOutput({
@@ -320,7 +323,8 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
             agentVersion: analysis.agentVersion, projectId: analysis.projectId, roomId: analysis.roomId,
             stage: analysis.stage, originalMessageId: analysis.originalMessageId, workflowRunId: analysis.workflowRunId,
             evidenceRefs: analysis.evidenceRefs, evidenceVersions: analysis.evidenceVersions, requestedChecks: analysis.requestedChecks,
-            unresolvedItems: analysis.unresolvedItems, humanReviewRequirement: analysis.humanReviewRequirement } };
+            unresolvedItems: analysis.unresolvedItems, humanReviewRequirement: analysis.humanReviewRequirement,
+            ...(agent.version === waterproofChecklistAgentVersion ? { workflowRevision: published.revision, workflowDigest: published.digest } : {}) } };
         }
         case 'wait.specialist_site_record':
         case 'wait.specialist_site_record.v2': {

@@ -4,14 +4,14 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { DelegationService } from '@/lib/native-workflow/live/delegation-store';
 import { currentDelegationViews, delegationNoticeAvailable, delegationReceipt, delegationSummary } from '@/lib/native-workflow/live/delegation-chat';
-import { delegationKinds, type SpecialistWorkflowBinding } from '@/lib/native-workflow/live/delegation-state';
+import { delegationKinds, delegationNotice, delegationPurpose, type SpecialistWorkflowBinding } from '@/lib/native-workflow/live/delegation-state';
 import { fail, fingerprint, safeText, type ActorContext, type MessageContent } from '../contracts';
 import type { ModelTool, ModelToolCall } from '../contracts/model';
 import { toolSchemaIssue } from '../agent/tool-protocol';
 import { ToolExecutor } from '../tools/executor';
 import { ToolRegistry } from '../tools/registry';
 import { specialistDelegationRoom, type ConsultationSpecialist } from '../specialists/consultation';
-import { specialists } from '../specialists/registry';
+import { isPublishedSpecialistVersion, specialists } from '../specialists/registry';
 import { MemoryService, type MemoryEntry } from './long-term';
 import { privateMemoryScope, type PrivateMemoryScope } from './scope';
 
@@ -79,7 +79,7 @@ export async function dispatchDelegationTool(tx: PostgresTransaction, actor: Act
     const agentVersion = Number(node?.config?.agentVersion);
     const selected = specialists.version(String(node?.config?.agentId), agentVersion);
     if (!published || published.definition.inputSchema.eventType !== 'specialist_followup'
-      || !selected || selected.agentId !== specialist.agent.agentId || selected.status !== 'active'
+      || !isPublishedSpecialistVersion(selected) || selected.agentId !== specialist.agent.agentId
       || selected.workflowTemplateId !== templateId || !selected.toolPermissions.includes('followup'))
       fail('specialist_workflow_unavailable', 503);
     return { templateId, revision: published.revision, digest: published.digest, agentId: selected.agentId, agentVersion, originRunId: runId, originBound: true };
@@ -287,7 +287,7 @@ export async function longTermDelegationReceipt(tx: PostgresTransaction, actor: 
   runId: string, options: { standalone?: boolean } = {}) {
   const scope = await privateMemoryScope(tx, actor, c);
   if (!scope) return null;
-  const receipts = await rows(tx, sql`select s.private_checkpoint,m.content as original from app.assistant_run_steps s
+  const receipts = await rows(tx, sql`select s.private_checkpoint,m.id::text as trigger_id,m.content as original from app.assistant_run_steps s
     join app.assistant_runs r on r.enterprise_id=s.enterprise_id and r.id=s.run_id
     join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.conversation_id=r.conversation_id and m.id=r.trigger_message_id
     where r.enterprise_id=${scope.enterpriseId} and r.id=${runId} and r.conversation_id=${scope.conversationId}
@@ -305,8 +305,12 @@ export async function longTermDelegationReceipt(tx: PostgresTransaction, actor: 
       if ((result?.quote ?? task.objective) !== original || /[？?]/u.test(original)) continue;
     }
     if (!await delegationNoticeAvailable(tx, actor, c, noticeId)) continue;
-    const notice = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${scope.enterpriseId}
-      and conversation_id=${scope.conversationId} and id=${noticeId} and author_kind='system'`);
+    const key = task.originMessageId === step.trigger_id ? 'create:' + task.id : 'register:' + task.id + ':' + step.trigger_id;
+    const notice = await one(tx, sql`select m.content from app.assistant_messages m join app.domain_event_outbox e
+      on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
+      where m.enterprise_id=${scope.enterpriseId} and m.conversation_id=${scope.conversationId} and m.id=${noticeId}
+        and m.author_kind='system' and m.purpose=${delegationPurpose} and e.type=${delegationNotice}
+        and e.aggregate_id=${key} and e.payload->>'delegationId'=${task.id}`);
     if (notice) return { messageId: noticeId, text: safeText(notice.content as MessageContent) };
   }
   return null;

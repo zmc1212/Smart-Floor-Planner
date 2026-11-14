@@ -172,8 +172,8 @@ export async function completeRun(lease: Lease, result: RunResult, commit?: (tx:
   });
 }
 
-/** A service receipt already has a message and a metered model turn. Finish
- * against that message, keeping all provider steps and the receipt distinct. */
+/** Finish a registration-only turn against its stored service message. On a
+ * mixed turn retain the saved receipt and the separate failed model result. */
 export async function completeDelegationReply(lease: Lease, options: { standalone?: boolean; rejectedAnswer?: string } = {}) {
   const { longTermDelegationReceipt } = await import('../memory/agent');
   return withTenantTransaction(lease.enterpriseId, async tx => {
@@ -188,7 +188,10 @@ export async function completeDelegationReply(lease: Lease, options: { standalon
       on conflict do nothing`);
     await tx.execute(sql`update app.assistant_quota_reservations set status='reconciling',version=version+1,updated_at=now()
       where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
-    await finish(tx, lease, 'succeeded', null, receipt.messageId);
+    // The service message already belongs to the conversation and the receipt
+    // step. A rejected model result has no answer message of its own.
+    if (options.rejectedAnswer) await finish(tx, lease, 'failed', options.rejectedAnswer);
+    else await finish(tx, lease, 'succeeded', null, receipt.messageId);
     return true;
   });
 }

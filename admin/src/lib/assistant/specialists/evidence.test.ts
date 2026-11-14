@@ -44,6 +44,20 @@ test('a cited, current public page independently supports the checklist while an
   assert.equal(specialistChecks({ ...input, sources: [sources[0]] }).hasPublic, false);
 });
 
+test('a version-bound checklist can cite the exact reviewed original with unknown edition status', () => {
+  const publicStandard = { ...input.publicStandard, editionStatus: 'unknown' };
+  const binding = { agentId: 'waterproof-specialist', agentVersion: 2, workflowRunId: 'specialist:42',
+    workflowRevision: 4, workflowDigest: 'a'.repeat(64) };
+  assert.equal(specialistChecks({ ...input, publicStandard }).hasPublic, false);
+  const result = specialistChecks({ ...input, publicStandard, binding });
+  assert.equal(result.hasPublic, true);
+  assert.ok(result.unresolvedItems.includes('本次已核对公开规范原页，现行状态待核实'));
+  assert.deepEqual(result.requestedChecks.map(check => [check.workflowRevision, check.workflowDigest, check.publicEditionStatus]),
+    [[4, binding.workflowDigest, 'unknown'], [4, binding.workflowDigest, undefined]]);
+  assert.equal(specialistChecks({ ...input, publicStandard: { ...publicStandard, sources: [{ hash: 'changed', page: 31 }] }, binding }).hasPublic, false);
+  assert.equal(specialistChecks({ ...input, publicStandard: { ...publicStandard, editionStatus: 'withdrawn' }, binding }).hasPublic, false);
+});
+
 test('an enterprise citation must match the active epoch, original version and lookup scope', () => {
   const candidate = { ...input, answer: { kind: 'synthesis' as const, segments: [
     { basis: 'evidence' as const, text: '由团队安排检查', citations: [{ sourceId: 'K3', quote: knowledge.text }] },

@@ -1,4 +1,4 @@
-import { specialists, waterproofAgentId, type SpecialistRegistration } from '../assistant/specialists/registry';
+import { isPublishedSpecialistVersion, specialists, waterproofAgentId, type SpecialistRegistration } from '../assistant/specialists/registry';
 import { WORKFLOW_SCHEMA_VERSION, type WorkflowDefinition } from './types';
 
 export function createWaterproofInspectionDefinition(): WorkflowDefinition {
@@ -6,7 +6,7 @@ export function createWaterproofInspectionDefinition(): WorkflowDefinition {
 }
 
 export function createSpecialistInspectionDefinition(agent: Readonly<SpecialistRegistration>): WorkflowDefinition {
-  if (agent.status !== 'active' || !agent.workflowTemplateId) throw new Error('specialist_template_unavailable');
+  if (!isPublishedSpecialistVersion(agent) || !agent.workflowTemplateId) throw new Error('specialist_template_unavailable');
   return {
     schemaVersion: WORKFLOW_SCHEMA_VERSION,
     definitionId: agent.workflowTemplateId,

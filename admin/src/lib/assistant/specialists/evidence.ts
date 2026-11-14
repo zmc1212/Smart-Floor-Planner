@@ -19,6 +19,7 @@ export type SpecialistProjectEvidence = {
 export type SpecialistEnterpriseRead = {
   status: 'sources_found' | 'no_match' | 'disabled' | 'unavailable';
   epoch: number;
+  retrievalStatus?: 'retrieval_unavailable';
   sources?: Array<Pick<Evidence, 'ref' | 'hash'>>;
 };
 
@@ -93,7 +94,7 @@ export function specialistChecks(input: {
   enterprise: SpecialistEnterpriseRead;
   publicStandard: SpecialistPublicRead;
   knowledgeEpoch: number;
-  binding?: { agentId?: string; agentVersion?: number; workflowRunId?: string };
+  binding?: Pick<SpecialistCheck, 'agentId' | 'agentVersion' | 'workflowRunId' | 'workflowRevision' | 'workflowDigest'>;
 }) {
   const { answer, sources, project, enterprise, publicStandard, knowledgeEpoch } = input;
   let hasEnterprise = false, hasPublic = false;
@@ -124,7 +125,9 @@ export function specialistChecks(input: {
           checkEnterprise = true;
         }
         if (ref.kind === 'public_standard' && segment.basis !== 'uncertainty' && publicStandard.status === 'ready'
-          && publicStandard.editionStatus === 'current' && ref.standardId === publicStandard.standardId
+          && (publicStandard.editionStatus === 'current'
+            || input.binding?.workflowRevision && publicStandard.editionStatus === 'unknown')
+          && ref.standardId === publicStandard.standardId
           && publicStandard.sources?.some(item => item.hash === ref.originalHash && item.page === ref.page)) {
           hasPublic = true;
           checkPublic = true;
@@ -147,9 +150,10 @@ export function specialistChecks(input: {
       checkId: 'check_' + fingerprint({ projectId: project.id, roomId: project.roomId, text: segment.text,
         refs: refs.map(ref => ref.ref.type + ':' + ref.ref.id + ':' + ref.ref.version + ':' + ref.hash) }).slice(0, 24),
       projectId: project.id, roomId: project.roomId, stage: project.stage,
-      ...(input.binding?.agentId ? { agentId: input.binding.agentId } : {}),
-      ...(input.binding?.agentVersion ? { agentVersion: input.binding.agentVersion } : {}),
-      ...(input.binding?.workflowRunId ? { workflowRunId: input.binding.workflowRunId } : {}),
+      ...input.binding,
+      ...(checkPublic && input.binding?.workflowRevision ? {
+        publicEditionStatus: publicStandard.editionStatus === 'current' ? 'current' : 'unknown',
+      } : {}),
       evidenceVersions: [...new Set(refs.map(ref => ref.ref.version))],
       sourceType: checkSourceType(basis),
       applicability: basis.has('not_applicable') ? 'not_applicable' : basis.has('unverified') ? 'unknown' : 'applicable',
@@ -163,6 +167,7 @@ export function specialistChecks(input: {
   if (!hasEnterprise) unresolvedItems.push(enterprise.status === 'unavailable' ? '企业知识服务暂不可用'
     : enterprise.status === 'disabled' ? '企业知识未启用' : '本次未核实可用的企业防水条款');
   if (!hasPublic) unresolvedItems.push('本次未核实适用的公开规范原页及同版状态');
+  else if (input.binding?.workflowRevision && publicStandard.editionStatus === 'unknown') unresolvedItems.push('本次已核对公开规范原页，现行状态待核实');
   if (!project.records.length) unresolvedItems.push('待补充该房间已发布的现场记录');
   const evidenceRefs = [...new Map(checks.flatMap(check => check.evidenceRefs)
     .map(ref => [ref.ref.type + ':' + ref.ref.id + ':' + ref.ref.version, ref])).values()];
