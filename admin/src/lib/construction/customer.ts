@@ -4,7 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, type ActorContext } from '@/lib/assistant/contracts';
 import { currentStage, readStageSettings, stageContact } from './stages-store';
 import { publishedSiteRecord, siteRecordProjection } from './site-publications';
-import { siteRecordText, type SiteDraft } from './site-contract';
+import { publishedSiteRecordText, type SiteDraft } from './site-contract';
 import { currentStageEvent } from './stage-events';
 import { collaborationEnabled } from './collaboration-scope';
 import { projectSiteIssues } from './site-issues';
@@ -59,7 +59,7 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
       const r = await publishedSiteRecord(tx, eid, uid, String(candidate.id));
       if (r) {
         published.push({ id: String(r.id), version: Number(r.published_version), roomName: String(r.room_name_snapshot), data: r.data });
-        lines.push(`团队已核对发布的现场记录（${String(p.name)}；不代表正式验收/费用或工期批准）：\n${siteRecordText(r.data as SiteDraft, String(r.room_name_snapshot))}`);
+        lines.push(`团队已核对发布的现场记录（${String(p.name)}；不代表正式验收/费用或工期批准）：\n${publishedSiteRecordText(r.data as SiteDraft, String(r.room_name_snapshot), Number(r.published_version))}`);
       }
     }
     const project = data[data.length - 1];

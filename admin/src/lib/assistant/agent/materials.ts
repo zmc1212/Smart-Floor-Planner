@@ -4,7 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { adaptSurveyGraphToRooms, parseFormalSurveyLayout } from '@/lib/survey-graph';
 import { customerProjects } from '@/lib/construction/customer';
 import { publishedSiteRecord } from '@/lib/construction/site-publications';
-import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
+import { publishedSiteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
 import { sharedMaterials } from '@/lib/construction/site-materials';
 import { customerMaterialReviews } from '@/lib/construction/site-results';
 import { customerPlans } from '@/lib/construction/site-plans';
@@ -197,7 +197,7 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
       const media = await rows(tx, sql`select a.media_id from app.construction_site_attachments a join app.construction_site_media m
         on m.enterprise_id=a.enterprise_id and m.id=a.media_id and m.deleted_at is null where a.enterprise_id=${eid} and a.record_id=${String(record.id)} order by a.position`);
       const data = record.data as SiteDraft;
-      const text = siteRecordText(data, String(record.room_name_snapshot));
+      const text = publishedSiteRecordText(data, String(record.room_name_snapshot), Number(record.published_version));
       sources.push({ ref: { type: 'site_record', id: String(record.id), version: String(record.published_version) }, hash: fingerprint({ data: record.data, media }),
         leadId, projectId, roomId: record.room_id ? String(record.room_id) : null, roomName: String(record.room_name_snapshot),
         sourceMessageId: record.source_message_id ? String(record.source_message_id) : null, mediaIds: media.map(m => String(m.media_id)),

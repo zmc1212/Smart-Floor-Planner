@@ -1,13 +1,22 @@
 import type { SynthesisAnswer, SynthesisSource } from './synthesis';
 import { resolveCatalogCitation, sourceCitationCatalog } from './citation-catalog';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
+import { unverifiedParameterEndorsements } from './parameter-provenance';
 
 export type ResponseReviewIssue = { segment: number; code: 'unscoped_measurement_gap' | 'repeated_known_need' | 'internal_wording'
   | 'reopened_unavailable_need' | 'unsolicited_unknown_plan' | 'unsupported_work_absence' | 'unscoped_work_readiness' | 'misattributed_shared_need'
   | 'misattributed_project_quantity' | 'misattributed_project_observation' | 'unsupported_evidence_mechanism'
   | 'contradictory_measurement_comparison' | 'unmeasured_compliance_claim' | 'misattributed_rule_comparison' | 'misattributed_project_status'
-  | 'source_answer_scope' | 'independent_advice_scope' | 'unsupported_source_condition' | 'misattributed_project_room' };
+  | 'source_answer_scope' | 'independent_advice_scope' | 'unsupported_source_condition' | 'misattributed_project_room'
+  | 'unsupported_user_parameter_endorsement' | 'unsupported_enterprise_claim' | 'contradicted_published_record' };
 export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal?: { messageId: string; hash: string };
+  /** The run's enterprise retrieval was unavailable. An unavailable source is
+   * not evidence that the enterprise has no rule, and generic advice cannot be
+   * attributed to the enterprise. */
+  enterpriseUnavailable?: boolean;
+  /** Native business snapshots are projected without citation ids, so the
+   * stage printed in the server snapshot is itself the supporting source. */
+  projectSnapshotAuthoritative?: boolean;
   /** Bound only by the knowledge-off ordinary-dialogue run policy. Uncited
    * advice is model knowledge, not an assertion from an enterprise/site source. */
   generalKnowledge?: boolean;
@@ -148,16 +157,26 @@ type ProjectStatusClaim = { field: 'stage' | 'phone'; value: string };
 function projectStatusClaims(text: string, stageValues: string[] = []): ProjectStatusClaim[] {
   return text.split(/[，,。！？!?；;\n]/u).flatMap(clause => {
     const conditional = (index: number) => /如果|假如|假设|示例|例如|无法确认|不能确认/u.test(clause.slice(0, index));
+    // A status subject must start a clause or follow a separator. Without this
+    // boundary, “查了当前施工节点：团队标记的当前节点是水电” would treat the
+    // label as a subject and capture the following sentence as its value.
+    const bounded = (index: number) => index === 0 || /[：:，,。；;\s（(]/u.test(clause[index - 1]);
     const claims: ProjectStatusClaim[] = [];
+    // The alternation may start at “当前节点” inside “团队标记的当前节点”; a
+    // directly preceding status label is still a bounded subject.
+    const labelBounded = (index: number) => /(?:团队|项目)(?:当前)?(?:标记的)?(?:的)?$/u.test(clause.slice(0, index));
     for (const match of clause.matchAll(/(?:当前(?:项目|团队)?(?:标记的)?|(?:团队|项目)(?:当前)?(?:标记的)?)(?:的)?(?:施工)?(?:节点|阶段)(?:登记为|标为|显示在|是(?!否)|为|[:：])\s*([\p{Script=Han}]{2,16})/gu)) {
+      if (!bounded(match.index!) && !labelBounded(match.index!)) continue;
       const value = match[1].replace(/(?:施工)?阶段$/u, '');
-      if (conditional(match.index!) || /^(?:什么|哪|阶段标记|状态标签)/u.test(match[1]) || /吗$/u.test(value)) continue;
+      if (/^(?:团队|项目|当前|标记|施工|节点|阶段|本次)/u.test(value)
+        || conditional(match.index!) || /^(?:什么|哪|阶段标记|状态标签)/u.test(match[1]) || /吗$/u.test(value)) continue;
       claims.push({ field: 'stage', value });
     }
     // Match an actual returned field value after an explicit current-stage
     // subject, independently of the model's choice of linking verb. This is
     // still a bounded field check, not a general semantic judge.
     for (const match of clause.matchAll(/(?:当前(?:项目|团队)?|(?:团队|项目)(?:当前)?)(?:的)?(?:施工)?(?:节点|阶段)/gu)) {
+      if (!bounded(match.index!) && !labelBounded(match.index!)) continue;
       const predicate = clause.slice(match.index! + match[0].length);
       if (conditional(match.index!) || /是否|能否|哪|什么|不是|并非|不在|尚未进入/u.test(predicate)) continue;
       for (const value of stageValues) {
@@ -174,12 +193,19 @@ function projectStatusClaims(text: string, stageValues: string[] = []): ProjectS
   });
 }
 
-function unsupportedProjectStatus(text: string, citations: Citations, sources: SynthesisSource[], currentStage?: string) {
+function unsupportedProjectStatus(text: string, citations: Citations, sources: SynthesisSource[], currentStage?: string,
+  snapshotAuthoritative = false) {
   const quoted = [...actualProjectCitations(citations, sources).flatMap(citation => projectStatusClaims(citation.quote)),
     ...(currentStage ? projectStatusClaims('当前阶段为' + currentStage).filter(claim => claim.field === 'stage') : [])];
   const values = [...new Set(sources.filter(source => source.kind === 'project' && !source.material && !source.followup)
     .flatMap(source => projectStatusClaims(source.text)).filter(claim => claim.field === 'stage').map(claim => claim.value))];
-  return projectStatusClaims(text, values).some(claim => !quoted.some(original => original.field === claim.field && original.value === claim.value));
+  // A native business snapshot is server data without citation ids; repeating
+  // its printed stage is not a model invention. Synthesis sources keep the
+  // stricter citation requirement verified by the existing tests.
+  return projectStatusClaims(text, values).some(claim => {
+    if (snapshotAuthoritative && claim.field === 'stage' && values.includes(claim.value)) return false;
+    return !quoted.some(original => original.field === claim.field && original.value === claim.value);
+  });
 }
 
 /** Candidate IDs only, never a repaired selection or new source. Full original
@@ -358,6 +384,31 @@ export function unavailableOccupancyRooms(sources: SynthesisSource[]): string[] 
     .map(source => source.material!.roomName).filter(room => typeof room === 'string' && !!room))];
 }
 
+/** A server-projected published record cannot be described as a draft because
+ * its preserved note still quotes the pre-publication wording. A denial
+ * (“不是草稿，已发布”) is not a contradiction. */
+function contradictedPublishedRecord(text: string, sources: SynthesisSource[]) {
+  if (!sources.some(source => source.material?.ref.type === 'site_record' && source.material.basis === 'published_project_record')) return false;
+  return text.split(/[。！？!?；;\n]/u).some(sentence => {
+    if (!/(?:记录|本条|这条|该条|本次记录)/u.test(sentence)) return false;
+    if (!/(?:草稿|未发布|未批准|尚未发布|待发布)/u.test(sentence)) return false;
+    return !/(?:不是|并非|已发布|已核对发布|正式发布|已经发布|服务端正式状态|不代表)/u.test(sentence);
+  });
+}
+
+/** Enterprise retrieval unavailable means “not verified this time”, never
+ * “the enterprise has no rule”. Generic advice may stay advice; it cannot be
+ * rewritten as a company requirement without a current enterprise original. */
+function unsupportedEnterpriseClaim(text: string, citations: Citations, sources: SynthesisSource[], unavailable?: boolean) {
+  if (!unavailable) return false;
+  if (citations.some(citation => sources.some(source => source.sourceId === citation.sourceId && source.kind === 'knowledge'))) return false;
+  return text.split(/[。！？!?；;\n]/u).some(sentence => {
+    if (/(?:本次|本轮|这次)?(?:未|没有|没能|没取得|无法|不能|缺|待核实)|以[^。；\n]{1,24}为准|不代表|不属于|并非|不等于|不等同|不作(?:为)?|不冒充/u.test(sentence)) return false;
+    return /(?:我们|我|本|咱们)?(?:公司|企业|我司)(?:的)?[^。！？\n]{0,12}(?:规定|标准|工艺|做法|要求|制度|口径)|(?:企业|公司)(?:标准|工艺|规定|做法|要求)/u.test(sentence)
+      && /(?:要求|规定|应|须|必须|做到|采用|标准|做法|高度|宽度|时长|遍)/u.test(sentence);
+  });
+}
+
 /** Narrow, reproducible defects observed in configured-model answers, not a
  * general semantic judge. Never rewrite an answer or its source quotations.
  * Call only after provenance, numeric and formal-commitment validation. */
@@ -386,6 +437,19 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
     // Final validation receives canonical references; bounded repair can read
     // the original model catalog IDs. Resolve both through the same catalog.
     const citations = segment.citations.map(citation => resolveCatalogCitation(citation as unknown as Record<string, unknown>, sources) || citation);
+    const citedQuotes = citations.flatMap(citation => typeof (citation as { quote?: unknown }).quote === 'string'
+      ? [(citation as { quote: string }).quote] : []);
+    // Native business snapshots are server data without citation ids. For the
+    // project-fact guards only, the published snapshot text is the supporting
+    // original; knowledge/web/formal citations keep their own strict rules.
+    const projectSnapshotCitations = context.projectSnapshotAuthoritative && !citedQuotes.length
+      ? sources.filter(source => source.kind === 'project' && !source.material && !source.followup)
+        .map(source => ({ sourceId: source.sourceId, quote: source.text })) : citations;
+    if (unverifiedParameterEndorsements(segment.text, context.currentQuestion || '', citedQuotes).length)
+      codes.add('unsupported_user_parameter_endorsement');
+    if (unsupportedEnterpriseClaim(segment.text, citations, sources, context.enterpriseUnavailable))
+      codes.add('unsupported_enterprise_claim');
+    if (contradictedPublishedRecord(segment.text, sources)) codes.add('contradicted_published_record');
     if (independentAdvice && citations.some(c => !sources.some(s => s.sourceId === c.sourceId && ['knowledge', 'web'].includes(s.kind))))
       codes.add('independent_advice_scope');
     if (sourceOnly) {
@@ -393,11 +457,12 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
         codes.add('source_answer_scope');
       if (unsupportedSourceCondition(segment.text, citations, sources)) codes.add('unsupported_source_condition');
     }
-    if (crossRoomCitations(citations, sources, context.currentRoom)) codes.add('misattributed_project_room');
-    if (unsupportedProjectQuantity(segment.text, citations, sources)) codes.add('misattributed_project_quantity');
-    if (unsupportedProjectObservation(segment.text, citations, sources)) codes.add('misattributed_project_observation');
-    if (unsupportedRecordGap(segment, citations, sources)) codes.add('misattributed_project_observation');
-    if (unsupportedProjectStatus(segment.text, citations, sources, context.currentProjectStage)) codes.add('misattributed_project_status');
+    if (crossRoomCitations(projectSnapshotCitations, sources, context.currentRoom)) codes.add('misattributed_project_room');
+    if (unsupportedProjectQuantity(segment.text, projectSnapshotCitations, sources)) codes.add('misattributed_project_quantity');
+    if (unsupportedProjectObservation(segment.text, projectSnapshotCitations, sources)) codes.add('misattributed_project_observation');
+    if (unsupportedRecordGap(segment, projectSnapshotCitations, sources)) codes.add('misattributed_project_observation');
+    if (unsupportedProjectStatus(segment.text, citations, sources, context.currentProjectStage,
+      context.projectSnapshotAuthoritative)) codes.add('misattributed_project_status');
     if (unsupportedRuleComparison(segment.text, citations, sources)) codes.add('misattributed_rule_comparison');
     // Natural explanations require the existing source-bound semantic proof
     // before commit. Causal entailment belongs to that review: a vocabulary
@@ -405,7 +470,7 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
     // Legacy paths retain their original heuristic; hard guards above remain.
     if (context.knowledgeExplanation !== 'natural-knowledge-answer-v1'
       && segment.basis === 'evidence' && unsupportedEvidenceMechanism(segment.text, citations)) codes.add('unsupported_evidence_mechanism');
-    for (const code of projectAssessmentIssues(segment.text, segment.basis, citations, sources)) codes.add(code);
+    for (const code of projectAssessmentIssues(segment.text, segment.basis, projectSnapshotCitations, sources)) codes.add(code);
     if (/混合(?:行|原话)|最小待核实项|qualifiedBy|currentFactId|supersedes/.test(segment.text)) codes.add('internal_wording');
     for (const sentence of segment.text.split(/[。！？!?；;\n]/)) {
       const mentionedRooms = rooms.filter(room => sentence.includes(room));

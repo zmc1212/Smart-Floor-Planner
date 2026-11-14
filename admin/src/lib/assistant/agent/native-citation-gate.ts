@@ -116,12 +116,42 @@ export function nativeCitationGate(draft: string, catalog: Iterable<RagCitationS
   return { assessment, issue: null };
 }
 
+/** Provider output occasionally substitutes a Greek/Cyrillic look-alike for a
+ * Latin letter in a citation id. Normalize only when the mapped id is actually
+ * issued by this run; an unknown id stays invalid and fail-closed. */
+const citationHomoglyphs: Record<string, string> = {
+  'А': 'A', 'В': 'B', 'С': 'C', 'Е': 'E', 'Н': 'H', 'К': 'K', 'М': 'M', 'О': 'O', 'Р': 'P', 'Т': 'T', 'У': 'Y', 'Х': 'X',
+  'а': 'a', 'с': 'c', 'е': 'e', 'о': 'o', 'р': 'p', 'х': 'x',
+  'Α': 'A', 'Β': 'B', 'Ε': 'E', 'Ζ': 'Z', 'Η': 'H', 'Ι': 'I', 'Κ': 'K', 'Μ': 'M', 'Ν': 'N', 'Ο': 'O', 'Ρ': 'P', 'Τ': 'T', 'Υ': 'Y', 'Χ': 'X',
+};
+function issuedCitationId(value: string, issued: Set<string>) {
+  if (issued.has(value)) return value;
+  const mapped = [...value].map(character => citationHomoglyphs[character] ?? character).join('');
+  return issued.has(mapped) ? mapped : null;
+}
+
 /** Bailian may spell the same citation token as (CITE id) in a repaired
  * answer. Accept only a complete marker for an issued same-run id. The
  * normal citation, quantity and formal-claim validators still own delivery. */
 export function normalizeNativeCitationCarrier(text: string, sources: Iterable<RagCitationSource>) {
   const issued = new Set([...sources].filter(source => source.origin === 'current' || source.origin === 'recovered')
     .map(source => source.nativeId));
-  return text.replace(/\(CITE ([A-Za-z0-9_-]{1,80})\)/gu, (marker, id: string) =>
-    issued.has(id) ? '[' + id + '](CITE)' : marker);
+  const resolve = (id: string) => issuedCitationId(id, issued);
+  return text
+    .replace(/CITE\s*\[([^\]]+)\]/gu, (marker, id: string) => {
+      const mapped = resolve(id.trim());
+      return mapped ? '[' + mapped + '](CITE)' : marker;
+    })
+    .replace(/\[([^\]]+)\]\(CITE\s+([^\s)]{1,80})\)/gu, (marker, _label: string, id: string) => {
+      const mapped = resolve(id);
+      return mapped ? '[' + mapped + '](CITE)' : marker;
+    })
+    .replace(/\(CITE ([^\s)]{1,80})\)/gu, (marker, id: string) => {
+      const mapped = resolve(id);
+      return mapped ? '[' + mapped + '](CITE)' : marker;
+    })
+    .replace(/\[([^\]]+)\]\(CITE\)/gu, (marker, id: string) => {
+      const mapped = resolve(id);
+      return mapped ? '[' + mapped + '](CITE)' : marker;
+    });
 }

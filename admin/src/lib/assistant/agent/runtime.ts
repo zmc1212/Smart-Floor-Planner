@@ -31,6 +31,9 @@ export type AgentRuntimePorts = {
   resolveToolReply?(state: AgentCheckpoint): Promise<string | null>;
   /** Deterministic final-response reconstruction only; no tools or dispatch. */
   resolveFinal?(text: string, state: AgentCheckpoint): Promise<string>;
+  /** Optional application-owned constraint for the final-only turn. It can only
+   * narrow what may be asserted from sources already read; it never adds tools. */
+  finalTurnGuidance?(): string | null;
   validateFinal?(text: string, turn: number, finalFromTools?: boolean): Promise<FinalAnswerIssue | null>;
 };
 const State = Annotation.Root({
@@ -125,9 +128,18 @@ export async function runRenovationAgent(input: {
       const businessTools=tools.filter(tool=>!state.exhaustedTools.includes(tool.name));
       const contextComplete = ports.canFinalizeContext?.(state.messages);
       const availableTools = state.validationRepairs || finalTurn || state.finalizing || contextComplete ? [] : nativeFinal&&(businessTools.length||input.nativeFinishTool)?[...businessTools,finish]:businessTools;
+      const finalGuidance = !availableTools.length && !state.validationRepairs ? ports.finalTurnGuidance?.() : null;
       const messages: ModelMessage[] = !availableTools.length && !state.validationRepairs
-        ? [...state.messages, { role: 'system', content: [{ type: 'text', text: finalTurnInstructions }] }] : state.messages;
-      const output = await ports.model(state.turn, messages, availableTools);
+        ? [...state.messages, { role: 'system', content: [{ type: 'text', text: finalTurnInstructions
+          + (finalGuidance ? '\n' + finalGuidance : '') }] }] : state.messages;
+      let output = await ports.model(state.turn, messages, availableTools);
+      // A final-only turn offered no tools. If the provider still emits a read
+      // call with a non-empty answer, that call was never executed and its
+      // result cannot influence the text. Discard the call and validate the
+      // answer; writes and mixed final packets keep their existing failure.
+      if (!availableTools.length && !state.validationRepairs && output.text.trim()
+        && output.toolCalls.length && output.toolCalls.every(call => readTools.has(call.name)))
+        output = { ...output, toolCalls: [] };
       await ports.authorize();
       const availableNames = new Set(availableTools.map(tool => tool.name));
       const unavailable = output.toolCalls.some(c => !availableNames.has(c.name));

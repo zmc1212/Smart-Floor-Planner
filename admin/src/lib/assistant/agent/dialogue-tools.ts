@@ -16,6 +16,15 @@ import type { RagCitationSource, RagChatMessage } from '../fastgpt/native-rag';
  * XiaoK native executor dispatch the same authorized implementations, so
  * migrating the orchestrator can never change what a tool may read or write. */
 export type DialogueToolReceipt = Record<string, unknown>;
+/** One shared vocabulary for every source read. The model must not turn an
+ * unavailable provider into “no such rule”, and must not treat “no match” as
+ * proof that the source does not exist. */
+export type SourceStatus = 'retrieved_and_verified' | 'retrieved_but_not_applicable' | 'no_match'
+  | 'retrieval_unavailable' | 'source_expired' | 'source_withdrawn' | 'source_unreadable' | 'unknown';
+export function enterpriseSourceStatus(status: unknown): SourceStatus {
+  return status === 'retrieval_unavailable' ? 'retrieval_unavailable'
+    : status === 'ready' ? 'retrieved_and_verified' : status === 'empty' ? 'no_match' : 'unknown';
+}
 export type DialogueToolRuntime = {
   lease: Lease;
   /** Executor protocol recorded on every step and receipt. */
@@ -86,6 +95,7 @@ export function dialogueEnterpriseSearch(rt: DialogueToolRuntime) {
       // The receipt is persisted with the step so an interrupted run can reuse
       // it verbatim instead of re-issuing the same metered query.
       const receipt: DialogueToolReceipt = { status: unavailable ? 'retrieval_unavailable' : evidence.length ? 'ready' : 'empty', kind: 'enterprise',
+        sourceStatus: enterpriseSourceStatus(unavailable ? 'retrieval_unavailable' : evidence.length ? 'ready' : 'empty'),
         ...(unavailable ? { instructions: '本次托管企业知识检索不可用。可以使用另行取得的公开原文，并说明企业资料本次未核实。' } : {}),
         ...(evidence.length ? nativeCites(sources.map(s => ({ id: s.nativeId, sourceName: '企业工艺｜PPT原文', content: s.quote! }))) : {}) };
       await withTenantTransaction(lease.enterpriseId, async tx => {
@@ -142,7 +152,8 @@ export function dialogueBusinessQuery(rt: DialogueToolRuntime) {
               values(${lease.enterpriseId},${String(project.projectId)},${String(current.conversation.id)}) on conflict do nothing`);
           // The receipt is persisted with the step (keyed by the caller's own
           // domain/lead pair) so an interrupted run reuses it verbatim.
-          const receipt: DialogueToolReceipt = { status: selected ? 'ready' : 'empty', resultKey: snapshot.version, text: snapshot.displayText };
+          const receipt: DialogueToolReceipt = { status: selected ? 'ready' : 'empty',
+            sourceStatus: selected ? 'retrieved_and_verified' : 'no_match', resultKey: snapshot.version, text: snapshot.displayText };
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
             values(${lease.enterpriseId},${lease.runId},${1400 + sequence},'agent_tool','query_business',1,'succeeded',
               ${JSON.stringify(snapshot)}::jsonb,

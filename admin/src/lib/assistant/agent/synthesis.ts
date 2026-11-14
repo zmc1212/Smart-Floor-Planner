@@ -21,7 +21,7 @@ import { scopedReportSynthesisSources, type ReportSourceScope } from './report-s
 import { reportCoordinationText } from './report-question-plan';
 import type { SourceQuestionCoverage } from './source-question-coverage';
 import { originalMessageId } from './context-budget';
-import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
+import { publishedSiteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; knowledge?: KnowledgeProvenance; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'>; reportScope?: ReportSourceScope };
@@ -405,7 +405,7 @@ function businessSourceList(resultKey: string, snapshot: BusinessSnapshot): Synt
     const title = labels.join('、') || '本人项目节点查询范围与缺项';
     if (!resultKey.endsWith(':specialist-project')) return [{ ...aggregate, title, summaryTitle: title }];
     return [{ ...aggregate, title, summaryTitle: title }, ...projects.flatMap(project => project.records?.map(record => {
-      const text = siteRecordText(record.data, record.roomName);
+      const text = publishedSiteRecordText(record.data, record.roomName, record.version);
       const title = '已发布现场记录（' + record.roomName + '）';
       const material: MaterialSource = { ref: { type: 'site_record', id: record.id, version: String(record.version) },
         hash: fingerprint(record.data), projectId: project.projectId, roomId: project.roomId ?? null, roomName: record.roomName,
@@ -633,7 +633,7 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
   try { parseSynthesis(raw,sources,context); return null; }
   catch(error) {
     if (error instanceof AssistantError && error.code === 'standard_status_unverified') return {
-      code: error.code, feedback: '本段规范状态缺少同编号同版本的状态原文，或存在相反依据。沿已有原文报告发布、实施及明确冲突，说明当前无法确认的部分；若已有对应目录或正式废止原文，选取直接支持状态的引文。只作本轮唯一一次最终修复。',
+      code: error.code, feedback: '本段规范状态缺少同编号同版本的状态原文，或存在相反依据。若本轮没有取得现行状态目录/废止公告，删除本段的“现行/有效/仍有效”状态词，只保留已引原文支持的发布、实施日期和条文要求；不要把整段改成无法回答，也不能只凭公告发布日期下结论。若已有对应目录或正式废止原文，选取直接支持状态的引文。只作本轮唯一一次最终修复。',
     };
     if (error instanceof AssistantError && error.code === 'unsupported_model_commitment' && !context.knowledgeExplanation && originalAnswerOnly(context.currentQuestion || '')) {
       // Diagnostics do not accept/normalize a commitment. Check the complete
@@ -662,6 +662,9 @@ export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],contex
         unsupported_work_absence: '这条仍待处理并等待分配负责人；未分配只表示系统没有指定接续人，不能认定现实没有人在处理、没有人在等或无需处理。按这条事项的真实状态表述，不借其他已取消事项消除待办。',
         unscoped_work_readiness: '删除断言现场不能施工、底盒和插座没法往下走的扩展结论。只说明团队回传的具体待核对内容和企业要求的先后关系；不能从查询缺项或等待核对推断现实施工停滞。确需假设时明确条件，不把假设说成当前事实。',
         misattributed_shared_need: '历史共享原文只把具体尺寸列为待核对，不能改说原文的人数和尺寸都标待核对。保留当时共享的人数身份，同时说明它不能替代这次不可用的当前人数；不改原引文，不重开人数决定。',
+        unsupported_user_parameter_endorsement: '本段把用户或师傅提供、但尚无原文支持的施工量数写成了确定要求，或用“这个高度可以/按此施工/没问题”等语句间接认可。删除该量数及依赖它的结论，或明确写成“你/师傅提供但尚未核实”；不能改称行业惯例、企业标准或建议值，也不能只删数字保留认可语义。企业资料缺项就写明企业资料缺项，保留其余有原文依据的解释。',
+        unsupported_enterprise_claim: '本轮企业知识检索不可用，不能据此认定企业没有标准，也不能把通用做法写成“公司规定/企业标准”。没有当前企业原文时改为“本次未核实企业资料”，通用部分明确标为一般建议；不得补造企业高度、时长、管根做法或铺砖放行条件。若段落本来只解释了公开规范，删除未经原文支持的企业归属即可。',
+        contradicted_published_record: '来源中的记录是服务端正式发布的记录，历史备注里的“草稿/未发布”只是发布前原话，不能覆盖当前正式状态。删除“记录仍是草稿/尚未发布”的表述，按“已核对发布”说明，并保留备注中真实的待核对事项（如“管根密封仍待核对”）；不能把已发布记录说成未发布。',
         misattributed_project_quantity: projectQuantityRepairInstructions,
         source_answer_scope: '本题只解释指定原文。删除未被请求的一般建议、办理流程和本人项目段；有据内容用evidence及相应知识引用，原文未说明的部分仅作本次范围内uncertainty。不把advice直接改名为evidence保留推断，不添加项目/历史引用背书。',
         independent_advice_scope: '本题明确请求独立的一般建议，客户需求和历史不是本题技术依据。移除对应项目/历史引用及未问的个人事实回顾；保留一般建议身份，不能改成evidence借原话背书。已有知识原文可按实际支持关系引用；没有依据不猜数值或承诺，不重新查询或保存。',
@@ -981,7 +984,11 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     // exact authorized XLSX clock quote permits that name; all quantities and
     // the original unmodified prose still pass the existing commitment guards.
     const claimText = synthesisQuantityText(s, sources);
-    const numericText = citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText;
+    const numericText = (citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText)
+      // Record versions and photo counts are provenance metadata, not
+      // construction parameters.
+      .replace(/版本\s*\d+/gu, '版本')
+      .replace(/\d+\s*张(?:照片|图片|图)/gu, '照片');
     try {
       const generalAdvice = context.generalKnowledge && !context.specialistAcceptance && s.basis === 'advice' && !s.citations.length;
       if (!generalAdvice && (groundedNumberTokens(numericText)).some(n => !printedNumberSupported(n, numbers))) fail('unsupported_model_commitment', 502);

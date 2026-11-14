@@ -1,5 +1,35 @@
 # 小K三线集成审查
 
+## I6.17 专业回答根因修复与 Evidence 稳定化（Limited）
+
+Integration 起点 `491234564ffd`。根因矩阵见[I6.17 根因矩阵](xiaok-i617-root-cause-matrix.md)。本轮只修防水专业回答的资料、Evidence、房间状态与最终校验；未开发水电、未增加阶段、未重写 LangGraph/Native Workflow、未新建 RAG 或模型网关。范围外的小程序、`AGENTS.md`、`source-manifest.json` 等未提交改动原样保留。
+
+代码切片：
+
+- 新增 `parameter-provenance.ts`：施工量数分五类来源，用户/师傅提供且未核实的数值不得写成标准或企业要求；删除数字后仍拦截“这个高度可以/按此施工”的间接认可。
+- 规范状态：`现行（其他/工程）建设标准中……不一致的，以本规范为准` 识别为优先关系，不再当作现行性结论；没有状态目录时收尾轮明确只能报告发布、实施日期和条文。
+- 引用载体：同形字符仅在映射到本轮已签发 id 时归一；接受 `CITE[id]`、`[id](CITE id)`；未知 id 仍失败关闭。
+- 已发布记录：`publishedSiteRecordText` 先写服务端正式状态与版本，再投影备注，只移除本条记录的“草稿/未发布”状态句；保留真实待核对事实。
+- 企业不可用：`retrieval_unavailable` 时通用做法不得写成公司规定；企业部分写明本次未核实。
+- 收尾协议：收尾轮只带文本和未被提供的只读调用时，调用不执行、文本仍走原校验；写入调用与混合包保持失败。
+- Web 回执：模型可见 `documents[].text` 按 12,000 bytes 截断，`cites` 与持久快照完整，修复 Run 27 的长原文输入上限。
+
+真实模型两批，统一百炼 `bailian` / `deepseek-flash` / `deepseek-v4.1-flash-1017`，Responses 42 次（18 + 24），输入 115,303 / 输出 17,176 tokens，结算金额 `unknown`。隔离库 `xiaok_i616_validation`、企业 `5`、项目 `1`、原 C01 `1`，全部业务写入为 0。
+
+| 固定场景 | 第一批 Run 29–34 | 第二批 Run 35–41 | 结论 |
+| --- | --- | --- | --- |
+| B 基层条件 | passed | passed | 保存正文，第二批 4 条公开引用 |
+| D 企业标准 | failed | failed | 首稿已区分企业不可用和一般做法；末句“没能取得”仍被企业归属守卫误判，第二批后仅离线修复 |
+| E 企业/国标对比 | failed | failed | 第一批收尾轮附带未提供的 `read_web`；第二批首稿使用 `CITE[...]` 非标准载体，均只离线修复 |
+| F 标准现行性 | failed | passed | 第二批未再凭发布公告断言“有效”，4 条引用 |
+| G 厨房 | passed | passed | 未用其他房间记录，未把水电当防水完成 |
+| G 更正卫生间 | failed | failed | 第一批“1 张照片”被当量数；第二批“版本 3/4”和照片张数被当量数；第二批后仅离线修复 |
+| H 主卧 | not_run | passed | 读取同一项目节点，未用卫生间记录替代 |
+
+第二批后的三处修复（D 企业归属否定语境、E `CITE[...]` 归一、G 版本号/照片张数元数据）只做了离线 `parseSynthesis` 复验和新增定向测试，未追加第三次同类真实采样，按 `limited` 保留。LangGraph 输入上限修复未在本轮追加真实采样，Run 27 失败证据保留，按 `not_run` 记录；双运行时共享工具、权限和回执语义不变。
+
+定向回归：Assistant 1,096 项中 1,094 通过，保留历史 A09 租户配额与书桌收纳两项失败；新增 `parameter-provenance.test.ts` 15/15；synthesis-source-roles 15/15；agent-runtime 29/29；dialogue-web-tools 通过。TypeScript 与定向 ESLint 通过。未删除或修改历史失败与预期。
+
 ## I6.16 防水 Agent V1.1 候选
 
 Integration 起点 `60b5be9e371a`。I6.16.1 协议切片定向 135/135（0 skipped）。Run 14 的供应商检查点零调用复放确认，混进 `output_text` 的字面 `<think>` 触发整稿拒绝，独立 `reasoning` 帧只留通道标记。Chat Completions、带工具回执的终稿、异常帧、流式拆帧及可见无据量数回归通过。历史首稿维持原判。证据 `admin/tmp/i6.16/{protocol-replay,protocol-binding-before,protocol-binding-after}.json` 与 `admin/tmp/i6.16-protocol-tests.log`。

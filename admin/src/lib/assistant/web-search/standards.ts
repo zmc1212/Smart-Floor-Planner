@@ -132,7 +132,11 @@ const statusClaims = /(?:仍(?:然)?|目前|现在|还)有效|现行(?:有效|�
 /** The exact status-bearing forms the guard recognizes, shared with the one
  * bounded repair so a diagnostic never invents another vocabulary. */
 export function standardStatusClaims(text: string) {
-  return [...text.matchAll(statusClaims)].map(match => match[0]);
+  return [...text.matchAll(statusClaims)]
+    // “现行(其他)工程建设标准中不一致的，以本规范为准” describes precedence
+    // between standards, not the edition's present validity.
+    .filter(match => !/^现行(?:其他|工程)?(?:建设)?标准中/u.test(text.slice(match.index)))
+    .map(match => match[0]);
 }
 
 /** Check status-bearing claims against exact-edition catalog/withdrawal
@@ -157,6 +161,7 @@ export function unverifiedStandardStatus(text: string, cited: StandardCitation[]
       if (/是否|能否|无法确认|尚未核实|不能(?:据此)?判断|不能认定|不代表|未(?:查到|见|找到|显示|发现)|待核实/u.test(clause)
         || /^(?:的)?(?:有效性|状态|情况)?(?:我|本次|本轮)?(?:暂|仍)?(?:无法|不能|尚未|未能)(?:确认|核实)(?:$|[，,])/u.test(remainder)
         || claim[0] === '现行' && sentence.slice(claim.index).startsWith('现行工程建设标准中')
+        || claim[0] === '现行' && /^现行(?:其他|工程)?(?:建设)?标准中/u.test(sentence.slice(claim.index))
         || claim[0] === '现行' && /^现行(?:状态|情况|结论|信息|记录)(?![是为属]|有效)/u.test(sentence.slice(claim.index))
         || /^(?:如何|怎么|哪里|能否|是否)/u.test(sentence.trim())) return false;
       const requested = claim[0].includes('废止') ? 'withdrawn' : 'current';

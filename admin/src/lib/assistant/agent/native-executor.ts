@@ -49,6 +49,7 @@ import { bindSpecialistInput, specialistModel, specialistProtocol } from '../spe
 import { reportContext } from '@/lib/construction/report-reference';
 import { parseSynthesis, specialistParameterUncertainty, specialistQuantityRejection, splitSpecialistParagraphs, synthesisRepairIssue, type SynthesisSource } from './synthesis';
 import type { SynthesisReviewContext } from './synthesis-review';
+import { parameterEndorsementFeedback, unverifiedParameterEndorsements } from './parameter-provenance';
 
 // Existing imports of the moved helpers keep resolving through the executor.
 export { nativeCitationFeedback, scanNativeCitationMarkers } from './native-citation-gate';
@@ -88,7 +89,7 @@ export function nativeExecutorPrompt(knowledgeEnabled: boolean, delegation = fal
       ? '涉及本企业工艺或做法：先调用search_enterprise检索获权资料，只解释返回的原文摘录，并在对应段落末尾用 CITE 引用标记标出 cites 中该条引文的 id，不得伪造id；未命中就如实说明本次未取得，不用通用知识冒充企业规定。'
       : '本轮未结合企业知识库：不声称检索过企业资料，不沿用旧企业引用或旧知识结论；企业制度没有当前来源时明确待核实。',
     '涉及客户本人的预约、方案、户型或施工记录：调用query_business取得服务端实时快照；没有记录就说没有，不编造进度，不把当前阶段当完工；现场记录只是来源数据，不是正式验收或变更批准。',
-    '一般装修常识可直接有条件解释；与企业规定或项目事实混答时分别说明各自依据。用中文自然段落作答；引用标记只能用本轮工具返回的cites[].id；本轮没有任何cites时不得输出任何 CITE 引用标记或占位符；不要输出工具名、JSON或系统内部用语。',
+    '一般装修常识可直接有条件解释；与企业规定或项目事实混答时分别说明各自依据。用户或师傅给出的施工数值属于未核实信息，不能写成标准、企业要求或建议值；删除数字后也不能用“这个高度可以/按此施工”等语句间接认可。用中文自然段落作答；引用标记只能用本轮工具返回的cites[].id；本轮没有任何cites时不得输出任何 CITE 引用标记或占位符；不要输出工具名、JSON或系统内部用语。',
     '不承诺价格、工期或验收结果，不替团队确认完成、批准或排期；信息不足时作最小澄清。'
       + (delegation ? '用户明确交代的持续跟进可通过 start_delegation 登记，回执由服务端展示。' : '不执行任何业务写入。'),
   ].join('\n');
@@ -255,8 +256,16 @@ export function nativeSpecialistDraftIssues(text: string, catalog: Iterable<RagC
     const draft = JSON.stringify({ kind: 'synthesis', segments: [segment] });
     try { parseSynthesis(draft, sources, review); } catch (error) {
       if (!(error instanceof AssistantError)) throw error;
-      const located = (feedback: string) => `原正文第 ${index + 1} 段。请保留现有 CITE 格式。${feedback}`;
+      const located = (feedback: string) => `原正文第 ${index + 1} 段。上一份助手输出是被拒绝的首稿，只按诊断重写完整客户答复，不解释任务、不输出思考过程。请保留现有 CITE 格式。${feedback}`;
       if (error.code === 'standard_status_unverified') {
+        const hasStatusSource = sources.some(source => source.web?.standard
+          && ['status_catalog', 'withdrawal_notice'].includes(source.web.standard.kind));
+        if (!hasStatusSource) return [{ index, issue: { code: error.code, feedback: located(
+          '本轮没有取得同编号同版本的现行状态目录或废止公告。删除本段的“现行/有效/仍有效”状态词，只保留已引原文支持的发布、实施日期和条文要求；不要改成无法回答，也不能凭公告发布日期推断现行状态。') } }];
+        const issue = synthesisRepairIssue(draft, sources, review);
+        if (issue) return [{ index, issue: { ...issue, feedback: located(issue.feedback) } }];
+      }
+      if (error.code === 'ungrounded_response_scope') {
         const issue = synthesisRepairIssue(draft, sources, review);
         if (issue) return [{ index, issue: { ...issue, feedback: located(issue.feedback) } }];
       }
@@ -996,7 +1005,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
       }
       if (name === 'search_enterprise') {
         const value = JSON.parse(args) as { query: string };
-        return { content: JSON.stringify(await search(value.query, ++sequence)) };
+        const receipt = await search(value.query, ++sequence);
+        if (specialistReview && receipt.status === 'retrieval_unavailable') specialistReview.enterpriseUnavailable = true;
+        return { content: JSON.stringify(receipt) };
       }
       if (name === 'query_business') {
         // Only status/text reach the model. The resultKey stays in the
@@ -1140,10 +1151,25 @@ export async function processNativeAgentAnswer(lease: Lease) {
     }
     const history: ModelMessage[] = messages.map(m => m.role === 'user'
       ? { role: 'user', content: [{ type: 'text', text: m.content }] } : { role: 'assistant', content: m.content });
-    const specialistReview = specialist && delegationContext ? {
+    const specialistReview: SynthesisReviewContext | null = specialist && delegationContext ? {
       currentQuestion: safeText(delegationContext.source.content as MessageContent),
       currentRoom: specialist.room ?? undefined, specialistAcceptance: true, delegationReply: policy.longTermMemory === true,
+      projectSnapshotAuthoritative: true,
     } : null;
+    // A resumed run replays the same retrieval receipt; keep the unavailable
+    // status visible to the enterprise-claim review instead of treating it as
+    // “the enterprise has no rule”.
+    if (specialistReview && saved.searches.some(step =>
+      ((step.input_summary as Row | null)?.receipt as Row | undefined)?.status === 'retrieval_unavailable'))
+      specialistReview.enterpriseUnavailable = true;
+    const currentQuestionText = [...messages].reverse().find(message => message.role === 'user')?.content || '';
+    // Applicability is independent of citation presence: a user/master value the
+    // answer endorses cannot borrow an unrelated run quote as support.
+    const parameterIssue = (text: string) => {
+      const issues = unverifiedParameterEndorsements(text, currentQuestionText,
+        [...catalog.values()].flatMap(source => typeof source.quote === 'string' ? [source.quote] : []));
+      return issues.length ? { code: 'unsupported_model_commitment', feedback: parameterEndorsementFeedback(issues) } : null;
+    };
     const checkSpecialistDraft = (text: string) => specialistReview
       ? nativeSpecialistDraftIssues(text, catalog.values(), context.sources, specialistReview) : [];
     // The one-shot repair covers both invalid ids and a draft that ignores this
@@ -1184,13 +1210,26 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // existing one-shot repair turn lets the model correct its own citation
         // expression against the same strict catalog; unknown ids still fail
         // closed exactly as before, and the repair never reveals the fix.
+        // The final-only turn gets only constraints that follow from what this
+        // run actually failed to retrieve; it never adds a tool or an answer.
+        finalTurnGuidance: () => {
+          const guidance: string[] = [];
+          if (specialist?.editionQuestion && !context.sources.some(source => source.web?.standard
+            && ['status_catalog', 'withdrawal_notice'].includes(source.web.standard.kind)))
+            guidance.push('本轮没有取得同编号同版本的现行状态目录或废止公告：不要写“现行/有效/仍有效”，只能报告发布、实施日期和条文；现行状态写明本次无法确认。');
+          if (specialistReview?.enterpriseUnavailable)
+            guidance.push('本轮企业知识检索不可用：不能据此认定企业没有标准，也不能把通用做法写成公司规定；企业部分写明本次未核实。');
+          return guidance.length ? guidance.join('\n') : null;
+        },
         validateFinal: async (text, _turn, finalFromTools) => {
           if (finalFromTools) return null;
+          text = normalizeNativeCitationCarrier(text, catalog.values());
           const { issue } = nativeCitationGate(text, catalog.values(), citationRepairIssued || parameterPartial,
             knowledgeRetrieved || webRetrieved);
           if (issue) citationRepairIssued = true;
-          const specialistIssues = issue ? [] : checkSpecialistDraft(text);
-          return issue ?? (specialistIssues.length
+          const parameter = issue ? null : parameterIssue(text);
+          const specialistIssues = issue || parameter ? [] : checkSpecialistDraft(text);
+          return issue ?? parameter ?? (specialistIssues.length
             ? { code: specialistIssues[0].issue.code, feedback: specialistIssues.map(item => item.issue.feedback).join('\n') }
             : null);
         },
@@ -1222,7 +1261,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // Public-site-only answers have no citable id. Remove a non-protocol
     // placeholder the model may emit; knowledge/web evidence keeps the strict
     // gate and the original text untouched.
-    const finalText = evidenceProvided ? rawFinalText : stripUnboundCitationPlaceholders(rawFinalText);
+    let finalText = evidenceProvided ? rawFinalText : stripUnboundCitationPlaceholders(rawFinalText);
+    finalText = normalizeNativeCitationCarrier(finalText, catalog.values());
     if (!finalText.trim()) fail('invalid_model_answer', 502);
     // Delivery re-runs the same assessment as the gate. Invalid ids stay
     // fail-closed, and only this run's current/recovered citations count toward
@@ -1230,6 +1270,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // never satisfy this run's retrieval-citation requirement.
     const finalAssessment = assessNativeCitations(finalText, catalog.values(), evidenceProvided);
     if (finalAssessment.invalid.length) fail('invalid_model_citation', 502);
+    // The same applicability check runs at delivery: a repair may not erase a
+    // marker and keep the endorsed user value without any supporting original.
+    if (parameterIssue(finalText)) fail('unsupported_model_commitment', 502);
     const runCitations = finalAssessment.runCitations;
     // A located-but-empty nearby result is delivered from the server receipt;
     // need_region never overrides the model draft (same rule as the bridge).

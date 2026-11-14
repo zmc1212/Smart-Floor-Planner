@@ -69,6 +69,22 @@ test('multiple final-only envelopes use bounded feedback without fake tool execu
   const g = fixture(); let repeated = 0; g.ports.model = async () => { repeated++; return output; };
   await assert.rejects(g.run(), /invalid_model_answer/); assert.equal(repeated, 4); assert.equal(g.operations.size, 0);
 });
+test('a final-only turn discards an unoffered read call and still validates the answer', async () => {
+  const f = fixture(); let calls = 0;
+  f.ports.model = async (_turn, _messages, tools) => {
+    calls++;
+    return tools.length
+      ? { ...answer, text: '', toolCalls: [{ id: 'a', name: 'search_knowledge', arguments: '{"query":"管根"}' }] }
+      : { ...answer, toolCalls: [{ id: 'b', name: 'search_knowledge', arguments: '{"query":"管根"}' }] };
+  };
+  f.ports.validateFinal = async text => { assert.equal(text, answer.text); return null; };
+  const result = await runRenovationAgent({ messages: [{ role: 'user', content: [{ type: 'text', text: '查询' }] }],
+    tools: [{ name: 'search_knowledge', description: '', parameters: { type: 'object' } }], ports: f.ports,
+    primaryModelTurns: 2, reservedValidationRepairs: 1 });
+  assert.equal(result.output?.text, answer.text);
+  assert.equal(calls, 2);
+  assert.equal(f.operations.size, 1, 'the final-only read call is never executed');
+});
 function fixture() {
   const saved: AgentCheckpoint[] = [], operations = new Map<string, string>();
   let allowed = true, calls = 0;
