@@ -8,8 +8,10 @@ import { currentSynthesisContext } from '@/lib/assistant/agent/synthesis-sources
 import { checkWebSources } from '@/lib/assistant/agent/web-evidence';
 import { validResult, syncSiteResults } from '@/lib/construction/site-results';
 import { specialistPolicy } from '@/lib/assistant/specialists/consultation';
-import { isPublishedSpecialistVersion, parseSpecialistOutput, specialists, waterproofChecklistAgentVersion, type SpecialistEvidenceRef, type SpecialistRunBinding } from '@/lib/assistant/specialists/registry';
+import { electricalAgentId, isChecklistAgentVersion, isPublishedSpecialistVersion, parseSpecialistOutput, specialists,
+  type SpecialistEvidenceRef, type SpecialistRunBinding } from '@/lib/assistant/specialists/registry';
 import { specialistChecks, specialistPublicSections, type SpecialistEnterpriseRead, type SpecialistProjectEvidence, type SpecialistPublicRead } from '@/lib/assistant/specialists/evidence';
+import { readElectricalDrawings } from '@/lib/assistant/specialists/drawing';
 import type { SynthesisAnswer, SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { configuredPublicRead, publicDocumentPages, publicDocumentReadFailures } from '@/lib/assistant/agent/public-research';
 import { fetchPublicDocument, standardAttachment } from '@/lib/assistant/web-search/page';
@@ -76,9 +78,14 @@ export async function cancelSpecialistWaits(tx: PostgresTransaction, d: ReviewDe
   }
 }
 
-async function readSpecialistPublicStandard(standardId: string | undefined, query: string, verifyEdition: boolean, coverage?: string) {
+async function readSpecialistPublicStandard(standardId: string | undefined, query: string, verifyEdition: boolean,
+  coverage?: string, agentId?: string, subject?: string) {
   const standard = standardId && namedReviewedStandard(standardId);
   if (!standard) return { status: 'unavailable', error: 'specialist_public_standard_unconfigured' };
+  // The reviewed electrical public original only covers water supply and
+  // drainage. Never borrow those pages for strong/weak current questions.
+  if (agentId === electricalAgentId && !/给水|排水|给排水|地漏|水压|卫生器具|水封|通水|通球|冷热水|水管/u.test(subject ?? query))
+    return { status: 'unavailable', error: 'specialist_public_standard_not_applicable' };
   const signal = AbortSignal.timeout(23_000);
   try {
     const notice = await fetchPublicDocument(standard.noticeUrl, { signal });
@@ -86,7 +93,7 @@ async function readSpecialistPublicStandard(standardId: string | undefined, quer
     if (!attachment)
       return { status: 'unavailable', error: 'web_attachment_not_found' };
     const original = await configuredPublicRead(attachment.url, 20_000, signal);
-    const sections = specialistPublicSections(coverage);
+    const sections = specialistPublicSections(coverage, standard.standard.id);
     const pages = publicDocumentPages(original, new Date().toISOString(), query, sections);
     const sources = pages.filter(page => page.document?.reviewedTextHash).map(page => ({
       url: page.url, hash: page.document!.hash, page: page.document!.page, section: page.document!.section, role: page.standard?.kind,
@@ -131,14 +138,18 @@ export async function startSpecialistAnalysis(tx: PostgresTransaction, d: Review
   const config = (type: string) => definition.nodes.find(node => node.type === type)?.config;
   const scope = config('knowledge_retrieval')?.scope, coverage = config('public_search')?.coverage;
   const binding: SpecialistRunBinding = { delegationId: d.id, workflowRunId };
-  if (branched && d.scope.workflow && d.scope.roomId) Object.assign(binding, {
-    agentId: d.scope.workflow.agentId, agentVersion: d.scope.workflow.agentVersion, projectId: d.projectId,
-    roomId: d.scope.roomId, roomName: d.scope.roomName,
-    projectRecordLimit: Number(config('project_data')?.recordLimit ?? 10),
-    knowledgeScope: scope === 'enterprise' || scope === 'project' ? scope : 'authorized',
-    knowledgeTopK: Number(config('knowledge_retrieval')?.topK ?? 3),
-    publicCoverage: coverage === 'technical' || coverage === 'test' ? coverage : 'subject',
-  } satisfies Partial<SpecialistRunBinding>);
+  if (branched && d.scope.workflow && d.scope.roomId) {
+    Object.assign(binding, {
+      agentId: d.scope.workflow.agentId, agentVersion: d.scope.workflow.agentVersion, projectId: d.projectId,
+      roomId: d.scope.roomId, roomName: d.scope.roomName,
+      projectRecordLimit: Number(config('project_data')?.recordLimit ?? 10),
+      knowledgeScope: scope === 'enterprise' || scope === 'project' ? scope : 'authorized',
+      knowledgeTopK: Number(config('knowledge_retrieval')?.topK ?? 3),
+      publicCoverage: coverage === 'technical' || coverage === 'test' ? coverage : 'subject',
+    } satisfies Partial<SpecialistRunBinding>);
+    if (d.scope.workflow.agentId === electricalAgentId)
+      binding.drawings = await readElectricalDrawings(tx, { enterpriseId: d.enterpriseId, projectId: d.projectId, roomId: d.scope.roomId });
+  }
   const queued = await newRun(tx, actor, conversation, settings, d.originMessageId, undefined, undefined, 'specialist.workflow', undefined, binding);
   return { id: queued.runId, status: 'queued' };
 }
@@ -225,9 +236,13 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
             throw new LiveOperationFailure(workflowIssue('specialist_project_unavailable', operation.nodeId, '项目或房间已失效'));
           }
           const records = (project.records as Array<{ id: string; version: number; data: unknown }>).slice(0, Number(operation.config?.recordLimit ?? 10));
+          const drawings = agent.agentId === electricalAgentId && d.scope.roomId
+            ? await readElectricalDrawings(tx, { enterpriseId: d.enterpriseId, projectId: d.projectId, roomId: d.scope.roomId })
+            : undefined;
           return { project: { id: d.projectId, roomId: d.scope.roomId, roomName: d.scope.roomName, stage: project.stageKey,
             revision: project.version, recordIds: records.map(row => row.id),
-            ...(branched ? { records: records.map(row => ({ id: row.id, version: row.version, hash: fingerprint(row.data) })) } : {}) } };
+            ...(branched ? { records: records.map(row => ({ id: row.id, version: row.version, hash: fingerprint(row.data) })) } : {}),
+            ...(drawings ? { drawings } : {}) } };
         }
         case 'read.specialist_knowledge': {
           const scope = operation.config?.scope;
@@ -235,13 +250,14 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
             scope: scope === 'enterprise' || scope === 'project' ? scope : undefined,
             topK: Number(operation.config?.topK ?? 3),
           });
-          const enterprise = agent.version === waterproofChecklistAgentVersion && read.status === 'unavailable'
+          const enterprise = isChecklistAgentVersion(agent) && read.status === 'unavailable'
             ? { ...read, retrievalStatus: 'retrieval_unavailable' } : read;
           return { enterprise };
         }
         case 'read.specialist_public_standard':
-          return { publicStandard: await readSpecialistPublicStandard(agent.publicStandardId, branched ? d.scope.subject : '室内防水 管根 验收',
-            branched, String(operation.config?.coverage ?? 'subject')) };
+          return { publicStandard: await readSpecialistPublicStandard(agent.publicStandardId,
+            branched ? d.scope.subject : '室内防水 管根 验收', branched,
+            String(operation.config?.coverage ?? 'subject'), agent.agentId, d.scope.subject) };
         case 'compose.stage_specialist':
         case 'compose.stage_specialist.v3':
         case 'read.specialist_evidence':
@@ -289,9 +305,16 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
           const current = await scopedProject();
           if (!current) throw new LiveOperationFailure(workflowIssue('specialist_project_unavailable', operation.nodeId, '项目或房间已失效'));
           const currentRecords = current.records as Array<{ id: string; version: number; data: unknown }>;
+          const currentDrawings = agent.agentId === electricalAgentId && d.scope.roomId
+            ? await readElectricalDrawings(tx, { enterpriseId: d.enterpriseId, projectId: d.projectId, roomId: d.scope.roomId })
+            : undefined;
+          // A replaced or revoked drawing invalidates the earlier extract.
           const verifiedProject = { ...project, stage: current.stageKey as string | null, revision: Number(current.version),
             records: project.records.filter(record => currentRecords.some(item => item.id === record.id
-              && item.version === record.version && fingerprint(item.data) === record.hash)) };
+              && item.version === record.version && fingerprint(item.data) === record.hash)),
+            ...(currentDrawings && project.drawings ? { drawings: project.drawings.version === currentDrawings.version ? currentDrawings
+              : { ...currentDrawings, status: 'unavailable' as const, drawings: [],
+                failures: [...currentDrawings.failures, 'drawing_changed_since_read'] } } : {}) };
           const step = await one(tx, sql`select private_checkpoint,source_refs from app.assistant_run_steps where enterprise_id=${d.enterpriseId}
             and run_id=${String(analysisRun.id)} and kind='agent_synthesis_context' and status='succeeded'`);
           const synthesis = step?.private_checkpoint as SynthesisAnswer | undefined;
@@ -300,13 +323,13 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
           const web = consulted.flatMap(item => citedWeb.has(item.sourceId) && item.web?.document?.reviewedTextHash ? [item.web] : []);
           const webChecks = await checkWebSources(web, undefined, { savedPdfPages: new Set(web.map(page => page.hash)) });
           const publicStandard = operation.input.publicStandard as SpecialistPublicRead;
-          const { requestedChecks, unresolvedItems, evidenceRefs, hasEnterprise, hasPublic } = specialistChecks({
+          const { requestedChecks, unresolvedItems, evidenceRefs, hasEnterprise, hasPublic, hasDrawing } = specialistChecks({
             answer: synthesis?.kind === 'synthesis' ? synthesis : null,
             sources: consulted.filter(item => !item.web || !webChecks.get(item.web.hash)),
             project: verifiedProject, enterprise: operation.input.enterprise as SpecialistEnterpriseRead,
-            publicStandard, knowledgeEpoch: Number(settings?.knowledge_epoch),
+            publicStandard, knowledgeEpoch: Number(settings?.knowledge_epoch), agentId: agent.agentId,
             binding: { agentId: agent.agentId, agentVersion: agent.version, workflowRunId: runId,
-              ...(agent.version === waterproofChecklistAgentVersion ? { workflowRevision: published.revision, workflowDigest: published.digest } : {}) },
+              ...(isChecklistAgentVersion(agent) ? { workflowRevision: published.revision, workflowDigest: published.digest } : {}) },
           });
           const record = await specialistSiteRecord(tx, d, { requireCurrentStaff: true, managerOnly });
           const analysis = parseSpecialistOutput({
@@ -319,12 +342,12 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
             evidenceRefs, evidenceVersions: [...new Set(evidenceRefs.map(item => item.ref.version))],
             requestedChecks, unresolvedItems, humanReviewRequirement: record ? { required: true, issueId: null, role: 'manager', reviewVersion: null } : null,
           });
-          return { hasEnterprise, hasPublic, hasIssue: !!record, analysis: { ...operationSummary,
+          return { hasEnterprise, hasPublic, hasDrawing, hasIssue: !!record, analysis: { ...operationSummary,
             agentVersion: analysis.agentVersion, projectId: analysis.projectId, roomId: analysis.roomId,
             stage: analysis.stage, originalMessageId: analysis.originalMessageId, workflowRunId: analysis.workflowRunId,
             evidenceRefs: analysis.evidenceRefs, evidenceVersions: analysis.evidenceVersions, requestedChecks: analysis.requestedChecks,
             unresolvedItems: analysis.unresolvedItems, humanReviewRequirement: analysis.humanReviewRequirement,
-            ...(agent.version === waterproofChecklistAgentVersion ? { workflowRevision: published.revision, workflowDigest: published.digest } : {}) } };
+            ...(isChecklistAgentVersion(agent) ? { workflowRevision: published.revision, workflowDigest: published.digest } : {}) } };
         }
         case 'wait.specialist_site_record':
         case 'wait.specialist_site_record.v2': {
@@ -390,10 +413,11 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
     const view = await specialistDelegationReadback(tx, { ...d, ...completed });
     return outcome(view.status, view.nextAction, view.waitingFor, view.evidence);
   }
-  if (result.status === 'failed' || result.status === 'halted') return outcome('failed', '防水核对暂未完成，请在原咨询查看或联系项目团队');
+  const specialistLabel = agent.agentId === electricalAgentId ? '水电' : '防水';
+  if (result.status === 'failed' || result.status === 'halted') return outcome('failed', `${specialistLabel}核对暂未完成，请在原咨询查看或联系项目团队`);
   if (result.status === 'unknown') return outcome('waiting_for_authorization', '核对结果待确认，请在原咨询查看', 'owner');
   const pending = published.definition.nodes.find(node => node.nodeId === result.state.pendingNodeId);
-  if (pending?.type === 'agent') return outcome('running', '正在整理防水核对清单');
+  if (pending?.type === 'agent') return outcome('running', `正在整理${specialistLabel}核对清单`);
   if (pending?.type === 'human_review') return outcome('waiting_for_authorization', '事项已登记，等待项目负责人现场复核', 'reviewer',
     issueId ? { type: 'issue', id: issueId, version: String((issue?.outputs?.saveReceipt as {revision: number}).revision), issueId } : null);
   const waitCode = result.trace.findLast(entry => entry.kind === 'node_waiting')?.detail?.code;
@@ -402,9 +426,9 @@ export async function advanceSpecialistDelegation(tx: PostgresTransaction, d: Re
   }
   const branchNode = published.definition.nodes.find(node => node.capabilityRef === 'condition.specialist_evidence');
   const branch = branchNode && result.state.outputs[branchNode.nodeId]?.branch;
-  return outcome('waiting_for_worker', branch === 'false' ? '防水依据仍有缺项，等待项目团队补充该房间的现场资料'
-    : branch === 'true' ? '防水检查清单已整理，等待施工人员提交该房间的现场资料'
-    : '等待施工人员提交该房间的防水现场资料', 'worker');
+  return outcome('waiting_for_worker', branch === 'false' ? `${specialistLabel}依据仍有缺项，等待项目团队补充该房间的现场资料`
+    : branch === 'true' ? `${specialistLabel}检查清单已整理，等待施工人员提交该房间的现场资料`
+    : `等待施工人员提交该房间的${specialistLabel}现场资料`, 'worker');
 }
 
 export async function specialistDelegationReadback(tx: PostgresTransaction, d: ReviewDelegation): Promise<DelegationOutcome> {

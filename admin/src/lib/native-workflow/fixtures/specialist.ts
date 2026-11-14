@@ -16,7 +16,8 @@ function fixtures(branch: 'issue' | 'true' | 'false'): SimulationFixtures {
   const knowledge = { status: 'ok', outputs: { enterprise: { status: 'no_match', sources: [] } } } as const;
   const standard = { status: 'ok', outputs: { publicStandard: { status: publicReady ? 'ready' : 'unavailable', pages: publicReady ? [27, 31] : [] } } } as const;
   const legacy = { status: 'ok', outputs: { analysis, ready: publicReady } } as const;
-  const specialist = { status: 'ok', outputs: { analysis, hasEnterprise: false, hasPublic: publicReady, hasIssue: branch === 'issue' } } as const;
+  const specialist = { status: 'ok', outputs: { analysis, hasEnterprise: false, hasPublic: publicReady,
+    hasIssue: branch === 'issue', hasDrawing: false } } as const;
   const record = branch === 'issue' ? { status: 'ok', outputs: { record: { id: 'sim-record-1', version: 1 } } } as const : { status: 'waiting' } as const;
   const issue = { status: 'ok', outputs: { saved: true, saveReceipt: { receiptId: 'sim-issue-1' } } } as const;
   const review = { status: 'ok', outputs: { review: { id: 'sim-review-1', state: 'resolved' } } } as const;

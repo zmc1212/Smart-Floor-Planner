@@ -18,6 +18,7 @@ import { resolveSuggestions, resumeSuggestionGeneration, suggestionGenerationSte
   type SuggestionResolution } from '../fastgpt/agent-v2/suggestions';
 import { agentCapabilityFingerprint, agentConfig } from './config';
 import { businessToolDefinitions, parseBusinessQuery, type BusinessSnapshot } from './business-tools';
+import { materialTool, parseMaterialQuery, queryMaterials } from './materials';
 import { guardAnswerCommitments } from './context';
 import { runRenovationAgent, type AgentCheckpoint } from './runtime';
 import { synthesisContextAvailable } from './synthesis-sources';
@@ -47,7 +48,7 @@ import { privateMemoryScope } from '../memory/scope';
 import { routedConsultationSpecialist, specialistConsultationTools, specialistPolicy } from '../specialists/consultation';
 import { bindSpecialistInput, specialistModel, specialistProtocol } from '../specialists/registry';
 import { reportContext } from '@/lib/construction/report-reference';
-import { parseSynthesis, specialistParameterUncertainty, specialistQuantityRejection, splitSpecialistParagraphs, synthesisRepairIssue, type SynthesisSource } from './synthesis';
+import { businessSynthesisSources, parseSynthesis, specialistParameterUncertainty, specialistQuantityRejection, splitSpecialistParagraphs, synthesisRepairIssue, type SynthesisSource } from './synthesis';
 import type { SynthesisReviewContext } from './synthesis-review';
 import { parameterEndorsementFeedback, unverifiedParameterEndorsements } from './parameter-provenance';
 
@@ -940,11 +941,16 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // recall_history additionally requires the run's real trigger seq.
     const businessRead = readToolsForContext(businessToolDefinitions.filter(tool => tool.name === 'query_business'), readContext)[0];
     const roomProgress = specialist?.progressRequested && specialist.room && readContext?.leadId ? specialist.room : null;
+    const specialistQuestion = delegationContext ? safeText(delegationContext.source.content as MessageContent) : '';
+    const drawingRequested = specialist?.agent.agentId === 'electrical-specialist'
+      && /图纸|点位图|水电图|电气图|给排水图|平面图/u.test(specialistQuestion);
+    const materialRead = drawingRequested ? readToolsForContext([materialTool], readContext)[0] : null;
     const tools: ModelTool[] = [
       ...(knowledgeEnabled ? [enterpriseSearchTool] : []),
       ...(roomProgress ? [{ ...businessRead, parameters: { type: 'object', properties: {
         domain: { type: 'string', enum: ['construction'] }, room: { type: 'string', enum: [roomProgress] },
       }, required: ['domain', 'room'], additionalProperties: false } }] : [businessRead]),
+      ...(materialRead ? [materialRead] : []),
       ...publicResearchTools([webSearchTool], true, true),
       designerRecommendationTool, publicSitesRecommendationTool,
       ...(saved.triggerSeq ? [historyTool] : []),
@@ -958,6 +964,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         ...(knowledgeEnabled && (!specialist.standard || specialist.companyPractice) ? ['knowledge' as const] : []),
         ...(!specialist.companyOnly ? ['public_read' as const] : []),
         ...(roomProgress ? ['project_progress' as const] : []), ...(delegationTool ? ['followup' as const] : []),
+        ...(drawingRequested ? ['photo' as const] : []),
       ],
     }), specialist.progressRequested) : tools;
     const validateTool = (name: string, args: string): { code: string; feedback: string } | null => {
@@ -974,6 +981,12 @@ export async function processNativeAgentAnswer(lease: Lease) {
         catch { return { code: 'invalid_tool_input', feedback: readContext?.leadId
           ? 'query_business需要{"domain":"appointments|schemes|floorplans|construction"}；房屋身份由服务端从当前咨询注入，不要传leadId或其他身份字段。'
           : 'query_business需要{"domain":"appointments|schemes|floorplans|construction","leadId":"..."}；leadId为空字符串表示列本人档案。' }; }
+      }
+      if (name === 'query_materials') {
+        try { parseMaterialQuery(bindReadToolInput(name, JSON.parse(args), readContext)); }
+        catch { return { code: 'invalid_tool_input', feedback: readContext?.leadId
+          ? 'query_materials需要{"room":"明确房间名"}；房屋身份由服务端从当前咨询注入，不要传leadId或其他身份字段。'
+          : 'query_materials需要{"leadId":"...","room":"明确房间名"}；leadId为空字符串表示列本人档案。' }; }
       }
       if (name === 'search_web') {
         try { parseWebQuery(JSON.parse(args)); }
@@ -1025,6 +1038,28 @@ export async function processNativeAgentAnswer(lease: Lease) {
         const query = parseBusinessQuery(bindReadToolInput(name, JSON.parse(args), readContext), !!roomProgress);
         if (roomProgress && query.currentProject?.room !== roomProgress) fail('assistant_capability_forbidden', 403);
         return { content: JSON.stringify(modelBusinessReceipt(await business(query, ++sequence))) };
+      }
+      if (name === 'query_materials') {
+        if (!drawingRequested) fail('assistant_capability_forbidden', 403);
+        const query = parseMaterialQuery(bindReadToolInput(name, JSON.parse(args), readContext));
+        return withTenantTransaction(lease.enterpriseId, async tx => {
+          const current = await runContext(tx, lease);
+          const entry = current.conversation.entry_snapshot as Row;
+          const boundLead = entry.kind === 'lead' ? String(entry.id) : '';
+          if (boundLead && query.leadId && query.leadId !== boundLead) fail('assistant_resource_not_found', 404);
+          const scoped = { ...query, leadId: boundLead || query.leadId };
+          const step = ++sequence;
+          const snapshot = await queryMaterials(tx, lease.actor, String(current.conversation.id), scoped);
+          await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs)
+            values(${lease.enterpriseId},${lease.runId},${step},'agent_tool','query_materials',1,'succeeded',
+              ${JSON.stringify(snapshot)}::jsonb,${JSON.stringify(snapshot.data.sources.map(item => ({ ref: item.ref, hash: item.hash })))}::jsonb)`);
+          const resultKey = `${lease.runId}:${Math.floor(step / 10)}:${step % 10}`;
+          context.snapshots.push(snapshot);
+          context.sources.push(...businessSynthesisSources(resultKey, snapshot));
+          return { content: JSON.stringify({ resultKey, ...snapshot,
+            synthesisSources: businessSynthesisSources(resultKey, snapshot),
+            instructions: '查资料可用kind=business；专业解释用kind=synthesis并引用本轮synthesisSources。图纸只证明设计内容，原文和版本以返回的ref/hash为准，不能虚构图纸、映射、照片观察或批准。' }) };
+        });
       }
       if (name === 'search_web' || name === 'read_web') {
         const parsed = JSON.parse(args) as { query?: string; candidateId?: string };

@@ -23,7 +23,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ runI
   const enterpriseId = context.enterpriseId;
   try {
     const { runId } = await params;
-    const missing = () => new WorkflowOperationError('run_not_found', 404, '未找到防水运行');
+    const missing = () => new WorkflowOperationError('run_not_found', 404, '未找到专业运行');
     if (!/^specialist:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(runId)) throw missing();
     const data = await withTenantTransaction(enterpriseId, async tx => {
       const id = runId.slice('specialist:'.length);

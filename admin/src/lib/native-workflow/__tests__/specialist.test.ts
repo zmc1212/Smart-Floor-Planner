@@ -34,7 +34,7 @@ test('waterproof template uses the existing validator, compiler, store and simul
     assert.equal(result.simulation.runs[0].proposedOperations.some(op => op.nodeId === 'issue'), branch === 'issue');
   }
   const invalid = { ...definition, nodes: definition.nodes.map(node => node.type === 'agent'
-    ? { ...node, config: { agentId: 'electrical-specialist', agentVersion: 1 } } : node) };
+    ? { ...node, config: { agentId: 'unregistered-specialist', agentVersion: 99 } } : node) };
   assert.equal(validateDefinition(invalid).ok, false);
 });
 

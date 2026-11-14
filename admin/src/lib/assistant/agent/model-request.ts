@@ -39,6 +39,8 @@ export function compileModelRequest(input: {
   homeSourceView?: HomeSourceView;
   specialist?: boolean;
   specialistChecklist?: boolean;
+  specialistAgentId?: string;
+  specialistDrawings?: import('../specialists/drawing').ElectricalDrawingRead;
   wireProjection?(messages:ModelMessage[]):ModelMessage[];
   toolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[];
 }) {
@@ -91,7 +93,8 @@ export function compileModelRequest(input: {
   const publicSourceProtocol = purpose === 'answer' && (publicSources || minimalDialogue && hasSourceRead(focused)) && !input.profile && !input.naturalKnowledge && input.reportPlan === undefined
     && !hasSynthesisContract(focused, synthesisInstructions) && !hasSynthesisContract(focused, synthesisModelInstructions);
   const publicContract = minimalDialogue ? minimalSourceInstructions : publicSourceModelInstructions;
-  let policyInput = specialist ? specialistModelContext(focused, !!input.specialistChecklist) : focused;
+  let policyInput = specialist ? specialistModelContext(focused, !!input.specialistChecklist,
+    input.specialistAgentId, input.specialistDrawings) : focused;
   if (publicSourceProtocol && !hasSynthesisContract(focused, publicContract)) {
     const policy: ModelMessage = { role: 'system', content: [{ type: 'text', text: difyDialogue
       ? publicContract : publicContract + synthesisQuestionPrefix + JSON.stringify({ currentQuestion: question }) }] };

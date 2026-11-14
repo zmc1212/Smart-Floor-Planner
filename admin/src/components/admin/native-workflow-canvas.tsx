@@ -16,7 +16,9 @@ const labels: Partial<Record<NodeType, string>> = {
 const capabilities = Object.entries(capabilityCatalog).filter(([key, spec]) =>
   !!labels[spec.type] && (spec.type !== 'trigger' || key === 'trigger.specialist_followup')
     && (spec.type !== 'condition' || ['condition.compare_boolean', 'condition.specialist_evidence'].includes(key)));
-const specialist = specialists.active(waterproofAgentId)!;
+const publishedAgents = specialists.list().filter(agent => agent.status !== 'draft');
+const defaultSpecialist = (specialists.active(waterproofAgentId) ?? publishedAgents[0])!;
+const agentKey = (agent: Readonly<{ agentId: string; version: number }>) => `${agent.agentId}@${agent.version}`;
 const controlInput = 'control-in';
 const controlPort = (when?: WorkflowEdge['when']) => 'control-' + (when ?? 'out');
 const dragType = 'application/x-sfp-workflow-node';
@@ -43,7 +45,7 @@ const nodeSettings: Readonly<Record<string, readonly NodeSetting[]>> = {
   'read.specialist_public_standard': [{ key: 'coverage', label: '规范页范围', fallback: 'subject',
     options: options(settings.publicCoverage, ['按问题选页', '施工与室内节点', '试验与验收']) }],
   'condition.specialist_evidence': [{ key: 'evidencePolicy', label: '清单所需依据', fallback: 'any',
-    options: options(settings.evidencePolicies, ['企业或公开任一', '同时需要企业和公开', '仅要求企业', '仅要求公开']) }],
+    options: options(settings.evidencePolicies, ['企业或公开任一', '同时需要企业和公开', '仅要求企业', '仅要求公开', '企业、公开或图纸任一']) }],
   'wait.specialist_site_record.v2': [siteWaitDays],
   'wait.specialist_review': [{ ...siteWaitDays, label: '复核等待天数', options: options(settings.reviewWaitDays) }],
   'save.specialist_issue.v2': [{ key: 'policy', label: '事项准入', fallback: 'open_or_reuse',
@@ -217,7 +219,7 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
       || definition.nodes.length >= WORKFLOW_BOUNDS.maxNodes) return;
     const nodeId = Array.from({ length: WORKFLOW_BOUNDS.maxNodes + 1 }, (_, index) => cap.type + '_' + (index + 1))
       .find(id => !definition.nodes.some(item => item.nodeId === id))!;
-    const config: WorkflowNode['config'] = cap.type === 'agent' ? { agentId: specialist.agentId, agentVersion: specialist.version }
+    const config: WorkflowNode['config'] = cap.type === 'agent' ? { agentId: defaultSpecialist.agentId, agentVersion: defaultSpecialist.version }
       : ref === 'condition.compare_boolean' ? { op: 'eq', right: true }
       : Object.fromEntries((nodeSettings[ref] ?? []).map(field => [field.key, field.fallback]));
     onChange?.({ ...definition, nodes: [...definition.nodes, { nodeId, type: cap.type, typeVersion: cap.typeVersion, capabilityRef: ref,
@@ -296,10 +298,18 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
             { key: 'out', label: 'OUTPUT', children: Object.entries(spec.outputs).map(([name, kind]) => <Tag key={name}>{name} · {kind}</Tag>) },
           ]} />
           <Space wrap>
-            {node.type === 'agent' ? <Select aria-label="专业 Agent 版本" disabled={!editable}
-              value={String(node.config?.agentId) + '@' + String(node.config?.agentVersion)}
-              options={[{ value: specialist.agentId + '@' + specialist.version, label: specialist.name + ' v' + specialist.version }]}
-              onChange={() => patchNode({ config: { agentId: specialist.agentId, agentVersion: specialist.version } })} /> : null}
+            {node.type === 'agent' ? (() => {
+              const current = String(node.config?.agentId) + '@' + String(node.config?.agentVersion);
+              const choices = publishedAgents.map(agent => ({ value: agentKey(agent),
+                label: `${agent.name} v${agent.version}${agent.status === 'candidate' ? '（候选）' : ''}` }));
+              const selected = choices.some(choice => choice.value === current)
+                ? choices : [...choices, { value: current, label: current }];
+              return <Select aria-label="专业 Agent 版本" disabled={!editable} value={current}
+                options={selected} onChange={value => {
+                  const selectedAgent = publishedAgents.find(agent => agentKey(agent) === value);
+                  if (selectedAgent) patchNode({ config: { agentId: selectedAgent.agentId, agentVersion: selectedAgent.version } });
+                }} />;
+            })() : null}
             {(nodeSettings[node.capabilityRef] ?? []).map(field => <Space key={field.key} wrap>
               <Typography.Text>{field.label}</Typography.Text>
               <Select aria-label={field.label} style={{ minWidth: 120 }} disabled={!editable}

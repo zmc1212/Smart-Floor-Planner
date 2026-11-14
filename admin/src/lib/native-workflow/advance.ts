@@ -192,8 +192,11 @@ function evaluateCondition(node: CompiledNode, left: WorkflowValue): boolean {
 function specialistBranch(input: Record<string, WorkflowValue>, policy: unknown) {
   if (input.issue === true) return 'issue';
   const enterprise = input.enterprise === true, publicStandard = input.publicStandard === true;
+  const drawing = input.drawing === true;
   const ready = policy === 'both' ? enterprise && publicStandard
-    : policy === 'enterprise' ? enterprise : policy === 'public' ? publicStandard : enterprise || publicStandard;
+    : policy === 'enterprise' ? enterprise : policy === 'public' ? publicStandard
+    : policy === 'any_evidence' ? enterprise || publicStandard || drawing
+    : enterprise || publicStandard;
   return ready ? 'true' : 'false';
 }
 

@@ -257,7 +257,7 @@ function parseNode(raw: unknown, path: string, issues: WorkflowIssue[]): Workflo
     }
     if (spec) {
       for (const required of Object.keys(spec.inputs)) {
-        if (!hasOwn(inputsRaw, required)) {
+        if (!hasOwn(inputsRaw, required) && !spec.optionalInputs?.includes(required)) {
           issues.push(workflowIssue('missing_input', `${path}.inputs.${required}`, `input "${required}" is required`));
         }
       }

@@ -100,7 +100,8 @@ import { homeSourceViewProtocol, knowledgeSynthesisReadInstructions } from './ho
 import { specialistPublicSections } from '../specialists/evidence';
 import { consultationSpecialist, routedConsultationSpecialist, specialistConsultationTools, specialistDelegationRoom, specialistPhotoModel, specialistPhotoRequested, specialistPolicy } from '../specialists/consultation';
 import { parsePhotoObservationText, parseSpecialistPhotoAnalysis, photoObservationTextProtocol, type SpecialistPhotoAnalysis } from '../specialists/photo-analysis';
-import { bindSpecialistInput, specialistModel, specialistProtocol, specialists, waterproofChecklistAgentVersion, type SpecialistInput, type SpecialistRunBinding } from '../specialists/registry';
+import { bindSpecialistInput, isChecklistAgentVersion, isPublishedSpecialistVersion, specialistModel, specialistProtocol, specialists,
+  type SpecialistInput, type SpecialistRunBinding } from '../specialists/registry';
 import { ownerArchiveReadProtocol, ownerArchiveReadRequested, ownerProjectStatusReadProtocol, ownerQuestionMaterialTool, ownerQuestionScope, ownerQuestionScopeProtocol,
   ownerReadToolAllowed, readOwnerMaterialInput, readOwnerQuestionScope } from './owner-question-scope';
 import { consultationAcceptanceProfile } from '../contracts/consultation';
@@ -959,15 +960,24 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const specialistBinding = (initial.run.policy_snapshot as Row).specialistRun as SpecialistRunBinding | undefined;
     const boundSpecialist = specialistBinding?.agentId && specialistBinding.agentVersion
       ? specialists.version(specialistBinding.agentId, specialistBinding.agentVersion) : undefined;
-    const versionedChecklist = specialistChecklist && boundSpecialist?.version === waterproofChecklistAgentVersion;
+    const versionedChecklist = specialistChecklist && isChecklistAgentVersion(boundSpecialist);
+    // A checklist run is already authorized against one published agent. Its
+    // original question may omit a domain keyword, so it must not be re-routed
+    // to another specialist or dropped.
+    const checklistConsultation = specialistChecklist && boundSpecialist && isPublishedSpecialistVersion(boundSpecialist)
+      ? { agent: boundSpecialist, room: null as string | null, progressRequested: false,
+        standard: undefined, editionQuestion: false, evidenceQuestion: reviewContext.currentQuestion,
+        reviewedSections: specialistPublicSections(specialistBinding?.publicCoverage, boundSpecialist.publicStandardId),
+        companyPractice: false, companyOnly: false } : null;
     const routedSpecialist = (initial.run.policy_snapshot as Row).specialist === specialistProtocol
       && initial.config.providerKey === specialistModel.providerKey && initial.config.model === specialistModel.model
       && !review && !reportSource && !homeEntry.activePublicSite
-      ? routedConsultationSpecialist(reviewContext.currentQuestion, initial.precedingQuestions, boundSpecialist) : null;
+      ? checklistConsultation ?? routedConsultationSpecialist(reviewContext.currentQuestion, initial.precedingQuestions, boundSpecialist) : null;
     const specialist = routedSpecialist && specialistBinding?.roomName
       ? { ...routedSpecialist, room: specialistBinding.roomName,
-        ...(versionedChecklist && boundSpecialist.publicStandardId ? { standard: namedReviewedStandard(boundSpecialist.publicStandardId) } : {}),
-        ...(specialistBinding.publicCoverage ? { reviewedSections: specialistPublicSections(specialistBinding.publicCoverage) } : {}) } : routedSpecialist;
+        ...(versionedChecklist && boundSpecialist?.publicStandardId ? { standard: namedReviewedStandard(boundSpecialist.publicStandardId) } : {}),
+        ...(specialistBinding.publicCoverage ? { reviewedSections: specialistPublicSections(specialistBinding.publicCoverage,
+          boundSpecialist?.publicStandardId) } : {}) } : routedSpecialist;
     const homeSourceView = siteObservationReferral && !nativeFinalization && homeEntry.kind === 'lead'
       && (initial.run.policy_snapshot as Row).homeSourceView === homeSourceViewProtocol
       ? { conversationId: String(initial.conversation.id), leadId: String(homeEntry.id) } : undefined;
@@ -1111,14 +1121,19 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (specialist) {
         const knowledgeScopes: SpecialistInput['knowledgeScopes'] = [];
         const toolPermissions: SpecialistInput['toolPermissions'] = [];
+        const drawingRequested = specialist.agent.agentId === 'electrical-specialist'
+          && /图纸|点位图|水电图|电气图|给排水图|平面图/u.test(reviewContext.currentQuestion);
         if (initial.knowledgeEnabled && (!specialist.standard || specialist.companyPractice || specialistChecklist)) {
           knowledgeScopes.push('enterprise'); toolPermissions.push('knowledge');
         }
         if (webAvailable && (!specialist.companyOnly || versionedChecklist)) { knowledgeScopes.push('public_standard'); toolPermissions.push('public_read'); }
-        if (projectStatusRead || specialistFollowup) {
+        if (projectStatusRead || specialistFollowup || drawingRequested) {
           knowledgeScopes.push('project');
           if (projectStatusRead) toolPermissions.push('project_progress');
           if (specialistFollowup) toolPermissions.push('followup');
+          // The existing photo permission also covers authorized drawing
+          // originals; it never grants a new business write.
+          if (drawingRequested) toolPermissions.push('photo');
         }
         if (initial.config.imageInput && initial.mediaRefs.length) toolPermissions.push('photo');
         const input = bindSpecialistInput(specialist.agent, {
@@ -1237,6 +1252,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             messages:nativeFinalization&&purpose==='answer'&&tools.length?nativePlanningMessages(messages, completion ? reviewCompletionInstructions : undefined)
               : purpose === 'answer' && !archiveAllowed ? ownerNoArchivePolicy(claimMessages, projectStatusRead) : claimMessages,
             tools, reportPlan, homeSourceView, specialist: !!specialist, specialistChecklist,
+            specialistAgentId: specialist?.agent.agentId, specialistDrawings: specialistBinding?.drawings,
             toolsForTurn:(question,current,available,triggerId)=>{
               if (photoObservation) return [photoObservationTool];
               if (ownerReads?.ownerScope === 'knowledge_and_site') {

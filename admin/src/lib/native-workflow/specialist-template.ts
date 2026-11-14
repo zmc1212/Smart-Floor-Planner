@@ -1,12 +1,20 @@
-import { isPublishedSpecialistVersion, specialists, waterproofAgentId, type SpecialistRegistration } from '../assistant/specialists/registry';
+import { electricalAgentId, electricalChecklistAgentVersion, isPublishedSpecialistVersion, specialists, waterproofAgentId,
+  type SpecialistRegistration } from '../assistant/specialists/registry';
 import { WORKFLOW_SCHEMA_VERSION, type WorkflowDefinition } from './types';
 
 export function createWaterproofInspectionDefinition(): WorkflowDefinition {
   return createSpecialistInspectionDefinition(specialists.active(waterproofAgentId)!);
 }
 
+export function createElectricalInspectionDefinition(): WorkflowDefinition {
+  // The candidate version is reachable only through its explicit published
+  // workflow; ordinary consultation still uses active registrations.
+  return createSpecialistInspectionDefinition(specialists.version(electricalAgentId, electricalChecklistAgentVersion)!);
+}
+
 export function createSpecialistInspectionDefinition(agent: Readonly<SpecialistRegistration>): WorkflowDefinition {
   if (!isPublishedSpecialistVersion(agent) || !agent.workflowTemplateId) throw new Error('specialist_template_unavailable');
+  const electrical = agent.agentId === electricalAgentId;
   return {
     schemaVersion: WORKFLOW_SCHEMA_VERSION,
     definitionId: agent.workflowTemplateId,
@@ -36,10 +44,11 @@ export function createSpecialistInspectionDefinition(agent: Readonly<SpecialistR
           publicStandard: { nodeId: 'public_standard', outputPath: 'publicStandard' },
         } },
       { nodeId: 'analysis_ready', type: 'condition', typeVersion: 1, capabilityRef: 'condition.specialist_evidence',
-        config: { evidencePolicy: 'any' }, inputs: {
+        config: { evidencePolicy: electrical ? 'any_evidence' : 'any' }, inputs: {
           enterprise: { nodeId: 'assessment', outputPath: 'hasEnterprise' },
           publicStandard: { nodeId: 'assessment', outputPath: 'hasPublic' },
           issue: { nodeId: 'assessment', outputPath: 'hasIssue' },
+          ...(electrical ? { drawing: { nodeId: 'assessment', outputPath: 'hasDrawing' } } : {}),
         } },
       { nodeId: 'checklist', type: 'checklist', typeVersion: 1, capabilityRef: 'compose.specialist_checklist',
         inputs: { analysis: { nodeId: 'assessment', outputPath: 'analysis' } } },

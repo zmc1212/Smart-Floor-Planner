@@ -22,11 +22,14 @@ const TEMPLATE_OPTIONS = [
   { value: 'period-report-daily', label: '施工日报（共用 period）' },
   { value: 'period-report-weekly', label: '施工周报（共用 period）' },
   { value: 'waterproof-inspection-v1', label: '防水现场核对' },
+  { value: 'electrical-inspection-v1', label: '水电现场核对' },
 ];
 
 function eventLabel(record: DefinitionSummary): string {
   if (record.eventType === 'stage_changed') return '实际阶段变化';
-  if (record.eventType === 'specialist_followup') return '业主发起防水跟进';
+  if (record.eventType === 'specialist_followup') {
+    return record.definitionId.startsWith('electrical') ? '业主发起水电跟进' : '业主发起防水跟进';
+  }
   return record.periodKind === 'weekly' ? '周报计划' : '日报计划';
 }
 

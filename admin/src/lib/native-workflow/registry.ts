@@ -10,7 +10,7 @@ export const specialistNodeSettings = {
   knowledgeScopes: ['authorized', 'enterprise', 'project'],
   knowledgeLimits: [1, 3, 5, 10],
   publicCoverage: ['subject', 'technical', 'test'],
-  evidencePolicies: ['any', 'both', 'enterprise', 'public'],
+  evidencePolicies: ['any', 'both', 'enterprise', 'public', 'any_evidence'],
   siteWaitDays: [1, 3, 7, 14, 30],
   reviewWaitDays: [1, 3, 7, 14, 30],
   issuePolicies: ['open_or_reuse', 'manager_only'],
@@ -39,6 +39,7 @@ const specialistInputs: Readonly<Record<string, Readonly<Record<string, readonly
     enterprise: ['compose.stage_specialist.v2', 'hasEnterprise'],
     publicStandard: ['compose.stage_specialist.v2', 'hasPublic'],
     issue: ['compose.stage_specialist.v2', 'hasIssue'],
+    drawing: ['read.specialist_evidence', 'hasDrawing'],
   },
   'compose.specialist_checklist': { analysis: ['compose.stage_specialist.v2', 'analysis'] },
   'compose.specialist_material_request': { analysis: ['compose.stage_specialist.v2', 'analysis'] },
@@ -63,6 +64,8 @@ export interface CapabilitySpec {
   readonly typeVersion: number;
   readonly effect: CapabilityEffect;
   readonly inputs: Readonly<Record<string, ValueType>>;
+  /** Inputs a definition may bind but does not have to bind. */
+  readonly optionalInputs?: readonly string[];
   readonly outputs: Readonly<Record<string, ValueType>>;
   readonly configKeys: readonly string[];
   readonly permission?: string;
@@ -96,7 +99,7 @@ export const capabilityCatalog: Readonly<Record<string, CapabilitySpec>> = {
   'compose.stage_specialist.v2': {
     type: 'agent', typeVersion: 2, effect: 'compose', configKeys: ['agentId', 'agentVersion'],
     permission: 'followup', inputs: { project: 'object', enterprise: 'object', publicStandard: 'object' },
-    outputs: { analysis: 'object', hasEnterprise: 'boolean', hasPublic: 'boolean', hasIssue: 'boolean' },
+    outputs: { analysis: 'object', hasEnterprise: 'boolean', hasPublic: 'boolean', hasIssue: 'boolean', hasDrawing: 'boolean' },
   },
   'compose.stage_specialist.v3': {
     type: 'agent', typeVersion: 3, effect: 'compose', configKeys: ['agentId', 'agentVersion'],
@@ -106,11 +109,12 @@ export const capabilityCatalog: Readonly<Record<string, CapabilitySpec>> = {
   'read.specialist_evidence': {
     type: 'evidence_assessment', typeVersion: 1, effect: 'read', configKeys: [], permission: 'followup',
     inputs: { analysisRun: 'object', project: 'object', enterprise: 'object', publicStandard: 'object' },
-    outputs: { analysis: 'object', hasEnterprise: 'boolean', hasPublic: 'boolean', hasIssue: 'boolean' },
+    outputs: { analysis: 'object', hasEnterprise: 'boolean', hasPublic: 'boolean', hasIssue: 'boolean', hasDrawing: 'boolean' },
   },
   'condition.specialist_evidence': {
     type: 'condition', typeVersion: 1, effect: 'none', configKeys: ['evidencePolicy'], permission: 'followup',
-    inputs: { enterprise: 'boolean', publicStandard: 'boolean', issue: 'boolean' }, outputs: { branch: 'string' },
+    inputs: { enterprise: 'boolean', publicStandard: 'boolean', issue: 'boolean', drawing: 'boolean' },
+    optionalInputs: ['drawing'], outputs: { branch: 'string' },
   },
   'compose.specialist_checklist': {
     type: 'checklist', typeVersion: 1, effect: 'none', configKeys: [], permission: 'followup',

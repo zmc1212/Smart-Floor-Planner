@@ -46,7 +46,7 @@ export function NativeWorkflowSpecialistStatus({ record, initialRunId }: { recor
   const lookup = () => setRequest(previous => ({ runId: value.trim(), refresh: previous.refresh + 1 }));
   return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
     <Space wrap>
-      <Input aria-label="防水运行 ID" placeholder="specialist:运行编号" value={value} onChange={event => setValue(event.target.value)} onPressEnter={lookup} />
+      <Input aria-label="专业运行 ID" placeholder="specialist:运行编号" value={value} onChange={event => setValue(event.target.value)} onPressEnter={lookup} />
       <Button loading={loading} disabled={!value.trim()} onClick={lookup}>读取运行</Button>
     </Space>
     {error ? <Alert showIcon type="error" message={error} /> : null}
