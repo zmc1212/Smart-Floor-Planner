@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "ledgerId": 28,
+      "when": 1786540800000,
+      "tag": "0021_platform_notification_config",
+      "hash": "9df6e11e9638ce3c44a907161391ba873736e3155fe875f6d530247c5ad8ab5c",
+      "approvedBy": "项目负责人（用户明确批准）",
+      "approvedAt": "2026-11-15",
+      "reason": "docs/xiaok-i747-1-migration-hash-root-cause.md：历史应用版本与当前迁移文件内容不一致，经结构等价性审查后仅放行该条已应用历史哈希。"
+    },
+    {
+      "ledgerId": 58,
+      "when": 1788184800000,
+      "tag": "0051_staff_referrer_network",
+      "hash": "a41ef104297b2d5f15bc7728c2d4f3805600fdb709235fa95c5e61d11824939e",
+      "approvedBy": "项目负责人（用户明确批准）",
+      "approvedAt": "2026-11-15",
+      "reason": "docs/xiaok-i747-1-migration-hash-root-cause.md：历史应用版本与当前迁移文件内容不一致，经结构等价性审查后仅放行该条已应用历史哈希。"
+    }
+  ]
+}

@@ -15,12 +15,82 @@ function hashes(source) {
 
 function loadJournal(folder, journalFile) {
   return JSON.parse(readFileSync(path.join(folder, journalFile), 'utf8')).entries.map(({ when, tag }) => ({
-    when, hashes: hashes(readFileSync(path.join(folder, tag + '.sql'), 'utf8')),
+    when, tag, hashes: hashes(readFileSync(path.join(folder, tag + '.sql'), 'utf8')),
   }));
 }
 
-function validateLedger(rows, active, forks) {
+const SHA256 = /^[0-9a-f]{64}$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const knownHashesFile = 'legacy/known-hashes.json';
+
+/**
+ * Validates the approved historical-hash allowlist. Only full SHA-256 values are
+ * accepted: no wildcards, no prefixes and no fuzzy matching. Every entry must
+ * carry its approval record and must be unique in timestamp, tag, hash and
+ * ledger id, so the allowlist cannot silently grow into a blanket exemption.
+ */
+export function parseKnownHashes(value, source = knownHashesFile) {
+  const invalid = detail => new Error(`Invalid known-hash allowlist (${source}): ${detail}.`);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid('expected an object');
+  if (value.version !== 1) throw invalid('unsupported version');
+  if (!Array.isArray(value.entries)) throw invalid('entries must be an array');
+  const seen = { timestamp: new Set(), tag: new Set(), hash: new Set(), ledgerId: new Set() };
+  return value.entries.map(entry => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw invalid('entry must be an object');
+    if (!Number.isSafeInteger(entry.ledgerId) || entry.ledgerId <= 0) throw invalid('ledgerId must be a positive integer');
+    if (!Number.isSafeInteger(entry.when) || entry.when <= 0) throw invalid('when must be a positive integer');
+    if (typeof entry.tag !== 'string' || !/^\S+$/.test(entry.tag)) throw invalid('tag must be a non-empty string');
+    if (typeof entry.hash !== 'string' || !SHA256.test(entry.hash)) {
+      throw invalid('hash must be a full lowercase SHA-256');
+    }
+    if (typeof entry.approvedBy !== 'string' || !entry.approvedBy.trim()) throw invalid('approvedBy is required');
+    if (typeof entry.approvedAt !== 'string' || !ISO_DATE.test(entry.approvedAt)
+      || Number.isNaN(Date.parse(`${entry.approvedAt}T00:00:00Z`))) {
+      throw invalid('approvedAt must be an ISO date');
+    }
+    if (typeof entry.reason !== 'string' || !entry.reason.trim()) throw invalid('reason is required');
+    for (const [name, key] of [['timestamp', entry.when], ['tag', entry.tag],
+      ['hash', entry.hash], ['ledgerId', entry.ledgerId]]) {
+      if (seen[name].has(key)) throw invalid(`duplicate ${name}`);
+      seen[name].add(key);
+    }
+    return Object.freeze({
+      ledgerId: entry.ledgerId, when: entry.when, tag: entry.tag, hash: entry.hash,
+      approvedBy: entry.approvedBy, approvedAt: entry.approvedAt, reason: entry.reason,
+    });
+  });
+}
+
+/** Fails closed: a missing or malformed allowlist aborts the migration run. */
+export function loadKnownHashes(folder) {
+  const file = path.join(folder, knownHashesFile);
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (error) {
+    throw new Error(`Cannot load the approved known-hash allowlist at ${file}: ${error.message}`);
+  }
+  return parseKnownHashes(parsed);
+}
+
+export function validateLedger(rows, active, forks, knownHashes = []) {
   const activeByTime = new Map(active.map(entry => [entry.when, entry.hashes]));
+  const tagByTime = new Map(active.map(entry => [entry.when, entry.tag]));
+  const knownByTime = new Map();
+  for (const entry of knownHashes) {
+    const options = knownByTime.get(entry.when) ?? [];
+    options.push(entry);
+    knownByTime.set(entry.when, options);
+  }
+  // The allowlist is consulted only after both the active journal and the legacy
+  // forks reject a row, and it requires the timestamp, the current journal tag
+  // and the full hash to agree. An approved row is treated as already applied;
+  // it never runs again and never joins a fork.
+  const approved = (when, hash) => {
+    const tag = tagByTime.get(when);
+    return Boolean(tag) && (knownByTime.get(when) ?? [])
+      .some(entry => entry.hash === hash && entry.tag === tag);
+  };
   const forkByTime = new Map();
   for (const [fork, entries] of Object.entries(forks)) {
     for (const entry of entries) {
@@ -34,7 +104,7 @@ function validateLedger(rows, active, forks) {
   for (const row of rows) {
     const when = Number(row.created_at);
     const legacy = forkByTime.get(when)?.find(entry => entry.hashes.has(row.hash));
-    if (!legacy && !activeByTime.get(when)?.has(row.hash)) {
+    if (!legacy && !activeByTime.get(when)?.has(row.hash) && !approved(when, row.hash)) {
       throw new Error(`Unrecognized migration at ledger row ${row.id} (timestamp ${row.created_at}).`);
     }
     if (seen.has(when)) throw new Error(`Duplicate migration timestamp ${when}.`);
@@ -61,6 +131,12 @@ function validateLedger(rows, active, forks) {
   const schema = integrated ? 'integrated' : hasBailianDelegation ? 'bailian'
     : fork === 'native' && seen.has(forkEntries[0].when) ? 'native' : 'absent';
   return { seen, schema, supersedesOriginal };
+}
+
+/** Ledger entries already applied are skipped, including allowlisted historical rows. */
+export function pendingMigrations(migrations, seen, supersedesOriginal) {
+  return migrations.filter(migration => !(seen.has(migration.folderMillis)
+    || supersedesOriginal && migration.folderMillis === originalDelegation));
 }
 
 async function verifyDelegationSchema(client, expected) {
@@ -92,6 +168,7 @@ export async function migratePostgresIntegration(client, folder) {
   const migrations = readMigrationFiles({ migrationsFolder: folder });
   const forks = Object.fromEntries(['native', 'bailian'].map(fork =>
     [fork, loadJournal(path.join(folder, 'legacy', fork), '_journal.json')]));
+  const knownHashes = loadKnownHashes(folder);
   await client.query('begin');
   try {
     await client.query("select pg_advisory_xact_lock(hashtext('smart-floor-planner:drizzle:migrate'))");
@@ -99,11 +176,10 @@ export async function migratePostgresIntegration(client, folder) {
     await client.query(`create table if not exists app.__drizzle_migrations
       (id serial primary key, hash text not null, created_at bigint)`);
     const { rows } = await client.query('select id,hash,created_at from app.__drizzle_migrations order by id');
-    const { seen, schema, supersedesOriginal } = validateLedger(rows, active, forks);
+    const { seen, schema, supersedesOriginal } = validateLedger(rows, active, forks, knownHashes);
     await verifyDelegationSchema(client, schema);
-    for (const migration of migrations) {
+    for (const migration of pendingMigrations(migrations, seen, supersedesOriginal)) {
       const when = migration.folderMillis;
-      if (seen.has(when) || supersedesOriginal && when === originalDelegation) continue;
       for (const statement of migration.sql) {
         if (statement.trim()) await client.query(statement);
       }

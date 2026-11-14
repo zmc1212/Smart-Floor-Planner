@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
 import pg from 'pg';
+import {
+  loadKnownHashes, parseKnownHashes, pendingMigrations, validateLedger,
+} from '../postgres-integration-migrations.mjs';
 
 const admin = fileURLToPath(new URL('../../', import.meta.url));
 const folder = new URL('../../drizzle/', import.meta.url);
@@ -438,4 +441,165 @@ live('an actually applied unknown migration cannot hide earlier pending migratio
   await asMigrator(name, async (db) => {
     assert.equal((await db.query("select to_regclass('app.native_workflow_delegations') relation")).rows[0].relation, null);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Approved historical-hash allowlist. Everything below is pure: no connection.
+// ---------------------------------------------------------------------------
+
+const allowlist = loadKnownHashes(fileURLToPath(folder));
+const baseline = new Map(journal.map(({ tag }) => [tag, hash(read(tag))]));
+const activeJournal = journal.map(({ when, tag }) => ({ when, tag, hashes: new Set([baseline.get(tag)]) }));
+const migrations = journal.map(({ when, tag }) => ({ folderMillis: when, tag }));
+// The 1454 ledger holds the 119 rows up to 0119; 0120 and 0124-0130 are pending.
+const appliedJournal = journal.filter(({ idx }) => idx <= 118);
+const historical = new Map(allowlist.map(entry => [entry.tag, entry]));
+
+function ledgerRows({ historicalOnly = false } = {}) {
+  return appliedJournal.map(({ when, tag }, index) => ({
+    id: index + 1,
+    created_at: when,
+    hash: historicalOnly && historical.has(tag) ? historical.get(tag).hash : baseline.get(tag),
+  }));
+}
+
+test('the committed allowlist holds exactly the two approved entries', () => {
+  assert.deepEqual(
+    allowlist.map(({ ledgerId, when, tag, hash: digest, approvedBy, approvedAt }) =>
+      ({ ledgerId, when, tag, hash: digest, approvedBy, approvedAt })),
+    [
+      {
+        ledgerId: 28, when: 1786540800000, tag: '0021_platform_notification_config',
+        hash: '9df6e11e9638ce3c44a907161391ba873736e3155fe875f6d530247c5ad8ab5c',
+        approvedBy: '项目负责人（用户明确批准）', approvedAt: '2026-11-15',
+      },
+      {
+        ledgerId: 58, when: 1788184800000, tag: '0051_staff_referrer_network',
+        hash: 'a41ef104297b2d5f15bc7728c2d4f3805600fdb709235fa95c5e61d11824939e',
+        approvedBy: '项目负责人（用户明确批准）', approvedAt: '2026-11-15',
+      },
+    ]
+  );
+});
+
+test('A. current journal hashes keep validating with and without the allowlist', () => {
+  assert.equal(validateLedger(ledgerRows(), activeJournal, {}).seen.size, appliedJournal.length);
+  assert.equal(validateLedger(ledgerRows(), activeJournal, {}, allowlist).seen.size, appliedJournal.length);
+});
+
+test('B. the approved 0021 historical hash is recognized', () => {
+  const entry = historical.get('0021_platform_notification_config');
+  const rows = ledgerRows({ historicalOnly: true });
+  assert.ok(rows.some(row => row.created_at === entry.when && row.hash === entry.hash));
+  assert.ok(validateLedger(rows, activeJournal, {}, allowlist).seen.has(entry.when));
+});
+
+test('C. the approved 0051 historical hash is recognized', () => {
+  const entry = historical.get('0051_staff_referrer_network');
+  const rows = ledgerRows({ historicalOnly: true });
+  assert.ok(rows.some(row => row.created_at === entry.when && row.hash === entry.hash));
+  assert.ok(validateLedger(rows, activeJournal, {}, allowlist).seen.has(entry.when));
+});
+
+test('D. a one-character change to the 0021 hash is rejected', () => {
+  const rows = ledgerRows({ historicalOnly: true }).map(row => row.created_at === 1786540800000
+    ? { ...row, hash: '8' + row.hash.slice(1) } : row);
+  assert.throws(() => validateLedger(rows, activeJournal, {}, allowlist), /Unrecognized migration/);
+  assert.throws(() => validateLedger(rows, activeJournal, {}, []), /Unrecognized migration/);
+});
+
+test('E. a one-character change to the 0051 hash is rejected', () => {
+  const rows = ledgerRows({ historicalOnly: true }).map(row => row.created_at === 1788184800000
+    ? { ...row, hash: 'b' + row.hash.slice(1) } : row);
+  assert.throws(() => validateLedger(rows, activeJournal, {}, allowlist), /Unrecognized migration/);
+});
+
+test('F. a changed 0021 timestamp is rejected', () => {
+  const rows = ledgerRows({ historicalOnly: true }).map(row => row.created_at === 1786540800000
+    ? { ...row, created_at: 1786540800001 } : row);
+  assert.throws(() => validateLedger(rows, activeJournal, {}, allowlist), /Unrecognized migration/);
+});
+
+test('G. a changed 0051 timestamp is rejected', () => {
+  const rows = ledgerRows({ historicalOnly: true }).map(row => row.created_at === 1788184800000
+    ? { ...row, created_at: 1788184800001 } : row);
+  assert.throws(() => validateLedger(rows, activeJournal, {}, allowlist), /Unrecognized migration/);
+});
+
+test('H. a journal tag mismatch is rejected even with the right hash and timestamp', () => {
+  const active = activeJournal.map(entry => entry.when === 1786540800000
+    ? { ...entry, tag: '0021_platform_notification_config_renamed' } : entry);
+  assert.throws(() => validateLedger(ledgerRows({ historicalOnly: true }), active, {}, allowlist),
+    /Unrecognized migration/);
+});
+
+test('I. an unknown migration is still rejected', () => {
+  const rows = [...ledgerRows({ historicalOnly: true }), { id: 200, created_at: 1795000000000, hash: 'f'.repeat(64) }];
+  assert.throws(() => validateLedger(rows, activeJournal, {}, allowlist), /Unrecognized migration/);
+});
+
+test('J. an allowlist entry without an approver or approval date fails to load', () => {
+  const entry = { ...allowlist[0] };
+  const wrap = candidate => ({ version: 1, entries: [candidate] });
+  assert.throws(() => parseKnownHashes(wrap({ ...entry, approvedBy: '' })), /approvedBy is required/);
+  assert.throws(() => parseKnownHashes(wrap({ ...entry, approvedBy: undefined })), /approvedBy is required/);
+  assert.throws(() => parseKnownHashes(wrap({ ...entry, approvedAt: '' })), /approvedAt must be an ISO date/);
+  assert.throws(() => parseKnownHashes(wrap({ ...entry, approvedAt: '2026-11-15T00:00:00Z' })),
+    /approvedAt must be an ISO date/);
+});
+
+test('K. a duplicated allowlist identity fails to load', () => {
+  const entry = { ...allowlist[0] };
+  assert.throws(() => parseKnownHashes({ version: 1, entries: [entry, { ...entry }] }), /duplicate/);
+  assert.throws(() => parseKnownHashes({ version: 1, entries: [entry, { ...entry, when: entry.when + 1 }] }), /duplicate/);
+  assert.throws(() => parseKnownHashes({ version: 1, entries: [entry, { ...entry, ledgerId: 999 }] }), /duplicate/);
+});
+
+test('L. an illegal SHA-256 value fails to load', () => {
+  const entry = { ...allowlist[0] };
+  const bad = ['abc', 'z'.repeat(64), 'A'.repeat(64), '9df6e11e*', entry.hash.slice(0, 63), entry.hash + '0'];
+  for (const candidate of bad) {
+    assert.throws(() => parseKnownHashes({ version: 1, entries: [{ ...entry, hash: candidate }] }),
+      /hash must be a full lowercase SHA-256/, candidate);
+  }
+});
+
+test('M. the duplicate timestamp check stays effective', () => {
+  const rows = ledgerRows({ historicalOnly: true });
+  rows.push({ ...rows.at(-1), id: 999 });
+  assert.throws(() => validateLedger(rows, activeJournal, {}, allowlist), /Duplicate migration timestamp/);
+});
+
+test('N. the migration prefix continuity check stays effective', () => {
+  const rows = ledgerRows({ historicalOnly: true })
+    .filter(row => row.created_at !== appliedJournal[5].when);
+  assert.throws(() => validateLedger(rows, activeJournal, {}, allowlist), /gap before an applied entry/);
+});
+
+test('O. the mixed XiaoK fork history check stays effective', () => {
+  const forks = {
+    native: [{ when: 1000, tag: 'legacy_native', hashes: new Set(['a'.repeat(64)]) }],
+    bailian: [{ when: 2000, tag: 'legacy_bailian', hashes: new Set(['b'.repeat(64)]) }],
+  };
+  const rows = [
+    { id: 1, created_at: 1000, hash: 'a'.repeat(64) },
+    { id: 2, created_at: 2000, hash: 'b'.repeat(64) },
+  ];
+  assert.throws(() => validateLedger(rows, [], forks, allowlist), /Mixed XiaoK fork migration history/);
+});
+
+test('P. allowlisted historical rows are applied, never pending', () => {
+  const { seen } = validateLedger(ledgerRows({ historicalOnly: true }), activeJournal, {}, allowlist);
+  const pending = pendingMigrations(migrations, seen, false);
+  assert.ok(!pending.some(({ tag }) => tag === '0021_platform_notification_config'));
+  assert.ok(!pending.some(({ tag }) => tag === '0051_staff_referrer_network'));
+});
+
+test('Q. every other migration keeps its journal order and pending set', () => {
+  const { seen } = validateLedger(ledgerRows({ historicalOnly: true }), activeJournal, {}, allowlist);
+  const pending = pendingMigrations(migrations, seen, false);
+  assert.deepEqual(pending.map(({ tag }) => tag),
+    journal.filter(({ idx }) => idx >= 119).map(({ tag }) => tag));
+  assert.deepEqual([...seen].sort((a, b) => a - b),
+    [...validateLedger(ledgerRows(), activeJournal, {}, []).seen].sort((a, b) => a - b));
 });

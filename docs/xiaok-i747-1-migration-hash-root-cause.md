@@ -429,7 +429,7 @@ enterprises_with_exactly_one_enterprise_admin: 0
 
 ## 9. 推荐方案
 
-**主方案：D（提交式精确历史哈希白名单）+ 需负责人审批。**
+**主方案：D（提交式精确历史哈希白名单）。负责人已于 2026-11-15 批准并实施，见 §13。**
 
 理由：
 
@@ -439,7 +439,7 @@ enterprises_with_exactly_one_enterprise_admin: 0
 4. D 的放行范围可以做到"3 项精确匹配 + 2 条记录"，比在库里改两行更难出错、更易复核、更容易回滚；
 5. D 对 1454、其他历史库、以及后续任何新环境都是同一套逻辑，不会出现"某台机器忘了改账本"的遗漏。
 
-**实施顺序（待批准后执行，本轮不做）**：
+**实施顺序（已于 2026-11-15 完成第 1–3 步，第 4–5 步属 I7.4.7 后续阶段）**：
 
 1. 负责人书面确认 0021/0051 的等价性结论（本文 §6）与白名单内容；
 2. 新增白名单文件 + 改造 `validateLedger()`（仅精确匹配，保留全部现有严格性检查）；
@@ -458,9 +458,9 @@ enterprises_with_exactly_one_enterprise_admin: 0
 | --- | --- | --- | --- |
 | 1 | 接受"0021 应用版本 ≠ 当前文件"的结论 | 技术负责人 | 依据 §6.1.2 结构反证；不接受则无法继续任何方案 |
 | 2 | 接受"0051 结构等价、回填零影响"的结论 | 技术负责人 | 依据 §6.2.1/6.2.2 |
-| 3 | 批准方案 D（提交式白名单）并指定审批人署名 | 产品/技术负责人 | 白名单需落 `approvedBy` / `approvedAt` |
+| 3 | 批准方案 D（提交式白名单）并指定审批人署名 | 产品/技术负责人 | **已批准（2026-11-15）**，白名单已落 `approvedBy` / `approvedAt` |
 | 4 | 确认不复原 0021 的 `SET NOT NULL`（或明确要求补一条新迁移） | 技术负责人 | 影响新环境与 1454 的 schema 一致性 |
-| 5 | 确认允许修改 `validateLedger()` | 技术负责人 | 本轮明确禁止；下一轮需单独授权 |
+| 5 | 确认允许修改 `validateLedger()` | 技术负责人 | **已批准（2026-11-15）**，仅新增精确白名单分支，未放宽既有校验 |
 | 6 | 是否同步处理 `default` 行 3 个错误模板 ID | 业务负责人 | 影响微信订阅消息实际投递 |
 | 7 | 1454 执行迁移的窗口、备份方式、是否停 Worker | 运维/负责人 | 属 I7.4.7 后续阶段 |
 
@@ -486,3 +486,53 @@ enterprises_with_exactly_one_enterprise_admin: 0
 
 提交：独立提交并推送 `origin/codex/xiaok-integration`，不合并 `main`，不部署生产。
 工作区原有的未提交改动（`AGENTS.md`、`source-manifest.json`、`miniprogram/*`、`admin/tsconfig.json` 等）保持原样，未纳入本次提交。
+
+## 13. 实施记录：I7.4.7.2 精确历史哈希白名单
+
+> 基线：`a3d8d48a`　实施时间：`2026-11-15`
+> 负责人已批准方案 D，并批准修改 `validateLedger()`。
+> 本轮**未连接任何数据库**、未执行迁移、未修改 0021/0051、未修改 `_journal.json`。
+
+### 13.1 白名单文件
+
+新增 [admin/drizzle/legacy/known-hashes.json](file:///G:/workspace/%E5%90%91%E6%80%BB/Smart-Floor-Planner/admin/drizzle/legacy/known-hashes.json)，**只有两条记录**：
+
+| ledgerId | when | tag | hash（完整 SHA-256） | approvedBy | approvedAt |
+| --- | --- | --- | --- | --- | --- |
+| `28` | `1786540800000` | `0021_platform_notification_config` | `9df6e11e9638ce3c44a907161391ba873736e3155fe875f6d530247c5ad8ab5c` | 项目负责人（用户明确批准） | `2026-11-15` |
+| `58` | `1788184800000` | `0051_staff_referrer_network` | `a41ef104297b2d5f15bc7728c2d4f3805600fdb709235fa95c5e61d11824939e` | 项目负责人（用户明确批准） | `2026-11-15` |
+
+两条的 `reason` 均指向本文，`ledgerId` 仅作审计元数据，**不参与**身份校验。
+
+### 13.2 匹配规则
+
+- 只在「当前 journal 哈希」与「native / bailian legacy fork 哈希」**都不匹配之后**才查询白名单；
+- 必须**同时**满足：`timestamp` 相等、该 timestamp 在当前 journal 中的 `tag` 相等、完整 64 位小写 SHA-256 完全相等；
+- 不支持通配符、前缀匹配、模糊匹配；不接受非 64 位或含非十六进制字符的值；
+- 命中后该行只计入已应用集合（`seen`），**不参与 fork 判定，不重跑 SQL**；
+- 白名单之外的未知迁移仍然抛 `Unrecognized migration at ledger row …`；
+- `Duplicate migration timestamp`、`Migration history has a gap before an applied entry`、`Mixed XiaoK fork migration history` 三项检查**未做任何修改**；
+- 白名单缺失、JSON 非法、`version` 不支持、结构错误、缺少 `approvedBy`/`approvedAt`、重复身份（timestamp / tag / hash / ledgerId）、非法 SHA —— 任一情况都在事务 `begin` **之前**抛错（fail closed）。
+
+### 13.3 不会重新执行
+
+`pendingMigrations()` 用 `seen` 过滤待执行集合，0021/0051 被识别为已应用后不进入该集合。
+两条迁移的 SQL 与 journal 时间戳均未改动；0051 的非幂等约束/策略不会被重复创建。
+
+### 13.4 回归
+
+| 项 | 结果 |
+| --- | --- |
+| 新增纯函数测试（A–Q + 白名单内容校验，18 项） | **18 passed / 0 failed** |
+| 原有数据库集成测试 | 7 项 `SKIP`（未提供隔离 PG 与迁移密码），**未伪造通过** |
+| `node --check scripts/postgres-integration-migrations.mjs` | 通过 |
+| `npx tsc --noEmit` | 通过 |
+| 定向 ESLint（迁移器 + 测试） | 通过 |
+
+### 13.5 仍未解决
+
+- **1454 仍未执行迁移**，仍有 **8 个待应用迁移**：`0120`、`0124`、`0125`、`0126`、`0127`、`0128`、`0129`、`0130`；
+- 本轮只解决**迁移器账本识别**问题，不触发任何 DDL；
+- `notification_config` 结构差异仍然存在（1454 可空无默认，当前文件为 `NOT NULL DEFAULT '{}'`），需单独评估；
+- `platform_configs.default` 的 3 个模板 ID 与 SQL/文档基线不一致，尚未处理；
+- 仍需要在新的可丢弃 PG17 预演库上，用 1454 真实 119 条账本复跑 I7.4.7 全流程（§9 实施顺序第 4 步）。
