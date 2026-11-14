@@ -5,6 +5,7 @@ import { normalizeNativeCitationCarrier } from '../agent/native-citation-gate';
 import { publishedSiteNote, publishedSiteRecordText } from '@/lib/construction/site-contract';
 import { reviewSynthesisResponse } from '../agent/synthesis-review';
 import { parseSynthesis } from '../agent/synthesis';
+import { nativeSpecialistDraftIssues } from '../agent/native-executor';
 import { standardStatusClaims, unverifiedStandardStatus, type PublicStandard } from '../web-search/standards';
 import type { SynthesisSource } from '../agent/synthesis';
 import type { RagCitationSource } from '../fastgpt/native-rag';
@@ -121,6 +122,14 @@ test('record version labels are metadata, not construction quantities', () => {
     '版本 3 的记录写的是管根密封待核对，版本 4 的记录写的是已完成，随附 1 张照片；两条都是已核对发布的记录。' }] });
   assert.doesNotThrow(() => parseSynthesis(draft, [snapshot], { currentQuestion: '卫生间做到哪一步了？',
     currentRoom: '卫生间', specialistAcceptance: true, projectSnapshotAuthoritative: true }));
+  const modifiers = JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'advice', citations: [], text:
+    '版本 3 的记录是待核对，版本 4 的记录是据提供人原话称已完成，同样附有 1 张现场照片，记录编号 2 对应版本 4。' }] });
+  assert.doesNotThrow(() => parseSynthesis(modifiers, [snapshot], { currentQuestion: '卫生间做到哪一步了？',
+    currentRoom: '卫生间', specialistAcceptance: true, projectSnapshotAuthoritative: true }));
+  const quantity = JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'advice', citations: [], text:
+    '管根防水上翻 250 mm，附加层做 1 张照片。' }] });
+  assert.throws(() => parseSynthesis(quantity, [snapshot], { currentQuestion: '卫生间管根怎么做？',
+    currentRoom: '卫生间', specialistAcceptance: true, projectSnapshotAuthoritative: true }), /unsupported_model_commitment/);
 });
 
 test('an unavailable enterprise source cannot turn generic advice into a company rule', () => {
@@ -135,9 +144,34 @@ test('an unavailable enterprise source cannot turn generic advice into a company
     specialistAcceptance: true, enterpriseUnavailable: true }), /unsupported_model_commitment|ungrounded_response_scope/);
 });
 
+test('enterprise-scope descriptions and document requests are not enterprise claims', () => {
+  const answer = (text: string) => ({ kind: 'synthesis' as const, segments: [{ basis: 'advice' as const, text, citations: [] }] });
+  for (const text of [
+    '等你方便提供公司标准的名称或编号、涉及的部分，团队核实后可以再逐条对照。',
+    '能说的是范围上的区别：企业标准通常涵盖基层处理、涂刷遍数与厚度、节点加强处理等条目，这些都要以公司正式文件为准。',
+    '因为本次企业工艺资料检索没有取得结果，所以我没有拿到公司防水施工标准的原文。',
+    '这点我不想用行业通用说法来充数，以免您把别家的做法当成我们公司的规定。',
+  ]) assert.deepEqual(reviewSynthesisResponse(answer(text), [], { enterpriseUnavailable: true }), [], text);
+  assert.deepEqual(reviewSynthesisResponse(answer('我们公司规定卫生间防水涂刷高度不低于 1800 mm。'), [],
+    { enterpriseUnavailable: true }).map(issue => issue.code), ['unsupported_enterprise_claim']);
+});
+
+test('a native project snapshot supports a stage observation without its own CITE', () => {
+  const snapshot: SynthesisSource = { sourceId: 'Bstate', kind: 'project', title: '本人项目实际节点',
+    text: '团队标记的当前节点：水电。\n本次未查到「厨房」已向你发布的现场记录。' };
+  const text = '我这边查到的实时记录显示，您这个项目团队当前标记的施工节点是“水电”阶段。'
+    + '这只是当前所处的阶段，不代表厨房水管已经做完，更不能当作完工或验收结果。\n\n'
+    + '另外，本次没有查到针对“厨房”单独发布的现场记录，所以厨房用水管具体做到哪一步，我这边没有可依据的现场数据。';
+  assert.deepEqual(nativeSpecialistDraftIssues(text, [], [snapshot], { currentQuestion: '厨房水管现在做到哪一步？',
+    currentRoom: '厨房', specialistAcceptance: true, projectSnapshotAuthoritative: true }), []);
+});
+
 test('CITE[id] is the same issued citation carrier after normalization', () => {
   const source: RagCitationSource = { nativeId: 'C9abc_def-1', origin: 'current', quote: '原文', evidence: {
     ref: { type: 'web_page', id: '1:1200:0', version: 'v' }, hash: 'v', text: '原文',
   } };
   assert.equal(normalizeNativeCitationCarrier('公告 CITE[C9abc_def-1]。', [source]), '公告 [C9abc_def-1](CITE)。');
+  assert.equal(normalizeNativeCitationCarrier('公告 [C9abc_def-1][C9abc_def-1]。', [source]),
+    '公告 [C9abc_def-1](CITE)[C9abc_def-1](CITE)。');
+  assert.equal(normalizeNativeCitationCarrier('公告 [C-not-issued]。', [source]), '公告 [C-not-issued]。');
 });

@@ -79,7 +79,25 @@ export function buildAgentContext(turns: Array<{ id: string; role: 'user' | 'ass
 /** Reject free-form completion/price claims that no service receipt supports.
  * Shared by the built-in reply parser and the FastGPT Agent V2 free-form path;
  * service-authored business snapshots are delivered separately. */
-type CommitmentScope = { formalStatusEvidence?: boolean; acceptanceQuotes?: readonly string[]; acceptanceAdvice?: boolean; delegationReply?: boolean };
+type CommitmentScope = { formalStatusEvidence?: boolean; acceptanceQuotes?: readonly string[]; acceptanceAdvice?: boolean; delegationReply?: boolean;
+  /** The bound project snapshot may preserve a record-owner note. Quoting that
+   * note (“原话称已完成”) reports provenance; it is not the model's own
+   * completion claim. Only this attributed surface is projected. */
+  attributedRecordNotes?: boolean };
+
+/** Keep an explicitly attributed record-note predicate out of the completion
+ * guard, while every unattributed completion claim keeps failing closed. */
+function projectAttributedRecordNotes(text: string) {
+  return text.replace(/(?:据[^，。；！？\n“”"「」]{0,12}?(?:原话)?(?:称|写着|写的是|显示|提到)|原话(?:称|写着|写的是|显示|提到)|备注(?:称|写着|写的是|显示|提到))\s*(?:[“"「]\s*)?已(?:经)?(?:成功)?(?:完成|落实|解决|关闭|验收)(?:\s*[”"」])?/gu, '原话描述');
+}
+
+/** A denial scoped to the immediately following completion predicate is not a
+ * receipt. Never cross a clause boundary; a later positive claim still fails. */
+function projectDeniedCompletion(text: string) {
+  return text
+    .replace(/(?:不能|无法|不应|不可以)(?:据此|因此|就此)(?:认为|认定|判断|推断)[^，,。；;！？!?\n]{0,24}?已(?:经)?(?:成功)?(?:通过验收|完成|验收)/gu, '不能据此确认完成状态')
+    .replace(/不能据此确认完成状态\s*[，,]\s*或(?:者)?\s*(?:已(?:经)?(?:成功)?(?:通过)?)?验收/gu, '不能据此确认完成状态');
+}
 
 export function guardAnswerCommitments(text: string, options: CommitmentScope = {}) {
   if (hasReasoningMarkup(text)) fail('invalid_model_answer', 502);
@@ -98,8 +116,9 @@ export function guardAnswerCommitments(text: string, options: CommitmentScope = 
     .replace(/是否(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)(?:成功|完成|好了)/g, '是否办妥')
     .replace(/(?:没有|不存在)(?:任何|真实|有效)?已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)的(?:记录|结果|凭据)/g, '缺少操作记录')
     .replace(/(^|[，。；！？\n—])\s*(?:所以|因此)?(?:我|我们|小K)?(?:不能|不会|无法|不应|不可以)(?:对外|直接|替您|替你|向您|向你)?(?:说|声称|宣称|承诺|表示|确认)(?:[“「"]?已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)[”」"]?)(?:(?:或|或者|和|、)[“「"]?已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)[”」"]?)*/g, '$1不能确认操作状态');
-  if (options.acceptanceQuotes && hasAcceptanceClaim(completionClaims)
-    || /(?:已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)|(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)(?:成功|完成|好了)|保证.{0,12}(?:完工|承重|安全)|确定.{0,12}(?:承重墙|可拆除))/.test(completionClaims)) fail('unsupported_model_commitment', 502);
+  const attributed = projectDeniedCompletion(options.attributedRecordNotes ? projectAttributedRecordNotes(completionClaims) : completionClaims);
+  if (options.acceptanceQuotes && hasAcceptanceClaim(attributed)
+    || /(?:已(?:经)?(?:成功)?(?:完成)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)|(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)(?:成功|完成|好了)|保证.{0,12}(?:完工|承重|安全)|确定.{0,12}(?:承重墙|可拆除))/.test(attributed)) fail('unsupported_model_commitment', 502);
   const priceClaims = text.replace(/(?:不能|无法|不作|不做|不提供|不应|不敢|不)(?:任何|绝对)?(?:保证|承诺|确定)/g, '待核实');
   if (/(?:保证|承诺)[^\n。！？!?；;]{0,20}(?:报价|费用|总价|包干|预算|万元|元以内|元以下)/.test(priceClaims)
     || /确定[^\n。！？!?；;]{0,20}(?:报价|费用|总价|包干|万元|元以内|元以下)/.test(priceClaims)) fail('unsupported_model_commitment', 502);

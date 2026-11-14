@@ -153,5 +153,12 @@ export function normalizeNativeCitationCarrier(text: string, sources: Iterable<R
     .replace(/\[([^\]]+)\]\(CITE\)/gu, (marker, id: string) => {
       const mapped = resolve(id);
       return mapped ? '[' + mapped + '](CITE)' : marker;
+    })
+    // Some provider outputs append issued ids as bare bracket runs
+    // (“…条 [idA][idB]”). Only a resolved same-run id becomes a citation;
+    // an unknown bare id stays plain text and cannot satisfy the gate.
+    .replace(/\[([A-Za-z0-9_-]{1,80})\](?!\()/gu, (marker, id: string) => {
+      const mapped = resolve(id);
+      return mapped ? '[' + mapped + '](CITE)' : marker;
     });
 }

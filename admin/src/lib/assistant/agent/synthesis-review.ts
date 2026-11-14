@@ -403,9 +403,14 @@ function unsupportedEnterpriseClaim(text: string, citations: Citations, sources:
   if (!unavailable) return false;
   if (citations.some(citation => sources.some(source => source.sourceId === citation.sourceId && source.kind === 'knowledge'))) return false;
   return text.split(/[。！？!?；;\n]/u).some(sentence => {
-    if (/(?:本次|本轮|这次)?(?:未|没有|没能|没取得|无法|不能|缺|待核实)|以[^。；\n]{1,24}为准|不代表|不属于|并非|不等于|不等同|不作(?:为)?|不冒充/u.test(sentence)) return false;
+    if (/(?:本次|本轮|这次)?(?:未|没有|没能|没取得|无法|不能|缺|待核实)|不想|不会|不应|以免|避免|以[^。；\n]{1,24}为准|不代表|不属于|并非|不等于|不等同|不作(?:为)?|不冒充/u.test(sentence)) return false;
+    // A general description of what enterprise standards usually cover, or a
+    // request that defers to the formal document, is not a claimed rule.
+    if (/(?:通常|一般)(?:涵盖|包括|涉及)|范围上|以[^。；\n]{1,24}(?:正式文件|书面|原文)(?:为准)/u.test(sentence)) return false;
     return /(?:我们|我|本|咱们)?(?:公司|企业|我司)(?:的)?[^。！？\n]{0,12}(?:规定|标准|工艺|做法|要求|制度|口径)|(?:企业|公司)(?:标准|工艺|规定|做法|要求)/u.test(sentence)
-      && /(?:要求|规定|应|须|必须|做到|采用|标准|做法|高度|宽度|时长|遍)/u.test(sentence);
+      // “公司标准” in a subject or a request for the customer's document is
+      // not itself a requirement. Only an actual requirement predicate counts.
+      && /(?:要求|规定|应|须|必须|做到|采用|做法|高度|宽度|时长)/u.test(sentence);
   });
 }
 

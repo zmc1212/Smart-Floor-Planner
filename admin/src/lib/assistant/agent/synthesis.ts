@@ -15,6 +15,7 @@ import { formalBusinessResultKeys } from './formal-business-repair';
 import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 import { numericCitationCandidates } from './citation-coverage';
 import { groundedNumberTokens, printedNumberSupported } from './prose-number-view';
+import { provenanceMetadataText } from './parameter-provenance';
 import { publicPdfSource } from './source-document';
 import { isReportAnswerSnapshot, reportQuestionCoverage } from './report-final';
 import { scopedReportSynthesisSources, type ReportSourceScope } from './report-source-scope';
@@ -616,6 +617,12 @@ function synthesisCommitmentOptions(segment: SynthesisSegment, sources: Synthesi
   return {
     formalStatusEvidence: formalStatusEvidence(segment.citations, sources, context),
     delegationReply: context.delegationReply,
+    // Only a server-projected published-record snapshot can contribute an
+    // attributed note. The quoted note stays provenance; unattributed
+    // completion claims still fail closed.
+    attributedRecordNotes: sources.some(source => source.kind === 'project'
+      && (source.material?.ref.type === 'site_record' && source.material.basis === 'published_project_record'
+        || source.text.includes('服务端正式状态：已核对发布'))),
     ...(context.specialistAcceptance || pooled.length
       ? { acceptanceQuotes: pooled, acceptanceAdvice: segment.basis === 'advice' } : {}),
   };
@@ -626,7 +633,10 @@ function synthesisQuantityText(segment: SynthesisSegment, sources: SynthesisSour
   // Edition labels describe consulted public documents. This cannot provide
   // an original, a clause/page locator, status evidence or a number value.
   const editionLabels = sources.flatMap(source => source.web?.standard ? [source.web.standard.id] : []);
-  return engineeringClaimText(segment.text, selected, segment.citations.length, segment.citations, editionLabels);
+  // Record versions, record numbers and photo counts are provenance metadata.
+  // The same projection feeds the final numeric check and every repair
+  // diagnostic, so a rejected draft and its feedback classify digits alike.
+  return provenanceMetadataText(engineeringClaimText(segment.text, selected, segment.citations.length, segment.citations, editionLabels));
 }
 
 export function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
@@ -984,11 +994,7 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
     // exact authorized XLSX clock quote permits that name; all quantities and
     // the original unmodified prose still pass the existing commitment guards.
     const claimText = synthesisQuantityText(s, sources);
-    const numericText = (citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText)
-      // Record versions and photo counts are provenance metadata, not
-      // construction parameters.
-      .replace(/版本\s*\d+/gu, '版本')
-      .replace(/\d+\s*张(?:照片|图片|图)/gu, '照片');
+    const numericText = citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText;
     try {
       const generalAdvice = context.generalKnowledge && !context.specialistAcceptance && s.basis === 'advice' && !s.citations.length;
       if (!generalAdvice && (groundedNumberTokens(numericText)).some(n => !printedNumberSupported(n, numbers))) fail('unsupported_model_commitment', 502);

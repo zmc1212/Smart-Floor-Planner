@@ -248,7 +248,14 @@ export function nativeSpecialistDraftIssues(text: string, catalog: Iterable<RagC
     const parts = ragAnswerParts(paragraph, bindings);
     const references = parts.flatMap(part => 'source' in part && part.source.sourceId && part.source.quote
       ? [{ sourceId: part.source.sourceId, quote: part.source.quote }] : []);
-    const sources = availableSources.filter(source => references.some(ref => ref.sourceId === source.sourceId));
+    // A native project snapshot is server data without citation ids. A
+    // paragraph that only observes the published stage still needs that
+    // authoritative snapshot for the project-fact review, even without its own
+    // CITE marker. Never widen this to record, knowledge or web sources.
+    const authoritative = review.projectSnapshotAuthoritative
+      ? availableSources.filter(source => source.kind === 'project' && !source.material && !source.followup) : [];
+    const sources = [...new Map([...availableSources.filter(source => references.some(ref => ref.sourceId === source.sourceId)),
+      ...authoritative].map(source => [source.sourceId, source])).values()];
     const citations = references.filter(ref => sources.some(source => source.sourceId === ref.sourceId));
     const prose = parts.flatMap(part => 'text' in part ? [part.text] : []).join('').trim();
     if (!prose) return [];
@@ -267,7 +274,9 @@ export function nativeSpecialistDraftIssues(text: string, catalog: Iterable<RagC
       }
       if (error.code === 'ungrounded_response_scope') {
         const issue = synthesisRepairIssue(draft, sources, review);
-        if (issue) return [{ index, issue: { ...issue, feedback: located(issue.feedback) } }];
+        return [{ index, issue: issue ? { ...issue, feedback: located(issue.feedback) } : { code: error.code, feedback: located(
+          '按本轮实际取得的原文回答。企业资料本次未核实就写明未核实，不要补造企业规定、高度、时长或做法，也不能把通用做法写成公司规定；'
+          + '通用建议明确标为一般建议，公开条文保留对应引用，项目状态只使用服务端快照。') } }];
       }
       if (error.code !== 'unsupported_model_commitment') throw error;
       const numeric = specialistQuantityRejection(draft, availableSources, review);
@@ -1219,6 +1228,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
             guidance.push('本轮没有取得同编号同版本的现行状态目录或废止公告：不要写“现行/有效/仍有效”，只能报告发布、实施日期和条文；现行状态写明本次无法确认。');
           if (specialistReview?.enterpriseUnavailable)
             guidance.push('本轮企业知识检索不可用：不能据此认定企业没有标准，也不能把通用做法写成公司规定；企业部分写明本次未核实。');
+          if (specialist)
+            guidance.push('引用规范原文的段落只陈述条文要求本身；原因、机理和风险另起一段作为一般建议，不带引用。'
+              + '提到标准编号、发布日期或实施日期时，只引用本轮实际读取的公告原句；没有对应引用就不要写日期。');
           return guidance.length ? guidance.join('\n') : null;
         },
         validateFinal: async (text, _turn, finalFromTools) => {

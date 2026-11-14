@@ -60,6 +60,19 @@ export function mentionsParameter(text: string, parameter: UserStatedParameter) 
     value.replace(/\./gu, '\\.') + '\\s*(?:' + variants.map(unit => unit.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|') + ')', 'iu').test(text));
 }
 
+/** Record version labels and photo counts describe provenance metadata, not
+ * construction quantities. Every numeric claim view uses this projection; the
+ * customer-facing answer and the original records are never rewritten. */
+export function provenanceMetadataText(text: string) {
+  return text
+    .replace(/版本\s*[#第]?\s*\d+(?:\.\d+)*/gu, '版本')
+    .replace(/第\s*\d+\s*版/gu, '版本')
+    .replace(/(?:记录)?(?:编号|流水号)\s*[#:：]?\s*\d+/gu, '记录编号')
+    .replace(/记录\s*[#:：]?\s*\d+/gu, '记录')
+    .replace(/\d+\s*张(?:[^\s，,。；;、！？!?\n]{0,8})?(?:照片|图片|图)/gu, '照片')
+    .replace(/(?:照片|图片|图)\s*[，,]?\s*\d+\s*张/gu, '照片');
+}
+
 /** The cited originals of the sentence. A number is supported only by a quote
  * that contains the same value and unit; another segment's quote never counts. */
 export function parameterSupportedBy(quotes: readonly string[], parameter: UserStatedParameter) {

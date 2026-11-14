@@ -97,6 +97,39 @@ test('receipts carry documents, registered cites and the read instructions', () 
   assert.equal(catalog.get(cites[0].id)?.evidence, evidence[0]);
 });
 
+test('a long original is truncated only in the model receipt, never in the source or citations', () => {
+  // A reader-parsed page may hold up to 18,000 bytes; the model-visible copy is
+  // bounded to 12,000 while the persisted snapshot and every cite stay complete.
+  const filler = '防水施工原文。'.repeat(700);
+  const text = filler + '\n管根附加层应在外侧形成连续密封，原文末尾的这句只能从完整来源读取。';
+  const url = 'https://example.com/long-standard', title = '长网页原文', retrievedAt = '2026-01-01T00:00:00.000Z';
+  assert.ok(Buffer.byteLength(text) > 12000 && Buffer.byteLength(text) <= 18000);
+  const page = { url, title, text, retrievedAt, parser: 'crawl4ai-static-0.9.2+pypdf-6.21.2-v1' as const,
+    textBytes: Buffer.byteLength(text), hash: fingerprint({ url, title, text, retrievedAt }) };
+  const snapshot: WebSearchSnapshot = { version: 1, provider: 'test', query: { query: '管根 防水', domains: [] },
+    status: 'ready', pages: [page], failures: [], retrievedAt, candidates: [] };
+  const evidence = webEvidence(snapshot, '5', 1210);
+  const sources = webSynthesisSources(evidence);
+  const catalog = new Map(), cites = webCitations(catalog, sources);
+  const receipt = webReceipt(snapshot, sources, cites);
+  const visible = receipt.documents[0];
+  assert.equal(visible.textTruncated, true);
+  assert.equal(visible.fullTextInCites, true);
+  assert.ok(Buffer.byteLength(visible.text) <= 12000);
+  assert.ok(text.startsWith(visible.text));
+  // The durable original and the citation catalog are not truncated.
+  assert.equal(snapshot.pages[0].text, text);
+  assert.ok(cites.some(cite => cite.content.includes('原文末尾的这句')));
+  assert.ok([...catalog.values()].some(source => source.quote.includes('原文末尾的这句')));
+  assert.match(receipt.instructions, /12000 字节时为节选/);
+  // A short original keeps the existing receipt shape with no excerpt marker.
+  const short = snapshotAt(1200, ['P5:1200:0'], [webPage(0)]);
+  const shortReceipt = webReceipt(short.snapshot, webSynthesisSources(webEvidence(short.snapshot, '5', 1200)), []);
+  assert.equal(shortReceipt.documents[0].textTruncated, undefined);
+  assert.equal(shortReceipt.documents[0].fullTextInCites, undefined);
+  assert.equal(shortReceipt.documents[0].text, short.snapshot.pages[0].text);
+});
+
 test('a candidate-only result keeps the candidate instructions and no cites', () => {
   const { snapshot } = snapshotAt(1200, ['P5:1200:0']);
   const receipt = webReceipt(snapshot, [], []);

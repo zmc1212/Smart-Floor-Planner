@@ -28,6 +28,19 @@ test('a negated disclaimer with 也 and an or-list stays a disclaimer', () => {
   const text = '这些只是已公开的作品展示，不代表他们已经与您匹配，也不代表已经预约或联系过；最终效果还要看您的户型和实际施工条件。';
   assert.equal(parse(text), text);
 });
+test('a record note quoted as the provider original is provenance, not a completion receipt', () => {
+  const note = '所以，目前能确认的是：这两条记录都表明防水只涉及管根和地漏密封这个范围，且后一条是“据提供人原话称已完成”；'
+    + '但两条记录对密封是否已完成核对，说法不一致，这一点需要现场负责人核实。'
+    + '这些现场记录只是来源数据，不代表正式验收、变更或费用、工期方面的批准，也不能据此认为卫生间防水整体已经完成，或已经通过验收。';
+  // Synthesis acceptance binds an (empty) quote list, so the acceptance guard runs.
+  const guard = (text: string) => guardAnswerCommitments(text, { acceptanceQuotes: [] });
+  assert.doesNotThrow(() => guard(note));
+  // The same note without attribution is still the model's own completion claim.
+  assert.throws(() => guard('这两条记录都表明防水已经完成，卫生间已经通过验收。'), /unsupported_model_commitment/);
+  // A later positive completion is never hidden by the earlier denial.
+  assert.throws(() => guard('不能据此认为卫生间已经完成，但现场已经验收。'), /unsupported_model_commitment/);
+  assert.throws(() => guard(note + '现场已经验收。'), /unsupported_model_commitment/);
+});
 
 // I6.10 saved-draft replay: 7/28 drafts were rejected because a cited standard
 // condition or its explanation was read as a completed project fact. Each
