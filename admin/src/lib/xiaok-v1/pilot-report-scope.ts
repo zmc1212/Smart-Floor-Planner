@@ -42,3 +42,36 @@ export function computePilotReportScope(input: {
     reportFilterApplied,
   };
 }
+
+export type PilotReportDeliveryCheck = {
+  scopeStatus: PilotReportScopeStatus;
+  scopeVersion: number | null;
+  reportProjectIds: string[];
+  allowedProjectIds: string[];
+  excludedProjectIds: string[];
+  deliverable: boolean;
+};
+
+/** Check whether one immutable report facts snapshot may be delivered under the
+ * current pilot scope. Every projects entry in the snapshot must be in scope;
+ * an empty or unconfirmable snapshot is not deliverable. The snapshot itself is
+ * never trimmed or rewritten, so out-of-scope deliveries can only be revoked. */
+export function validatePilotReportDelivery(input: {
+  pilotProjectIds: readonly string[];
+  reportProjectIds: readonly string[];
+  scopeVersion?: number | null;
+}): PilotReportDeliveryCheck {
+  const pilot = normalizeProjectIds(input.pilotProjectIds);
+  const report = normalizeProjectIds(input.reportProjectIds);
+  const allowed = new Set(pilot);
+  const allowedProjectIds = report.filter(projectId => allowed.has(projectId));
+  const excludedProjectIds = report.filter(projectId => !allowed.has(projectId));
+  return {
+    scopeStatus: pilot.length ? 'active' : 'empty',
+    scopeVersion: input.scopeVersion ?? null,
+    reportProjectIds: report,
+    allowedProjectIds,
+    excludedProjectIds,
+    deliverable: pilot.length > 0 && report.length > 0 && excludedProjectIds.length === 0,
+  };
+}

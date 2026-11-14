@@ -8,7 +8,7 @@ import { deliverPublicConsents } from '@/lib/construction/public-projections';
 import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
 import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
-import { advanceConfiguredConstructionReports, deliverConstructionReports } from '@/lib/construction/report-worker';
+import { advanceConfiguredConstructionReports, deliverConfiguredConstructionReports } from '@/lib/construction/report-worker';
 import { advanceConfiguredStageReminders, deliverConfiguredStageReminders } from '@/lib/xiaok-v1/stage-reminder-worker';
 import { nativeWorkflowEnabled } from '@/lib/native-workflow/live/tenant-allowlist';
 export const dynamic = 'force-dynamic';
@@ -66,12 +66,13 @@ export async function POST(request: Request) {
         nativeWorkflowTools = { enabled: true, error: 'native_workflow_tools_unavailable' };
       }
     }
-    const inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + await deliverConstructionReports();
+    const constructionReportDeliveries = await deliverConfiguredConstructionReports({ now: new Date() });
+    const inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + constructionReportDeliveries.delivered;
     let stageReminderDeliveries: unknown;
     try { stageReminderDeliveries = await deliverConfiguredStageReminders({ now: new Date() }); }
     catch { stageReminderDeliveries = { error: 'stage_reminder_delivery_unavailable' }; }
     const portfolioCopyClaimed = data.claimed ? false : await processPortfolioCopy();
-    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, stageReminderChecks, stageReminderDeliveries, nativeWorkflowSchedule, nativeWorkflowDelegations, nativeWorkflowTools }, requestId });
+    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, constructionReportDeliveries, stageReminderChecks, stageReminderDeliveries, nativeWorkflowSchedule, nativeWorkflowDelegations, nativeWorkflowTools }, requestId });
   } catch {
     return NextResponse.json({ success: false, code: 'assistant_unavailable', requestId }, { status: 503 });
   }

@@ -316,8 +316,38 @@ npx tsx --test src/lib/construction/__tests__/report-store-pilot-scope.test.ts s
 
 测试结果：18 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。本轮未修改生产环境变量和真实企业报告配置，未发送真实周报。
 
+## 周报投递范围隔离（I7.4.5-D3）
+
+`admin/src/lib/construction/report-worker.ts` 新增 `deliverConfiguredConstructionReports({now})`，Worker Route 的周报投递改为该统一入口，与周报生成共用 `readWeeklyReportConfig()`、`resolvePilotScope()` 和 `tenantPilotScopeRead()`。
+
+| 模式 | 投递范围 |
+| --- | --- |
+| 未配置 / `enterprise` | 保持原企业投递、收件人、会话、阶段和幂等规则。 |
+| `pilot` | 只处理配置企业的最新 active 试点范围；对每条 pending/held delivery 的不可变 facts 快照校验全部项目，全部在范围内才投递。 |
+| 配置错误 / 试点不存在 / 停用 / 空范围 / Resolver 失败 | 零投递，不回退企业全量。 |
+
+历史待发送报告规则：
+
+- 每次 Worker tick 都按最新范围重新核验；范围版本变化后，下一 tick 对待发送报告立即生效。
+- facts 快照包含任一范围外项目时，将该条 pending/held delivery 置为 `revoked`，不修改 report version、facts、facts_hash、历史消息或 Outbox。
+- facts 缺失、为空、项目缺少合法 ID 或归属无法确认时同样不投递。
+- 老板跨项目报告检查 `facts.projects` 的全部项目，不只看 `binding_id` 或 `report.projectId`。
+- 已 `delivered` 历史报告不修改；不删除历史报告、消息或事件；不重新生成旧报告。
+- 原有收件人权限、项目成员、`context_revision`、会话 mode/status 和 stage event 校验继续生效。
+
+`admin/src/lib/xiaok-v1/pilot-report-scope.ts` 新增 `validatePilotReportDelivery()`，输出 `scopeStatus`、`scopeVersion`、`reportProjectIds`、`allowedProjectIds`、`excludedProjectIds`、`deliverable`。范围外快照只撤销投递，不裁剪 facts 后继续使用旧 hash。
+
+定向验证（投递 A–O、生成 A–J 及两类配置错误）：
+
+```powershell
+cd admin
+npx tsx --test src/lib/construction/__tests__/report-worker-pilot.test.ts src/lib/construction/__tests__/report-store-pilot-scope.test.ts src/lib/xiaok-v1/__tests__/weekly-report-config.test.ts src/lib/xiaok-v1/__tests__/stage-reminder-worker.test.ts
+```
+
+测试结果：52 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。未发送真实周报，未修改生产环境变量或真实企业报告配置。
+
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报按独立的企业/试点模式运行：默认 `enterprise` 仍按 `construction_report_settings.project_ids`、`stage_keys`、项目生命周期和收件权限计算，空的企业周报项目清单表示全部符合条件的项目；`pilot` 只生成试点范围与企业 `project_ids` 交集内的 daily、weekly、stage 报告，配置错误、试点不存在/停用/不可用或空交集时零生成，不回退企业全量。周报投递路径和已排队历史报告不变。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：默认 `enterprise` 保持原有生成和投递行为；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。

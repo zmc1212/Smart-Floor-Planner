@@ -8,6 +8,7 @@ import { completeLocalReport, failRun, type Lease } from '@/lib/assistant/infras
 import { resolvePilotScope, tenantPilotScopeRead, type PilotScopeResolution,
   type PilotScopeResolutionStatus } from '@/lib/xiaok-v1/pilot-scope-resolver';
 import { readWeeklyReportConfig, type WeeklyReportMode } from '@/lib/xiaok-v1/weekly-report-config';
+import { validatePilotReportDelivery } from '@/lib/xiaok-v1/pilot-report-scope';
 import { latestReportPeriod, nextReportAt } from './report-calendar';
 import { discoverFollowups, enqueueReport, pilotScopedReportSettings } from './report-store';
 import { dailySupplementCandidates, supplementClosedDailyReports } from './report-supplements';
@@ -255,7 +256,190 @@ export async function processConstructionReport(lease: Lease) {
   }
 }
 
-export async function deliverConstructionReports(onlyEnterprise?: string) {
+/** The existing delivery reads and writes bound to the tenant transaction. Tests
+ * replace them with in-memory fakes; production keeps RLS and tenant scope. */
+export type ReportDeliveryRuntime = {
+  binding: (delivery: Row) => Promise<Row | undefined>;
+  stageEventValid: (delivery: Row, binding: Row) => Promise<boolean>;
+  revalidatedFacts: (delivery: Row, binding: Row) => Promise<ReportFacts | null>;
+  activeProjects: (binding: Row, projectIds: string[]) => Promise<Set<string>>;
+  identity: (binding: Row) => Promise<void>;
+  conversation: (binding: Row) => Promise<Row>;
+  reportCreatedBefore: (reportId: string, endedAt: string) => Promise<boolean>;
+  newerDelivery: (delivery: Row, binding: Row) => Promise<Row | undefined>;
+  reopenConversation: (conversationId: string) => Promise<void>;
+  unhideBinding: (binding: Row) => Promise<void>;
+  append: (binding: Row, delivery: Row, conversationId: string) => Promise<Row>;
+  markDelivered: (delivery: Row, binding: Row, messageId: string) => Promise<void>;
+  setState: (delivery: Row, state: 'revoked' | 'muted' | 'held') => Promise<void>;
+};
+
+function reportProjectIdsFromFacts(facts: unknown): string[] | null {
+  if (!facts || typeof facts !== 'object') return null;
+  const projects = (facts as { projects?: unknown }).projects;
+  if (!Array.isArray(projects) || !projects.length) return null;
+  const projectIds: string[] = [];
+  for (const project of projects) {
+    if (!project || typeof project !== 'object') return null;
+    const projectId = (project as { id?: unknown }).id;
+    if (typeof projectId !== 'string') return null;
+    projectIds.push(projectId);
+  }
+  return projectIds;
+}
+
+/** Deliver one enterprise's pending/held receipts.
+ *
+ * Without `pilotProjectIds` the original recipient, conversation, stage and
+ * idempotency rules are unchanged. With a pilot scope every immutable facts
+ * snapshot is checked as a whole before any recipient check: one out-of-scope
+ * or unconfirmable project revokes that pending/held delivery. The snapshot,
+ * facts hash, report version and history messages are never modified. */
+export async function deliverReportBatch(input: {
+  enterpriseId: string;
+  settings: Row;
+  pending: Row[];
+  pilotProjectIds?: readonly string[];
+  pilotScopeVersion?: number | null;
+  runtime: ReportDeliveryRuntime;
+}): Promise<number> {
+  const pilotProjectIds = input.pilotProjectIds;
+  let delivered = 0;
+  for (const delivery of input.pending) {
+    if (pilotProjectIds !== undefined) {
+      const reportProjectIds = reportProjectIdsFromFacts(delivery.facts);
+      if (!reportProjectIds) {
+        await input.runtime.setState(delivery, 'revoked');
+        continue;
+      }
+      let deliverable = false;
+      try {
+        deliverable = validatePilotReportDelivery({ pilotProjectIds, reportProjectIds,
+          scopeVersion: input.pilotScopeVersion }).deliverable;
+      } catch {
+        deliverable = false;
+      }
+      if (!deliverable) {
+        await input.runtime.setState(delivery, 'revoked');
+        continue;
+      }
+    }
+    const binding = await input.runtime.binding(delivery);
+    if (!binding) {
+      await input.runtime.setState(delivery, 'revoked');
+      continue;
+    }
+    if (binding.conversation_id !== delivery.generation_conversation_id
+      || Number(input.settings.dispatch_epoch || 1) !== Number((delivery.policy_snapshot as Row).reportDispatchEpoch || 1)
+      || delivery.kind === 'stage' && (input.settings.stage_enabled === false
+        || !await input.runtime.stageEventValid(delivery, binding))) {
+      await input.runtime.setState(delivery, 'revoked');
+      continue;
+    }
+    const facts = await input.runtime.revalidatedFacts(delivery, binding);
+    if (facts) {
+      const active = await input.runtime.activeProjects(binding, facts.projects.map(project => project.id));
+      facts.projects = facts.projects.filter(project => active.has(String(project.id)));
+    }
+    if (binding.status !== 'enabled' || !facts?.projects.length) {
+      await input.runtime.setState(delivery, 'revoked');
+      continue;
+    }
+    await input.runtime.identity(binding);
+    const conversation = await input.runtime.conversation(binding);
+    if (Number(conversation.context_revision) !== Number(delivery.generation_context_revision)) {
+      await input.runtime.setState(delivery, 'revoked');
+      continue;
+    }
+    // Reception changes keep report tasks independent of chat cancellation.
+    // A report already created when reception explicitly ended stays in
+    // history, including work completed later; it is never a catch-up message.
+    const endedAt = ((conversation.entry_snapshot as Row).handoff as Row | undefined)?.endedAt;
+    if (endedAt && await input.runtime.reportCreatedBefore(String(delivery.report_id), String(endedAt))) {
+      await input.runtime.setState(delivery, 'muted');
+      continue;
+    }
+    // Keep the immutable report and receipt. Re-enabling affects future
+    // reception; muted historical results never become an unread backlog.
+    if (binding['remind_' + String(delivery.kind)] === false) {
+      await input.runtime.setState(delivery, 'muted');
+      continue;
+    }
+    if (conversation.mode !== 'ai') {
+      await input.runtime.setState(delivery, 'held');
+      continue;
+    }
+    // Collapse period backlogs by kind, but never let a different project's
+    // valid stage event supersede this one in a multi-project destination.
+    const newer = await input.runtime.newerDelivery(delivery, binding);
+    if (delivery.state === 'held' && newer) {
+      await input.runtime.setState(delivery, 'revoked');
+      continue;
+    }
+    if (conversation.status === 'archived') {
+      await input.runtime.reopenConversation(String(conversation.id));
+    }
+    if (binding.list_hidden) await input.runtime.unhideBinding(binding);
+    // Store only an opaque report reference, never a cached private title or
+    // summary. The read projection resolves current permissions and originals.
+    const message = await input.runtime.append(binding, delivery, String(conversation.id));
+    await input.runtime.markDelivered(delivery, binding, String(message.id));
+    delivered++;
+  }
+  return delivered;
+}
+
+function reportDeliveryRuntime(tx: PostgresTransaction, eid: string): ReportDeliveryRuntime {
+  return {
+    binding: delivery => one(tx, sql`select * from app.construction_followup_bindings
+      where enterprise_id=${eid} and id=${String(delivery.binding_id)} for update`),
+    stageEventValid: async (delivery, binding) =>
+      !!await currentReportStageEvent(tx, eid, delivery.stage_event_id, binding),
+    revalidatedFacts: async (delivery, binding) => await followupAvailable(tx, eid, binding)
+      ? projectReportFacts(tx, eid, binding, delivery.facts as ReportFacts, new Date(String(delivery.generated_at)))
+      : null,
+    activeProjects: async (binding, projectIds) => new Set((await followupProjects(tx, eid, binding, true, projectIds))
+      .map(project => String(project.id))),
+    identity: async binding => { await new AssistantRepository(tx, deliveryActor(eid, binding)).identity(); },
+    conversation: binding => new AssistantRepository(tx, deliveryActor(eid, binding))
+      .conversation(String(binding.conversation_id)),
+    reportCreatedBefore: async (reportId, endedAt) => !!await one(tx, sql`select id from app.construction_reports
+      where enterprise_id=${eid} and id=${reportId} and created_at<=${endedAt}::timestamptz`),
+    newerDelivery: (delivery, binding) => one(tx, sql`select newer.event_id from app.construction_report_deliveries newer
+      join app.construction_reports nr on nr.enterprise_id=newer.enterprise_id and nr.id=newer.report_id
+      join app.construction_reports old on old.enterprise_id=${eid} and old.id=${String(delivery.report_id)}
+      where newer.enterprise_id=${eid} and newer.binding_id=${String(binding.id)} and newer.state in ('pending','held','delivered')
+      and nr.kind=old.kind and (old.kind<>'stage' or nr.stage_event_id=old.stage_event_id)
+      and newer.event_id>${String(delivery.event_id)} limit 1`),
+    reopenConversation: async conversationId => {
+      await tx.execute(sql`update app.assistant_conversations set status='open',version=version+1,updated_at=now()
+        where enterprise_id=${eid} and id=${conversationId}`);
+    },
+    unhideBinding: async binding => {
+      await tx.execute(sql`update app.construction_followup_bindings set list_hidden=false,version=version+1,updated_at=now()
+        where enterprise_id=${eid} and id=${String(binding.id)}`);
+    },
+    append: (binding, delivery, conversationId) => appendMessage(tx, deliveryActor(eid, binding), conversationId, {
+      author: 'system', eventId: String(delivery.event_id), purpose: 'construction.report.facts',
+      content: { version: 1, blocks: [{ type: 'text', text: `report:${String(delivery.report_id)}:${Number(delivery.revision)}` }] },
+    }),
+    markDelivered: async (delivery, binding, messageId) => {
+      await tx.execute(sql`update app.construction_report_deliveries set state='delivered',message_id=${messageId},delivered_at=now()
+        where enterprise_id=${eid} and report_id=${String(delivery.report_id)} and revision=${Number(delivery.revision)}
+        and binding_id=${String(binding.id)}`);
+    },
+    setState: async (delivery, state) => {
+      await tx.execute(sql`update app.construction_report_deliveries set state=${state}
+        where enterprise_id=${eid} and event_id=${String(delivery.event_id)}`);
+    },
+  };
+}
+
+export async function deliverConstructionReports(onlyEnterprise?: string, pilotProjectIds?: readonly string[],
+  pilotScopeVersion?: number | null) {
+  // A pilot run cannot invent its enterprise or apply one scope to another tenant.
+  if (pilotProjectIds !== undefined && !onlyEnterprise) throw new Error('pilot_scope_enterprise_required');
+  if (pilotProjectIds !== undefined && !pilotProjectIds.length) return 0;
   const targets = await withPlatformTransaction(tx => rows(tx, sql`select distinct enterprise_id from app.construction_report_deliveries
     where state in ('pending','held') ${onlyEnterprise ? sql`and enterprise_id=${onlyEnterprise}` : sql``} order by enterprise_id limit 20`));
   let delivered = 0;
@@ -270,73 +454,65 @@ export async function deliverConstructionReports(onlyEnterprise?: string) {
       join app.construction_report_versions v on v.enterprise_id=d.enterprise_id and v.report_id=d.report_id and v.revision=d.revision
       join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id
       where d.enterprise_id=${eid} and d.state in ('pending','held') order by d.event_id limit 20 for update of d`);
-    let count = 0;
-    for (const d of pending) {
-      const b = (await one(tx, sql`select * from app.construction_followup_bindings where enterprise_id=${eid} and id=${String(d.binding_id)} for update`))!;
-      if (b.conversation_id !== d.generation_conversation_id || Number(settings.dispatch_epoch || 1) !== Number((d.policy_snapshot as Row).reportDispatchEpoch || 1)
-        || d.kind === 'stage' && (settings.stage_enabled === false || !await currentReportStageEvent(tx, eid, d.stage_event_id, b))) {
-        await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
-        continue;
-      }
-      const actor = deliveryActor(eid, b);
-      const facts = await followupAvailable(tx, eid, b) ? await projectReportFacts(tx, eid, b, d.facts as ReportFacts, new Date(String(d.generated_at))) : null;
-      if (facts) {
-        const active = new Set((await followupProjects(tx, eid, b, true, facts.projects.map(p => p.id))).map(p => String(p.id)));
-        facts.projects = facts.projects.filter(p => active.has(p.id));
-      }
-      if (b.status !== 'enabled' || !facts?.projects.length) {
-        await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
-        continue;
-      }
-      await new AssistantRepository(tx, actor).identity();
-      const c = await new AssistantRepository(tx, actor).conversation(String(b.conversation_id));
-      if (Number(c.context_revision) !== Number(d.generation_context_revision)) {
-        await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
-        continue;
-      }
-      // Reception changes keep report tasks independent of chat cancellation.
-      // A report already created when reception explicitly ended stays in
-      // history, including work completed later; it is never a catch-up message.
-      const endedAt = ((c.entry_snapshot as Row).handoff as Row | undefined)?.endedAt;
-      if (endedAt && await one(tx, sql`select id from app.construction_reports where enterprise_id=${eid}
-        and id=${String(d.report_id)} and created_at<=${String(endedAt)}::timestamptz`)) {
-        await tx.execute(sql`update app.construction_report_deliveries set state='muted' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
-        continue;
-      }
-      // Keep the immutable report and receipt. Re-enabling affects future
-      // reception; muted historical results never become an unread backlog.
-      if (b['remind_' + String(d.kind)] === false) {
-        await tx.execute(sql`update app.construction_report_deliveries set state='muted' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
-        continue;
-      }
-      if (c.mode !== 'ai') {
-        await tx.execute(sql`update app.construction_report_deliveries set state='held' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
-        continue;
-      }
-      // Collapse period backlogs by kind, but never let a different project's
-      // valid stage event supersede this one in a multi-project destination.
-      const newer = await one(tx, sql`select newer.event_id from app.construction_report_deliveries newer
-        join app.construction_reports nr on nr.enterprise_id=newer.enterprise_id and nr.id=newer.report_id
-        join app.construction_reports old on old.enterprise_id=${eid} and old.id=${String(d.report_id)}
-        where newer.enterprise_id=${eid} and newer.binding_id=${String(b.id)} and newer.state in ('pending','held','delivered')
-        and nr.kind=old.kind and (old.kind<>'stage' or nr.stage_event_id=old.stage_event_id)
-        and newer.event_id>${String(d.event_id)} limit 1`);
-      if (d.state === 'held' && newer) {
-        await tx.execute(sql`update app.construction_report_deliveries set state='revoked' where enterprise_id=${eid} and event_id=${String(d.event_id)}`);
-        continue;
-      }
-      if (c.status === 'archived') await tx.execute(sql`update app.assistant_conversations set status='open',version=version+1,updated_at=now() where enterprise_id=${eid} and id=${String(c.id)}`);
-      if (b.list_hidden) await tx.execute(sql`update app.construction_followup_bindings set list_hidden=false,version=version+1,updated_at=now()
-        where enterprise_id=${eid} and id=${String(b.id)}`);
-      // Store only an opaque report reference, never a cached private title or
-      // summary. The read projection resolves current permissions and originals.
-      const message = await appendMessage(tx, actor, String(c.id), { author: 'system', eventId: String(d.event_id), purpose: 'construction.report.facts',
-        content: { version: 1, blocks: [{ type: 'text', text: `report:${String(d.report_id)}:${Number(d.revision)}` }] } });
-      await tx.execute(sql`update app.construction_report_deliveries set state='delivered',message_id=${String(message.id)},delivered_at=now()
-        where enterprise_id=${eid} and report_id=${String(d.report_id)} and revision=${Number(d.revision)} and binding_id=${String(b.id)}`);
-      count++;
-    }
-    return count;
+    return deliverReportBatch({
+      enterpriseId: eid, settings, pending,
+      ...(pilotProjectIds === undefined ? {} : { pilotProjectIds, pilotScopeVersion }),
+      runtime: reportDeliveryRuntime(tx, eid),
+    });
   });
   return delivered;
+}
+
+export type ReportDeliverFn = (enterpriseId?: string, pilotProjectIds?: readonly string[],
+  pilotScopeVersion?: number | null) => Promise<number>;
+
+export type ConstructionReportDeliveryChecks = {
+  mode: WeeklyReportMode | null;
+  pilotId: string | null;
+  scopeVersion: number | null;
+  scopeStatus: PilotScopeResolutionStatus | 'unavailable' | null;
+  scopedProjects: number | null;
+  delivered: number;
+  errors: Array<{ enterpriseId: string; code: string }>;
+};
+
+/** Resolve the independent weekly report mode and deliver exactly that mode.
+ *
+ * An unset or explicit enterprise mode keeps the existing delivery behavior.
+ * A pilot run resolves the latest saved scope before touching pending/held
+ * receipts and then revalidates every immutable facts snapshot against it.
+ * Missing, inactive, empty or unreadable scope delivers nothing and never falls
+ * back to the enterprise-wide delivery. */
+export async function deliverConfiguredConstructionReports(input: {
+  now: Date;
+  env?: Record<string, string | undefined>;
+  deliver?: ReportDeliverFn;
+  resolveScope?: ReportPilotScopeResolver;
+}): Promise<ConstructionReportDeliveryChecks> {
+  const config = readWeeklyReportConfig(input.env);
+  if (!config.ok) {
+    return { mode: config.mode, pilotId: null, scopeVersion: null, scopeStatus: null,
+      scopedProjects: 0, delivered: 0, errors: [{ enterpriseId: '', code: config.code }] };
+  }
+  const deliver = input.deliver ?? deliverConstructionReports;
+  if (config.mode === 'enterprise') {
+    const delivered = await deliver(config.enterpriseId ?? undefined);
+    return { mode: 'enterprise', pilotId: null, scopeVersion: null, scopeStatus: null,
+      scopedProjects: null, delivered, errors: [] };
+  }
+  const enterpriseId = config.enterpriseId;
+  let scope: PilotScopeResolution;
+  try {
+    scope = await (input.resolveScope ?? resolveReportPilotScope)(enterpriseId, config.pilotId, input.now);
+  } catch {
+    return { mode: 'pilot', pilotId: config.pilotId, scopeVersion: null, scopeStatus: 'unavailable',
+      scopedProjects: 0, delivered: 0, errors: [{ enterpriseId, code: 'pilot_scope_unavailable' }] };
+  }
+  if (scope.status !== 'active') {
+    return { mode: 'pilot', pilotId: config.pilotId, scopeVersion: scope.scopeVersion, scopeStatus: scope.status,
+      scopedProjects: 0, delivered: 0, errors: [] };
+  }
+  const delivered = await deliver(enterpriseId, scope.projectIds, scope.scopeVersion);
+  return { mode: 'pilot', pilotId: config.pilotId, scopeVersion: scope.scopeVersion, scopeStatus: 'active',
+    scopedProjects: scope.projectIds.length, delivered, errors: [] };
 }
