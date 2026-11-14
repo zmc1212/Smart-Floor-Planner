@@ -82,8 +82,8 @@ async function fixture(tx: Transaction, label: string, options: FixtureOptions =
   await tx.execute(sql`insert into app.system_roles(role_key,label,menu_keys)
     values('designer','合成设计师',array['construction-projects']) on conflict do nothing`);
 
-  const owner = await one<{ id: string }>(tx, sql`insert into app.users(enterprise_id,nickname,role)
-    values(${enterpriseId},${'业主 ' + label},'user') returning id::text as id`);
+  const owner = await one<{ id: string }>(tx, sql`insert into app.users(nickname,role)
+    values(${'业主 ' + label},'user') returning id::text as id`);
   const lead = await one<{ id: string }>(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source,status)
     values(${enterpriseId},${String(owner!.id)},${'项目 ' + label},'13800000000','pilot_readiness','converted') returning id::text as id`);
   const admin = async (role: string, name: string) => {
@@ -250,6 +250,8 @@ test('A complete pilot enterprise is ready', { skip }, async () => {
   assert.equal(report.projects[0].plan.currentStageScheduled, true);
   assert.equal(report.projects[0].c01.available, true);
   assert.equal(report.roleAccounts.owner.length, 1);
+  assert.equal(report.roleAccounts.owner[0].id, fixtures.A.ownerId);
+  assert.equal(report.roleAccounts.owner[0].name, '客户 ' + fixtures.A.ownerId);
   assert.equal(report.roleAccounts.boss.length, 1);
   assert.equal(report.roleAccounts.manager.length, 1);
   assert.equal(report.roleAccounts.designer.length, 1);
@@ -265,6 +267,11 @@ test('A complete pilot enterprise is ready', { skip }, async () => {
   assert.equal(report.rlsStatus.account.bypassRls, false);
   assert.ok(report.rlsStatus.tables.every(table => table.exists && table.rls && table.forced && table.policies > 0));
   assert.ok(report.migrationStatus.migrations.every(migration => migration.schemaApplied));
+  // The customer is a platform-level identity and is invisible to the tenant
+  // transaction; owner detection must still use the lead/project binding.
+  const invisibleOwner = await withTenantTransaction(fixtures.A.enterpriseId, tx => one<{ count: number }>(tx,
+    sql`select count(*)::int as count from app.users where id=${fixtures.A.ownerId}`));
+  assert.equal(invisibleOwner?.count, 0);
 });
 
 test('B missing weekly report plan is blocked', { skip }, async () => {

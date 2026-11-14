@@ -185,7 +185,7 @@ type ProjectRow = {
   id: string; name: string; status: string; customer_access: boolean; current_stage_key: string | null;
   progress_revision: number; lead_id: string; lead_archived: boolean; customer_user_id: string | null;
 };
-type OwnerRow = { customer_user_id: string; lead_id: string; project_id: string; customer_access: boolean; nickname: string | null };
+type OwnerRow = { customer_user_id: string; lead_id: string; project_id: string; customer_access: boolean };
 type BindingRow = { id: string; audience: string; user_id: string | null; admin_id: string | null; project_id: string | null; conversation_id: string };
 
 const text = (value: unknown) => String(value ?? '');
@@ -429,18 +429,22 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
   const rejected: PilotRejectedAccount[] = [];
 
   const ownerAccounts: PilotRoleAccount[] = [];
+  // Customers are platform-level identities; app.users is tenant-scoped and
+  // often hides them from the enterprise transaction. Bind owners from the
+  // lead/project relationship instead of treating an invisible user row as no
+  // owner. C01 availability below still verifies the real conversation.
   const owners = await rows<OwnerRow>(tx, sql`select l.customer_user_id::text as customer_user_id,l.id::text as lead_id,
-      p.id::text as project_id,p.customer_access,u.nickname
+      p.id::text as project_id,p.customer_access
     from app.leads l
     join app.construction_projects p on p.enterprise_id=l.enterprise_id and p.lead_id=l.id
-    join app.users u on u.id=l.customer_user_id
     where p.enterprise_id=${eid} and p.status<>'archived' and l.archived_at is null and l.customer_user_id is not null
     order by l.customer_user_id,p.id`);
   for (const owner of owners) {
     const project = projects.find(candidate => candidate.id === owner.project_id);
     if (!project || project.lead_archived || project.status === 'archived') continue;
+    const ownerName = '客户 ' + owner.customer_user_id;
     if (!owner.customer_access) {
-      rejected.push({ kind: 'user', id: owner.customer_user_id, name: owner.nickname || '未命名业主',
+      rejected.push({ kind: 'user', id: owner.customer_user_id, name: ownerName,
         reason: 'customer_access_disabled', projectIds: [owner.project_id] });
       continue;
     }
@@ -451,7 +455,7 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
       if (c01 && !existing.c01ConversationId) existing.c01ConversationId = c01;
       continue;
     }
-    ownerAccounts.push({ kind: 'user', id: owner.customer_user_id, name: owner.nickname || '未命名业主',
+    ownerAccounts.push({ kind: 'user', id: owner.customer_user_id, name: ownerName,
       projectIds: [owner.project_id], access: 'customer', ...(c01 ? { c01ConversationId: c01 } : {}) });
   }
 
@@ -712,10 +716,11 @@ async function collect(tx: PostgresTransaction, eid: string, now: Date, env: Nod
   for (const row of reminderFailedRows || []) failedReasons[row.last_error || 'unknown'] = count(row.count);
   const reminderTotal = Object.values(byStatus).reduce((sum, value) => sum + value, 0);
   const failedReminders = count(byStatus.failed);
-  record(check('reminder.state', '提醒运行状态', failedReminders ? 'warning' : 'passed',
-    `total=${reminderTotal},failed=${failedReminders},paused=${count(byStatus.paused)}`,
-    { byStatus, byRole, failedReasons }),
-  failedReminders ? [issue('reminder.state', '提醒运行状态', `存在 ${failedReminders} 条 failed 提醒`,
+  const reminderAvailable = reminderRows !== null;
+  record(check('reminder.state', '提醒运行状态', !reminderAvailable ? 'skipped' : failedReminders ? 'warning' : 'passed',
+    !reminderAvailable ? '提醒表不可用（由迁移检查阻断）' : `total=${reminderTotal},failed=${failedReminders},paused=${count(byStatus.paused)}`,
+    reminderAvailable ? { byStatus, byRole, failedReasons } : undefined),
+  reminderAvailable && failedReminders ? [issue('reminder.state', '提醒运行状态', `存在 ${failedReminders} 条 failed 提醒`,
     '提醒投递失败，可能缺少站内会话、收件人权限被撤销或 Worker 未运行。',
     `按 last_error 修复收件入口: ${Object.keys(failedReasons).join(',') || 'unknown'}。`)] : []);
 

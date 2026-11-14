@@ -124,3 +124,29 @@
 隔离测试：PG17 `127.0.0.1:55432/pilot_readiness_eval`、`sfp_app` 非超级用户；A–F 六类企业、跨企业隔离、无写入、重复执行稳定、权限不足明确报告，9/9 passed。`xiaok-v1` 既有单测 34 passed（预检测试在未配置隔离库时 9 skipped），`tsc --noEmit` 和定向 ESLint 通过。证据：`tmp/xiaok-i742-pilot-readiness/result-summary.json`、`test.log` 与三份 CLI 报告。
 
 完整检查项、运行方式、输出结构和已知限制见 [试点企业只读预检](./xiaok-pilot-readiness-checker.md)。生产使用仍需数据库快照、非超级用户连接和明确授权；本工具不替代迁移与部署流程。
+
+## 10. 首家试点企业真实预检（I7.4.3）
+
+> 基线：`codex/xiaok-integration`，`8b4062461f16`。
+> 目标企业：`1454（微云）`，依据 [人工测试数据](./xiaok-manual-test-data.zh-CN.md) 与 [FastGPT 试点记录](./xiaok-fastgpt-agent-layering.zh-CN.md) 中唯一明确指定的试点企业。
+> 环境：开发库 `smart_floor_planner`，业务账号 `sfp_app`（非超级用户、无 bypass RLS）；未连接生产。
+
+结论：**Blocked**，12 个 blocker、1 个 warning。当前不具备试点条件。
+
+| 类别 | 状态 | 说明 |
+| --- | --- | --- |
+| 企业 / Assistant / 十阶段 | `passed` | 企业 active，Assistant 启用，十阶段配置完整 |
+| 四端账号 / 经理工作台 | `passed` | 4 业主、2 老板、3 经理、3 设计师、2 施工人员；3 个经理工作台 |
+| 周报计划与四角色受众 | `passed` | 计划启用，四类受众和四类可用会话完整 |
+| Worker / 数据库账号 / 站内入口 | `passed` | 心跳 fresh；`sfp_app` 非超级用户；五类站内入口可用 |
+| 项目当前阶段 | `failed` | 项目 234、451、647 未设置阶段 |
+| 有效施工计划 | `failed` | 项目 1、234、237、238、239、451、647 均未发布计划 |
+| 迁移 0128/0129 | `failed` | 开发库账本 119 条，两张提醒表及回执字段不存在 |
+| 提醒 RLS | `failed` | 两张提醒表不存在；周报/会话表 RLS 正常 |
+| 业主 C01 | `warning` | 项目 451 客户无开放 C01 会话 |
+| 提醒运行状态 | `skipped` | 提醒表缺失，由迁移 blocker 阻断 |
+| 生产预检 | `not_run` | 未连接生产，生产企业 ID 与配置未确认 |
+
+只读验收：检查前后 17 张业务表行数与内容 MD5 均为 0 变化；没有创建提醒、周报、消息或 outbox；连续两次预检在去除时间字段后结果一致。检查器诊断修正：业主检测不再依赖租户 RLS 下不可见的客户 `app.users` 行，改为线索/项目绑定；提醒表缺失时标记 `skipped` 而非 passed。
+
+完整 blocker、warning、逐项整改办法和生产未验证条件见 [首家试点企业真实预检与整改清单](./xiaok-first-pilot-enterprise-readiness.md)。本结论不构成生产上线批准。

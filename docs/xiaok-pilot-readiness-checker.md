@@ -108,7 +108,8 @@ npm run check:pilot-readiness -- --enterprise-id 123 > pilot-readiness-123.json
 4. **自定义阶段只给 warning**：非小K标准阶段仍可保留施工事实，但阶段 Agent、知识包和周报模板无法按十阶段工作。
 5. **C01 依赖 customer_access**：客户项目未开启 `customer_access` 时，业主角色会进入 `rejectedAccounts`，C01 也不会被判定为可用。
 6. **周报受众与会话分开检查**：`audiences` 完整但缺少可用 `construction_followup` 会话时只给 warning；报告计划未启用则是 blocker。
-7. **本轮不做生产操作**：工具只读，不执行初始化、不部署生产；生产使用仍需数据库快照、非超级用户连接和明确授权。
+7. **业主身份是平台级的**：客户账号不绑定企业，`app.users` 的企业租户 RLS 会让企业在自己的事务中看不到客户行。检查器以线索/项目绑定判断业主，不把“用户行不可见”误判为没有业主；C01 可用性仍单独核验真实会话。
+8. **本轮不做生产操作**：工具只读，不执行初始化、不部署生产；生产使用仍需数据库快照、非超级用户连接和明确授权。
 
 ## 6. 隔离测试
 
@@ -126,7 +127,7 @@ npx tsx --test --test-concurrency=1 src/lib/xiaok-v1/__tests__/pilot-readiness.t
 
 | 场景 | 预期 | 结果 |
 | --- | --- | --- |
-| A 配置完整的试点企业 | `ready`，无 blocker/warning | passed |
+| A 配置完整的试点企业 | `ready`，无 blocker/warning；客户为平台级身份且租户事务不可见时仍能识别业主 | passed |
 | B 缺少周报计划 | `blocked`，`report.plan` | passed |
 | C 缺少项目经理 | `blocked`，`role.manager` + `manager.workbench` | passed |
 | D Worker 未运行 | `blocked`，仅 `worker.heartbeat` | passed |
