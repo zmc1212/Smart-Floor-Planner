@@ -124,7 +124,7 @@ function recordLine(record: WeeklyRecord) {
   return pieces.join('；');
 }
 
-function ownerSections(project: WeeklyProjectFacts, periodStart: string) {
+function ownerSections(project: WeeklyProjectFacts) {
   const stage = stageRef(project);
   const completedNodes = project.plan?.nodes.filter(node => node.completion === 'completed') ?? [];
   const activeNodes = project.plan?.nodes.filter(node => node.completion === 'in_progress') ?? [];
@@ -250,7 +250,7 @@ function bossSections(projects: WeeklyProjectFacts[], periodStart: string, now: 
   ];
 }
 
-function workerSections(project: WeeklyProjectFacts, periodStart: string) {
+function workerSections(project: WeeklyProjectFacts) {
   const unfinished = project.plan?.nodes.filter(node => node.completion !== 'completed') ?? [];
   return [
     section('tasks', '本周负责项目和施工任务', [
@@ -285,13 +285,14 @@ export function buildWeeklyDigest(input: {
   periodStart: string; periodEnd: string; generatedAt: string;
   projects: WeeklyProjectFacts[];
   reportId?: string; reportVersion?: number;
+  sourceSnapshotVersion?: string;
   deliveryStatus?: WeeklyReportContract['deliveryStatus'];
 }): WeeklyReportDigest {
   const projects = input.role === 'boss' || input.role === 'owner' ? input.projects : input.projects.slice(0, 1);
   const sections = !projects.length ? [section('empty', '本期范围', [], '当前授权范围内没有可用项目。')]
-    : input.role === 'owner' ? ownerSections(projects[0], input.periodStart)
+    : input.role === 'owner' ? ownerSections(projects[0])
     : input.role === 'designer' ? designerSections(projects[0], input.periodStart)
-    : input.role === 'worker' ? workerSections(projects[0], input.periodStart)
+    : input.role === 'worker' ? workerSections(projects[0])
     : bossSections(projects, input.periodStart, input.generatedAt);
   const allRefs = sections.flatMap(item => item.lines.flatMap(line => line.sourceRefs));
   const refs = new Map<string, WeeklySourceRef>();
@@ -310,7 +311,7 @@ export function buildWeeklyDigest(input: {
     projectId: input.role === 'boss' ? null : projects[0]?.projectId ?? null,
     recipientId: input.recipientId, recipientRole: input.role,
     periodStart: input.periodStart, periodEnd: input.periodEnd,
-    sourceSnapshotVersion: weeklySnapshotVersion(projects),
+    sourceSnapshotVersion: input.sourceSnapshotVersion ?? weeklySnapshotVersion(projects),
     sourceRefs: [...refs.values()].filter(r => allRefs.includes(r.refId)),
     generatedAt: input.generatedAt, reportVersion: input.reportVersion ?? 1,
     deliveryStatus: input.deliveryStatus ?? 'pending',

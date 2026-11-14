@@ -8,7 +8,7 @@ import { siteAccessRevoked } from './site-access';
 
 export type ReportIssue = { id: string; revision: number; status: string; room: string;
   ownerId: string | null; ownerName: string; recordId: string; recordVersion: number;
-  sourceHash: string; eventId: string; updatedAt: string; carriedOver: boolean; text: string; hash: string };
+  sourceHash: string; eventId: string; createdAt: string; updatedAt: string; carriedOver: boolean; text: string; hash: string };
 export type ReportArrangement = { id: string; revision: number; number: number; issueId: string; issueRevision: number;
   title: string; difference: string; room: string; costDeltaCents: number; scheduleDeltaDays: number;
   decisionEventId: string; confirmedAt: string; carriedOver: boolean; hash: string };
@@ -78,8 +78,8 @@ async function reportIssue(tx: PostgresTransaction, eid: string, pid: string, is
   if (carriedOver && ['cancelled','resolved','closed'].includes(issue.status)) return null;
   return { id: issueId, revision: issue.revision, status: issue.status, room: issue.roomName,
     ownerId: issue.ownerId, ownerName: issue.ownerName, recordId: issue.recordId, recordVersion: issue.recordVersion,
-    sourceHash: issue.sourceHash, eventId: String(last.id), updatedAt: new Date(String(last.created_at)).toISOString(), carriedOver,
-    text: issue.text, hash: fingerprint(issue) };
+    sourceHash: issue.sourceHash, eventId: String(last.id), createdAt: new Date(String(opened.created_at)).toISOString(),
+    updatedAt: new Date(String(last.created_at)).toISOString(), carriedOver, text: issue.text, hash: fingerprint(issue) };
 }
 
 async function reportArrangement(tx: PostgresTransaction, eid: string, pid: string, planId: string, start: Date, cutoff: Date, canRead: RecordAccess): Promise<ReportArrangement | null> {

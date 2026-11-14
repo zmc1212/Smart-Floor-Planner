@@ -21,6 +21,20 @@
         <view wx:if="{{detail.progress.gapTexts.length}}" class="gap-note"><text class="helper">资料缺口 · 不计为施工质量问题</text><text wx:for="{{detail.progress.gapTexts}}" wx:key="*this" class="helper">· {{item}}</text></view>
         <text class="helper">颜色只来自有效计划版本与现场证据；无新记录不会自动判定为正常，单个房间完成也不代表整屋完成。</text>
       </view>
+      <view class="paper stage-answer-paper">
+        <view class="section-heading"><text class="fabric">阶段知识</text><button class="text-action" bindtap="askStageKnowledge" disabled="{{busy || pending || stageAnswerBusy}}">{{stageAnswerBusy ? '正在整理…' : '问小K本阶段注意事项 ›'}}</button></view>
+        <text wx:if="{{stageAnswerError}}" class="helper">{{stageAnswerError}}</text>
+        <block wx:if="{{stageAnswer}}"><text class="helper">{{stageAnswer.projectName}} · {{stageAnswer.answer.stageName}}</text><text class="body-text" user-select>{{stageAnswer.answer.answer}}</text><text wx:if="{{stageAnswer.answer.citations.length}}" class="helper">来源：{{stageAnswer.answer.citations[0].title}}</text></block>
+        <text wx:else class="helper">普通阶段问题由小K按当前阶段知识包回答；涉及防水、水电专业判断时会转交专业 Agent。</text>
+      </view>
+      <view class="paper reminder-paper">
+        <view class="section-heading"><text class="fabric">当前提醒</text><text class="helper">{{reminders.length}}条 · {{reminderPaused ? '已暂停' : '按实际阶段和计划触发'}}</text><button class="text-action" bindtap="toggleReminders" disabled="{{busy || pending || remindersLoading}}">{{reminderPaused ? '恢复提醒' : '暂停提醒'}}</button></view>
+        <text wx:if="{{remindersLoading}}" class="helper">正在读取提醒…</text>
+        <text wx:elif="{{remindersError}}" class="helper">{{remindersError}}</text>
+        <view wx:for="{{reminders}}" wx:key="reminderId" class="issue-row"><view class="issue-head"><text class="label">{{item.title}}</text><text class="issue-status">{{item.statusLabel}}</text></view><text class="helper">{{item.body}}</text></view>
+        <text wx:if="{{!remindersLoading && !remindersError && !reminders.length}}" class="helper">当前没有需要提醒的事项；没有计划或没有记录时不会生成精确到期提醒。</text>
+        <text wx:if="{{reminderPaused}}" class="helper">暂停只影响你自己的站内提醒，不改变项目事实和其他人的提醒。</text>
+      </view>
       <view wx:if="{{detail.issueSections.length}}" class="paper issue-paper">
         <view class="section-heading"><text class="fabric">事项与整改 · {{detail.issueCount}}</text><text class="helper">已确认待处理 {{detail.issueGroups.quality.open}} · 已修正 {{detail.issueGroups.quality.fixed}}</text></view>
         <block wx:for="{{detail.issueSections}}" wx:key="key" wx:for-item="section">

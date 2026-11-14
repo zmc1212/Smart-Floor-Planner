@@ -1353,3 +1353,7 @@ English mirror: [miniprogram-system-modules.md](./miniprogram-system-modules.md)
 ### 水电专业跟进（I7.0，已实现 / 有限）
 
 本轮没有新增小程序页面。业主 C01 咨询把明确的水电问题路由到 `electrical-specialist@1`；既有委托回执、工地聊天、经理复核页和原 C01 结果消息继续承载同一业务事实。施工人员和项目经理通过既有工地入口读取同一事项 revision；业主只收到正式复核后的公开节选，不泄露内部解决结论。图片图纸只作说明，不做 OCR。详见[水电工作流](./xiaok-electrical-workflow.md)。
+
+### 阶段知识、主动提醒与角色周报（I7.1，已实现 / 有限）
+
+既有工地详情页新增两个真实动作：“问小K本阶段注意事项”调用 `POST /api/miniprogram/xiaok/stage-answer`，显示阶段知识包回答及企业来源边界；“当前提醒”调用 `GET /api/miniprogram/xiaok/reminders?projectId=…`，列出本人站内提醒并提供暂停/恢复（`POST /api/miniprogram/xiaok/reminders`）。该页继续作为业主、设计师、施工人员和项目经理的共用入口，没有为角色新增重复聊天首页。既有助手跟进周报详情页渲染 `weeklyReport.sections`，卡片显示 `weeklyReport.summary`，覆盖业主、设计师、老板、施工人员四套角色章节。没有新增 tab 或页面。暂停只改变本人站内提醒偏好，不改变项目事实和其他人的提醒；本切片未启用微信订阅消息。详见[提醒引擎](./xiaok-stage-reminder-engine.md)与[周报合同](./xiaok-weekly-report-contract.md)。

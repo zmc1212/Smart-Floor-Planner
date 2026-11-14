@@ -8,6 +8,8 @@ import { publishedSiteRecord } from './site-publications';
 import { siteAccessRevoked } from './site-access';
 import { collectReportItems, collectCustomerReportItems, reportItemsAvailable, customerReportItemsAvailable, type ReportItems, type CustomerReportItems } from './report-items';
 import { readStageSettings } from './stages-store';
+import { readSchedule } from './site-schedule';
+import type { ConstructionStage } from './stages';
 
 export type FollowupAudience = 'customer' | 'worker' | 'designer' | 'boss';
 // Existing lifecycle fields: paused/archived status, completion/move_in stages.
@@ -15,8 +17,14 @@ export type FollowupAudience = 'customer' | 'worker' | 'designer' | 'boss';
 export const activeReportProject = sql`p.status='active' and coalesce(p.current_stage_key,'') not in ('completion','move_in')`;
 export const reportAudienceEnabled = (settings: Row, binding: Row) => !Array.isArray(settings.audiences) || settings.audiences.includes(String(binding.audience));
 export type ReportRecord = { id: string; version: number; hash: string; publishedAt: string; room: string; data: Row; publishedStageKey?: string };
+export type WeeklyScheduleNodeFact = { key: string; roomName: string; stageName: string;
+  color: 'green' | 'yellow' | 'red' | 'gray'; label: string; plannedStart: string; plannedEnd: string;
+  completion: 'completed' | 'in_progress' | 'unknown' };
+export type WeeklyScheduleFacts = { available: boolean; version: number | null; color: 'green' | 'yellow' | 'red' | 'gray';
+  label: string; nodes: WeeklyScheduleNodeFact[] };
 export type ReportProject = Partial<ReportItems & CustomerReportItems> & { id: string; name: string; stageKey: string | null; stageName?: string | null; progressRevision: number;
   weekOpeningStage?: ReportWorkmanshipStage; weekStageNames?: Record<string, string>; reminderStageName?: string;
+  weekSchedule?: WeeklyScheduleFacts;
   stageEvents: Array<{ id: string; revision: number; stageKey: string; name?: string | null; at: string }>;
   stageEventsTruncated: boolean; records: ReportRecord[]; recordsTruncated: boolean; noPublishedRecords: boolean };
 export type ReportFacts = { protocol: 'construction-report-facts-v1'; projects: ReportProject[]; projectsTruncated: boolean;
@@ -83,6 +91,22 @@ export async function hasLateReportRecord(tx: PostgresTransaction, eid: string, 
   }
   return false;
 }
+async function collectWeeklySchedule(tx: PostgresTransaction, eid: string, project: Row,
+  stages: ConstructionStage[], now: Date, customerId?: string): Promise<WeeklyScheduleFacts> {
+  const schedule = await readSchedule(tx, eid, project, stages, { now, ...(customerId ? { customerId } : {}) });
+  return {
+    available: schedule.available,
+    version: schedule.version || null,
+    color: schedule.overall.color,
+    label: schedule.overall.label,
+    nodes: schedule.nodes.map(node => ({
+      key: node.key, roomName: node.roomName, stageName: node.stageName,
+      color: node.color, label: node.label, plannedStart: node.plannedStart, plannedEnd: node.plannedEnd,
+      completion: node.constructionStatus,
+    })),
+  };
+}
+
 /** Facts are selected for one private recipient before serialization, never
  * generated enterprise-wide and then hidden in a client. Published time is the
  * recorded-time boundary; it is not a claim about when construction occurred. */
@@ -132,8 +156,13 @@ export async function collectReportFacts(tx: PostgresTransaction, eid: string, b
       ? await collectCustomerReportItems(tx, eid, pid, String(binding.user_id), start, cutoff,
         rid => accessibleRecord(tx, eid, binding, pid, rid))
       : await collectReportItems(tx, eid, pid, start, cutoff, async rid => !!await accessibleRecord(tx, eid, binding, pid, rid));
+    // Weekly role digests reuse this immutable schedule snapshot. A later plan
+    // publication must not rewrite an already generated weekly report.
+    const weekSchedule = weekly ? await collectWeeklySchedule(tx, eid, p, stageSettings, cutoff,
+      binding.audience === 'customer' ? String(binding.user_id) : undefined) : undefined;
     // Unknown history stays unknown; the current stage must not rewrite an old period.
     result.push({ ...items, id: pid, name: String(p.name), stageKey, progressRevision: Number(latest?.aggregate_version || 0),
+      ...(weekSchedule ? { weekSchedule } : {}),
       stageEvents, ...(weekOpeningStage ? { weekOpeningStage } : {}),
       ...(stageEvent ? { reminderStageName: stageSettings.find(stage => stage.key === stageKey)?.name } : {}),
       ...(weekly ? { weekStageNames: Object.fromEntries(stageSettings.filter(stage => stage.key === stageKey || stage.key === weekOpeningStage?.key

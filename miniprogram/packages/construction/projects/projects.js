@@ -21,7 +21,9 @@ Page({
   data: { navTop: 24, navHeight: 32, navRight: 96, name: '', loading: true, error: '', items: [], detail: null, projectId: '',
     pending: null, busy: false, sheet: '', staffOptions: [], roleOptions: [], selectedStaff: 0, selectedRole: 0, selectedStage: 0,
     workLabel: '', note: '', sendReminder: false, selectedIds: [], primaryOptions: [], selectedPrimary: 0, assignmentOptions: [],
-    sheetOpen: false, statusFilter: 'all', filteredItems: [], activeCount: 0, preview: null, previewPhotos: [], previewLoading: false, previewError: '' },
+    sheetOpen: false, statusFilter: 'all', filteredItems: [], activeCount: 0, preview: null, previewPhotos: [], previewLoading: false, previewError: '',
+    stageAnswer: null, stageAnswerBusy: false, stageAnswerError: '',
+    reminders: [], reminderPaused: false, remindersLoading: false, remindersError: '' },
   onLoad() { loadSiteFont(); this.setData(navigationMetrics()); },
   async onShow() {
     this._visible = true;
@@ -55,7 +57,7 @@ Page({
       const response = await api.request('/miniprogram/construction/projects' + (pid ? '/' + pid : ''), 'GET');
       if (!this.current(g)) return;
       const data = response.data;
-      if (pid) { this.setData({ detail: decorateDetail(data) }); void this.loadPreview(g); }
+      if (pid) { this.setData({ detail: decorateDetail(data) }); void this.loadPreview(g); void this.loadReminders(g); }
       else { const items = data.items.map(p => decorateProject(p, data.stages || [])); this.clearPreview();
         this.setData({ items, owner: data.owner, detail: null, managementBrief: data.collaboration && (data.owner || items.some(p => p.my_role === 'manager')), activeCount: items.filter(p => p.status === 'active').length,
           filteredItems: items.filter(p => this.data.statusFilter !== 'active' || p.status === 'active'),
@@ -65,7 +67,50 @@ Page({
   },
   chooseStatus(e) { const statusFilter = e.currentTarget.dataset.status; if (!['all','active'].includes(statusFilter)) return;
     this.setData({ statusFilter, filteredItems: this.data.items.filter(p => statusFilter !== 'active' || p.status === 'active') }); },
-  openProject(e) { if (this.data.busy || this.data.pending || !this.current()) return; this.clearPreview(); this.setData({ projectId: String(e.currentTarget.dataset.id), detail: null }); this.load(); },
+  openProject(e) { if (this.data.busy || this.data.pending || !this.current()) return; this.clearPreview(); this.setData({ projectId: String(e.currentTarget.dataset.id), detail: null, stageAnswer: null, stageAnswerError: '' }); this.load(); },
+  async loadReminders(g) {
+    const pid = this.data.projectId;
+    if (!pid || !this.current(g)) return;
+    this.setData({ remindersLoading: true, remindersError: '' });
+    try {
+      const response = await api.request('/miniprogram/xiaok/reminders?projectId=' + encodeURIComponent(pid), 'GET');
+      if (!this.current(g) || this.data.projectId !== pid) return;
+      const labels = { pending: '待发送', delivered: '已送达', failed: '发送失败', paused: '已暂停' };
+      this.setData({ reminders: (response.data.items || []).map(item => ({ ...item, statusLabel: labels[item.status] || item.status })),
+        reminderPaused: !!response.data.paused });
+    } catch (error) {
+      if (this.current(g) && this.data.projectId === pid) this.setData({ remindersError: errorText(error) });
+    } finally {
+      if (this.current(g) && this.data.projectId === pid) this.setData({ remindersLoading: false });
+    }
+  },
+  async toggleReminders() {
+    const pid = this.data.projectId, g = this._generation;
+    if (!pid || !this.current(g) || this.data.busy || this.data.pending || this.data.remindersLoading) return;
+    this.setData({ remindersLoading: true, remindersError: '' });
+    try {
+      await api.request('/miniprogram/xiaok/reminders', 'POST', { projectId: pid, action: this.data.reminderPaused ? 'resume' : 'pause' });
+      if (this.current(g)) await this.loadReminders(g);
+    } catch (error) {
+      if (this.current(g)) this.setData({ remindersError: errorText(error) });
+    } finally {
+      if (this.current(g)) this.setData({ remindersLoading: false });
+    }
+  },
+  async askStageKnowledge() {
+    if (!this.current() || this.data.busy || this.data.pending || this.data.stageAnswerBusy || !this.data.detail) return;
+    const g = this._generation;
+    this.setData({ stageAnswerBusy: true, stageAnswerError: '' });
+    try {
+      const response = await api.request('/miniprogram/xiaok/stage-answer', 'POST',
+        { projectId: this.data.projectId, question: '本阶段需要关注什么？' });
+      if (this.current(g)) this.setData({ stageAnswer: response.data });
+    } catch (error) {
+      if (this.current(g)) this.setData({ stageAnswerError: errorText(error) });
+    } finally {
+      if (this.current(g)) this.setData({ stageAnswerBusy: false });
+    }
+  },
   openSiteCamera(e) { const p = this.data.items.find(p => p.id === String(e.currentTarget.dataset.id));
     if (this.current() && !this.data.busy && !this.data.pending && p?.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(p.id) }); },
   openSiteChat(e) { const p = this.data.items.find(p => p.id === String(e.currentTarget.dataset.id));

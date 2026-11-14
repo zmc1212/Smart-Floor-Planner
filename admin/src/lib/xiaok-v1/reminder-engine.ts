@@ -16,7 +16,9 @@ export const reminderStatuses = ['pending', 'delivered', 'failed', 'paused', 'ca
 export type ReminderStatus = typeof reminderStatuses[number];
 
 export type ReminderRecipient = { role: ReminderRole; userId: string | null };
-export type PendingItem = { id: string; title: string; createdAt: string; dueAt?: string | null; actionUrl?: string };
+export type PendingItem = { id: string; title: string; createdAt: string; dueAt?: string | null; actionUrl?: string;
+  /** Stable revision-aware key when the same business item reopens. */
+  dedupeSubject?: string };
 export type ReminderPlanNode = {
   key: string; stageId: string | null; roomId: string | null; roomName: string;
   plannedStart: string; plannedEnd: string; color: 'green' | 'yellow' | 'red' | 'gray';
@@ -135,13 +137,14 @@ function draft(input: {
   triggerType: ReminderTriggerType; targetRole: ReminderRole; targetUserId: string | null;
   relatedTaskId?: string | null; relatedIssueId?: string | null;
   evidence: ReminderDraft['triggerEvidence']; subject: string; detail: string; itemId?: string;
+  dedupeSubject?: string;
 }): ReminderDraft {
   const { facts } = input;
   const stageId = stageForConstructionKey(facts.constructionStageKey)?.stageId ?? null;
   const key = dedupeKey({
     enterpriseId: facts.enterpriseId, projectId: facts.projectId, triggerType: input.triggerType,
     stageId, targetRole: input.targetRole, targetUserId: input.targetUserId,
-  }, input.subject);
+  }, input.dedupeSubject ?? input.subject);
   return reminderDraftSchema.parse({
     reminderId: reminderId(key), enterpriseId: facts.enterpriseId, projectId: facts.projectId,
     stageId, constructionStageKey: facts.constructionStageKey,
@@ -185,7 +188,6 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
   if (facts.schedule.available) {
     for (const node of facts.schedule.nodes) {
       if (node.stageId !== stageId || node.completion === 'completed') continue;
-      const subject = node.key + ':' + node.plannedEnd;
       const daysToEnd = dayDiff(node.plannedEnd, today);
       if (daysToEnd >= 0 && daysToEnd <= policy.dueSoonDays) {
         for (const role of ['owner', 'worker', 'manager'] as const) {
@@ -194,6 +196,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
             targetRole: role, targetUserId: userId, relatedTaskId: node.key,
             evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString() },
             itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+            dedupeSubject: node.key + ':' + node.plannedEnd,
             detail: '计划节点临近结束日，请核对现场进展并补充需要的资料。' }));
         }
       }
@@ -204,6 +207,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
             targetRole: role, targetUserId: userId, relatedTaskId: node.key,
             evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString() },
             itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+            dedupeSubject: node.key + ':' + node.plannedEnd,
             detail: '计划结束日已过且当前没有完成证据，请核对实际进展，不要直接认定未施工。' }));
         }
       }
@@ -214,6 +218,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
             targetRole: role, targetUserId: userId, relatedTaskId: node.key,
             evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString() },
             itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+            dedupeSubject: node.key + ':end',
             detail: '当前阶段即将结束，请整理待补资料、遗留事项和下一阶段衔接条件。' }));
         }
       }
@@ -224,6 +229,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
             targetRole: role, targetUserId: userId, relatedTaskId: node.key + ':mid',
             evidence: { kind: 'plan_node', refId: node.key, version: facts.schedule.version, at: now.toISOString() },
             itemId: node.key, subject: node.roomName ? node.roomName + ' · ' + (facts.stageName || '') : (facts.stageName || ''),
+            dedupeSubject: node.key + ':mid',
             detail: '当前阶段已进行一段时间，请查看本阶段关注事项和现场记录。' }));
         }
       }
@@ -245,7 +251,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
       for (const userId of recipientIds) drafts.push(draft({ facts, policy, now, triggerType: group.trigger, targetRole: group.role,
         targetUserId: userId, relatedTaskId: item.id,
         evidence: { kind: 'pending_item', refId: item.id, version: null, at: item.createdAt },
-        itemId: item.id, subject: item.title, detail: group.detail }));
+        itemId: item.id, subject: item.title, dedupeSubject: item.dedupeSubject ?? item.id, detail: group.detail }));
     }
   }
 
@@ -253,13 +259,12 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
   if (policy.staleRecordDays !== null && facts.lastRecordAt) {
     const staleDays = dayDiff(today, dateOnly(facts.lastRecordAt));
     if (staleDays >= policy.staleRecordDays) {
-      const subject = stageId + ':' + weekBucket(now);
       for (const role of ['worker', 'manager'] as const) {
         if (!policy.roles.includes(role)) continue;
         for (const userId of recipientsFor(facts, role)) drafts.push(draft({ facts, policy, now, triggerType: 'data_stale',
           targetRole: role, targetUserId: userId,
           evidence: { kind: 'record_gap', refId: facts.lastRecordAt, version: null, at: facts.lastRecordAt },
-          subject: facts.stageName || stageId,
+          subject: facts.stageName || stageId, dedupeSubject: stageId + ':' + weekBucket(now),
           detail: '最近一次现场记录距今已超过配置天数，请补充当前进展；未记录不等于未施工。' }));
       }
     }
@@ -275,7 +280,8 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
     for (const userId of recipientsFor(facts, role)) drafts.push(draft({ facts, policy, now, triggerType: 'issue_overdue',
       targetRole: role, targetUserId: userId, relatedIssueId: issue.id,
       evidence: { kind: 'issue', refId: issue.id, version: null, at: issue.updatedAt },
-      itemId: issue.id, subject: issue.title, detail: '问题处理已超过约定期限，请核对当前状态；发送提醒不代表问题已解决。' }));
+      itemId: issue.id, subject: issue.title, dedupeSubject: issue.id,
+      detail: '问题处理已超过约定期限，请核对当前状态；发送提醒不代表问题已解决。' }));
   }
 
   return dedupeDrafts(drafts);

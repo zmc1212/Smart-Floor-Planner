@@ -12,6 +12,7 @@ import { reportHistoryFilters, type ReportHistoryFilters } from './report-histor
 import { reportBodyView, reportKnowledgeSource } from './report-body-view';
 import type { ReportBody } from './report-composition';
 import { enqueueReportBody } from './report-body-store';
+import { buildRoleWeeklyDigest } from '@/lib/xiaok-v1/weekly-report-service';
 
 type ReminderPreferences = { stage: boolean; daily: boolean; weekly: boolean };
 const preferences = (b: Row): ReminderPreferences => ({ stage: b.remind_stage !== false, daily: b.remind_daily !== false, weekly: b.remind_weekly !== false });
@@ -146,7 +147,13 @@ export class FollowupService {
     if (!facts.projects.length) return { reportId, revision: Number(r.revision), available: false, state: 'source_unavailable',
       contentStatus: 'not_generated' as const, facts: null, readToken: null, readAt: null, sequence: null };
     const body = await reportBodyView(repo.tx, this.actor, await repo.conversation(String(b.conversation_id)), facts, r.body as ReportBody | null);
+    const weeklyReport = r.kind === 'weekly' ? buildRoleWeeklyDigest({ facts, binding: b, report: {
+      id: String(r.id), revision: Number(r.revision), period_start: String(r.period_start), period_end: String(r.fact_period_end),
+      generated_at: r.generated_at ? String(r.generated_at) : null,
+      facts_hash: r.facts_hash ? String(r.facts_hash) : null,
+      delivery_state: r.delivery_state ? String(r.delivery_state) : null } }) : null;
     return { ...metadata, available: true, state: 'facts_ready', contentStatus: body.length ? 'composed' as const : 'facts_only' as const, facts, body,
+      weeklyReport,
       bodyGeneratedAt: body.length ? r.body_generated_at : null,
       generationState: r.body ? body.length ? 'ready' : 'source_unavailable' : r.body_run_status || r.knowledge_status,
       generationError: r.body_run_error || r.body_error_code || null,

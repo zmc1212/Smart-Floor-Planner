@@ -75,6 +75,14 @@ I6.17 补充：施工量数必须能追溯到标准原文、企业工艺、当�
 
 V1.1 为独立 `waterproof-specialist@2` 候选与 Workflow revision 4 digest `dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0`；V1 的 @1 与 rev1–3 不变，旧 Run 继续按启动时 revision/digest 恢复。完整边界见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。
 
+### I7.1 轻量阶段 Agent、提醒与角色周报
+
+十阶段共享 `admin/src/lib/xiaok-v1/` 的一个运行时。阶段 ID 只用于 Agent、知识包、提醒策略和周报模板；Construction 阶段键仍是业务事实键。阶段问答优先读版本化知识包，企业知识缺失时明确“本次未核实企业施工标准”；防水、水电深入问题继续转交原 `waterproof-specialist` / `electrical-specialist`，专业 Agent 的注册、工作流、Evidence、Durable Task 和权限合同不变。
+
+提醒只从真实阶段事件、已发布计划、正式待办/问题、真实记录和已确认期限生成。无计划不生成精确到期或阶段结束提醒；无记录不判定停滞；无确认期限不生成问题超期。提醒按服务端去重键幂等，阶段变化、项目暂停、事项关闭和权限撤销时重评；站内 `delivered` 仅表示进入收件箱，不代表已读或承诺。微信订阅消息只在配置、授权和回执可验证时启用。
+
+周报复用 `construction_reports`、`construction_report_versions`、`construction_report_deliveries` 和四角色 binding。周报事实快照新增每项目已发布计划 `weekSchedule`；`weeklyReport` 从同一快照投影业主、设计师、老板、施工人员章节，并携带 `sourceRefs`、`sourceSnapshotVersion`、报告版本和投递状态。旧周报无计划快照时显示灰色/待核实，不补写颜色。四端可看到不同章节，但阶段、计划颜色和问题状态来自同一事实快照。
+
 ### I7.0 水电专业 Agent 合同
 
 `electrical-specialist@1` 与 `electrical-inspection-v1` revision 1 digest `7265f7a0ac6cab306e557820740bd486b93da3e82e8c8972da388dd2db801a60` 独立绑定。Agent 注册记录 `utilities` 阶段、五个阶段细分、五个知识域和全套 Specialist Tool Permission；水电与防水不共享知识 Scope、检查分类或 Workflow 模板。

@@ -9,6 +9,7 @@ import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
 import { processPortfolioCopy } from '@/lib/portfolio/copy-service';
 import { advanceConstructionReports, deliverConstructionReports } from '@/lib/construction/report-worker';
+import { advanceStageReminders, deliverStageReminders } from '@/lib/xiaok-v1/reminder-service';
 import { nativeWorkflowEnabled } from '@/lib/native-workflow/live/tenant-allowlist';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -40,6 +41,10 @@ export async function POST(request: Request) {
     }
     const knowledgeBatchChecks=await advanceKnowledgeBatches();
     const constructionReportChecks = await advanceConstructionReports();
+    // I7.1 deterministic reminders are isolated from model and report failures.
+    let stageReminderChecks: unknown;
+    try { stageReminderChecks = await advanceStageReminders(); }
+    catch { stageReminderChecks = { error: 'stage_reminder_unavailable' }; }
     const data = await processAssistantJob(processAssistantRun);
     let nativeWorkflowDelegations: unknown = null;
     if (nativeWorkflowEnabled(process.env.NATIVE_WORKFLOW_DELEGATION_ENABLED)) {
@@ -60,8 +65,11 @@ export async function POST(request: Request) {
       }
     }
     const inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents() + await deliverConstructionReports();
+    let stageReminderDeliveries: unknown;
+    try { stageReminderDeliveries = await deliverStageReminders(); }
+    catch { stageReminderDeliveries = { error: 'stage_reminder_delivery_unavailable' }; }
     const portfolioCopyClaimed = data.claimed ? false : await processPortfolioCopy();
-    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, nativeWorkflowSchedule, nativeWorkflowDelegations, nativeWorkflowTools }, requestId });
+    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || portfolioCopyClaimed || inAppDeliveries > 0, portfolioCopyClaimed, inAppDeliveries, knowledgeBatchChecks, constructionReportChecks, stageReminderChecks, stageReminderDeliveries, nativeWorkflowSchedule, nativeWorkflowDelegations, nativeWorkflowTools }, requestId });
   } catch {
     return NextResponse.json({ success: false, code: 'assistant_unavailable', requestId }, { status: 503 });
   }
