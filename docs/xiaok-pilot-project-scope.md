@@ -346,8 +346,19 @@ npx tsx --test src/lib/construction/__tests__/report-worker-pilot.test.ts src/li
 
 测试结果：52 项通过，0 失败；`npx tsc --noEmit` 与定向 ESLint 通过。未发送真实周报，未修改生产环境变量或真实企业报告配置。
 
+## PG17 双项目真实隔离验收（I7.4.5-F1）
+
+在独立 PostgreSQL `17.10` 数据库 `i745_f1_accept` 上，使用真实 Worker 入口 `advanceConfiguredConstructionReports()` / `deliverConfiguredConstructionReports()` 完成 101/205 双项目周报生成、投递、范围收缩和故障验收。19 项检查全部 `passed`：
+
+- 主链路业主与老板周报只包含项目 101；企业 `project_ids=[]` 时仍受 Pilot Scope 限制。
+- 企业 `project_ids=[205]` 与试点 `[101,205]` 交集为 `[205]`，只生成项目 205 周报。
+- 范围从 `[101,205]` 收缩为 `[101]` 后，已排队老板报告被 `revoked`，report version、facts、facts_hash、历史消息和 Outbox 均不变。
+- 权限与故障 A–H 全部 fail closed；`enterprise` 模式仍可投递双项目老板报告。
+
+详见 [I7.4.5-F1 PG17 验收](./xiaok-i745-f1-live-acceptance.md)。限制：单企业单周、故障场景 facts 为合成最小事实、Resolver 故障通过临时权限撤销注入、未发送真实通知。
+
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：默认 `enterprise` 保持原有生成和投递行为；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：默认 `enterprise` 保持原有生成和投递行为；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。I7.4.5-F1 已在独立 PG17 数据库完成双项目真实生成、投递和范围收缩验收（见下节）。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。
