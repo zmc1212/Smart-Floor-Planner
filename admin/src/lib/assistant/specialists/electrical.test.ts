@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { consultationSpecialist, specialistDomain } from './consultation';
+import { consultationSpecialist, specialistConsultationTools, specialistDomain } from './consultation';
+import type { ModelTool } from '../contracts/model';
 import { specialistChecks } from './evidence';
 import {
   electricalAgentId, electricalWorkflowTemplateId, specialists, waterproofAgentId,
@@ -33,6 +34,17 @@ test('electrical is registered as its own candidate agent with five stage phases
   assert.equal(agent.stagePhases?.length, 5);
   assert.deepEqual(agent.knowledgeDomains, ['strong_current', 'weak_current', 'water_supply', 'drainage', 'concealment']);
   assert.notEqual(agent.knowledgeDomains, specialists.active(waterproofAgentId)?.knowledgeDomains);
+  assert.ok(agent.toolPermissions.includes('drawing'));
+  assert.ok(!specialists.active(waterproofAgentId)?.toolPermissions.includes('drawing'));
+});
+
+test('only the explicit drawing permission exposes the material read to a specialist', () => {
+  const tools = ['query_materials', 'search_knowledge'].map(name => ({ name, description: name, parameters: {} } as ModelTool));
+  const input = { question: '厨房图纸', conversation: [], enterpriseId: '5', projectId: '1', stage: 'utilities', room: '厨房' };
+  assert.deepEqual(specialistConsultationTools(tools, { ...input, knowledgeScopes: ['project'], toolPermissions: ['drawing', 'knowledge'] }, false)
+    .map(tool => tool.name), ['query_materials', 'search_knowledge']);
+  assert.deepEqual(specialistConsultationTools(tools, { ...input, knowledgeScopes: ['project'], toolPermissions: ['photo', 'knowledge'] }, false)
+    .map(tool => tool.name), ['search_knowledge']);
 });
 
 test('waterproof terms stay in the waterproof scope and electrical terms select the electrical agent', () => {

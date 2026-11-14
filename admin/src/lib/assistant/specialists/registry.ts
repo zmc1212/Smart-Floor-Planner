@@ -11,7 +11,7 @@ export const specialistModel = {
 
 const intents = ['advice', 'enterprise_standard', 'public_standard', 'project_progress', 'photo', 'followup'] as const;
 const scopes = ['enterprise', 'public_standard', 'project'] as const;
-const permissions = ['knowledge', 'public_read', 'project_progress', 'photo', 'followup'] as const;
+const permissions = ['knowledge', 'public_read', 'project_progress', 'photo', 'drawing', 'followup'] as const;
 
 const inputSchema = z.strictObject({
   question: z.string().min(1).max(4000),
@@ -212,7 +212,8 @@ const waterproofV1: SpecialistRegistration = {
   ...schemaVersions, agentId: waterproofAgentId, version: 1, status: 'active',
   name: '防水阶段专业 Agent', description: '解释施工准备、节点密封、验收与后续工序，并协助跟进待复核事项。',
   supportedStages: ['waterproof'], supportedIntents: [...intents], knowledgeScopes: [...scopes],
-  workflowTemplateId: waterproofWorkflowTemplateId, publicStandardId: 'GB55030-2022', toolPermissions: [...permissions],
+  workflowTemplateId: waterproofWorkflowTemplateId, publicStandardId: 'GB55030-2022',
+  toolPermissions: ['knowledge', 'public_read', 'project_progress', 'photo', 'followup'],
 };
 
 /** I7.0 registers a real electrical agent with its own knowledge scope,

@@ -16,7 +16,7 @@
 | 知识域 | strong_current、weak_current、water_supply、drainage、concealment |
 | Workflow 模板 | `electrical-inspection-v1` |
 | 公开标准 | `GB55020-2021`（仅已核对的给排水章节） |
-| 工具权限 | knowledge、public_read、project_progress、photo、followup |
+| 工具权限 | knowledge、public_read、project_progress、photo、drawing、followup |
 | 真实模型 | `bailian / deepseek-flash / deepseek-v4.1-flash-1017`，Responses API |
 
 注册表位于 [registry.ts](file:///g:/workspace/向总/Smart-Floor-Planner/admin/src/lib/assistant/specialists/registry.ts)。水电与防水各自拥有独立的 `knowledgeDomains`、检查清单分类和 Workflow 模板；没有把防水知识 Scope 复制给水电 Agent。

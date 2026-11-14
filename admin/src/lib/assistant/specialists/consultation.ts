@@ -122,8 +122,10 @@ export function specialistDelegationRoom(specialist: ConsultationSpecialist, que
 export function specialistConsultationTools(tools: ModelTool[], input: SpecialistInput, progressRequested: boolean) {
   return tools.filter(tool => {
     if (tool.name === 'query_business') return progressRequested && input.toolPermissions.includes('project_progress') && !!input.room;
-    // Project drawings and shared originals use the existing material read.
-    if (tool.name === 'query_materials') return input.toolPermissions.includes('photo') || input.toolPermissions.includes('project_progress');
+    // Project drawings and shared originals use the existing material read,
+    // gated by the explicit drawing permission so other specialists keep their
+    // existing tool surface.
+    if (tool.name === 'query_materials') return input.toolPermissions.includes('drawing');
     if (tool.name === 'start_delegation') return input.toolPermissions.includes('followup');
     if (progressRequested) return false;
     if (['search_knowledge', 'search_enterprise'].includes(tool.name) || isKnowledgeTool(tool.name)) return input.toolPermissions.includes('knowledge');

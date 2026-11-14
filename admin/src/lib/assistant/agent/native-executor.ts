@@ -964,7 +964,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         ...(knowledgeEnabled && (!specialist.standard || specialist.companyPractice) ? ['knowledge' as const] : []),
         ...(!specialist.companyOnly ? ['public_read' as const] : []),
         ...(roomProgress ? ['project_progress' as const] : []), ...(delegationTool ? ['followup' as const] : []),
-        ...(drawingRequested ? ['photo' as const] : []),
+        ...(drawingRequested ? ['drawing' as const] : []),
       ],
     }), specialist.progressRequested) : tools;
     const validateTool = (name: string, args: string): { code: string; feedback: string } | null => {

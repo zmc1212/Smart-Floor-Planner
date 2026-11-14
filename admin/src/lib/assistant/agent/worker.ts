@@ -1131,9 +1131,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           knowledgeScopes.push('project');
           if (projectStatusRead) toolPermissions.push('project_progress');
           if (specialistFollowup) toolPermissions.push('followup');
-          // The existing photo permission also covers authorized drawing
-          // originals; it never grants a new business write.
-          if (drawingRequested) toolPermissions.push('photo');
+          // Drawing originals use a read-only permission, separate from image
+          // observation and from any business write.
+          if (drawingRequested) toolPermissions.push('drawing');
         }
         if (initial.config.imageInput && initial.mediaRefs.length) toolPermissions.push('photo');
         const input = bindSpecialistInput(specialist.agent, {
