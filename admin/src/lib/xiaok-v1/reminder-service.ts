@@ -64,16 +64,18 @@ async function reminderFacts(tx: PostgresTransaction, eid: string, project: Row,
     if (role === 'owner') return [];
     if (role === 'designer') return assigned.filter(issue => ['awaiting_verification', 'awaiting_rectification'].includes(issue.classification))
       .map(issue => ({ id: issue.issueId, title: issue.text, createdAt: now.toISOString(), dedupeSubject: issue.issueId + ':' + issue.revision }));
-    if (role === 'worker') return assigned.filter(issue => !['closed', 'dismissed', 'cancelled'].includes(issue.classification))
+    if (role === 'worker') return assigned.filter(issue => !['closed', 'dismissed', 'cancelled', 'invalidated'].includes(issue.classification))
       .map(issue => ({ id: issue.issueId, title: issue.text, createdAt: now.toISOString(), dedupeSubject: issue.issueId + ':' + issue.revision }));
     return assigned.filter(issue => ['awaiting_rectification', 'rectifying', 'awaiting_review'].includes(issue.classification))
       .map(issue => ({ id: issue.issueId, title: issue.text, createdAt: now.toISOString(), dedupeSubject: issue.issueId + ':' + issue.revision }));
   };
-  const ownerConfirmations = issues.filter(issue => issue.state === 'awaiting_owner'
-    || issue.sourceKind === 'need' && issue.classification === 'awaiting_verification')
+  // An invalidated source must be re-verified by the team before asking the
+  // owner to confirm or the worker to supplement anything.
+  const ownerConfirmations = issues.filter(issue => issue.classification !== 'invalidated'
+    && (issue.state === 'awaiting_owner' || issue.sourceKind === 'need' && issue.classification === 'awaiting_verification'))
     .map(issue => ({ id: issue.issueId, title: issue.text, createdAt: now.toISOString(), dedupeSubject: issue.issueId + ':' + issue.revision }));
   const workerMissing = issues.filter(issue => issue.ownerId && recipients.worker.includes(String(issue.ownerId))
-    && !['closed', 'dismissed', 'cancelled'].includes(issue.classification) && /资料|照片|补|材料|上传/u.test(issue.text))
+    && !['closed', 'dismissed', 'cancelled', 'invalidated'].includes(issue.classification) && /资料|照片|补|材料|上传/u.test(issue.text))
     .map(issue => ({ id: issue.issueId, title: issue.text, createdAt: now.toISOString(), dedupeSubject: issue.issueId + ':' + issue.revision }));
   return {
     enterpriseId: eid, projectId: pid, projectName: String(project.name),
@@ -373,7 +375,7 @@ export async function pauseStageReminders(actor: ActorContext, input: { projectI
       on conflict(enterprise_id,project_id,principal_kind,principal_id,trigger_type) do update set updated_at=now()`);
     await tx.execute(sql`update app.construction_stage_reminders set status='paused',last_error='user_paused',updated_at=now()
       where enterprise_id=${actor.enterpriseId} and project_id=${pid} and target_principal_kind=${kind} and target_principal_id=${principalId}
-      and status='pending' ${trigger === 'all' ? sql`` : sql`and trigger_type=${trigger}`}`);
+      and status in ('pending','failed') ${trigger === 'all' ? sql`` : sql`and trigger_type=${trigger}`}`);
     return { projectId: pid, triggerType: trigger, paused: true };
   });
 }

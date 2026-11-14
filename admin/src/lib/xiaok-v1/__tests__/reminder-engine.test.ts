@@ -30,6 +30,11 @@ test('stage entry creates one deduplicated reminder per authorized recipient', (
   assert.deepEqual(stage.map(item => item.targetRole).sort(), ['designer', 'manager', 'owner', 'worker']);
   for (const item of stage) assert.equal(item.status, 'pending');
   assert.equal(new Set(first.map(item => item.reminderId)).size, first.length);
+  const reentered = buildReminderDrafts(facts({ stageEventId: '502', stageEnteredAt: '2026-11-14T09:30:00+08:00' }), policy, now)
+    .filter(item => item.triggerType === 'stage_entered');
+  assert.equal(reentered.length, stage.length);
+  assert.ok(reentered.every(item => !stage.some(old => old.dedupeKey === item.dedupeKey)),
+    're-entering the same stage is a new real event, not a duplicate');
 });
 
 test('a missing plan never produces precise due or stage-ending reminders', () => {

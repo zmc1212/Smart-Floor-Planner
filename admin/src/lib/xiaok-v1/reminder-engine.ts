@@ -185,7 +185,8 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
       if (!policy.roles.includes(role)) continue;
       for (const userId of recipientsFor(facts, role)) drafts.push(draft({ facts, policy, now, triggerType: 'stage_entered',
         targetRole: role, targetUserId: userId, evidence: { kind: 'stage_event', refId: subject, version: null, at: facts.stageEnteredAt },
-        subject: facts.stageName || stageId, detail: '项目已进入当前阶段，请查看本阶段关注事项和现场资料。' }));
+        subject: facts.stageName || stageId, dedupeSubject: subject,
+        detail: '项目已进入当前阶段，请查看本阶段关注事项和现场资料。' }));
     }
   }
 
