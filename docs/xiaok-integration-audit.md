@@ -2,7 +2,7 @@
 
 ## I7.1 轻量阶段 Agent、主动提醒与四角色周报（Limited）
 
-Integration 起点 `a8948a11c72a`，分支 `codex/xiaok-integration`。本轮按用户路线调整建设第一版基础服务：十阶段统一轻量 Agent、阶段知识问答、主动装修提醒、四角色周报和统一红黄绿。未删除防水/水电专业 Agent，未修改其注册、工作流、digest、Evidence 或 Native Workflow；未部署生产、未改生产默认模型、未合并 main。范围外未提交改动原样保留。
+Integration 起点 `a8948a11c72a`，分支 `codex/xiaok-integration`；提交 `e76d826e`（核心引擎）与 `e3597cdf`（服务与四端接入）。本轮按用户路线调整建设第一版基础服务：十阶段统一轻量 Agent、阶段知识问答、主动装修提醒、四角色周报和统一红黄绿。未删除防水/水电专业 Agent，未修改其注册、工作流、digest、Evidence 或 Native Workflow；未部署生产、未改生产默认模型、未合并 main。范围外未提交改动原样保留。
 
 新增 `admin/src/lib/xiaok-v1/`：十阶段注册与知识包、阶段路由与问答守卫、统一红黄绿、提醒引擎/持久化/暂停恢复、周报角色摘要与来源快照。新增迁移 `0128_xiaok_v1_stage_reminders.sql`（提醒与暂停表，强制 RLS）。新增 `POST /api/miniprogram/xiaok/stage-answer`、`GET/POST /api/miniprogram/xiaok/reminders`；Assistant Worker tick 隔离调用提醒生成与投递。周报事实快照新增 `weekSchedule`，`followup` 周报响应新增 `weeklyReport`；小程序工地详情页新增阶段知识与当前提醒入口，周报详情渲染角色章节。
 
