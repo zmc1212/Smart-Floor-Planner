@@ -139,7 +139,7 @@ export function pendingMigrations(migrations, seen, supersedesOriginal) {
     || supersedesOriginal && migration.folderMillis === originalDelegation));
 }
 
-async function verifyDelegationSchema(client, expected) {
+export async function verifyDelegationSchema(client, expected) {
   const { rows } = await client.query(`
     select c.relname,c.relrowsecurity and c.relforcerowsecurity as forced,
       array_agg(a.attname::text) as columns
@@ -162,13 +162,18 @@ async function verifyDelegationSchema(client, expected) {
   throw new Error(`Delegation tables or forced RLS do not match the ${expected} migration history.`);
 }
 
-/** The session's migration transaction owns both DDL and its ledger writes. */
-export async function migratePostgresIntegration(client, folder) {
+export function loadIntegrationMigrationInputs(folder) {
   const active = loadJournal(folder, 'meta/_journal.json');
   const migrations = readMigrationFiles({ migrationsFolder: folder });
   const forks = Object.fromEntries(['native', 'bailian'].map(fork =>
     [fork, loadJournal(path.join(folder, 'legacy', fork), '_journal.json')]));
   const knownHashes = loadKnownHashes(folder);
+  return { active, migrations, forks, knownHashes };
+}
+
+/** The session's migration transaction owns both DDL and its ledger writes. */
+export async function migratePostgresIntegration(client, folder) {
+  const { active, migrations, forks, knownHashes } = loadIntegrationMigrationInputs(folder);
   await client.query('begin');
   try {
     await client.query("select pg_advisory_xact_lock(hashtext('smart-floor-planner:drizzle:migrate'))");

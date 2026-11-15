@@ -17,8 +17,8 @@ function normalizeEnterpriseId(value: bigint | number | string) {
   return normalized;
 }
 
-async function setTransactionScope(
-  client: PoolClient,
+export async function setTransactionScope(
+  client: Pick<PoolClient, 'query'>,
   scope: TransactionScope
 ) {
   const enterpriseId =
