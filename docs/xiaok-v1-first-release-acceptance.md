@@ -72,7 +72,7 @@ npm run test:xiaok-v1-product-acceptance -- --llm-source=development
 | `reminder.project_paused_stops` | passed | 项目暂停后零生成，待发提醒取消 |
 | `report.generation` | passed | 周报按计划为四类受众排入（项目经理按既有映射进入 worker 受众） |
 | `report.four_audiences` | passed | 实际生成 customer/boss/worker/designer/worker 共 5 份周报 |
-| `report.facts_same_source` | passed | 全部 facts 与 policy snapshot 只含项目 30，facts_hash 64 位 |
+| `report.facts_same_source` | passed | 全部 facts 与 policy snapshot 只含项目 38，facts_hash 64 位 |
 | `report.role_digests` | passed | 业主无内部事项；施工人员只见本人任务；设计师只见核对项；老板只见获权项目 |
 | `report.delivery` | passed | 四端（含两名 worker）均 delivered；设计师会话人工接管时 held，恢复 ai 后重试 delivered |
 | `report.idempotent` | passed | 重复执行不新增报告/版本/投递/消息 |
@@ -99,16 +99,16 @@ npm run test:xiaok-v1-product-acceptance -- --llm-source=development
 
 | 链路 | 模式 | 企业 | Pilot |
 | --- | --- | --- | --- |
-| 提醒 | `pilot` | `17` | `i750-pilot` |
+| 提醒 | `pilot` | `21` | `i750-pilot` |
 
 真实结果：
 
-- 首次生成 `created=20`，全部为项目 30、当前阶段 `masonry`；触发类型包含 `stage_entered`、`plan_node_due_soon`、`stage_ending`、`data_stale` 等真实事实触发。
+- 首次生成 `created=20`，全部为项目 38、当前阶段 `masonry`；触发类型包含 `stage_entered`、`plan_node_due_soon`、`stage_ending`、`data_stale` 等真实事实触发。
 - 提醒正文包含项目/阶段/房间信息，`action_url` 非空，`trigger_evidence` 记录 `stage_event` / `plan_node`。
 - 首次投递 `delivered=14`；业主、设计师、施工人员分别进入绑定会话，均保存真实 `messageId`/`conversationId`。项目经理提醒保持 `failed/no_inbox`，未伪造站内消息。
 - 重复执行：零新增提醒、零重复投递、消息数不变。
 - 项目暂停：`created=0`、`delivered=0`，原待发提醒全部 `cancelled`。
-- 退出试点范围：项目 30 零生成、零投递，原待发提醒保留；范围外项目 31 暂停，未产生提醒。
+- 退出试点范围：项目 38 零生成、零投递，原待发提醒保留；范围外项目 39 暂停，未产生提醒。
 
 ## 5. 阶段知识问答
 
