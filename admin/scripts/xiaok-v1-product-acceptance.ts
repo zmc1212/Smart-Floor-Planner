@@ -1433,6 +1433,64 @@ async function main() {
         ? 'passed' : 'failed', '范围外项目不进入任何正文 facts、正文或角色读取',
         { outsideProject: fixture.projectB });
 
+      // An unavailable AI body must not take the saved facts down with it. The
+      // probe hides only the worker version body (as a failed generation would),
+      // reads through the formal FollowupService, then restores the exact row
+      // and verifies the restore. Messages, runs, deliveries stay untouched.
+      const fallbackBinding = fixture.bindings.worker;
+      const fallbackVersion = await withTenantTransaction(eid, tx => one(tx, sql`select body::text body_text,
+        knowledge_status,body_error_code,body_run_id::text,body_attempts
+        from app.construction_report_versions where enterprise_id=${eid}
+        and report_id=${fallbackBinding.reportId} and revision=${fallbackBinding.revision}`));
+      const fallbackActor = { enterpriseId: eid, contextVersion: 0, capabilities: ['assistant.followup.self'],
+        principal: { kind: 'admin' as const, adminId: fallbackBinding.principalId } };
+      const messagesBeforeFallback = (await counts())?.messages;
+      let fallbackIssue: string | null = null;
+      let fallbackRead: Record<string, unknown> | null = null;
+      let fallbackRestored = false;
+      try {
+        await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_report_versions
+          set body=null,knowledge_status='failed',body_error_code='acceptance_body_unavailable_probe',body_run_id=null
+          where enterprise_id=${eid} and report_id=${fallbackBinding.reportId} and revision=${fallbackBinding.revision}`));
+        fallbackRead = await new FollowupService(fallbackActor).detail(fallbackBinding.bindingId,
+          fallbackBinding.reportId, fallbackBinding.revision) as Record<string, unknown>;
+        const facts = fallbackRead.facts as { projects?: Array<Record<string, unknown>> } | undefined;
+        if (fallbackRead.available !== true) fallbackIssue = 'not_available';
+        else if (fallbackRead.state !== 'facts_ready') fallbackIssue = 'facts_not_ready';
+        else if (fallbackRead.contentStatus !== 'facts_only') fallbackIssue = 'content_not_facts_only';
+        else if (!facts?.projects?.length) fallbackIssue = 'facts_missing';
+        else if (!fallbackRead.weeklyReport) fallbackIssue = 'role_digest_missing';
+        else if ((fallbackRead.body as Array<unknown> | undefined)?.length) fallbackIssue = 'body_not_hidden';
+        else if (fallbackRead.deliveryState !== 'delivered') fallbackIssue = 'delivery_state_changed';
+      } finally {
+        await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_report_versions
+          set body=${fallbackVersion?.body_text ?? null}::jsonb,knowledge_status=${String(fallbackVersion?.knowledge_status)},
+            body_error_code=${fallbackVersion?.body_error_code ? String(fallbackVersion.body_error_code) : null},
+            body_run_id=${fallbackVersion?.body_run_id ? String(fallbackVersion.body_run_id) : null},
+            body_attempts=${Number(fallbackVersion?.body_attempts || 0)}
+          where enterprise_id=${eid} and report_id=${fallbackBinding.reportId} and revision=${fallbackBinding.revision}`));
+        const restoredRow = await withTenantTransaction(eid, tx => one(tx, sql`select body::text body_text,
+          knowledge_status,body_error_code,body_run_id::text
+          from app.construction_report_versions where enterprise_id=${eid}
+          and report_id=${fallbackBinding.reportId} and revision=${fallbackBinding.revision}`));
+        fallbackRestored = !!restoredRow && String(restoredRow.body_text) === String(fallbackVersion?.body_text)
+          && String(restoredRow.knowledge_status) === String(fallbackVersion?.knowledge_status)
+          && String(restoredRow.body_error_code ?? '') === String(fallbackVersion?.body_error_code ?? '')
+          && String(restoredRow.body_run_id ?? '') === String(fallbackVersion?.body_run_id ?? '');
+      }
+      const messagesAfterFallback = (await counts())?.messages;
+      check('body.facts_fallback', fallbackIssue === null && fallbackRestored
+        && Number(messagesAfterFallback) === Number(messagesBeforeFallback) ? 'passed' : 'failed',
+        fallbackIssue === null && fallbackRestored
+          ? '正文不可用时正式读取返回 facts_only，项目事实与角色周报仍在，投递状态不变；探针版本已按原值恢复并读回核对'
+          : '正文降级读取或探针恢复存在问题，详见证据',
+        { reportId: fallbackBinding.reportId, issue: fallbackIssue, restored: fallbackRestored,
+          read: fallbackRead ? { available: fallbackRead.available, state: fallbackRead.state,
+            contentStatus: fallbackRead.contentStatus, deliveryState: fallbackRead.deliveryState,
+            factsProjects: ((fallbackRead.facts as { projects?: Array<Record<string, unknown>> } | undefined)?.projects ?? [])
+              .map(project => String(project.id ?? project.projectId)) } : null,
+          messagesBeforeFallback, messagesAfterFallback });
+
       result.ids.bodyCompose = {
         enterprise: eid, projectA: fixture.projectA, projectB: fixture.projectB,
         reports: evidence, firstPass, repair,

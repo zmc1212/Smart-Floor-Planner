@@ -80,6 +80,7 @@ npm run test:xiaok-v1-product-acceptance -- --llm-source=development
 | `report.scope_isolation` | passed | 项目 39 无提醒、未进入任何周报 facts |
 | `report.body_composition` | **passed（I7.5.1 补齐）** | 四端与经理共 5 份周报正文由正式 `construction.report.compose` 任务生成并保存；事实、引用、角色、投递、幂等通过；模型正文范围见下 |
 | `report.body_model_scope` | **limited** | 企业知识库未启用时模型只写 `standards` 建议段；进展/待核对/安排由服务端按角色事实生成并引用 |
+| `report.body_facts_fallback` | passed | 正文不可用时正式读取返回 `contentStatus=facts_only`、`state=facts_ready`，facts 与角色周报仍可读，投递状态不变 |
 
 ### 3.2 统一状态
 
@@ -168,6 +169,7 @@ I7.5.1 在同一批报告版本上通过正式 `construction.report.compose` 任
 - customer `67`、boss `68`、designer `70`、施工人员 `71`、经理 `69` 共 5 份正文全部 `knowledge_status=ready`。
 - 真实百炼 `deepseek-v4.1-flash-1017`，9 次真实调用（含 4 个失败角色各一次首稿与一次定向修复），输入约 11,357 tokens、输出约 1,479 tokens。
 - 四端正文均通过项目、阶段、记录、引用、完成声明、日期/数值、员工信息、跨项目与角色范围校验；正文生成后重复投递零新增消息。
+- 正文不可用时 facts-only 降级通过：读取返回 `facts_only`，项目事实与角色周报仍可读，投递状态不变，探针版本已按原值恢复并读回核对。
 - 首稿失败根因：模型建议复述内部事项编号 `507/509`，被既有完成/数量校验拒绝；未降低校验强度，只加固通用正文提示词并做一次修复。
 - `body.model_scope=limited`：knowledge-off 路径模型只写 `standards` 建议段；进展、待核对、安排由服务端按角色事实生成并引用。完整四段模型正文需要企业知识库与 Embedding 环境。
 

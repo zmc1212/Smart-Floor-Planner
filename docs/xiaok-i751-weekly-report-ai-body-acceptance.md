@@ -4,7 +4,7 @@
 > 分支：`codex/xiaok-integration`
 > 基线：`1e91ed9a3534`
 > 日期：`2026-11-15`（Asia/Shanghai）
-> 结论：**隔离环境 14 passed / 0 failed / 1 limited；四端正文均由正式 `construction.report.compose` 任务真实生成并通过事实、角色、投递与幂等校验。** 真实微云 1454 环境 `not_run`。
+> 结论：**隔离环境 15 passed / 0 failed / 1 limited；四端正文均由正式 `construction.report.compose` 任务真实生成并通过事实、角色、投递、幂等与 facts-only 降级校验。** 真实微云 1454 环境 `not_run`。
 
 ## 1. 验收范围与结论
 
@@ -152,6 +152,23 @@ I7.5.0 在验收结束时取消了当时排队的 5 个正文任务并清空 `bo
 - 重复 `enqueueReportBody`：5 份均返回原 `runId`、`status=ready`，零新增正文任务。
 - 范围外项目 39 不进入任何正文 facts、正文或角色读取。
 
+### 7.1 正文不可用时的 facts-only 降级
+
+`body.facts_fallback` 用施工人员报告 `71` 做了一次可还原探针：暂时把该版本正文置空并标记为生成失败（`body_run_id=null`、`knowledge_status=failed`、`body_error_code=acceptance_body_unavailable_probe`），随后用正式 `FollowupService.detail` 以施工人员身份读取，最后按原值恢复并读回逐字段核对。
+
+| 读取字段 | 结果 |
+| --- | --- |
+| `available` | `true` |
+| `state` | `facts_ready` |
+| `contentStatus` | `facts_only` |
+| `deliveryState` | `delivered`（未改变） |
+| `facts.projects` | 含试点项目 `38`，原记录仍可读 |
+| `weeklyReport` | 角色周报摘要仍由 facts 生成 |
+| 消息计数 | 探针前后均为 `27` |
+| 版本恢复 | `body`、`knowledge_status`、`body_error_code`、`body_run_id` 全部读回一致 |
+
+探针只影响隔离合成库的报告 `71` 版本行，未删除任何消息、run、投递或历史报告，`assistant_runs` / `ai_provider_attempts` / `assistant_usage_records` 均未改动。
+
 ## 8. 状态与限制
 
 | 字段 | 状态 |
@@ -165,6 +182,7 @@ I7.5.0 在验收结束时取消了当时排队的 5 个正文任务并清空 `bo
 | `body.delivery` | passed |
 | `body.idempotent` | passed |
 | `body.scope_isolation` | passed |
+| `body.facts_fallback` | passed |
 | `body.model_scope` | **limited** |
 | `weeklyReportStatus` | passed |
 | `reportBodyStatus` | **limited（仅因 model_scope）** |
@@ -214,8 +232,10 @@ I7.5.0 的 `tmp/xiaok-i750-product-acceptance/run-14/` 原样保留，未覆盖�
 | `run-1794757045043` | `b0480f49…` | **14/0/1** | 判定口径修正后的首次清洁验证，无新增模型调用 |
 | `run-1794757216823` | `b92c7bb8…` | **14/0/1** | 最终验收轮（增加 `已完成` 断言后复跑），无新增模型调用 |
 | `run-1794758765991` | `ddd8ea11…` | **14/0/1** | 提交前复跑当前脚本版本：复用 5 份 ready 正文与 `runId 148/153/154/155/156`，零新增模型调用 |
+| `run-1794758884833` | `f6929803…` | **15/0/1** | 增加 `body.facts_fallback` 探针后的首次验证，零新增模型调用 |
+| `run-1794758911810` | `22fb87cf…` | **15/0/1** | 最终验收轮（修正探针证据字段后复跑），零新增模型调用 |
 
-最终证据文件：`tmp/xiaok-i750-product-acceptance/run-1794758765991/result.json`（提交前复跑，对应本次提交的脚本版本）；首轮真实生成证据保留在 `run-1794757216823/result.json`。
+最终证据文件：`tmp/xiaok-i750-product-acceptance/run-1794758911810/result.json`（提交前最终复跑，对应本次提交的脚本版本）；首轮真实生成证据保留在 `run-1794757216823/result.json`。
 
 ## 11. 仍然缺少什么
 
