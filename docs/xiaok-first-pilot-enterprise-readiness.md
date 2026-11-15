@@ -86,6 +86,14 @@ Healthcheck 现可报告最近请求结果及失败原因，并独立显示本�
 
 **迁移仍为 `blocked`**：本轮未对 `smart_floor_planner` 执行 `pg_dump`，真实备份、真实恢复回执与维护窗口仍未完成，`notification_config` 结构差异和 Worker `stale` 也仍待处理。详见 [I7.4.9.1 备份与恢复验证](./xiaok-i749-1-backup-restore-verification.md)。
 
+### I7.4.9.2 notification_config 结构漂移方案（2026-11-15）
+
+只读核查确认 `smart_floor_planner.platform_configs` 共 9 行：8 行 `notification_config IS NULL`，全部为 `ai-provider-environment:*` 与 `phase2-*` 标记行，不是通知业务配置；唯一 `default` 行为 V2、8 个模板，8 个模板 ID 指纹全部与当前代码默认值一致。列为 `jsonb`、可空、无默认值，与 Drizzle `jsonObject()` 的 `NOT NULL DEFAULT '{}'::jsonb` 不一致。
+
+规范 B 已从模型、读写路径、API、管理端、小程序模板读取、订阅发送和历史模板路径复核；应用对 NULL 与 `{}` 统一归一化，没有 NULL 专用业务语义。设计的 `0131_platform_notification_config_not_null` 只回填 NULL、设置默认值与非空约束，不重跑 0021、不重种模板、不改写任何非空配置；显式 `ACCESS EXCLUSIVE` 锁关闭回填与约束之间的并发竞态。
+
+隔离 PG17.10 的 8 项定向测试全部通过：回填、非空配置逐字节保留、模板 ID 保留、默认值、显式 NULL 拒绝、并发 NULL 写入 `23502`、事务回滚、重复执行 0 行；旧版 8 模板和空对象读取均正常。**本轮仅设计，未创建正式 0131 文件、未执行 `db:migrate`、未修改真实库。** 建议负责人在完成备份/恢复验证和维护窗口后批准，优先采用先 0120–0130、再 0131 的两阶段实施。详见 [I7.4.9.2 notification_config 对齐方案](./xiaok-i749-2-notification-config-alignment.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`
