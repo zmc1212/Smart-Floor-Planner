@@ -25,7 +25,7 @@ cd admin
 npm run xiaok:env:check -- --require development,isolated-pg17,model,knowledge,worker
 ```
 
-环境级别未通过时，先按报告中的修复命令和复验方法处理，再运行本预检。详见[开发环境统一体检](./xiaok-environment-check.md)。
+环境级别未通过时，先按报告中的修复命令和复验方法处理，再运行本预检。`isolated-pg17` 只检查显式配置的 `XIAOK_ISOLATED_DATABASE_URL`；如果本次验收不涉及隔离库，从 `--require` 中移除该级别，不要用开发库结果代替。详见[开发环境统一体检](./xiaok-environment-check.md)。
 
 ## 报告
 

@@ -21,7 +21,8 @@ import { readWorkerHeartbeat } from '@/lib/assistant/operations';
 import { loadIntegrationMigrationInputs } from './postgres-integration-migrations.mjs';
 import {
   buildEnvironmentReport, environmentLevels, redactSecrets, requiredDependencies, unmetRequiredLevels,
-  type DatabaseIdentitySnapshot, type EnvironmentCheckReport, type EnvironmentLevel, type KnowledgeTablesSnapshot,
+  type DatabaseEvidence, type DatabaseIdentitySnapshot, type EnvironmentCheckReport, type EnvironmentLevel,
+  type KnowledgeTablesSnapshot,
   type MigrationInputsSnapshot, type ProviderSnapshot, type QueueSnapshot, type RlsTableSnapshot,
   type RuntimeSnapshot,
 } from './xiaok-env-check-lib';
@@ -29,18 +30,11 @@ import {
 const root = fileURLToPath(new URL('../', import.meta.url));
 const run = promisify(execFile);
 
-type DatabaseProbe = {
-  identity: DatabaseIdentitySnapshot | null;
-  databaseError?: string;
-  rls: RlsTableSnapshot[] | null;
-  rlsError?: string;
-  ledgerRows: Array<{ id: number; hash: string; created_at: string | number }> | null;
-  ledgerError?: string;
+type DatabaseProbe = DatabaseEvidence & {
   providers: ProviderSnapshot[] | null;
   providerError?: string;
   knowledgeTables: KnowledgeTablesSnapshot | null;
   knowledgeError?: string;
-  queue: QueueSnapshot | null;
 };
 
 async function exists(file: string) {
@@ -65,6 +59,23 @@ async function readEnvKeys(file: string): Promise<Set<string> | null> {
       if (match) keys.add(match[1]);
     }
     return keys;
+  } catch {
+    return null;
+  }
+}
+
+/** Read one value only for local identification. The caller never prints it. */
+async function readEnvValue(file: string, name: string): Promise<string | null> {
+  try {
+    const text = await readFile(file, 'utf8');
+    for (const line of text.split(/\r?\n/)) {
+      const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+      if (match && match[1] === name) {
+        const value = match[2].trim().replace(/^["']|["']$/g, '');
+        return value || null;
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -101,13 +112,14 @@ function connectionFailure(error: unknown) {
   return redactSecrets(`${code ? `${String(code)}: ` : ''}${message.split(/\r?\n/)[0].slice(0, 200)}`);
 }
 
-async function probeDatabase(databaseUrl: string | undefined): Promise<DatabaseProbe> {
+async function probeDatabase(
+  databaseUrl: string | undefined,
+  options: { includeQueue: boolean },
+): Promise<DatabaseProbe> {
   const empty: DatabaseProbe = {
-    identity: null, rls: null, ledgerRows: null, providers: null, knowledgeTables: null, queue: null,
+    configured: false, identity: null, rls: null, ledgerRows: null, providers: null, knowledgeTables: null,
   };
-  if (!databaseUrl?.trim()) {
-    return { ...empty, databaseError: 'DATABASE_URL 未配置' };
-  }
+  if (!databaseUrl?.trim()) return empty;
   const client = new Client({
     connectionString: databaseUrl,
     connectionTimeoutMillis: 5000,
@@ -117,9 +129,11 @@ async function probeDatabase(databaseUrl: string | undefined): Promise<DatabaseP
   try {
     await client.connect();
     await client.query('begin transaction read only');
-    // Read-only platform scope lets aggregate queue counts be read without
-    // exposing any tenant row. The transaction is always rolled back.
-    await client.query("select set_config('app.current_enterprise_id','',true), set_config('app.is_platform_admin','true',true)");
+    // Read-only platform scope is only used for development queue counts. It
+    // never exposes tenant rows and the transaction is always rolled back.
+    if (options.includeQueue) {
+      await client.query("select set_config('app.current_enterprise_id','',true), set_config('app.is_platform_admin','true',true)");
+    }
     const { rows: [identity] } = await client.query<DatabaseIdentitySnapshot>(`
       select current_database() as database, current_user as role,
         current_setting('server_version_num')::int as "serverVersionNum",
@@ -128,14 +142,17 @@ async function probeDatabase(databaseUrl: string | undefined): Promise<DatabaseP
         rolsuper, rolbypassrls,
         inet_server_addr()::text as host, inet_server_port() as port
       from pg_roles where rolname=current_user`);
-    const { rows: rls } = await client.query<RlsTableSnapshot>(`
-      select c.relname as table, true as exists, c.relrowsecurity as rls, c.relforcerowsecurity as forced,
-        (select count(*)::int from pg_policies p where p.schemaname='app' and p.tablename=c.relname) as policies
-      from pg_class c join pg_namespace n on n.oid=c.relnamespace
-      where n.nspname='app' and c.relkind='r' and c.relname = any($1::text[])`, [[
-      'assistant_conversations', 'assistant_messages', 'assistant_jobs', 'construction_reports',
-      'construction_report_versions', 'construction_report_deliveries', 'construction_followup_bindings',
-    ]]);
+    const rls = await optionalRead(client, async () => {
+      const { rows } = await client.query<RlsTableSnapshot>(`
+        select c.relname as table, true as exists, c.relrowsecurity as rls, c.relforcerowsecurity as forced,
+          (select count(*)::int from pg_policies p where p.schemaname='app' and p.tablename=c.relname) as policies
+        from pg_class c join pg_namespace n on n.oid=c.relnamespace
+        where n.nspname='app' and c.relkind='r' and c.relname = any($1::text[])`, [[
+        'assistant_conversations', 'assistant_messages', 'assistant_jobs', 'construction_reports',
+        'construction_report_versions', 'construction_report_deliveries', 'construction_followup_bindings',
+      ]]);
+      return rows;
+    });
     const ledgerRows = await optionalRead(client, async () => {
       const { rows } = await client.query<{ id: number; hash: string; created_at: string }>(
         'select id,hash,created_at from app.__drizzle_migrations order by id');
@@ -158,37 +175,40 @@ async function probeDatabase(databaseUrl: string | undefined): Promise<DatabaseP
           exists(select 1 from pg_extension where extname='vector') as vector`);
       return row;
     });
-    const queueRows = await optionalRead(client, async () => {
-      const { rows } = await client.query<{ status: string; count: number; oldest: string | null }>(
-        `select status,count(*)::int as count,min(created_at)::text as oldest
-          from app.assistant_jobs group by status order by status`);
-      return rows;
-    });
-    const queue: QueueSnapshot | null = queueRows === null ? null : {
-      readable: true,
-      queued: Number(queueRows.find(row => row.status === 'queued')?.count ?? 0),
-      running: Number(queueRows.find(row => row.status === 'running')?.count ?? 0),
-      failed: Number(queueRows.find(row => row.status === 'failed')?.count ?? 0),
-      oldestQueuedSeconds: (() => {
-        const oldest = queueRows.find(row => row.status === 'queued')?.oldest;
-        return oldest ? Math.max(0, Math.floor((Date.now() - new Date(oldest).getTime()) / 1000)) : null;
-      })(),
-    };
+    const queue = options.includeQueue
+      ? await optionalRead(client, async () => {
+        const { rows } = await client.query<{ status: string; count: number; oldest: string | null }>(
+          `select status,count(*)::int as count,min(created_at)::text as oldest
+            from app.assistant_jobs group by status order by status`);
+        return {
+          readable: true,
+          queued: Number(rows.find(row => row.status === 'queued')?.count ?? 0),
+          running: Number(rows.find(row => row.status === 'running')?.count ?? 0),
+          failed: Number(rows.find(row => row.status === 'failed')?.count ?? 0),
+          oldestQueuedSeconds: (() => {
+            const oldest = rows.find(row => row.status === 'queued')?.oldest;
+            return oldest ? Math.max(0, Math.floor((Date.now() - new Date(oldest).getTime()) / 1000)) : null;
+          })(),
+        } satisfies QueueSnapshot;
+      })
+      : null;
     await client.query('rollback');
     return {
+      configured: true,
       identity,
       rls,
+      ...(rls === null ? { rlsError: 'RLS 元数据不可读' } : {}),
       ledgerRows,
       ...(ledgerRows === null ? { ledgerError: '迁移账本表不可读或不存在' } : {}),
       providers,
       ...(providers === null ? { providerError: 'ai_provider_configs 不可读或不存在' } : {}),
       knowledgeTables,
       ...(knowledgeTables === null ? { knowledgeError: '知识库表不可读或不存在' } : {}),
-      queue,
+      ...(options.includeQueue ? { queue } : {}),
     };
   } catch (error) {
     await client.query('rollback').catch(() => undefined);
-    return { ...empty, databaseError: connectionFailure(error) };
+    return { ...empty, configured: true, error: connectionFailure(error) };
   } finally {
     await client.end().catch(() => undefined);
   }
@@ -219,7 +239,9 @@ export async function runEnvironmentCheck(options: { now?: Date } = {}): Promise
   const envFiles = await Promise.all(['.env.local', '.env.development', '.env', '.env.example', '.env.production']
     .map(async file => ({ file, exists: await exists(path.join(root, file)) })));
   const productionEnvKeys = await readEnvKeys(path.join(root, '.env.production'));
-  const probe = await probeDatabase(process.env.DATABASE_URL);
+  const productionDatabaseUrl = await readEnvValue(path.join(root, '.env.production'), 'DATABASE_URL');
+  const development = await probeDatabase(process.env.DATABASE_URL, { includeQueue: true });
+  const isolated = await probeDatabase(process.env.XIAOK_ISOLATED_DATABASE_URL, { includeQueue: false });
   let migrationInputs: MigrationInputsSnapshot | null = null;
   let migrationInputsError: string | undefined;
   try {
@@ -227,24 +249,23 @@ export async function runEnvironmentCheck(options: { now?: Date } = {}): Promise
   } catch (error) {
     migrationInputsError = error instanceof Error ? error.message : String(error);
   }
+  const withMigrationError = (probe: DatabaseProbe): DatabaseProbe => ({
+    ...probe, ...(probe.ledgerError || !migrationInputsError ? {} : { ledgerError: migrationInputsError }),
+  });
   return buildEnvironmentReport({
     generatedAt: options.now ?? new Date(),
     runtime,
     env: process.env,
     envFiles,
     productionEnvKeys,
-    database: probe.identity,
-    databaseError: probe.databaseError,
-    rls: probe.rls,
-    rlsError: probe.rlsError,
-    ledgerRows: probe.ledgerRows,
-    ledgerError: probe.ledgerError ?? migrationInputsError,
+    productionDatabaseUrl,
+    developmentDatabase: withMigrationError(development),
+    isolatedDatabase: withMigrationError(isolated),
     migrationInputs,
-    providers: probe.providers,
-    providerError: probe.providerError,
-    knowledgeTables: probe.knowledgeTables,
-    knowledgeError: probe.knowledgeError,
-    queue: probe.queue,
+    providers: development.providers,
+    providerError: development.providerError,
+    knowledgeTables: development.knowledgeTables,
+    knowledgeError: development.knowledgeError,
     heartbeat: await readWorkerHeartbeat(process.env),
   });
 }

@@ -54,6 +54,11 @@ export type EnvironmentCheckReport = {
   };
   envFiles: Array<{ file: string; exists: boolean }>;
   variables: Record<string, 'set' | 'missing'>;
+  targets: {
+    development: DatabaseTargetSummary;
+    isolated: DatabaseTargetSummary;
+    production: DatabaseTargetSummary;
+  };
 };
 
 const statuses: readonly EnvironmentCheckStatus[] = ['passed', 'failed', 'limited', 'not_run'];
@@ -190,46 +195,6 @@ export type DatabaseIdentitySnapshot = {
   port: number | null;
 };
 
-const versionLabel = (value: number) => `PostgreSQL ${Math.floor(value / 10000)}.x (${value})`;
-
-export function evaluateDatabaseIdentity(
-  identity: DatabaseIdentitySnapshot | null, error?: string,
-): EnvironmentCheckItem[] {
-  if (!identity) {
-    return [
-      item('isolated-pg17.connection', 'isolated-pg17', 'PG17 连接', 'failed', 'connection_failed',
-        '确认 PostgreSQL 17 已启动，且 admin/.env.local 的 DATABASE_URL 指向可访问的开发库；不要改为生产库。',
-        'cd admin; npm run db:check', error ? `连接失败：${error}` : '未连接数据库。'),
-      item('isolated-pg17.version', 'isolated-pg17', 'PostgreSQL 版本', 'not_run', 'not_run', '先恢复数据库连接。', verifyCommand),
-      item('isolated-pg17.account', 'isolated-pg17', '数据库身份', 'not_run', 'not_run', '先恢复数据库连接。', verifyCommand),
-      item('isolated-pg17.read_only', 'isolated-pg17', '只读检查事务', 'not_run', 'not_run', '先恢复数据库连接。', verifyCommand),
-    ];
-  }
-  const versionOk = identity.serverVersionNum >= 170000 && identity.serverVersionNum < 180000;
-  const accountOk = !identity.rolsuper && !identity.rolbypassrls;
-  return [
-    item('isolated-pg17.connection', 'isolated-pg17', 'PG17 连接', 'passed', 'connected',
-      '无需处理。', 'cd admin; npm run db:check'),
-    item('isolated-pg17.version', 'isolated-pg17', 'PostgreSQL 版本', versionOk ? 'passed' : 'failed',
-      versionLabel(identity.serverVersionNum),
-      '连接项目要求的 PostgreSQL 17；不要自动重建或删除数据库。',
-      'select version(); cd admin; npm run xiaok:env:check',
-      versionOk ? undefined : '数据库不是 PostgreSQL 17.x。'),
-    item('isolated-pg17.account', 'isolated-pg17', '数据库身份', accountOk ? 'passed' : 'failed',
-      `role=${identity.role},database=${identity.database},superuser=${identity.rolsuper},bypassRls=${identity.rolbypassrls}`,
-      '使用非超级用户业务账号（如 sfp_app），保持 FORCE ROW LEVEL SECURITY；不要关闭 RLS。',
-      verifyCommand,
-      accountOk ? undefined : '业务连接使用了超级用户或可绕过 RLS 的角色。'),
-    item('isolated-pg17.read_only', 'isolated-pg17', '只读检查事务', identity.readOnly ? 'passed' : 'failed',
-      `readOnly=${identity.readOnly},replica=${identity.replica}`,
-      '环境检查必须使用只读事务；不要用可写连接执行诊断。',
-      verifyCommand,
-      identity.readOnly ? undefined : '当前连接不是只读事务。'),
-  ];
-}
-
-// ---------------------------------------------------------------- RLS
-
 export const requiredRlsTables = [
   'assistant_conversations',
   'assistant_messages',
@@ -241,35 +206,6 @@ export const requiredRlsTables = [
 ] as const;
 
 export type RlsTableSnapshot = { table: string; exists: boolean; rls: boolean; forced: boolean; policies: number };
-
-export function evaluateRowLevelSecurity(
-  tables: RlsTableSnapshot[] | null, error?: string,
-): EnvironmentCheckItem[] {
-  if (!tables) {
-    return [
-      item('isolated-pg17.rls', 'isolated-pg17', '强制租户 RLS', 'not_run', 'not_run',
-        '先恢复数据库连接。', verifyCommand, error ? `未执行 RLS 检查：${error}` : undefined),
-    ];
-  }
-  const invalid = requiredRlsTables.map(table => {
-    const row = tables.find(candidate => candidate.table === table);
-    return {
-      table,
-      exists: Boolean(row?.exists), rls: Boolean(row?.rls), forced: Boolean(row?.forced), policies: Number(row?.policies ?? 0),
-    };
-  }).filter(row => !row.exists || !row.rls || !row.forced || row.policies === 0);
-  return [
-    item('isolated-pg17.rls', 'isolated-pg17', '强制租户 RLS', invalid.length ? 'failed' : 'passed',
-      `tables=${requiredRlsTables.length},invalid=${invalid.length}`,
-      '应用已授权迁移，并确认 ENABLE/FORCE ROW LEVEL SECURITY 与租户策略；不要关闭 RLS。',
-      verifyCommand,
-      invalid.length ? invalid.map(row =>
-        `${row.table}(exists=${row.exists},rls=${row.rls},forced=${row.forced},policies=${row.policies})`).join(',') : undefined),
-  ];
-}
-
-// ---------------------------------------------------------------- migrations
-
 export type LedgerRowSnapshot = { id: number; hash: string; created_at: string | number };
 export type JournalEntrySnapshot = { when: number; tag: string; hashes: Set<string> };
 export type MigrationInputsSnapshot = {
@@ -278,40 +214,184 @@ export type MigrationInputsSnapshot = {
   forks: Record<string, JournalEntrySnapshot[]>;
   knownHashes: Array<{ when: number; tag: string; hash: string; ledgerId: number }>;
 };
+export type QueueSnapshot = {
+  readable: boolean;
+  queued: number;
+  running: number;
+  failed: number;
+  oldestQueuedSeconds: number | null;
+  error?: string;
+};
 
-export function evaluateMigrationLedger(
-  rows: LedgerRowSnapshot[] | null,
-  inputs: MigrationInputsSnapshot | null,
-  error?: string,
-): EnvironmentCheckItem[] {
+export type DatabaseScope = {
+  level: EnvironmentLevel;
+  prefix: string;
+  label: string;
+  source: 'DATABASE_URL' | 'XIAOK_ISOLATED_DATABASE_URL';
+  required: boolean;
+};
+
+export const developmentDatabaseScope: DatabaseScope = {
+  level: 'development', prefix: 'development.database', label: '开发库', source: 'DATABASE_URL', required: true,
+};
+
+export const isolatedDatabaseScope: DatabaseScope = {
+  level: 'isolated-pg17', prefix: 'isolated-pg17', label: '隔离库', source: 'XIAOK_ISOLATED_DATABASE_URL', required: false,
+};
+
+export type DatabaseEvidence = {
+  configured: boolean;
+  identity: DatabaseIdentitySnapshot | null;
+  error?: string;
+  rls: RlsTableSnapshot[] | null;
+  rlsError?: string;
+  ledgerRows: LedgerRowSnapshot[] | null;
+  ledgerError?: string;
+  queue?: QueueSnapshot | null;
+};
+
+const versionLabel = (value: number) => `PostgreSQL ${Math.floor(value / 10000)}.x (${value})`;
+
+function databaseNotRun(scope: DatabaseScope, fix: string, reason?: string): EnvironmentCheckItem[] {
+  return [
+    ['version', `${scope.label}版本`],
+    ['account', `${scope.label}账号权限`],
+    ['read_only', `${scope.label}只读检查`],
+    ['rls', `${scope.label}强制租户 RLS`],
+    ['migrations', `${scope.label}迁移账本`],
+  ].map(([suffix, label]) => item(
+    `${scope.prefix}.${suffix}`, scope.level, label, 'not_run', 'not_run', fix, verifyCommand, reason,
+  ));
+}
+
+function rlsItem(evidence: DatabaseEvidence, scope: DatabaseScope): EnvironmentCheckItem {
+  const id = `${scope.prefix}.rls`;
+  const label = `${scope.label}强制租户 RLS`;
+  if (!evidence.rls) {
+    return item(id, scope.level, label, 'not_run', 'not_run', '先恢复数据库连接。', verifyCommand,
+      evidence.rlsError ? `未执行 RLS 检查：${evidence.rlsError}` : undefined);
+  }
+  const invalid = requiredRlsTables.map(table => {
+    const row = evidence.rls!.find(candidate => candidate.table === table);
+    return {
+      table,
+      exists: Boolean(row?.exists), rls: Boolean(row?.rls), forced: Boolean(row?.forced), policies: Number(row?.policies ?? 0),
+    };
+  }).filter(row => !row.exists || !row.rls || !row.forced || row.policies === 0);
+  return item(id, scope.level, label, invalid.length ? 'failed' : 'passed',
+    `tables=${requiredRlsTables.length},invalid=${invalid.length}`,
+    '应用已授权迁移，并确认 ENABLE/FORCE ROW LEVEL SECURITY 与租户策略；不要关闭 RLS。',
+    verifyCommand,
+    invalid.length ? invalid.map(row =>
+      `${row.table}(exists=${row.exists},rls=${row.rls},forced=${row.forced},policies=${row.policies})`).join(',') : undefined);
+}
+
+function migrationItem(
+  evidence: DatabaseEvidence, scope: DatabaseScope, inputs: MigrationInputsSnapshot | null,
+): EnvironmentCheckItem {
+  const id = `${scope.prefix}.migrations`;
+  const label = `${scope.label}迁移账本`;
+  const rows = evidence.ledgerRows;
   if (!rows || !inputs) {
-    return [
-      item('isolated-pg17.migrations', 'isolated-pg17', '迁移账本', 'failed', 'ledger_unreadable',
-        '确认开发库已初始化并应用基础迁移；本命令不会自动执行迁移，也不会重建数据库。',
-        'cd admin; npm run check:migration-preflight -- --enterprise-id <id>',
-        error ? `迁移账本不可读：${error}` : '缺少迁移日志或账本。'),
-    ];
+    return item(id, scope.level, label, 'failed', 'ledger_unreadable',
+      '确认数据库已初始化并应用基础迁移；本命令不会自动执行迁移，也不会重建数据库。',
+      'cd admin; npm run check:migration-preflight -- --enterprise-id <id>',
+      evidence.ledgerError ? `迁移账本不可读：${evidence.ledgerError}` : '缺少迁移日志或账本。');
   }
   const tagByTime = new Map(inputs.active.map(entry => [entry.when, entry.tag]));
   try {
     const { seen, schema, supersedesOriginal } = validateLedger(rows, inputs.active, inputs.forks, inputs.knownHashes);
     const pending = pendingMigrations(inputs.migrations, seen, supersedesOriginal)
       .map((migration: MigrationMeta) => tagByTime.get(migration.folderMillis) ?? String(migration.folderMillis));
-    return [
-      item('isolated-pg17.migrations', 'isolated-pg17', '迁移账本', pending.length ? 'failed' : 'passed',
-        `ledger=${rows.length},schema=${schema},pending=${pending.length}`,
-        '先做只读预检并备份，再按部署流程执行已授权迁移；本命令不会自动迁移、不会删除数据库。',
-        'cd admin; npm run check:migration-preflight -- --enterprise-id <id>; npm run xiaok:env:check',
-        pending.length ? `待执行迁移：${pending.join(',')}。` : undefined),
-    ];
+    return item(id, scope.level, label, pending.length ? 'failed' : 'passed',
+      `ledger=${rows.length},schema=${schema},pending=${pending.length}`,
+      '先做只读预检并备份，再按部署流程执行已授权迁移；本命令不会自动迁移、不会删除数据库。',
+      'cd admin; npm run check:migration-preflight -- --enterprise-id <id>; npm run xiaok:env:check',
+      pending.length ? `待执行迁移：${pending.join(',')}。` : undefined);
   } catch (ledgerError) {
+    return item(id, scope.level, label, 'failed', `ledger=${rows.length},validation=failed`,
+      '核对迁移文件与数据库账本；先备份再按部署流程处理，不要手工改写账本。',
+      'cd admin; npm run check:migration-preflight -- --enterprise-id <id>',
+      ledgerError instanceof Error ? ledgerError.message : String(ledgerError));
+  }
+}
+
+/** Evaluate one database from its own connection evidence. A missing optional
+ * database never borrows another environment's results. */
+export function evaluateDatabase(
+  evidence: DatabaseEvidence,
+  scope: DatabaseScope,
+  migrationInputs: MigrationInputsSnapshot | null,
+): EnvironmentCheckItem[] {
+  if (!evidence.configured) {
     return [
-      item('isolated-pg17.migrations', 'isolated-pg17', '迁移账本', 'failed', `ledger=${rows.length},validation=failed`,
-        '核对迁移文件与数据库账本；先备份再按部署流程处理，不要手工改写账本。',
-        'cd admin; npm run check:migration-preflight -- --enterprise-id <id>',
-        ledgerError instanceof Error ? ledgerError.message : String(ledgerError)),
+      item(`${scope.prefix}.connection`, scope.level, `${scope.label}连接`,
+        scope.required ? 'failed' : 'not_run', 'not_configured',
+        scope.required
+          ? `在 admin/.env.local 配置 ${scope.source}；不要覆盖现有文件。`
+          : `在 admin/.env.local 增加 ${scope.source}，指向独立隔离库；本命令不会创建数据库。`,
+        verifyCommand,
+        scope.required
+          ? `${scope.source} 未配置。`
+          : `未配置 ${scope.source}；本级别不会复用 DATABASE_URL 或其他数据库的结果。`),
     ];
   }
+  if (!evidence.identity) {
+    return [
+      item(`${scope.prefix}.connection`, scope.level, `${scope.label}连接`, 'failed', 'connection_failed',
+        scope.required
+          ? '确认 PostgreSQL 17 已启动，且 admin/.env.local 的 DATABASE_URL 指向可访问的开发库；不要改为生产库。'
+          : '确认隔离库 PostgreSQL 17 已启动，且 XIAOK_ISOLATED_DATABASE_URL 指向可访问的独立数据库；不要连接生产库。',
+        verifyCommand,
+        evidence.error ? `连接失败：${evidence.error}` : '未连接数据库。'),
+      ...databaseNotRun(scope, '先恢复数据库连接。'),
+    ];
+  }
+  const identity = evidence.identity;
+  const versionOk = identity.serverVersionNum >= 170000 && identity.serverVersionNum < 180000;
+  const accountOk = !identity.rolsuper && !identity.rolbypassrls;
+  return [
+    item(`${scope.prefix}.connection`, scope.level, `${scope.label}连接`, 'passed', 'connected',
+      '无需处理。', 'cd admin; npm run db:check'),
+    item(`${scope.prefix}.version`, scope.level, `${scope.label}版本`, versionOk ? 'passed' : 'failed',
+      versionLabel(identity.serverVersionNum),
+      '连接项目要求的 PostgreSQL 17；不要自动重建或删除数据库。',
+      'select version(); cd admin; npm run xiaok:env:check',
+      versionOk ? undefined : '数据库不是 PostgreSQL 17.x。'),
+    item(`${scope.prefix}.account`, scope.level, `${scope.label}账号权限`, accountOk ? 'passed' : 'failed',
+      `role=${identity.role},database=${identity.database},superuser=${identity.rolsuper},bypassRls=${identity.rolbypassrls}`,
+      '使用非超级用户业务账号（如 sfp_app），保持 FORCE ROW LEVEL SECURITY；不要关闭 RLS。',
+      verifyCommand,
+      accountOk ? undefined : '业务连接使用了超级用户或可绕过 RLS 的角色。'),
+    item(`${scope.prefix}.read_only`, scope.level, `${scope.label}只读检查`, identity.readOnly ? 'passed' : 'failed',
+      `readOnly=${identity.readOnly},replica=${identity.replica}`,
+      '环境检查必须使用只读事务；不要用可写连接执行诊断。',
+      verifyCommand,
+      identity.readOnly ? undefined : '当前连接不是只读事务。'),
+    rlsItem(evidence, scope),
+    migrationItem(evidence, scope, migrationInputs),
+  ];
+}
+
+const identityKey = (identity: DatabaseIdentitySnapshot) =>
+  `${identity.host ?? 'unknown'}:${identity.port ?? 'unknown'}/${identity.database}`;
+
+/** A configured isolated URL is not enough: it must point at a different
+ * database than DATABASE_URL. */
+export function evaluateIsolatedIndependence(
+  development: DatabaseEvidence, isolated: DatabaseEvidence,
+): EnvironmentCheckItem {
+  if (!development.configured || !isolated.configured || !development.identity || !isolated.identity) {
+    return item('isolated-pg17.independence', 'isolated-pg17', '隔离库独立性', 'not_run', 'not_run',
+      '同时配置并连接两套数据库后复验。', verifyCommand,
+      !isolated.configured ? '未配置独立隔离数据库连接。' : '缺少可连接的数据库，无法比较。');
+  }
+  const same = identityKey(development.identity) === identityKey(isolated.identity);
+  return item('isolated-pg17.independence', 'isolated-pg17', '隔离库独立性', same ? 'failed' : 'passed',
+    `sameTarget=${same}`,
+    '让 XIAOK_ISOLATED_DATABASE_URL 指向独立数据库；不要复用开发库。',
+    verifyCommand,
+    same ? '隔离库与开发库指向同一数据库（host/port/database 相同）。' : undefined);
 }
 
 // ---------------------------------------------------------------- model
@@ -503,53 +583,57 @@ export function evaluateKnowledgeConfiguration(input: {
 
 // ---------------------------------------------------------------- worker
 
-export type QueueSnapshot = {
-  readable: boolean;
-  queued: number;
-  running: number;
-  failed: number;
-  oldestQueuedSeconds: number | null;
-  error?: string;
-};
-
 export function evaluateWorkerConfiguration(input: {
   env: Record<string, string | undefined>;
   heartbeat: WorkerHeartbeat;
   queue: QueueSnapshot | null;
+  developmentIdentity: DatabaseIdentitySnapshot | null;
 }): EnvironmentCheckItem[] {
   const secret = Boolean(input.env.CRON_SECRET?.trim());
   const endpoint = input.env.ASSISTANT_WORKER_ENDPOINT?.trim();
   const heartbeat = input.heartbeat.freshness;
-  const heartbeatReason = heartbeat === 'stale' ? `最近成功心跳已过期（${input.heartbeat.ageSeconds} 秒前）。`
-    : heartbeat === 'unknown' ? '未找到可读的 Worker 健康文件或最近成功心跳。' : undefined;
+  const database = input.developmentIdentity?.database ?? 'unknown';
+  const queueSource = input.developmentIdentity ? `DATABASE_URL:${database}` : 'none';
+  const heartbeatSource = input.env.ASSISTANT_WORKER_HEALTH_FILE?.trim() ? 'configured-health-file' : 'default-health-file';
+  const heartbeatReason = heartbeat === 'stale' ? `开发环境最近成功心跳已过期（${input.heartbeat.ageSeconds} 秒前）。`
+    : heartbeat === 'unknown' ? '未找到开发环境可读的 Worker 健康文件或最近成功心跳。' : undefined;
   const queue = input.queue;
   const queueFailed = queue && queue.readable
     && (queue.queued > 50 || (queue.oldestQueuedSeconds ?? 0) > 3600);
   const queueLimited = queue && queue.readable
     && (queueFailed || queue.queued > 10 || (queue.oldestQueuedSeconds ?? 0) > 300 || queue.failed > 0);
   return [
-    item('worker.auth', 'worker', 'Worker 鉴权', secret ? 'passed' : 'failed',
-      `CRON_SECRET=${secret ? 'set' : 'missing'}`,
+    item('worker.environment', 'worker', 'Worker 所属环境',
+      input.developmentIdentity ? 'passed' : 'limited',
+      `environment=development,database=${database},queueSource=${queueSource},heartbeatSource=${heartbeatSource}`,
+      '确保 DATABASE_URL 指向开发库；心跳与队列只代表开发环境，不代表隔离库或生产环境。',
+      verifyCommand,
+      input.developmentIdentity ? undefined : '开发库不可用，队列未检查；不会读取生产或隔离库队列。'),
+    item('worker.auth', 'worker', '开发环境 Worker 鉴权', secret ? 'passed' : 'failed',
+      `environment=development,CRON_SECRET=${secret ? 'set' : 'missing'}`,
       '在 admin/.env.local 配置 CRON_SECRET（不要覆盖现有文件），并确保 Worker 与 API 使用同一值。',
       verifyCommand,
       secret ? undefined : '缺少 CRON_SECRET，Worker 请求无法鉴权。'),
-    item('worker.endpoint', 'worker', 'Worker 端点', 'passed',
-      endpoint ? 'configured' : 'default',
+    item('worker.endpoint', 'worker', '开发环境 Worker 端点', 'passed',
+      `environment=development,${endpoint ? 'configured' : 'default'}`,
       '无需处理；如需远程 Worker，在 .env.local 设置 ASSISTANT_WORKER_ENDPOINT。',
       verifyCommand),
-    item('worker.heartbeat', 'worker', 'Worker 心跳', heartbeat === 'fresh' ? 'passed' : 'failed',
-      `freshness=${heartbeat},ageSeconds=${input.heartbeat.ageSeconds},liveProbe=false`,
+    item('worker.heartbeat', 'worker', '开发环境 Worker 心跳', heartbeat === 'fresh' ? 'passed' : 'failed',
+      `environment=development,source=${heartbeatSource},freshness=${heartbeat},ageSeconds=${input.heartbeat.ageSeconds},liveProbe=false`,
       'cd admin; npm run worker:assistant',
       'cd admin; node scripts/assistant-worker-healthcheck.mjs',
       heartbeatReason),
-    item('worker.queue', 'worker', '任务队列', !queue ? 'not_run' : !queue.readable ? 'not_run' : queueFailed ? 'failed' : queueLimited ? 'limited' : 'passed',
-      !queue ? 'not_run' : `queued=${queue.queued},running=${queue.running},failed=${queue.failed},oldestQueuedSeconds=${queue.oldestQueuedSeconds ?? 'none'}`,
-      '启动 Worker 并观察队列消化；不要通过删除任务制造通过。',
+    item('worker.queue', 'worker', '开发环境任务队列',
+      !queue ? 'not_run' : !queue.readable ? 'not_run' : queueFailed ? 'failed' : queueLimited ? 'limited' : 'passed',
+      !queue
+        ? `environment=development,database=${database},not_run`
+        : `environment=development,database=${database},queued=${queue.queued},running=${queue.running},failed=${queue.failed},oldestQueuedSeconds=${queue.oldestQueuedSeconds ?? 'none'}`,
+      '启动开发环境 Worker 并观察队列消化；不要删除任务或重试失败任务来制造通过。',
       verifyCommand,
-      !queue ? '数据库不可用或任务表不可读。'
-        : !queue.readable ? queue.error ?? '任务表不可读。'
-        : queueFailed ? '队列积压超过 1 小时或 50 条，Worker 可能未运行。'
-        : queueLimited ? '存在排队/失败任务，需要观察 Worker 消化。' : undefined),
+      !queue ? '开发库未配置或开发环境任务表不可读；不读取生产或隔离库队列。'
+        : !queue.readable ? queue.error ?? '开发环境任务表不可读。'
+        : queueFailed ? '开发环境队列积压超过 1 小时或 50 条，Worker 可能未运行。'
+        : queueLimited ? '开发环境存在排队/失败任务，需要观察 Worker 消化。' : undefined),
   ];
 }
 
@@ -559,20 +643,61 @@ export const requiredProductionVariables = [
   'DATABASE_URL', 'DATABASE_MIGRATION_URL', 'JWT_SECRET', 'INTERNAL_SECRET', 'CRON_SECRET', 'WX_APPID', 'WX_APPSECRET',
 ] as const;
 
+export type PostgresTarget = { host: string; database: string; credentials: boolean };
+
+/** Parse only enough of a PostgreSQL URL to identify the target. The raw URI,
+ * username, password and query values are never returned. */
+export function parsePostgresTarget(value: string | null | undefined): PostgresTarget | null {
+  if (!value?.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    if (!['postgres:', 'postgresql:'].includes(url.protocol) || !url.hostname) return null;
+    const database = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+    if (!database || database.includes('/')) return null;
+    return { host: url.hostname, database, credentials: Boolean(url.username || url.password) };
+  } catch {
+    return null;
+  }
+}
+
+export function evaluateProductionConfig(productionDatabaseUrl: string | null): EnvironmentCheckItem {
+  if (!productionDatabaseUrl?.trim()) {
+    return item('production.config', 'production', '生产库配置识别', 'not_run', 'not_configured',
+      '在生产部署环境中提供合法 DATABASE_URL；本命令只识别配置，不建立连接、不修改。',
+      '部署前复验',
+      '未发现 admin/.env.production 的 DATABASE_URL；不做生产连接。');
+  }
+  const target = parsePostgresTarget(productionDatabaseUrl);
+  if (!target) {
+    return item('production.config', 'production', '生产库配置识别', 'failed', 'invalid',
+      '检查生产部署的 DATABASE_URL 格式；本命令不会输出 URI，也不会建立连接。',
+      '部署前复验',
+      '生产 DATABASE_URL 无法解析为 PostgreSQL 目标。');
+  }
+  const localHost = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(target.host);
+  const reason = localHost ? '生产配置指向本机地址，可能是模板或开发库；本命令未连接。'
+    : target.credentials ? undefined : '生产 DATABASE_URL 未包含凭据。';
+  return item('production.config', 'production', '生产库配置识别',
+    localHost || !target.credentials ? 'limited' : 'passed',
+    `host=${target.host},database=${target.database},credentials=${target.credentials ? 'set' : 'missing'}`,
+    '在生产部署环境中提供合法 DATABASE_URL；本命令只识别配置，不建立连接、不修改。',
+    '部署前复验',
+    reason);
+}
+
 export function evaluateProductionBoundary(input: {
-  identity: DatabaseIdentitySnapshot | null;
+  productionDatabaseUrl: string | null;
   productionEnvKeys: Set<string> | null;
 }): EnvironmentCheckItem[] {
-  const readOnly = Boolean(input.identity?.readOnly);
   const missing = input.productionEnvKeys
     ? requiredProductionVariables.filter(name => !input.productionEnvKeys!.has(name))
     : null;
   return [
-    item('production.read_only', 'production', '生产数据只读边界', !input.identity ? 'not_run' : readOnly ? 'passed' : 'failed',
-      !input.identity ? 'not_run' : `readOnly=${input.identity.readOnly},writes=0`,
-      '环境检查只允许 SELECT；不要在生产库执行诊断性写入。',
-      verifyCommand,
-      !input.identity ? '数据库不可用，未验证只读边界。' : readOnly ? undefined : '当前事务不是只读。'),
+    evaluateProductionConfig(input.productionDatabaseUrl),
+    item('production.connection', 'production', '生产库连接', 'not_run', 'not_connected',
+      '无需处理；生产环境只做只读配置识别，不建立连接。',
+      '发布流程',
+      'production 级别不连接生产数据库、不执行任何 SQL。'),
     item('production.env_file', 'production', '生产环境变量清单', missing === null ? 'not_run' : missing.length ? 'failed' : 'passed',
       missing === null ? 'no .env.production' : `keys=${input.productionEnvKeys!.size},missing=${missing.join(',') || 'none'}`,
       '由部署负责人在部署环境中补齐生产变量；本命令不会创建或覆盖 .env。',
@@ -580,10 +705,35 @@ export function evaluateProductionBoundary(input: {
       missing === null ? '未发现 admin/.env.production，生产配置检查未执行。'
         : missing.length ? `缺少生产变量：${missing.join(',')}。` : undefined),
     item('production.deployment', 'production', '生产部署与 Worker', 'not_run', 'not_run',
-      '按发布流程单独执行；本命令不部署生产、不启动或修改生产 Worker、不发送通知。',
+      '按发布流程单独执行；本命令不部署生产、不启动或修改生产 Worker、不处理队列、不发送通知。',
       '发布流程',
-      'I7.5.2 明确不部署生产。'),
+      'I7.5.3 明确不部署生产。'),
   ];
+}
+
+export type DatabaseTargetSummary = {
+  environment: 'development' | 'isolated' | 'production';
+  source: string;
+  configured: boolean;
+  connected: boolean;
+  host: string | null;
+  database: string | null;
+  role: string | null;
+};
+
+export function summarizeDatabaseTarget(
+  environment: DatabaseTargetSummary['environment'],
+  source: string,
+  evidence: DatabaseEvidence,
+): DatabaseTargetSummary {
+  return {
+    environment, source,
+    configured: evidence.configured,
+    connected: Boolean(evidence.identity),
+    host: evidence.identity?.host ?? null,
+    database: evidence.identity?.database ?? null,
+    role: evidence.identity?.role ?? null,
+  };
 }
 
 // ---------------------------------------------------------------- summary
@@ -620,24 +770,22 @@ export type EnvironmentReportInput = {
   env: Record<string, string | undefined>;
   envFiles: EnvironmentFileSnapshot[];
   productionEnvKeys: Set<string> | null;
-  database: DatabaseIdentitySnapshot | null;
-  databaseError?: string;
-  rls: RlsTableSnapshot[] | null;
-  rlsError?: string;
-  ledgerRows: LedgerRowSnapshot[] | null;
-  ledgerError?: string;
+  productionDatabaseUrl: string | null;
+  developmentDatabase: DatabaseEvidence;
+  isolatedDatabase: DatabaseEvidence;
   migrationInputs: MigrationInputsSnapshot | null;
   providers: ProviderSnapshot[] | null;
   providerError?: string;
   knowledgeTables: KnowledgeTablesSnapshot | null;
   knowledgeError?: string;
-  queue: QueueSnapshot | null;
   heartbeat: WorkerHeartbeat;
 };
 
 const trackedVariables = [
   ...requiredEnvironmentVariables,
   ...optionalEnvironmentVariables,
+  'DATABASE_URL',
+  'XIAOK_ISOLATED_DATABASE_URL',
   'ASSISTANT_EMBEDDING_URL',
   'ASSISTANT_EMBEDDING_API_KEY',
   'ASSISTANT_KNOWLEDGE_PROVIDER',
@@ -651,16 +799,23 @@ export function buildEnvironmentReport(input: EnvironmentReportInput): Environme
   const items = [
     ...evaluateRuntime(input.runtime),
     ...evaluateEnvironmentFiles({ files: input.envFiles, env: input.env }),
-    ...evaluateDatabaseIdentity(input.database, input.databaseError),
-    ...evaluateRowLevelSecurity(input.rls, input.rlsError),
-    ...evaluateMigrationLedger(input.ledgerRows, input.migrationInputs, input.ledgerError),
+    ...evaluateDatabase(input.developmentDatabase, developmentDatabaseScope, input.migrationInputs),
+    ...evaluateDatabase(input.isolatedDatabase, isolatedDatabaseScope, input.migrationInputs),
+    evaluateIsolatedIndependence(input.developmentDatabase, input.isolatedDatabase),
     ...evaluateModelConfiguration(input.providers, input.providerError),
     ...evaluateEmbeddingConfiguration(input.env),
     ...evaluateKnowledgeConfiguration({ env: input.env, tables: input.knowledgeTables, error: input.knowledgeError }),
-    ...evaluateWorkerConfiguration({ env: input.env, heartbeat: input.heartbeat, queue: input.queue }),
-    ...evaluateProductionBoundary({ identity: input.database, productionEnvKeys: input.productionEnvKeys }),
+    ...evaluateWorkerConfiguration({
+      env: input.env, heartbeat: input.heartbeat,
+      queue: input.developmentDatabase.queue ?? null,
+      developmentIdentity: input.developmentDatabase.identity,
+    }),
+    ...evaluateProductionBoundary({
+      productionDatabaseUrl: input.productionDatabaseUrl, productionEnvKeys: input.productionEnvKeys,
+    }),
   ];
   const { overall, levels, summary } = summarizeEnvironment(items);
+  const productionTarget = parsePostgresTarget(input.productionDatabaseUrl);
   return {
     tool: 'xiaok-env-check',
     version: 1,
@@ -679,6 +834,15 @@ export function buildEnvironmentReport(input: EnvironmentReportInput): Environme
     },
     envFiles: input.envFiles,
     variables: Object.fromEntries(trackedVariables.map(name => [name, input.env[name]?.trim() ? 'set' : 'missing'])),
+    targets: {
+      development: summarizeDatabaseTarget('development', 'DATABASE_URL', input.developmentDatabase),
+      isolated: summarizeDatabaseTarget('isolated', 'XIAOK_ISOLATED_DATABASE_URL', input.isolatedDatabase),
+      production: {
+        environment: 'production', source: '.env.production',
+        configured: Boolean(input.productionDatabaseUrl?.trim()), connected: false,
+        host: productionTarget?.host ?? null, database: productionTarget?.database ?? null, role: null,
+      },
+    },
   };
 }
 

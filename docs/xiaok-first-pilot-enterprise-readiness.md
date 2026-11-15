@@ -173,6 +173,19 @@ PG17.10 使用**独立恢复集群**验证：可创建/删除一次性恢复库�
 
 本轮未自动迁移、未重建数据库、未覆盖 `.env`、未更换模型供应商、未产生模型/Embedding 费用、未修改真实 1454、未启动或修改生产 Worker。定向测试 10/10、TypeScript、定向 ESLint 通过。用法、状态定义、脱敏规则和当前真实结果见[开发环境统一体检](./xiaok-environment-check.md)。
 
+### I7.5.3 开发库、隔离库与生产环境识别拆分（2026-11-16）
+
+> 基线：`codex/xiaok-integration` / `28a1a549`。未执行迁移、未创建隔离库、未覆盖 `.env`、未修改真实 1454、未连接生产、未启动/修改 Worker。
+
+修复 `xiaok:env:check` 把 `DATABASE_URL` 开发库误认为 `isolated-pg17` 的问题：
+
+- `development` 现在只检查 `DATABASE_URL` 指向的开发库（名称/版本、账号权限、只读事务、RLS、迁移账本、连接失败原因）。
+- `isolated-pg17` 只使用新的 `XIAOK_ISOLATED_DATABASE_URL`；未配置时整级 `not_run`，不会再复用开发库结果。另检查隔离库与开发库是否同一 `host/port/database`。
+- `production` 只解析 `admin/.env.production` 的 `DATABASE_URL` 目标，不建立连接、不执行 SQL；`production.connection` 固定 `not_run`。
+- `worker` 心跳和队列全部标记 `environment=development`，队列只来自开发库，不再把开发库历史失败任务当成生产 Worker 故障。
+
+真实执行结果：**19 passed / 5 failed / 1 limited / 7 not_run（32 项）**，`overall=failed`。`development=failed`（开发库 9 条待迁移）；`isolated-pg17=not_run`（未配置 `XIAOK_ISOLATED_DATABASE_URL`）；`model=failed`（缺 deepseek-flash 映射）；`knowledge=failed`（缺百炼工作区/Key）；`worker=failed`（开发环境心跳 stale、队列积压）；`production=limited`（`.env.production` 指向 `localhost` 模板，仅识别未连接）。定向测试 16/16、TypeScript、定向 ESLint 通过。详见[开发环境统一体检](./xiaok-environment-check.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`
