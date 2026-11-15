@@ -112,6 +112,14 @@ Healthcheck 现可报告最近请求结果及失败原因，并独立显示本�
 
 回归 **71 passed / 7 skipped**（7 项为 `xiaok-integration-migrations.test.mjs` 的数据库用例，因本机无 pgvector 按设计跳过），TypeScript 与定向 ESLint 通过。**真实 1454 仍未执行迁移、备份或恢复。** 详见 [I7.4.9.4 完整链路验收](./xiaok-i794-full-migration-restore-acceptance.md)。
 
+### I7.4.9.5 真实备份执行前最终安全核验（2026-11-15）
+
+只读核验确认：真实库 `smart_floor_planner` 为 PG17.10、约 251 MB，119 条账本（id `1–125`，摘要 `1d156566…77b381`），0021/0051 历史 SHA 精确命中，pending 9 条；`notification_config` 9 行中 8 行 NULL，default 为 V2、8 模板，文本 SHA `e34a0f6a…7d6a52`。`sfp_app` 非 superuser/非 BYPASSRLS；`sfp_owner` 可登录且可读取全部 174 张表、146 个序列，但当前为 **superuser + BYPASSRLS**，存在超权限风险。真实 RLS 为 153 张 FORCE RLS、208 条 Policy。
+
+当前无 Assistant Worker、无 3006/3016 监听、无其他数据库会话/长事务/DDL、Outbox 0、周报 0、Assistant Jobs 0；Worker 心跳约 17.9 小时前，已 `stale`。远端开发容器为 `sfp-remote-dev-postgres`（pgvector 0.8.2-pg17），容器与本机 `pg_dump`/`pg_restore` 均为 17.10。
+
+`backup_preflight` 仍为 **blocked**：缺少已批准的 `sfp_owner` 凭据（无 `XIAOK_MIGRATION_BACKUP_URL`/`XIAOK_MIGRATION_RESTORE_URL`）；默认 G: 备份目录仅余约 0.08 GB，不足以容纳 251 MB 数据库；现有 `.postgres-backups` ACL 含 `Authenticated Users: Modify`，不适合保存迁移备份。备份、恢复验证、迁移执行均仍为 `not_run`。回归 20 项备份/恢复测试与 9 项预检测试通过，TypeScript 与定向 ESLint 通过。详见 [I7.4.9.5 真实备份执行方案](./xiaok-i795-real-backup-execution-plan.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`
