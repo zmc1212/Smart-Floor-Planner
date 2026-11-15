@@ -130,6 +130,16 @@ Healthcheck 现可报告最近请求结果及失败原因，并独立显示本�
 
 真实开发库**尚未创建 `sfp_backup`**，未修改 `sfp_owner` 或 1454 权限。创建真实角色、授权、密码注入、默认权限和保留 legacy 兼容均需负责人单独批准。回归：备份 16 passed、恢复 9 passed、迁移器 18 passed / 7 skipped，TypeScript 与定向 ESLint 通过。详见 [I7.4.9.6 最小权限备份角色](./xiaok-i796-least-privilege-backup-role.md)。
 
+### I7.4.9.7 真实 sfp_backup 创建方案与授权脚本（2026-11-15）
+
+新增正式授权 SQL `admin/scripts/sql/xiaok-create-backup-role.sql`：不写明文密码，角色已存在时直接失败，明确输出 BYPASSRLS 警告；仅授予 CONNECT、`app` USAGE、现有全表/全序列 SELECT 和 `sfp_migrator` 未来对象的默认 SELECT，不授予写、DDL、账本或角色成员关系。
+
+新增只读验收工具 `npm run check:backup-role`，检查角色属性、全表/全序列覆盖、无写/DDL/账本权限、`sfp_app` 仍受 FORCE RLS 限制、`sfp_backup` 未被应用/Worker 使用；目标不明确或任一检查失败时 fail closed。
+
+隔离 PG17.10 通过正式 SQL 创建角色并验证 6 项：角色属性、跨企业 FORCE RLS 读取、全表/全序列 SELECT、写/DDL/账本拒绝、未来对象默认 SELECT、`sfp_app` 租户隔离；缺少 SELECT 或缺 BYPASSRLS 时 preflight 失败。新增 PowerShell 安全目录脚本，验证了受限 ACL、10 GB 空间检查、仓库内路径拒绝和重复执行幂等。
+
+真实开发库**尚未创建 `sfp_backup`**，未设置真实密码，未修改 `sfp_owner` 或 1454 权限。恢复账号仍需独立的 CREATEDB/BYPASSRLS/owner 切换维护权限，不复用 `sfp_backup`。回归：角色 6 passed、备份/恢复 25 passed，TypeScript 与定向 ESLint 通过。详见 [I7.4.9.7 角色创建方案](./xiaok-i797-backup-role-provisioning.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`

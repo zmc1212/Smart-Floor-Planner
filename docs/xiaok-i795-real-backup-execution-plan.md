@@ -13,6 +13,8 @@
 > - `migration_execution = not_run`
 >
 > **I7.4.9.6 更新**：最小权限 `sfp_backup` 已在隔离 PG17 验证通过；正式备份默认使用 `sfp_backup`，`sfp_owner` 仅保留为必须显式开启风险开关的兼容路径。真实开发库尚未创建 `sfp_backup`，详见 [I7.4.9.6 最小权限备份角色](./xiaok-i796-least-privilege-backup-role.md)。
+>
+> **I7.4.9.7 更新**：已准备正式授权 SQL、只读验收工具 `npm run check:backup-role` 和安全目录脚本。真实角色仍未创建，详见 [I7.4.9.7 角色创建方案](./xiaok-i797-backup-role-provisioning.md)。
 
 ## 1. 结论
 
@@ -143,6 +145,21 @@
 
 1. 负责人批准本次备份窗口和账号使用方式。
 2. 负责人批准创建真实 `sfp_backup`（LOGIN、NOSUPERUSER、BYPASSRLS、NOCREATEDB、NOCREATEROLE、NOREPLICATION），并批准 CONNECT、`app` schema USAGE、现有全部表/序列 SELECT 与默认 SELECT 权限。
+   - 正式 SQL：`admin/scripts/sql/xiaok-create-backup-role.sql`
+   - 执行示例（待批准，本轮不执行）：
+     ```powershell
+     psql -h 127.0.0.1 -p 5432 -U postgres -d smart_floor_planner `
+       -v ON_ERROR_STOP=1 -v backup_database=smart_floor_planner `
+       -f admin/scripts/sql/xiaok-create-backup-role.sql
+     # 再交互式设置密码，禁止写入命令行/仓库：
+     # \password sfp_backup
+     ```
+   - 授权后运行只读验收：
+     ```powershell
+     $env:XIAOK_BACKUP_ROLE_CHECK_URL = '<approved sfp_app URL>'
+     npm run check:backup-role
+     ```
+     必须 `status=passed`，否则不得备份。
 3. 从受控密钥存储注入 `XIAOK_MIGRATION_BACKUP_URL`：`postgresql://sfp_backup:<secret>@127.0.0.1:5432/smart_floor_planner`；不得写入仓库、日志或文档。
 4. 注入 `XIAOK_MIGRATION_RESTORE_URL`（批准的维护连接 `/postgres`，用于创建/删除一次性恢复库）；如不批准，恢复验证不能执行。
 5. 在 C: 或其他有足够空间的受控卷创建专用目录（建议至少 10 GB 可用），并收紧 ACL：
