@@ -172,7 +172,7 @@ npx tsx scripts/xiaok-i758-worker-safety-acceptance.ts --output=../tmp/xiaok-i75
 
 ## 7. 剩余限制
 
-1. **聊天/知识任务仍使用全局队列**。本轮只对提醒、周报及站内投递四项业务 Worker 加门禁；`processAssistantJob`、知识索引等既有全局行为未改变。门禁关闭时整个 Worker 不启动；门禁开放时这些任务仍按原逻辑全局领取。报告与提醒的生成/投递始终受试点范围约束。
+1. **聊天/知识任务在 I7.5.8 时仍使用全局队列**（I7.5.9 已解除）。I7.5.8 只对提醒、周报及站内投递四项业务 Worker 加门禁；`processAssistantJob`、知识索引等既有全局行为未改变。门禁关闭时整个 Worker 不启动；门禁开放时这些任务仍按原逻辑全局领取。I7.5.9 已把 Assistant Job、知识批次/索引/清理、站点/公开通知、Portfolio 与指标回执全部限定试点企业，详见 [I7.5.9 副作用审计](./xiaok-i759-worker-side-effect-audit.md)。
 2. **企业全量模式已关闭**。已有部署若仍希望企业全量提醒/周报，需要后续单独授权和实现，不在本轮范围；上线后四项业务 Worker 只在显式 pilot 模式下运行。
 3. **开发库缺少 0130 迁移**。开发库当前 9 条待迁移，`xiaok_pilot_project_scopes` 不存在；pilot 模式下 preflight 会报告 `pilotScope=unavailable`，提醒/周报 Worker 返回 `pilot_scope_unavailable` 并零处理。需按已授权迁移流程应用 0128–0130 后，pilot 模式才能产生真实业务结果。
 4. **未启动真实 Worker、未处理真实队列**。开发库现有 31 条 queued、2 条 running、404 条 failed 原样保留；本轮验收只在隔离库创建并清理合成任务。

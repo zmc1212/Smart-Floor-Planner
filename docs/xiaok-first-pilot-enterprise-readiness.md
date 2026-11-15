@@ -210,6 +210,16 @@ preflight 同时提供只读 dry-run：queued、expired running、failed、indet
 
 隔离 PG17 `i745_f1_accept` 端到端验收 **20 passed / 0 failed**（合成企业 `31`，运行后清理），覆盖未配置试点、配置不一致、仅明确试点、企业全量拦截、dry-run 前后哈希一致、重复启动、并发领取单持有者、心跳 fencing、重复 provider start 拒绝、过期租约安全回收、未知结果不重放、failed 终态、未保存试点范围零生成零投递；定向测试与回归全部通过，TypeScript 与 ESLint 通过。开发库仍缺 0128–0130 迁移，pilot 模式在迁移前会如实返回 `pilot_scope_unavailable` 并零处理。详见 [I7.5.8 验收](./xiaok-i758-worker-safe-startup-acceptance.md)。
 
+### I7.5.9 全局 Worker 通知与任务副作用审查（2026-11-16）
+
+> 基线：`codex/xiaok-integration` / `aad83204`。未启动真实 Worker、未处理开发库业务队列、未发送真实用户通知、未修改真实 1454、未执行迁移、未改生产配置。
+
+完成 Worker 全任务副作用盘点：Assistant Job、知识批次/索引/清理、施工进展/问题结果/方案发布/公开材料通知、阶段提醒、周报、Portfolio 文案、指标回执与 Native Workflow 全部纳入统一范围。门禁关闭时这些任务一律不运行；Pilot 模式下全部限定试点企业，`claimJob`、知识领取、通知候选、Portfolio 候选与指标回执均带企业过滤。
+
+Native Workflow 保留原显式开关，但 Pilot 模式下企业白名单必须只含试点企业；包含其他企业时整体跳过并返回 `pilot_scope_override`。preflight 新增 `scopedQueue` 与 `sideEffects`：逐任务显示范围、候选数量、生产批量上限、潜在副作用（站内通知/模型调用/业务写入/知识写入/内部回执）和 Native Workflow 白名单状态，全部在 `READ ONLY` 事务中执行。
+
+隔离 PG17 `i745_f1_accept` 双合成企业（试点 `42`、范围外 `43`）验收 **13 passed / 1 limited / 0 failed**：范围外 queued run、站内进展、公开材料确认、Portfolio prepared 任务与全部计数/哈希在试点范围执行后保持不变；显式指向范围外企业时同一夹具可正常投递，证明范围过滤而非夹具失效。limited 为知识批次有效候选未伪造。定向测试 43 + 54 + 4 项、TypeScript 与 ESLint 通过。详见 [I7.5.9 副作用审计](./xiaok-i759-worker-side-effect-audit.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`

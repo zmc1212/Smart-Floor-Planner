@@ -8,18 +8,21 @@ import type { ManagedKnowledgeProvider } from './managed-provider';
 
 /** The local publication fence takes effect in the same transaction as
  * withdrawal. This worker removes only provider objects created by our jobs. */
-export async function processManagedKnowledgeCleanup(provider?: ManagedKnowledgeProvider) {
+export async function processManagedKnowledgeCleanup(provider?: ManagedKnowledgeProvider,
+  scope?: { enterpriseId?: string }) {
   let workspaceId: string;
   try { workspaceId = provider?.workspaceId ?? bailianKnowledgeConfig().workspaceId; }
   catch (error) {
     if (error instanceof AssistantError && error.code === 'bailian_knowledge_not_configured') return false;
     throw error;
   }
+  const enterpriseId = scope?.enterpriseId?.trim();
   const next = await withPlatformTransaction(tx=>one(tx,sql`select i.enterprise_id,i.job_id
     from app.assistant_managed_knowledge_imports i join app.assistant_knowledge_versions v on v.enterprise_id=i.enterprise_id and v.id=i.version_id
     join app.assistant_knowledge_documents d on d.enterprise_id=v.enterprise_id and d.id=v.document_id
     join app.assistant_jobs j on j.enterprise_id=i.enterprise_id and j.id=i.job_id
-    where i.workspace_id=${workspaceId} and i.file_id is not null and i.removed_at is null and i.cleanup_after<=now()
+    where i.workspace_id=${workspaceId} ${enterpriseId ? sql`and i.enterprise_id=${enterpriseId}` : sql``}
+    and i.file_id is not null and i.removed_at is null and i.cleanup_after<=now()
     and j.status not in ('queued','running') and (i.revoked_at is not null or d.status='retired'
       or v.edit_version<>i.edit_version or v.content_hash<>i.content_hash
       or (v.published_at is not null and v.effective_to<=now()) or (d.scope='project' and d.project_id is null))

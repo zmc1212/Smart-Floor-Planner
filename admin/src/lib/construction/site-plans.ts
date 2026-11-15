@@ -277,12 +277,14 @@ export async function syncPlans(tx: PostgresTransaction, actor: ActorContext, c:
   }
   return delivered;
 }
-export async function deliverPlans() {
+export async function deliverPlans(scope?: { enterpriseId?: string }) {
+  const enterpriseId = scope?.enterpriseId?.trim();
   const candidates = await withPlatformTransaction(tx => rows(tx, sql`select distinct e.enterprise_id,c.id,e.payload->>'customerId' as uid
     from app.domain_event_outbox e join app.assistant_conversations c on c.enterprise_id=e.enterprise_id and c.id::text=e.payload->>'conversationId'
     join app.enterprises ent on ent.id=e.enterprise_id and ent.status='active'
     join app.assistant_enterprise_settings s on s.enterprise_id=e.enterprise_id and s.enabled
-    where e.type=${publishedType} and c.status='open' and c.mode='ai' and not exists(select 1 from app.domain_event_deliveries d
+    where e.type=${publishedType} ${enterpriseId ? sql`and e.enterprise_id=${enterpriseId}` : sql``}
+      and c.status='open' and c.mode='ai' and not exists(select 1 from app.domain_event_deliveries d
       where d.enterprise_id=e.enterprise_id and d.event_id=e.id and d.consumer_key='construction:plan:' || c.id::text) limit 20`));
   let count = 0;
   for (const row of candidates) await withTenantTransaction(String(row.enterprise_id), async tx => {

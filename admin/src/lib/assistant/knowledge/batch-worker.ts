@@ -4,12 +4,15 @@ import { one, rows } from '@/db/repositories/assistant-repository';
 import { AssistantError } from '../contracts';
 import { KnowledgeOperations } from './operations';
 
-/** Called by the original authorized worker; only enqueues original preview jobs. */
-export async function advanceKnowledgeBatches() {
+/** Called by the original authorized worker; only enqueues original preview jobs.
+ * `scope.enterpriseId` narrows the batch scan to one enterprise; batch
+ * advancement still uses the original actor and per-tenant checks. */
+export async function advanceKnowledgeBatches(scope?: { enterpriseId?: string }) {
+  const enterpriseId = scope?.enterpriseId?.trim();
   const candidates=await withPlatformTransaction(async tx=>{
     if(!(await one(tx,sql`select to_regclass('app.assistant_knowledge_batches') is not null as ready`))!.ready)return [];
     return rows(tx,sql`select b.id::text,b.enterprise_id::text,b.created_by::text
-    from app.assistant_knowledge_batches b where b.state='active' and exists(
+    from app.assistant_knowledge_batches b where b.state='active' ${enterpriseId ? sql`and b.enterprise_id=${enterpriseId}` : sql``} and exists(
       select 1 from app.assistant_knowledge_batch_items i join app.assistant_knowledge_evaluations e
       on e.enterprise_id=i.enterprise_id and e.id=i.evaluation_id left join app.assistant_runs r on r.enterprise_id=e.enterprise_id and r.id=e.run_id
       where i.enterprise_id=b.enterprise_id and i.batch_id=b.id

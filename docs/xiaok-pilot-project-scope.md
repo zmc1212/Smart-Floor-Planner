@@ -449,8 +449,8 @@ I7.4.5-F4.1 补充完整 HTTP Route 一致配置验收：`createAssistantJobsPos
 | 任意 `enterprise`（含指定一个企业） | `closed` | `enterprise_scope_not_allowed`，企业全量保持关闭 |
 | 模式/企业/试点不一致或非法 | `closed` | 保留原有 `pilot_worker_alignment` 错误码 |
 
-`runAssistantJobsTick()` 只在门禁 `open` 时调用四项业务 Worker；跳过时返回 `skipped=true`、`reason=worker_safety_gate`、`gateReason` 和错误码。其他 Assistant Job 保持原条件运行。`GET /api/internal/assistant/jobs/preflight`（`CRON_SECRET` 保护）返回门禁、脱敏模式摘要、试点范围状态与**全局**只读队列预览；`assistant-worker.mjs` 在 tick 前调用该接口，门禁关闭退出码 2，预检不可用/无效退出码 1。企业全量没有环境变量旁路。
+`runAssistantJobsTick()` 只在门禁 `open` 时调用四项业务 Worker；跳过时返回 `skipped=true`、`reason=worker_safety_gate`、`gateReason` 和错误码。I7.5.9 起，其他有副作用任务（Assistant Job、知识批次/索引/清理、站内与公开材料通知、Portfolio 文案、指标回执）同样只在门禁 `open` 时运行，并统一限定试点企业；Native Workflow 仅在其显式企业白名单只含试点企业时运行。`GET /api/internal/assistant/jobs/preflight`（`CRON_SECRET` 保护）返回门禁、脱敏模式摘要、试点范围状态、全局/试点队列以及逐任务只读副作用预演；`assistant-worker.mjs` 在 tick 前调用该接口，门禁关闭退出码 2，预检不可用/无效退出码 1。企业全量没有环境变量旁路。
 
 队列预览在 PostgreSQL `READ ONLY` 事务中统计 queued、expired running、failed、indeterminate，并只把“已到期 queued、过期且未派发供应商、过期且 agent 步骤结果完整”标记为可安全领取；`provider_started_at` 已设置但结果未知保持 indeterminate，`failed`/`indeterminate` 不自动重试。预览不领取、不标记、不发送通知。
 
-验收：隔离 PG17 `i745_f1_accept` 21 passed / 0 failed；门禁、dry-run 不变性、重复启动、并发领取、心跳 fencing、provider start 幂等、未知结果不重放、failed 终态与未保存试点零生成零投递均通过。详见 [I7.5.8 验收](./xiaok-i758-worker-safe-startup-acceptance.md)。
+验收：隔离 PG17 `i745_f1_accept` 21 passed / 0 failed；门禁、dry-run 不变性、重复启动、并发领取、心跳 fencing、provider start 幂等、未知结果不重放、failed 终态与未保存试点零生成零投递均通过。I7.5.9 进一步完成全任务副作用审查与双企业范围验收（13 passed / 1 limited / 0 failed）。详见 [I7.5.8 验收](./xiaok-i758-worker-safe-startup-acceptance.md) 与 [I7.5.9 副作用审计](./xiaok-i759-worker-side-effect-audit.md)。

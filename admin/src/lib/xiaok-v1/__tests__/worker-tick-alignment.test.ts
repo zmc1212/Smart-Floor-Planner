@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { runAssistantJobsTick, type AssistantJobsTickDependencies } from '@/lib/assistant/infrastructure/jobs-tick';
 import { checkPilotWorkerAlignment } from '../pilot-worker-alignment';
+import { evaluateWorkerSafetyGate } from '../worker-safety-gate';
 
 const now = new Date('2026-11-16T20:00:00+08:00');
 const stagePilot = {
@@ -14,6 +15,7 @@ const weeklyPilot = {
   XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454',
   XIAOK_WEEKLY_REPORT_PILOT_ID: 'first-pilot',
 };
+const pilotEnv = { ...stagePilot, ...weeklyPilot };
 
 type Counts = ReturnType<typeof harness>['counts'];
 
@@ -23,35 +25,48 @@ function harness(env: Record<string, string | undefined>, extra: AssistantJobsTi
     knowledge: 0, assistant: 0, siteNotifications: 0, publicConsents: 0, portfolioCopy: 0,
     schedule: 0, delegations: 0, durableTools: 0,
   };
-  const received: Date[] = [];
+  const scopes: Record<string, unknown[]> = {
+    knowledge: [], assistant: [], siteNotifications: [], publicConsents: [], portfolioCopy: [],
+  };
   const tick = () => runAssistantJobsTick({
     now,
     env,
     checkPilotWorkerAlignment,
-    advanceKnowledgeBatches: async () => { counts.knowledge += 1; return 0; },
-    processAssistantJob: async () => { counts.assistant += 1; return { claimed: false }; },
+    evaluateWorkerSafetyGate,
+    advanceKnowledgeBatches: async scope => {
+      counts.knowledge += 1; scopes.knowledge.push(scope); return 0;
+    },
+    processAssistantJob: async (_run, _limit, scope) => {
+      counts.assistant += 1; scopes.assistant.push(scope); return { claimed: false };
+    },
     processAssistantRun: async () => undefined,
-    deliverSiteNotifications: async () => { counts.siteNotifications += 1; return 0; },
-    deliverPublicConsents: async () => { counts.publicConsents += 1; return 0; },
-    processPortfolioCopy: async () => { counts.portfolioCopy += 1; return false; },
-    advanceConfiguredConstructionReports: async input => {
-      counts.advanceReports += 1; received.push(input.now);
-      return { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
+    deliverSiteNotifications: async scope => {
+      counts.siteNotifications += 1; scopes.siteNotifications.push(scope); return 0;
+    },
+    deliverPublicConsents: async enterpriseId => {
+      counts.publicConsents += 1; scopes.publicConsents.push(enterpriseId); return 0;
+    },
+    processPortfolioCopy: async scope => {
+      counts.portfolioCopy += 1; scopes.portfolioCopy.push(scope); return false;
+    },
+    advanceConfiguredConstructionReports: async () => {
+      counts.advanceReports += 1;
+      return { mode: 'pilot' as const, pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
         scopedProjects: 1, queued: 1, errors: [] };
     },
-    deliverConfiguredConstructionReports: async input => {
-      counts.deliverReports += 1; received.push(input.now);
-      return { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
+    deliverConfiguredConstructionReports: async () => {
+      counts.deliverReports += 1;
+      return { mode: 'pilot' as const, pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
         scopedProjects: 1, delivered: 1, errors: [] };
     },
-    advanceConfiguredStageReminders: async input => {
-      counts.advanceReminders += 1; received.push(input.now);
-      return { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
+    advanceConfiguredStageReminders: async () => {
+      counts.advanceReminders += 1;
+      return { mode: 'pilot' as const, pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
         scannedProjects: 1, skippedProjects: 0, created: 1, errors: [] };
     },
-    deliverConfiguredStageReminders: async input => {
-      counts.deliverReminders += 1; received.push(input.now);
-      return { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
+    deliverConfiguredStageReminders: async () => {
+      counts.deliverReminders += 1;
+      return { mode: 'pilot' as const, pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
         scannedProjects: 1, skippedProjects: 0, delivered: 1, paused: 0, cancelled: 0, failed: 0, errors: [] };
     },
     runNativeWorkflowScheduleTick: async () => { counts.schedule += 1; return { enabled: true }; },
@@ -59,7 +74,7 @@ function harness(env: Record<string, string | undefined>, extra: AssistantJobsTi
     runNativeDurableToolTick: async () => { counts.durableTools += 1; return { enabled: true }; },
     ...extra,
   });
-  return { counts, received, tick };
+  return { counts, scopes, tick };
 }
 
 const four = (counts: Counts) => [counts.advanceReports, counts.deliverReports,
@@ -69,79 +84,86 @@ function assertFourCalls(counts: Counts, expected: number) {
   assert.deepEqual(four(counts), [expected, expected, expected, expected]);
 }
 
-function assertOtherJobsRan(counts: Counts) {
-  assert.equal(counts.knowledge, 1);
-  assert.equal(counts.assistant, 1);
-  assert.equal(counts.siteNotifications, 1);
-  assert.equal(counts.publicConsents, 1);
+function assertAllSideEffectTasks(counts: Counts, expected: number) {
+  assert.deepEqual([counts.knowledge, counts.assistant, counts.siteNotifications,
+    counts.publicConsents, counts.portfolioCopy], [expected, expected, expected, expected, expected]);
 }
 
-// A. No explicit pilot scope and no enterprise acknowledgement: both business
-// workers stay closed instead of scanning the whole enterprise by default.
-test('I7.5.8 A. an unconfigured deployment skips all four workers', async () => {
-  const { counts, received, tick } = harness({});
-  const data = await tick();
-  assert.equal(data.pilotScopeAlignment.status, 'aligned');
-  assert.equal(data.pilotScopeAlignment.mode, 'enterprise');
-  assert.deepEqual([data.workerSafetyGate.status, data.workerSafetyGate.reason,
-    data.workerSafetyGate.errorCode], ['closed', 'pilot_scope_missing', 'worker_pilot_scope_missing']);
+function assertNoBusinessTask(counts: Counts) {
   assertFourCalls(counts, 0);
-  assertOtherJobsRan(counts);
-  assert.deepEqual(received, []);
+  assertAllSideEffectTasks(counts, 0);
+  assert.deepEqual([counts.schedule, counts.delegations, counts.durableTools], [0, 0, 0]);
+}
+
+// A. No explicit pilot scope: every side-effect task stays closed.
+test('I7.5.9 A. an unconfigured deployment skips every business task', async () => {
+  const { counts, scopes, tick } = harness({});
+  const data = await tick();
+  assert.deepEqual([data.workerSafetyGate.status, data.workerSafetyGate.reason],
+    ['closed', 'pilot_scope_missing']);
+  assert.deepEqual(data.workerExecution, {
+    businessTasksEnabled: false, mode: 'enterprise', enterpriseId: null,
+    pilotId: null, taskScope: 'none',
+  });
+  assertNoBusinessTask(counts);
+  assert.deepEqual(scopes, {
+    knowledge: [], assistant: [], siteNotifications: [], publicConsents: [], portfolioCopy: [],
+  });
 });
 
-// B. Both workers name the same enterprise, but enterprise-wide delivery stays
-// closed unless an explicit pilot scope exists.
-test('I7.5.8 B. identical enterprise ids still skip all four', async () => {
+// B. Enterprise ids without a pilot are still closed.
+test('I7.5.9 B. enterprise ids without a pilot skip every business task', async () => {
   const { counts, tick } = harness({ XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454',
     XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' });
   const data = await tick();
-  assert.equal(data.pilotScopeAlignment.status, 'aligned');
   assert.deepEqual([data.workerSafetyGate.status, data.workerSafetyGate.reason],
     ['closed', 'enterprise_scope_not_allowed']);
-  assertFourCalls(counts, 0);
-  assertOtherJobsRan(counts);
+  assertNoBusinessTask(counts);
 });
 
-// C. Both workers share the same pilot.
-test('F4 C. identical pilot configurations run all four once', async () => {
-  const { counts, tick } = harness({ ...stagePilot, ...weeklyPilot });
+// C. One aligned pilot runs all tasks with that enterprise as the only scope.
+test('I7.5.9 C. aligned pilot scopes every side-effect task to the pilot enterprise', async () => {
+  const { counts, scopes, tick } = harness(pilotEnv);
   const data = await tick();
-  assert.equal(data.pilotScopeAlignment.status, 'aligned');
-  assert.deepEqual([data.pilotScopeAlignment.mode, data.pilotScopeAlignment.enterpriseId,
-    data.pilotScopeAlignment.pilotId], ['pilot', '1454', 'first-pilot']);
+  assert.deepEqual([data.workerSafetyGate.status, data.workerExecution.businessTasksEnabled,
+    data.workerExecution.enterpriseId, data.workerExecution.taskScope],
+  ['open', true, '1454', 'pilot_enterprise']);
   assertFourCalls(counts, 1);
-  assertOtherJobsRan(counts);
+  assertAllSideEffectTasks(counts, 1);
+  assert.deepEqual(scopes.knowledge, [{ enterpriseId: '1454' }]);
+  assert.deepEqual(scopes.assistant, [{ enterpriseId: '1454' }]);
+  assert.deepEqual(scopes.siteNotifications, [{ enterpriseId: '1454' }]);
+  assert.deepEqual(scopes.publicConsents, ['1454']);
+  assert.deepEqual(scopes.portfolioCopy, [{ enterpriseId: '1454' }]);
 });
 
-// D/E/F/G/H. Any mismatch or invalid configuration skips all four entries.
+// D–H. Any mismatch or invalid configuration closes every task.
 const mismatches: Array<[string, Record<string, string | undefined>, string]> = [
-  ['F4 D. reminder pilot with enterprise report', { ...stagePilot, XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' },
+  ['D. reminder pilot with enterprise report', { ...stagePilot, XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' },
     'pilot_worker_mode_mismatch'],
-  ['F4 E. enterprise reminder with pilot report', { ...weeklyPilot, XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454' },
+  ['E. enterprise reminder with pilot report', { ...weeklyPilot, XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454' },
     'pilot_worker_mode_mismatch'],
-  ['F4 F. different enterprise ids', { XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454',
-    XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1455' }, 'pilot_worker_enterprise_mismatch'],
-  ['F4 G. different pilot ids', { ...stagePilot, ...weeklyPilot,
-    XIAOK_WEEKLY_REPORT_PILOT_ID: 'second-pilot' }, 'pilot_worker_pilot_mismatch'],
-  ['F4 H. invalid reminder mode', { ...weeklyPilot, XIAOK_STAGE_REMINDER_MODE: 'tenant' },
+  ['F. different enterprise ids', { ...pilotEnv, XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1455' },
+    'pilot_worker_enterprise_mismatch'],
+  ['G. different pilot ids', { ...pilotEnv, XIAOK_WEEKLY_REPORT_PILOT_ID: 'second-pilot' },
+    'pilot_worker_pilot_mismatch'],
+  ['H. invalid reminder mode', { ...pilotEnv, XIAOK_STAGE_REMINDER_MODE: 'tenant' },
     'stage_reminder_mode_invalid'],
-  ['F4 H. invalid weekly mode', { ...stagePilot, XIAOK_WEEKLY_REPORT_MODE: 'tenant' },
+  ['H. invalid weekly mode', { ...pilotEnv, XIAOK_WEEKLY_REPORT_MODE: 'tenant' },
     'weekly_report_mode_invalid'],
-  ['F4 H. missing pilot id', { ...stagePilot, ...weeklyPilot, XIAOK_WEEKLY_REPORT_PILOT_ID: '' },
+  ['H. missing pilot id', { ...pilotEnv, XIAOK_WEEKLY_REPORT_PILOT_ID: '' },
     'weekly_report_pilot_required'],
 ];
 
 for (const [name, env, errorCode] of mismatches) {
-  test(name + ' skips all four workers', async () => {
+  test('I7.5.9 ' + name + ' skips every business task', async () => {
     const { counts, tick } = harness(env);
     const data = await tick();
     assert.notEqual(data.pilotScopeAlignment.status, 'aligned');
     assert.equal(data.pilotScopeAlignment.errorCode, errorCode);
     assert.deepEqual([data.workerSafetyGate.status, data.workerSafetyGate.reason,
       data.workerSafetyGate.errorCode], ['closed', 'pilot_worker_alignment', errorCode]);
-    assertFourCalls(counts, 0);
-    assertOtherJobsRan(counts);
+    assertNoBusinessTask(counts);
     for (const entry of [data.constructionReportChecks, data.stageReminderChecks,
       data.constructionReportDeliveries, data.stageReminderDeliveries]) {
       const value = entry as Record<string, unknown>;
@@ -150,22 +172,23 @@ for (const [name, env, errorCode] of mismatches) {
       assert.equal(value.gateReason, 'pilot_worker_alignment');
       assert.equal(value.errorCode, errorCode);
     }
+    assert.equal((data.knowledgeBatchChecks as Record<string, unknown>).reason, 'worker_safety_gate');
   });
 }
 
 // The invalid configuration never becomes a silent enterprise run.
-test('F4 H. an invalid configuration has no enterprise mode', async () => {
-  const { counts, tick } = harness({ ...stagePilot, ...weeklyPilot, XIAOK_WEEKLY_REPORT_MODE: 'tenant' });
+test('I7.5.9 H. an invalid configuration has no enterprise mode', async () => {
+  const { counts, tick } = harness({ ...pilotEnv, XIAOK_WEEKLY_REPORT_MODE: 'tenant' });
   const data = await tick();
   assert.equal(data.pilotScopeAlignment.status, 'invalid');
   assert.equal(data.pilotScopeAlignment.mode, null);
   assert.equal(data.workerSafetyGate.mode, null);
-  assertFourCalls(counts, 0);
+  assertNoBusinessTask(counts);
 });
 
-// A reminder failure is contained and does not skip independent jobs.
-test('worker failures do not skip independent jobs', async () => {
-  const { counts, tick } = harness({ ...stagePilot, ...weeklyPilot }, {
+// A reminder failure is contained and does not skip independent tasks.
+test('I7.5.9 worker failures do not skip independent tasks', async () => {
+  const { counts, tick } = harness(pilotEnv, {
     advanceConfiguredStageReminders: async () => { throw new Error('reminder_down'); },
   });
   const data = await tick();
@@ -174,49 +197,52 @@ test('worker failures do not skip independent jobs', async () => {
   assert.equal(counts.deliverReminders, 1);
   assert.equal(counts.advanceReports, 1);
   assert.equal(counts.deliverReports, 1);
-  assertOtherJobsRan(counts);
-
-  const reportHarness = harness({ ...stagePilot, ...weeklyPilot }, {
-    advanceConfiguredConstructionReports: async () => { throw new Error('report_down'); },
-    deliverConfiguredConstructionReports: async () => { throw new Error('delivery_down'); },
-  });
-  const reportData = await reportHarness.tick();
-  assert.deepEqual(reportData.constructionReportChecks, { error: 'construction_report_unavailable' });
-  assert.deepEqual(reportData.constructionReportDeliveries, { error: 'construction_report_delivery_unavailable' });
-  assert.equal(reportData.inAppDeliveries, 0);
-  assert.equal(reportHarness.counts.assistant, 1);
-  assert.equal(reportHarness.counts.advanceReminders, 1);
-  assert.equal(reportHarness.counts.deliverReminders, 1);
-  assertOtherJobsRan(reportHarness.counts);
+  assertAllSideEffectTasks(counts, 1);
 });
 
-// Native Workflow keeps its own explicit enable conditions.
-test('native workflow enable conditions are unchanged', async () => {
-  const disabled = harness({});
+// Native workflow keeps its explicit allowlists and is narrower in pilot mode.
+test('I7.5.9 native workflow needs an explicit pilot-only allowlist', async () => {
+  const disabled = harness(pilotEnv);
   const disabledData = await disabled.tick();
-  assert.equal(disabled.counts.schedule, 0);
-  assert.equal(disabled.counts.delegations, 0);
-  assert.equal(disabled.counts.durableTools, 0);
+  assert.deepEqual([disabled.counts.schedule, disabled.counts.delegations, disabled.counts.durableTools], [0, 0, 0]);
   assert.equal(disabledData.nativeWorkflowSchedule, null);
-  assert.equal(disabledData.nativeWorkflowDelegations, null);
-  assert.equal(disabledData.nativeWorkflowTools, null);
+  assert.equal(disabledData.nativeWorkflowScopes.schedule.reason, 'not_enabled');
 
   const enabled = harness({
+    ...pilotEnv,
     NATIVE_WORKFLOW_SCHEDULE_ENABLED: '1',
+    NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS: '1454',
     NATIVE_WORKFLOW_DELEGATION_ENABLED: '1',
+    NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS: '1454',
     NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED: '1',
   });
-  await enabled.tick();
+  const enabledData = await enabled.tick();
   assert.deepEqual([enabled.counts.schedule, enabled.counts.delegations, enabled.counts.durableTools], [1, 1, 1]);
+  assert.deepEqual(enabledData.nativeWorkflowScopes.schedule.reason, 'pilot_enterprise');
 
-  const recovery = harness({ NATIVE_WORKFLOW_TASK_RECOVERY_ENABLED: '1' });
-  await recovery.tick();
-  assert.equal(recovery.counts.schedule, 1);
-  assert.equal(recovery.counts.delegations, 0);
+  const outside = harness({
+    ...pilotEnv,
+    NATIVE_WORKFLOW_SCHEDULE_ENABLED: '1',
+    NATIVE_WORKFLOW_SCHEDULE_ENTERPRISE_IDS: '1454,1455',
+    NATIVE_WORKFLOW_DELEGATION_ENABLED: '1',
+    NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS: '1455',
+    NATIVE_WORKFLOW_DURABLE_TOOL_ENABLED: '1',
+  });
+  const outsideData = await outside.tick();
+  assert.deepEqual([outside.counts.schedule, outside.counts.delegations, outside.counts.durableTools], [0, 0, 0]);
+  assert.deepEqual(outsideData.nativeWorkflowScopes.schedule.reason, 'pilot_scope_override');
+  assert.deepEqual(outsideData.nativeWorkflowScopes.delegations.reason, 'pilot_scope_override');
+  assert.deepEqual(outsideData.nativeWorkflowScopes.durableTools.reason, 'pilot_scope_override');
+  assert.deepEqual(outsideData.nativeWorkflowSchedule, { skipped: true, reason: 'pilot_scope_override' });
+
+  const empty = harness({ ...pilotEnv, NATIVE_WORKFLOW_SCHEDULE_ENABLED: '1' });
+  const emptyData = await empty.tick();
+  assert.equal(empty.counts.schedule, 0);
+  assert.equal(emptyData.nativeWorkflowScopes.schedule.reason, 'pilot_scope_not_configured');
 });
 
 // The route handler keeps authentication, validation and failure semantics.
-test('the route handler rejects unauthorized, invalid and failing ticks', async () => {
+test('I7.5.9 the route handler rejects unauthorized, invalid and failing ticks', async () => {
   const { POST } = await import('@/app/api/internal/assistant/jobs/run/route');
   const { createAssistantJobsPost } = await import('@/lib/assistant/infrastructure/jobs-post-handler');
   const previous = process.env.CRON_SECRET;
@@ -233,7 +259,7 @@ test('the route handler rejects unauthorized, invalid and failing ticks', async 
 
     const failing = createAssistantJobsPost({
       now,
-      env: { ...stagePilot, XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' },
+      env: pilotEnv,
       advanceKnowledgeBatches: async () => { throw new Error('knowledge_down'); },
     });
     const unavailable = await failing(new Request('http://localhost/api/internal/assistant/jobs/run', {
@@ -248,17 +274,20 @@ test('the route handler rejects unauthorized, invalid and failing ticks', async 
 
 // A test handler can fix the clock/environment and replace non-pilot jobs
 // without exposing those parameters over HTTP.
-test('an injected route handler runs the tick with a fixed clock', async () => {
+test('I7.5.9 an injected route handler runs the tick with a fixed clock and pilot scope', async () => {
   const { createAssistantJobsPost } = await import('@/lib/assistant/infrastructure/jobs-post-handler');
   const previous = process.env.CRON_SECRET;
   process.env.CRON_SECRET = 'f4-worker-secret';
   const counts = { knowledge: 0, assistant: 0 };
+  const scopes: unknown[] = [];
   try {
     const post = createAssistantJobsPost({
       now,
-      env: { ...stagePilot, XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' },
-      advanceKnowledgeBatches: async () => { counts.knowledge += 1; return 0; },
-      processAssistantJob: async () => { counts.assistant += 1; return { claimed: false }; },
+      env: pilotEnv,
+      advanceKnowledgeBatches: async scope => { counts.knowledge += 1; scopes.push(scope); return 0; },
+      processAssistantJob: async (_run, _limit, scope) => {
+        counts.assistant += 1; scopes.push(scope); return { claimed: false };
+      },
       processAssistantRun: async () => undefined,
       deliverSiteNotifications: async () => 0,
       deliverPublicConsents: async () => 0,
@@ -272,12 +301,13 @@ test('an injected route handler runs the tick with a fixed clock', async () => {
       data: Record<string, unknown> };
     assert.equal(payload.success, true);
     assert.ok(payload.requestId);
-    assert.equal((payload.data.pilotScopeAlignment as Record<string, unknown>).status, 'mismatch');
-    for (const key of ['constructionReportChecks', 'stageReminderChecks',
-      'constructionReportDeliveries', 'stageReminderDeliveries']) {
-      assert.equal((payload.data[key] as Record<string, unknown>).skipped, true);
-    }
+    assert.equal((payload.data.pilotScopeAlignment as Record<string, unknown>).status, 'aligned');
+    assert.deepEqual(payload.data.workerExecution, {
+      businessTasksEnabled: true, mode: 'pilot', enterpriseId: '1454',
+      pilotId: 'first-pilot', taskScope: 'pilot_enterprise',
+    });
     assert.deepEqual(counts, { knowledge: 1, assistant: 1 });
+    assert.deepEqual(scopes, [{ enterpriseId: '1454' }, { enterpriseId: '1454' }]);
   } finally {
     if (previous === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = previous;

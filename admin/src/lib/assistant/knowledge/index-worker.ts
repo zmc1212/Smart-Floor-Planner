@@ -199,8 +199,8 @@ export async function runKnowledgeJob(lease: KnowledgeLease, deps?: Dependencies
     });
   }
 }
-export async function processKnowledgeJob() {
-  const lease=await claimKnowledgeJob();
+export async function processKnowledgeJob(scope?: { enterpriseId?: string; jobId?: string }) {
+  const lease=await claimKnowledgeJob(scope);
   if (lease) await runKnowledgeJob(lease);
   return Boolean(lease);
 }

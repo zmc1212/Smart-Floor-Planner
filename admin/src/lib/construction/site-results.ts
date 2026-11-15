@@ -240,12 +240,14 @@ export async function syncSiteResults(tx: PostgresTransaction, actor: ActorConte
 }
 
 /** Reuses the existing Worker poll; pages may be closed. Human mode defers the same event without consuming it. */
-export async function deliverSiteResults() {
+export async function deliverSiteResults(scope?: { enterpriseId?: string }) {
+  const enterpriseId = scope?.enterpriseId?.trim();
   const candidates = await withPlatformTransaction(tx => rows(tx, sql`select distinct e.enterprise_id,c.id as conversation_id,e.payload->>'customerId' as customer_id
     from app.domain_event_outbox e join app.enterprises ent on ent.id=e.enterprise_id and ent.status='active'
     join app.assistant_enterprise_settings s on s.enterprise_id=e.enterprise_id and s.enabled
     join app.assistant_conversations c on c.enterprise_id=e.enterprise_id and c.id::text=e.payload->>'conversationId' and c.status='open' and c.mode='ai'
-    where e.type=${resultType} and not exists(select 1 from app.domain_event_deliveries d where d.enterprise_id=e.enterprise_id and d.event_id=e.id
+    where e.type=${resultType} ${enterpriseId ? sql`and e.enterprise_id=${enterpriseId}` : sql``}
+      and not exists(select 1 from app.domain_event_deliveries d where d.enterprise_id=e.enterprise_id and d.event_id=e.id
       and d.consumer_key='construction:result:' || c.id::text) limit 20`));
   let count = 0;
   for (const candidate of candidates) await withTenantTransaction(String(candidate.enterprise_id), async tx => {

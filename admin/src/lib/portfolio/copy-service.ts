@@ -164,10 +164,14 @@ export class PortfolioCopyService {
   }
 }
 /** Same internal Worker endpoint; one durable copy at a time. An expired
- * running marker means an unknown outcome, never permission to resend. */
-export async function processPortfolioCopy() {
+ * running marker means an unknown outcome, never permission to resend.
+ * `scope.enterpriseId` narrows candidacy to one enterprise; every existing
+ * authorization, budget and idempotency check stays inside its tenant. */
+export async function processPortfolioCopy(scope?: { enterpriseId?: string }) {
+  const enterpriseId = scope?.enterpriseId?.trim();
   if (!(await withPlatformTransaction(tx => one(tx, sql`select to_regclass('app.assistant_model_tasks') is not null as ready`)))?.ready) return false;
   const task = await withPlatformTransaction(tx => one(tx, sql`select id,enterprise_id,created_by,state from app.assistant_model_tasks where kind='portfolio_copy'
+    ${enterpriseId ? sql`and enterprise_id=${enterpriseId}` : sql``}
     and (state='prepared' or state='running' and updated_at<now()-interval '150 seconds') order by id limit 1`));
   if (!task) return false;
   if (task.state === 'running') {

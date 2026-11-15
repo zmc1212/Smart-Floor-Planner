@@ -1,5 +1,6 @@
 import { withTenantTransaction } from '@/db/transaction';
 import { previewAssistantQueue, type AssistantQueuePreview } from './job-preview';
+import { previewWorkerSideEffects, type WorkerSideEffectsPreview } from './worker-side-effects';
 import { evaluateWorkerSafetyGate, type WorkerSafetyGate } from '@/lib/xiaok-v1/worker-safety-gate';
 import { checkPilotWorkerAlignment } from '@/lib/xiaok-v1/pilot-worker-alignment';
 import { resolvePilotScope, tenantPilotScopeRead,
@@ -27,6 +28,8 @@ export type AssistantWorkerPreflight = {
     projectCount: number;
   } | null;
   queue: AssistantQueuePreview;
+  scopedQueue: AssistantQueuePreview | null;
+  sideEffects: WorkerSideEffectsPreview;
 };
 
 export async function assistantWorkerPreflight(input: {
@@ -52,10 +55,13 @@ export async function assistantWorkerPreflight(input: {
     }
   }
 
-  // The queue preview intentionally covers the same global assistant queue the
-  // Worker claims. Scoping it to the pilot enterprise would hide other queued
-  // work that a started Worker would still process.
+  // The global preview keeps out-of-scope backlog visible. The scoped preview
+  // shows exactly what a started Worker may claim in pilot mode.
   const queue = await previewAssistantQueue({ now });
+  const scopedQueue = safetyGate.enterpriseId
+    ? await previewAssistantQueue({ enterpriseId: safetyGate.enterpriseId, now })
+    : null;
+  const sideEffects = await previewWorkerSideEffects({ env, now });
 
   return {
     checkedAt: now.toISOString(),
@@ -67,5 +73,7 @@ export async function assistantWorkerPreflight(input: {
     },
     pilotScope,
     queue,
+    scopedQueue,
+    sideEffects,
   };
 }

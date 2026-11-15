@@ -107,8 +107,11 @@ export async function syncSitePublications(tx: PostgresTransaction, actor: Actor
     await tx.execute(sql`update app.domain_event_deliveries set status='delivered',updated_at=now() where enterprise_id=${eid} and id=${String(delivery.id)}`);
   }
 }
-/** Existing Worker also consumes publication outbox events while all Mini pages are closed. */
-export async function deliverSiteNotifications() {
+/** Existing Worker also consumes publication outbox events while all Mini pages are closed.
+ * `scope.enterpriseId` narrows the candidate scan to one enterprise; the tenant
+ * transaction and every existing publication/watch/participant check remain. */
+export async function deliverSiteNotifications(scope?: { enterpriseId?: string }) {
+  const enterpriseId = scope?.enterpriseId?.trim();
   const candidates = await withPlatformTransaction(tx => rows(tx, sql`select distinct r.enterprise_id,c.id as conversation_id,r.published_customer_id as customer_id
     from app.domain_event_outbox e join app.construction_site_records r on r.enterprise_id=e.enterprise_id and r.id::text=e.aggregate_id and r.published_version=e.aggregate_version
     join app.construction_projects p on p.enterprise_id=r.enterprise_id and p.id=r.project_id
@@ -128,7 +131,7 @@ export async function deliverSiteNotifications() {
             where a.enterprise_id=r.enterprise_id and a.project_id=r.project_id and a.record_id=r.id and m.deleted_at is null)))
       order by (c.entry_snapshot->>'kind'='lead') desc nulls last,c.id desc limit 1) c on true
     where e.type='construction.record.publish.v1' and r.status='published' and r.audience='customer' and p.status='active' and p.customer_access
-    and r.source_message_id is not null
+    and r.source_message_id is not null ${enterpriseId ? sql`and r.enterprise_id=${enterpriseId}` : sql``}
     and (r.room_id is null or exists(select 1 from app.construction_rooms room where room.enterprise_id=r.enterprise_id and room.project_id=r.project_id and room.id=r.room_id and room.name=r.room_name_snapshot))
     and not exists(select 1 from app.domain_event_deliveries d where d.enterprise_id=e.enterprise_id and d.event_id=e.id and d.consumer_key='construction:record:user:' || r.published_customer_id::text)
     and exists(select 1 from app.construction_watches w where w.enterprise_id=r.enterprise_id and w.project_id=r.project_id and w.customer_id=r.published_customer_id and w.active and w.started_at<=r.published_at
@@ -147,5 +150,5 @@ export async function deliverSiteNotifications() {
       delivered += Number(after?.last_seq || before) - before;
     });
   }
-  return delivered + await deliverSiteResults() + await deliverPlans();
+  return delivered + await deliverSiteResults(scope) + await deliverPlans(scope);
 }

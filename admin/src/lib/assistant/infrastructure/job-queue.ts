@@ -264,14 +264,21 @@ export async function failRun(lease: Lease, code: string, outcomeKnown=false) {
 }
 /** Oldest eligible kind prevents chat/index starvation. Up to the configured
  * worker limit is claimed per request: different enterprises run concurrently,
- * while the claim check keeps each enterprise serial. */
+ * while the claim check keeps each enterprise serial.
+ *
+ * `scope.enterpriseId` narrows every candidate scan, claim and knowledge
+ * fallback to one enterprise. It never changes the tenant transaction, RLS or
+ * per-job authorization checks. */
 export async function processAssistantJob(processRun: (lease: Lease) => Promise<void> = processAnswer,
-  limit = workerConcurrency()) {
+  limit = workerConcurrency(), scope?: { enterpriseId?: string }) {
+  const enterpriseId = scope?.enterpriseId?.trim();
+  const scoped = enterpriseId ? sql`and enterprise_id=${enterpriseId}` : sql``;
   const next=await withPlatformTransaction(tx=>one(tx,sql`select kind from app.assistant_jobs where
-    (status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now()) order by available_at,id limit 1`));
+    ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now())) ${scoped}
+    order by available_at,id limit 1`));
   const leases:Lease[]=[];
   if(next?.kind==='chat_turn') for(let index=0;index<limit;index++){
-    const lease=await claimJob();
+    const lease=await claimJob(enterpriseId ? { enterpriseId } : undefined);
     if(!lease)break;
     leases.push(lease);
   }
@@ -283,11 +290,12 @@ export async function processAssistantJob(processRun: (lease: Lease) => Promise<
   // Head-of-line fallback: when the oldest eligible job is a chat turn but no
   // chat lease could be claimed (its enterprise slots are full), a runnable
   // knowledge job of another enterprise must still advance instead of waiting
-  // behind the blocked chat head.
+  // behind the blocked chat head. In pilot scope the fallback stays inside the
+  // same enterprise.
   const knowledgeClaimed=['knowledge_index','knowledge_parse'].includes(String(next?.kind))||!leases.length
-    ?await processKnowledgeJob():false;
-  const cleanupClaimed = !next && await processManagedKnowledgeCleanup();
-  await deliverMetrics();
+    ?await processKnowledgeJob(scope):false;
+  const cleanupClaimed = !next && await processManagedKnowledgeCleanup(undefined, scope);
+  await deliverMetrics(enterpriseId);
   return { claimed: leases.length>0 || knowledgeClaimed || cleanupClaimed };
 }
 /** Trusted configured interview copy is not a knowledge answer or provider invocation. */
@@ -371,9 +379,11 @@ export async function completeAnswer(lease:Lease,answer:GroundedAnswer,evidence:
     return String(message.id);
   });
 }
-async function deliverMetrics() {
+async function deliverMetrics(enterpriseId?: string) {
   const targets = await withPlatformTransaction(tx => rows(tx, sql`select enterprise_id,id from app.domain_event_deliveries
-    where consumer_key in ('assistant.run.metrics.v1','assistant.knowledge.visibility.v1') and status in ('pending','retry_wait') and available_at<=now() order by id limit 50`));
+    where consumer_key in ('assistant.run.metrics.v1','assistant.knowledge.visibility.v1') and status in ('pending','retry_wait') and available_at<=now()
+    ${enterpriseId ? sql`and enterprise_id=${enterpriseId}` : sql``}
+    order by id limit 50`));
   for (const target of targets) await withTenantTransaction(String(target.enterprise_id), async tx => {
     // The run itself is the durable metrics fact; this consumer acknowledges visibility, never sends notifications.
     await tx.execute(sql`update app.domain_event_deliveries set status='delivered',attempts=attempts+1,updated_at=now(),version=version+1
