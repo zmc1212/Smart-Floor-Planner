@@ -96,6 +96,23 @@ function noStageAnswer(): StageAnswer {
     matchedFaqId: null, basis: 'no_stage', enterpriseKnowledgeStatus: 'not_configured', citations: [], boundaries: [], handoff: null };
 }
 
+/** A knowledge turn without one unambiguous project is clarified, never guessed
+ * into a stage or answered from another project's pack. */
+export function unresolvedProjectAnswer(kind: 'none' | 'ambiguous', projectNames: string[] = []): StageAnswer {
+  if (kind === 'ambiguous') {
+    const names = projectNames.filter(Boolean).slice(0, 5);
+    return { protocol: stageAnswerProtocol, agentId: null, stageId: null, stageName: null, intent: 'stage_knowledge',
+      answer: '当前账号关联了多个在施项目，我还不能确定你要问哪一个。'
+        + (names.length ? '可选项目：' + names.join('、') + '。' : '')
+        + '请先告诉我想了解哪个项目，或从小程序进入对应项目的对话再问。不同的阶段不能混用，我不会替你猜。',
+      matchedFaqId: null, basis: 'no_stage', enterpriseKnowledgeStatus: 'not_configured', citations: [], boundaries: [], handoff: null };
+  }
+  return { protocol: stageAnswerProtocol, agentId: null, stageId: null, stageName: null, intent: 'stage_knowledge',
+    answer: '当前对话还没有关联到唯一可核实的在施项目，因此无法确认装修阶段。'
+      + '阶段未知时不能猜测施工进度、注意事项或验收标准，请先从对应项目的入口发起对话，或告诉我是哪一个项目。',
+    matchedFaqId: null, basis: 'no_stage', enterpriseKnowledgeStatus: 'not_configured', citations: [], boundaries: [], handoff: null };
+}
+
 export function answerStageQuestion(input: {
   constructionStageKey: string | null | undefined;
   question: string;

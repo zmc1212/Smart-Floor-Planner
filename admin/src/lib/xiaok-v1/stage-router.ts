@@ -7,6 +7,9 @@ const progressIntent = /进度|进展|到哪|做到哪|现在.{0,8}(?:阶段|完
 const todoIntent = /待办|要做|需要我|还没做|清单|待处理|待确认|待补|资料缺/u;
 const weeklyIntent = /周报|本周|这周|一周.{0,8}(?:报告|总结)|跨项目/u;
 const deepSpecialist = /规范|标准|验收|图纸|隐蔽|打压|闭水|渗水|渗漏|管径|线径|回路|整改|复核|CAD|OCR/u;
+/** Ordinary stage knowledge wording only. Project status/progress/todo/photo
+ * questions stay on their existing fact route and never borrow pack copy. */
+const knowledgeQuestion = /阶段|注意|准备|材料|工艺|施工|工序|流程|步骤|顺序|检查|核对|验收|保护|事项|建议|下一步|要点|重点|常见|问题|影响|区别|为什么|怎么办|怎么做|如何|有哪些|需要注意|小心|先做|该做|能做/u;
 
 /** Ordinary stage questions stay in the lightweight stage agent. Only an
  * explicit professional topic is handed to the existing specialist agents. */
@@ -23,6 +26,14 @@ export function classifyStageIntent(question: string): StageAgentIntent {
   if (progressIntent.test(question)) return 'progress';
   if (reminderIntent.test(question)) return 'reminder';
   return 'stage_knowledge';
+}
+
+/** Only an ordinary stage knowledge turn may use the deterministic pack. Deep
+ * specialist topics and project status/progress/reminder/todo turns keep the
+ * existing specialist/model/fact route. */
+export function isStageKnowledgeQuestion(question: string) {
+  return knowledgeQuestion.test(question) && classifyStageIntent(question) === 'stage_knowledge'
+    && !isDeepSpecialistQuestion(question);
 }
 
 export type StageRoute =

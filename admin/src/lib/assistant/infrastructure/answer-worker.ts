@@ -51,7 +51,8 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
         const reply = await withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);
           return stageChatForConversation({ tx, enterpriseId: lease.enterpriseId,
-            conversationId: String(context.run.conversation_id), userId, question });
+            conversationId: String(context.run.conversation_id), userId, question,
+            actor: lease.actor, knowledgeEpoch: Number(context.run.knowledge_epoch) });
         });
         if (reply) { await completeStageKnowledge(lease, reply); return; }
       }

@@ -6,6 +6,7 @@
 > 日期：`2026-11-15`（Asia/Shanghai）
 > 结论：**隔离环境 20 passed / 0 failed / 2 limited / 1 not_run；真实 1454 环境 `not_run`。**
 > 后续：I7.5.1 已在同一合成夹具上补齐四端周报 AI 正文生成，详见 `docs/xiaok-i751-weekly-report-ai-body-acceptance.md`。
+> 后续：I7.5.5 已解除阶段知识问答 limited（十阶段正式 C01 确定性回答 + 真实模型按需调用），详见 `docs/xiaok-i755-stage-knowledge-acceptance.md`；下方 I7.5.0 历史结果保留不改写。
 
 ## 1. 验收范围与环境
 
@@ -87,7 +88,7 @@ npm run test:xiaok-v1-product-acceptance -- --llm-source=development
 | 字段 | 状态 |
 | --- | --- |
 | `reminderStatus` | **limited**（主动提醒主链路通过；项目经理 no_inbox 按现有入口合同） |
-| `knowledgeAnswerStatus` | **limited**（确定性四问通过；百炼真实调用可达；1/4 轮交付有效模型答案，其余被响应范围/完成声明校验拒绝；企业知识未配置） |
+| `knowledgeAnswerStatus` | **limited → I7.5.5 已解除**（确定性四问通过；I7.5.5 十阶段 C01 全部确定性通过，模型仅在项目事实问题按需调用；下方为 I7.5.0 历史结论） |
 | `weeklyReportStatus` | **passed** |
 | `reportBodyStatus` | **limited（仅 body.model_scope；四端正文生成与事实校验为 passed）** |
 | `customerDelivery` | **passed** |
@@ -276,3 +277,17 @@ npx tsx --test src/lib/xiaok-v1/__tests__/stage-reminder-worker.test.ts `
 ```
 
 结果：**147 passed / 0 failed / 0 skipped**。
+
+## 14. I7.5.5 十阶段知识问答闭环（limited 解除）
+
+I7.5.5 在隔离 PG17 上新增正式 C01 端到端验收 `admin/scripts/xiaok-i755-stage-knowledge-acceptance.ts`，结果 `12 passed / 0 failed`（`tmp/xiaok-i755-stage-knowledge/run-4/result.json`）：
+
+- 十个装修阶段各自通过 `appendMessage → newRun → claimJob → processAnswer` 回答，`purpose=construction.stage_knowledge`，无 provider attempt、Token 为 0。
+- 未知阶段明确停止；多项目歧义列出项目并请用户选择；历史会话项目链接优先；非本人业主与未授权施工人员均被拒绝。
+- 企业知识未配置时标注通用知识；企业知识可用时保留真实标题与原句。
+- 深度专业问题（闭水试验等）进入既有防水/水电专业 Agent 路由，不借用阶段知识包。
+- 真实百炼 `deepseek-v4.1-flash-1017` 仅在项目事实问题调用，记录模型 ID、Token 与结果；供应商未回传请求 ID，未使用 Mock。
+
+**结论：`knowledgeAnswerStatus` 的阶段知识问答 limited 已真正解除。** 原先 `ungrounded_response_scope` 拒绝的根因是无企业知识时把普通阶段知识交给模型；现在普通阶段知识由当前阶段知识包确定性回答，不再进入模型，且原有完成声明、数值、企业规定、证据与权限校验强度未降低。
+
+完整证据、十阶段明细与仍保留的边界见 `docs/xiaok-i755-stage-knowledge-acceptance.md`。真实 1454 环境仍为 `not_run`。

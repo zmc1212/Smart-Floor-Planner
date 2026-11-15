@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { answerStageQuestion, selectStageFaq, stageAnswerViolations } from '../stage-answer';
+import { answerStageQuestion, selectStageFaq, stageAnswerViolations, unresolvedProjectAnswer } from '../stage-answer';
 import { stageKnowledgeRegistry } from '../stage-knowledge';
-import { routeStageQuestion } from '../stage-router';
-import { constructionKeysForStage } from '../stages';
+import { isStageKnowledgeQuestion, routeStageQuestion } from '../stage-router';
+import { constructionKeysForStage, stageDefinitions } from '../stages';
 
 const utilities = stageKnowledgeRegistry.get('utilities')!;
 const painting = stageKnowledgeRegistry.get('painting')!;
@@ -74,4 +74,59 @@ test('verified enterprise knowledge is cited but never invented', () => {
   assert.equal(answer.basis, 'enterprise_knowledge');
   assert.deepEqual(answer.citations, [{ sourceId: 'K1', title: '企业水电工艺', quote: '按企业书面工艺执行。' }]);
   assert.doesNotMatch(answer.answer, /本次未核实企业施工标准/u);
+});
+
+test('missing or unavailable enterprise knowledge is always labelled general knowledge', () => {
+  for (const status of ['not_configured', 'unavailable'] as const) {
+    const answer = answerStageQuestion({ constructionStageKey: 'utilities', question: '插座点位怎么准备？',
+      enterpriseKnowledgeStatus: status });
+    assert.match(answer.answer, /本次未核实企业施工标准/u);
+    assert.deepEqual(answer.citations, []);
+    assert.notEqual(answer.basis, 'enterprise_knowledge');
+  }
+});
+
+test('every stage pack carries common questions, cautions and a next step', () => {
+  assert.equal(stageDefinitions.length, 10);
+  for (const stage of stageDefinitions) {
+    const pack = stageKnowledgeRegistry.get(stage.stageId)!;
+    assert.ok(pack.faqs.length >= 4, stage.stageId);
+    assert.ok(pack.ownerConcerns.length >= 1 && pack.workerConcerns.length >= 1, stage.stageId);
+    assert.ok(pack.nextStage.trim().length > 0, stage.stageId);
+    const key = constructionKeysForStage(stage.stageId)[0];
+    const answer = answerStageQuestion({ constructionStageKey: key, question: '这个阶段需要注意什么？', audience: 'owner' });
+    assert.equal(answer.stageId, stage.stageId);
+    assert.match(answer.answer, new RegExp(pack.nextStage.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&').slice(0, 8), 'u'));
+    assert.equal(answer.answer.includes('本次未核实企业施工标准'), true, stage.stageId);
+  }
+});
+
+test('only ordinary stage knowledge turns use the deterministic pack', () => {
+  for (const question of ['泥木阶段需要准备什么？', '墙面基层施工要注意什么？', '安装阶段下一步要注意什么？'])
+    assert.equal(isStageKnowledgeQuestion(question), true, question);
+  for (const question of ['我家现在做到哪一步了？', '这个项目现在是什么状态？', '现在有没有需要我处理的事？',
+    '工地现在有照片或记录吗？', '本周周报发了吗？', '什么时候提醒我？', '待办还有哪些？'])
+    assert.equal(isStageKnowledgeQuestion(question), false, question);
+  assert.equal(isStageKnowledgeQuestion('闭水试验要怎么做？'), false);
+  assert.equal(isStageKnowledgeQuestion('配电箱回路和线径怎么核对？'), false);
+});
+
+test('deep professional questions never borrow pack answers', () => {
+  for (const question of ['闭水试验要怎么做？', '配电箱回路和线径怎么核对？']) {
+    const route = routeStageQuestion({ constructionStageKey: 'utilities', message: question });
+    assert.equal(route.kind, 'specialist', question);
+    assert.equal(isStageKnowledgeQuestion(question), false);
+  }
+});
+
+test('unresolved or ambiguous projects ask for the project instead of guessing a stage', () => {
+  const none = unresolvedProjectAnswer('none');
+  assert.equal(none.basis, 'no_stage');
+  assert.equal(none.agentId, null);
+  assert.match(none.answer, /无法确认装修阶段/u);
+  const ambiguous = unresolvedProjectAnswer('ambiguous', ['工地甲', '工地乙']);
+  assert.equal(ambiguous.basis, 'no_stage');
+  assert.match(ambiguous.answer, /多个在施项目/u);
+  assert.match(ambiguous.answer, /工地甲、工地乙/u);
+  assert.match(ambiguous.answer, /我不会替你猜/u);
 });
