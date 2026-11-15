@@ -303,6 +303,12 @@ Page({
     if (!this.current() || !/^[1-9]\d*$/.test(id) || !project || project.status === 'archived' || this.data.busy || this.data.pending) return;
     wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(project.id) + '&issueId=' + id + '&mode=review' });
   },
+  openRoomPlan(e) {
+    const detail = this.data.detail, roomId = String(e.currentTarget.dataset.room || '');
+    if (!this.current() || !detail?.project || detail.project.status === 'archived' || this.data.busy || this.data.pending
+      || !/^[1-9]\d*$/.test(roomId) || !(detail.rooms || []).some(room => String(room.id) === roomId)) return;
+    wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(detail.project.id) + '&mode=plan&roomId=' + roomId });
+  },
   openPlan(e) {
     const detail = this.data.detail, planId = String(e.currentTarget.dataset.id || '');
     const plan = planId ? detail?.approvedPlans?.find(item => item.id === planId) : null;

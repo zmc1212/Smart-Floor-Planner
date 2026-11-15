@@ -9,6 +9,20 @@
     <block wx:elif="{{detail}}">
       <view class="detail-heading"><view class="detail-title"><text class="page-title">{{detail.project.name}}</text><text class="stage-tag">{{detail.project.statusLabel}}</text></view><view class="detail-subtitle"><text class="helper">当前身份：{{detail.roleLabel}}</text><button wx:if="{{detail.manage}}" class="book-link management-entry" bindtap="openManagement" disabled="{{busy || pending}}">工地管理 ↗</button></view></view>
       <view class="paper progress-paper"><text class="fabric">当前阶段</text><text class="stage-name">{{detail.project.stageName}}</text><text wx:if="{{detail.project.progress_note}}" class="body-text">{{detail.project.progress_note}}</text><view wx:if="{{detail.manage}}" class="progress-tools"><button class="outline" disabled="{{busy || pending || detail.project.status !== 'active'}}" bindtap="openProgress">更新阶段</button></view></view>
+      <view wx:if="{{detail.myRole === 'designer'}}" class="paper designer-point-paper">
+        <view class="section-heading"><text class="fabric">点位图与差异</text><text class="helper">按房间查看当前图纸、需求和方案</text></view>
+        <view wx:for="{{detail.rooms}}" wx:key="id" class="stage-row designer-room-row">
+          <view><text class="label">{{item.name}}</text><text class="helper">当前图纸、点位需求与已确认方案</text></view>
+          <button class="text-action" data-room="{{item.id}}" bindtap="openRoomPlan" disabled="{{busy || pending}}">查看点位与图纸</button>
+        </view>
+        <text wx:if="{{!detail.rooms.length}}" class="helper">尚未建立房间，暂不能按房间核对点位。</text>
+        <view wx:if="{{detail.issueSections.length}}" class="designer-diff">
+          <text class="group-label">差异与待核对</text>
+          <view wx:for="{{detail.issueSections}}" wx:key="key" class="designer-diff-row"><text class="helper">{{item.label}}</text><text class="issue-status">{{item.count}}</text></view>
+          <button wx:if="{{detail.designerFocusIssue}}" class="text-action" data-id="{{detail.designerFocusIssue}}" bindtap="openIssue" disabled="{{busy || pending}}">查看差异事项 ›</button>
+        </view>
+        <text class="helper">需求表达不等于施工指令；发布前仍需专业核对和业主确认。</text>
+      </view>
       <view wx:if="{{detail.progress}}" class="paper schedule-paper">
         <view class="section-heading"><text class="fabric">计划进度{{detail.progress.available ? ' · V' + detail.progress.version : ''}}</text><text class="tone-label tone-{{detail.progress.overall.color}}">{{detail.progress.overall.label}}</text></view>
         <text class="helper">提前 {{detail.progress.counts.green}} · 正常 {{detail.progress.counts.yellow}} · 落后 {{detail.progress.counts.red}} · 待核实 {{detail.progress.counts.gray}}</text>

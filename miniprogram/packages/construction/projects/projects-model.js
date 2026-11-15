@@ -65,11 +65,15 @@ function decorateDetail(value) {
   const issues = (value.issues || []).map(decorateIssue);
   const plans = (value.plans || []).map(decoratePlan);
   const issueSections = decorateIssueGroups(value.issueGroups, issues);
+  const designItems = issueSections.flatMap(section => section.items)
+    .filter(issue => issue.designRelated || issue.sourceKind === 'need');
   const openCount = issueSections.filter(s => ['awaitingVerification', 'awaitingRectification', 'rectifying', 'awaitingReview'].includes(s.key))
     .reduce((sum, section) => sum + section.count, 0);
   return { ...value, project: decorateProject(value.project, value.stages || []),
     roleLabel: roleLabels[value.myRole] || '',
     issueSections,
+    designerFocusIssue: designItems[0]?.issueId || '',
+    designerDesignCount: designItems.length,
     progress: decorateProgress(value.progress),
     issueCount: value.issueGroups ? (value.issueGroups.openCount ?? openCount) : issues.filter(issue => !['cancelled', 'closed', 'resolved', 'dismissed'].includes(issue.status)).length,
     pendingIssues: issues.filter(issue => !['cancelled', 'closed', 'resolved', 'dismissed'].includes(issue.status)).slice(0, 6),

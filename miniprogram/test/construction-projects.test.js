@@ -82,6 +82,20 @@ test('the current construction requirement opens the room by its server ID', asy
   ]);
 });
 
+test('designer opens a room point view and sees a real design difference focus', async () => {
+  const f = fixture('designer'), page = f.page(); await page.onShow();
+  page.setData({ detail: { myRole: 'designer', project: { id: '9', status: 'active' }, rooms: [{ id: '5', name: '书房' }] } });
+  page.openRoomPlan({ currentTarget: { dataset: { room: '5' } } });
+  assert.equal(f.messages.at(-1), '/packages/construction/chat/chat?projectId=9&mode=plan&roomId=5');
+  page.openRoomPlan({ currentTarget: { dataset: { room: '6' } } });
+  assert.equal(f.messages.length, 1);
+  const detail = decorateDetail({ myRole: 'designer', project: { id: '9', status: 'active' }, rooms: [], stages: [],
+    issueGroups: { designReviews: [{ issueId: '31', designRelated: true, sourceKind: 'need', status: 'awaiting_review' }],
+      openCount: 1, counts: {}, quality: { open: 0, fixed: 0, excluded: 0 } } });
+  assert.equal(detail.designerFocusIssue, '31');
+  assert.equal(detail.designerDesignCount, 1);
+});
+
 test('overview never restores a late private record after hide and clears the whole preview on revoked read', async () => {
   const f=fixture(),p=f.page();await p.onShow();p.setData({projectId:'9',detail:{project:{id:'9'}}});
   let finish;f.intercept(()=>new Promise(resolve=>{finish=resolve;}));const reading=p.loadPreview(p._generation);p.onHide();

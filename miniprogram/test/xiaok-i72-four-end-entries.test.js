@@ -51,3 +51,16 @@ test('construction staff keeps photo, voice and current tasks plus a weekly repo
   assert.match(projects, /bindtap="openSiteChat"/u);
   assert.match(script, /'\/packages\/assistant\/chat\/chat\?followup=1'/u);
 });
+
+test('designer has a room point entry and a design difference focus on the shared project facts', () => {
+  const projects = read('packages/construction/projects/projects.wxml');
+  const script = read('packages/construction/projects/projects.js');
+  const model = read('packages/construction/projects/projects-model.js');
+  assert.match(projects, /detail\.myRole === 'designer'/u);
+  assert.match(projects, /点位图与差异/u);
+  assert.match(projects, /bindtap="openRoomPlan"/u);
+  assert.match(projects, /detail\.designerFocusIssue/u);
+  assert.match(script, /openRoomPlan\(e\)/u);
+  assert.match(script, /mode=plan&roomId=/u);
+  assert.match(model, /designerFocusIssue/u);
+});
