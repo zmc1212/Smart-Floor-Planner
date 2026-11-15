@@ -94,6 +94,14 @@ Healthcheck 现可报告最近请求结果及失败原因，并独立显示本�
 
 隔离 PG17.10 的 8 项定向测试全部通过：回填、非空配置逐字节保留、模板 ID 保留、默认值、显式 NULL 拒绝、并发 NULL 写入 `23502`、事务回滚、重复执行 0 行；旧版 8 模板和空对象读取均正常。**本轮仅设计，未创建正式 0131 文件、未执行 `db:migrate`、未修改真实库。** 建议负责人在完成备份/恢复验证和维护窗口后批准，优先采用先 0120–0130、再 0131 的两阶段实施。详见 [I7.4.9.2 notification_config 对齐方案](./xiaok-i749-2-notification-config-alignment.md)。
 
+### I7.4.9.3 0131 正式迁移与隔离验收（2026-11-15）
+
+负责人已批准规范 B。正式新增 `admin/drizzle/0131_platform_notification_config_not_null.sql`，journal 追加 idx `127`、when `1796457600000`、tag `0131_platform_notification_config_not_null`，未修改此前记录。迁移只回填 `notification_config IS NULL` 的 8 行、设置 `DEFAULT '{}'::jsonb` 与 `NOT NULL`，不重跑 0021、不种模板、不改写非空配置。
+
+隔离 PG17.10 使用正式迁移器完成 A–N 验收：8 行 NULL 全部变为 `{}`；原 `default` 配置的 JSON 文本、SHA-256 和 8 个模板 ID 完全保持；新插入只写 key 得到 `{}`，显式 NULL 返回 `23502`；锁超时使正式迁移器失败并完整回滚；并发 NULL 写入在迁移提交后返回 `23502`；重复执行不再执行 0131；0021/0051 历史 SHA 与其他 127 条账本不变，仅追加 0131；最终 pending 为空。对齐测试 6 passed / 0 skipped，通知相关 18 passed，预检 9 passed，迁移备份/恢复 20 passed（合成源账本随 journal 变为 128 条），TypeScript 与定向 ESLint 通过。
+
+**微云 1454 真实开发库仍未执行迁移。** 加入 0131 后正式待迁移项为 9 条：`0120`、`0124`–`0130`、`0131`；真实库仍为 119 条账本、8 行 NULL。执行前仍需完成 I7.4.9.1 真实备份/恢复验证、维护窗口和写入静默确认。详见 [I7.4.9.3 0131 验收](./xiaok-i749-3-0131-migration-acceptance.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`

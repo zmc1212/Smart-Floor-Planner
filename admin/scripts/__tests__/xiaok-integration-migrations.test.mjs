@@ -18,7 +18,7 @@ const suffix = randomBytes(5).toString('hex');
 const database = (label) => `xiaok_i4_${label}_${suffix}`;
 const journal = JSON.parse(readFileSync(new URL('meta/_journal.json', folder))).entries;
 const common = journal.filter(({ idx }) => idx < 120);
-const stageAndPilotMigrations = ['0128', '0129', '0130'];
+const stageAndPilotMigrations = ['0128', '0129', '0130', '0131'];
 const read = (name) => readFileSync(new URL(name + '.sql', folder), 'utf8');
 const hash = (sql) => createHash('sha256').update(sql).digest('hex');
 const userStates = {
@@ -399,7 +399,7 @@ live('an integrated delegation database applies the pending reconciliation, stag
   await verifySchemaAndWrites(name, ref);
 });
 
-live('the 0129 baseline applies only the pilot scope migration', async (t) => {
+live('the 0129 baseline applies the pilot scope and notification alignment migrations', async (t) => {
   const name = await prepare('pilot_scope');
   t.diagnostic(name);
   await asMigrator(name, db => applyOriginal(db, journal.filter(({ idx }) => idx >= 120 && idx <= 125)));
@@ -411,9 +411,10 @@ live('the 0129 baseline applies only the pilot scope migration', async (t) => {
   const run = migrate(name);
   assert.equal(run.code, 0, run.output);
   const applied = await ledger(name);
-  assert.deepEqual(applied.slice(0, -1), before);
-  assert.equal(applied.length, before.length + 1);
-  assert.equal(applied.at(-1).hash, hash(read('0130_xiaok_pilot_project_scopes')));
+  assert.deepEqual(applied.slice(0, -2), before);
+  assert.equal(applied.length, before.length + 2);
+  assert.equal(applied.at(-2).hash, hash(read('0130_xiaok_pilot_project_scopes')));
+  assert.equal(applied.at(-1).hash, hash(read('0131_platform_notification_config_not_null')));
   assert.deepEqual(await snapshot(name, facts), snapshotBefore);
   await asApp(name, async db => {
     const result = await db.query(`select relrowsecurity,relforcerowsecurity from pg_class

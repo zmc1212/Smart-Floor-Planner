@@ -4,15 +4,15 @@
 > 分支：`codex/xiaok-integration`
 > 基线：`56839a6a55cf`
 > 日期：`2026-11-15`（Asia/Shanghai）
-> 状态：`design_only = true`、`isolated_validation_passed = true`、`real_database_not_modified = true`、`real_migration_run = false`
+> 状态（I7.4.9.3 更新）：`migration_created = true`、`journal_updated = true`、`isolated_validation_passed = true`、`real_database_not_modified = true`、`real_migration_run = false`
+>
+> I7.4.9.2 完成设计与隔离验证；I7.4.9.3 已正式创建 `admin/drizzle/0131_platform_notification_config_not_null.sql` 并更新 journal。本文件保留设计依据与锁分析，正式迁移器验收结果见 [I7.4.9.3 0131 验收](./xiaok-i749-3-0131-migration-acceptance.md)。
 
 ## 1. 范围
 
-本轮只完成规范 B 的依据复核、追加迁移 `0131_platform_notification_config_not_null` 的设计、真实库只读核查和独立 PG17 验证。
+I7.4.9.2 完成了规范 B 的依据复核、追加迁移 `0131_platform_notification_config_not_null` 的设计、真实库只读核查和独立 PG17 验证。I7.4.9.3 经负责人批准后创建了正式 SQL 文件与 journal 记录，并把隔离测试改为由正式迁移器应用 0131。
 
-未创建正式 `admin/drizzle/0131_*.sql`，未修改 `0021`、`admin/src/db/schema.ts` 或 `meta/_journal.json`，未对微云 1454 真实数据库执行 DDL、`db:migrate`、模板配置修改、微信通知或生产部署。
-
-真实库只进行了只读事务查询，输出仅保留结构、行数、键名前缀和模板 ID 指纹，未输出完整配置。
+真实库只进行了只读事务查询，输出仅保留结构、行数、键名前缀和模板 ID 指纹，未输出完整配置。两轮均未对微云 1454 真实数据库执行 DDL、`db:migrate`、模板配置修改、微信通知或生产部署。
 
 ## 2. 规范 B 的代码依据
 
@@ -145,29 +145,28 @@ const jsonObject = <T extends Record<string, unknown>>(name: string) =>
 ### 5.1 迁移标识
 
 - tag：`0131_platform_notification_config_not_null`
-- 文件（实施时）：`admin/drizzle/0131_platform_notification_config_not_null.sql`
-- journal `when`：必须大于 `0130` 的 `1795852800000`
-- 不在本轮创建文件或 journal 条目
+- 文件：`admin/drizzle/0131_platform_notification_config_not_null.sql`（I7.4.9.3 已创建）
+- journal：idx `127`、version `7`、when `1796457600000`、`breakpoints: true`（I7.4.9.3 已追加）
 
-### 5.2 设计 SQL
+### 5.2 正式 SQL（已创建）
 
-以下为设计稿，不是正式迁移文件。迁移器已在外层事务中执行，因此不写 `BEGIN/COMMIT`。
+I7.4.9.3 已把以下内容写入 `admin/drizzle/0131_platform_notification_config_not_null.sql`；journal 追加 idx `127`、when `1796457600000`。迁移器已在外层事务中执行，因此文件不写 `BEGIN/COMMIT`。
 
 ```sql
--- Design-only: align notification_config with the Drizzle model.
+-- I7.4.9.3 aligns platform_configs.notification_config with the Drizzle model:
+-- NOT NULL DEFAULT '{}'::jsonb. Only NULL rows are backfilled; existing non-null
+-- configuration, templates, version and subscription switch are never rewritten.
+-- The migration runner owns the transaction; this file must not manage one.
 SET LOCAL lock_timeout = '5s';
+--> statement-breakpoint
 SET LOCAL statement_timeout = '60s';
-
--- Serialize against concurrent inserts/updates. The later SET NOT NULL also
--- takes ACCESS EXCLUSIVE, but the explicit lock closes the race between the
--- backfill and the constraint change.
+--> statement-breakpoint
 LOCK TABLE app.platform_configs IN ACCESS EXCLUSIVE MODE;
-
--- Only NULL rows are touched. Non-null configs are never normalized or rewritten.
+--> statement-breakpoint
 UPDATE app.platform_configs
 SET notification_config = '{}'::jsonb
 WHERE notification_config IS NULL;
-
+--> statement-breakpoint
 ALTER TABLE app.platform_configs
   ALTER COLUMN notification_config SET DEFAULT '{}'::jsonb,
   ALTER COLUMN notification_config SET NOT NULL;
@@ -244,28 +243,35 @@ FROM app.platform_configs;
 
 ## 6. 独立 PG17 验证
 
+I7.4.9.3 已把测试改为：先用正式迁移文件构建 127 条基线（`0000`–`0130`），再模拟真实 NULL 漂移，最后由正式迁移器应用 0131。完整 A–N 结果见 [I7.4.9.3 0131 验收](./xiaok-i749-3-0131-migration-acceptance.md)。
+
 环境：本机可丢弃 PostgreSQL `17.10`，`127.0.0.1:55435`（非 `5432`/`55432`），`postgres` 库注释 `xiaok-i749-isolated-test`。每个场景创建独立数据库，模拟 1454 的字段状态：
 
 - `app.platform_configs.notification_config jsonb`、允许 NULL、无默认值；
 - 9 行：1 行 `default`（version 2、8 个合成模板、无开关/旧字段），8 行 NULL（`ai-provider-environment:*` 与 `phase2-*` 前缀）；
 - 合成模板 ID 均为格式合法但非真实的 `synth_<kind>_0001`；
-- 1 条合成 `0021` 账本行用于证明 0131 不触碰账本。
+- 127 条合成账本，0021/0051 使用批准的历史 SHA。
 
-测试文件：[`scripts/__tests__/xiaok-notification-config-alignment.test.ts`](../admin/scripts/__tests__/xiaok-notification-config-alignment.test.ts)。结果：**8 passed / 0 failed / 0 skipped**。
+测试文件：[`scripts/__tests__/xiaok-notification-config-alignment.test.ts`](../admin/scripts/__tests__/xiaok-notification-config-alignment.test.ts)。正式迁移器结果：**6 passed / 0 failed / 0 skipped**，覆盖 A–N。
 
 | 场景 | 结果 |
 | --- | --- |
 | A. 8 行 NULL 转空对象 | 通过：`UPDATE` 影响 8 行，NULL 行 0 |
-| B. 非空配置逐字节不变 | 通过：`default` 的 `notification_config::text` 与模板 JSON 前后完全一致；原非空键摘要一致 |
+| B. default 配置逐字节不变 | 通过：`notification_config::text`、SHA-256 与模板 JSON 前后一致 |
 | C. 模板 ID 不变 | 通过：8 个合成模板 ID 全部保留，无重种 |
-| D. 新插入自动获得默认值 | 通过：仅插入 key 得到 `{}` |
-| E. 插入 NULL 被拒绝 | 通过：`23502` |
-| F. 并发写入不能绕过 | 通过：并发 NULL 插入等待迁移锁 ≥500ms，提交后 `23502`；合法 `{}` 插入成功 |
-| G. 中途失败回滚 | 通过：回滚后 8 行 NULL、可空、无默认值、摘要与账本均不变 |
-| H. 重复执行 | 通过：第一次 8 行，第二次 0 行；非空摘要与账本不变 |
-| I. 不重新执行 0021 | 通过：账本行不变、`default` 行仍 1 条、模板仍 8 个；0131 文本不含 0021/种子/账本语句 |
-| J. 旧版字段/8 模板配置读取 | 通过：8 模板旧配置经当前 normalizer 读取，8 个 ID 全保留，旧 `miniprogramTemplateId` 由 `workflow_todo` 派生 |
-| K. 新版应用读取空对象 | 通过：`{}`、NULL、`undefined` 均归一化为 V2 九模板，开关 `false`，模板 ID 通过格式与唯一性校验 |
+| D. NULL 行数量为 0 | 通过 |
+| E. `is_nullable=NO` | 通过 |
+| F. `column_default='{}'::jsonb` | 通过 |
+| G. 新插入自动获得默认值 | 通过：仅插入 key 得到 `{}` |
+| H. 显式插入 NULL 被拒绝 | 通过：`23502` |
+| I. 迁移中途失败回滚 | 通过：锁超时使正式迁移器失败，8 行 NULL、可空、无默认值、账本均恢复 |
+| J. 并发 NULL 写入不能绕过 | 通过：并发插入等待迁移锁 ≥500ms，提交后 `23502`；合法 `{}` 插入成功 |
+| K. 重复执行迁移器 | 通过：第二次不再执行 0131，账本仍 128 条，数据不变 |
+| L. 0021/0051 历史 SHA 不变 | 通过 |
+| M. 其他历史账本不变 | 通过：前 127 条逐条一致，仅追加 0131 |
+| N. 最终 pending 为空 | 通过 |
+| 旧版字段/8 模板读取 | 通过：8 个 ID 全保留，旧 `miniprogramTemplateId` 由 `workflow_todo` 派生 |
+| 新版空对象读取 | 通过：`{}`、NULL、`undefined` 均归一化为 V2 九模板，开关 `false` |
 
 ## 7. 兼容性分析
 
@@ -307,17 +313,17 @@ normalizer 始终返回 `version: 2`；保存始终写 `version: 2`。0131 不�
 - 真实库表约 120 kB、9 行，`SET NOT NULL` 验证成本可忽略；
 - 若其他环境存在远超 9 行的 `platform_configs`，需重新评估 `SET NOT NULL` 扫描和锁窗口，但语义不变。
 
-## 8. 是否建议负责人批准
+## 8. 批准状态与执行条件
 
-**建议批准规范 B 与 0131 设计。** 依据：
+**负责人已批准规范 B；I7.4.9.3 已创建正式 0131 与 journal，并完成正式迁移器的 A–N 隔离验证。** 依据：
 
 - Drizzle 模型、读取路径、写入路径和业务基线均要求 `NOT NULL DEFAULT '{}'::jsonb`；
 - 8 行 NULL 是 provider/phase2 标记行，不是通知业务配置，映射为 `{}` 安全；
 - 唯一非空 `default` 配置已经符合 V2，8 个模板指纹与当前代码默认值全部一致，无需改写；
 - 0131 只回填 NULL，不重种、不归一化非空内容；
-- 隔离 PG17 的 A–K 场景全部通过，包括并发和回滚。
+- 正式迁移器的 A–N 场景全部通过，包括并发、锁超时回滚和重复执行。
 
-批准与实施条件：
+真实执行条件：
 
 1. 先完成 I7.4.9.1 的迁移前备份与独立恢复验证；
 2. 在批准的维护窗口执行，确认写入静默，最好暂停通知配置读取；
@@ -328,7 +334,7 @@ normalizer 始终返回 `version: 2`；保存始终写 `version: 2`。0131 不�
 
 ## 9. 未解决问题与限制
 
-- 本轮只完成设计与隔离验证；真实库仍有 8 行 NULL、可空列和无默认值，正式修复需实施 0131。
+- I7.4.9.3 已创建正式 0131 并完成隔离验收；真实库仍为 119 条账本、8 行 NULL、可空列和无默认值，尚未执行 0131。
 - 0131 不添加 `CHECK (jsonb_typeof(notification_config)='object')`。数据库层仍允许标量/数组 JSON；当前数据全部为 object，normalizer 也能容忍非 object 输入。增加类型约束超出规范 B 范围，需单独评估。
 - 0131 不补写 `subscriptionMessagesEnabled`、`legacyTemplateId` 或第九模板；这些由运行时 normalizer 处理，写入时统一写完整 V2 配置。
 - 两阶段实施依赖操作纪律；若一次性应用全部 9 条迁移，`0131` 失败会回滚整批。
@@ -338,11 +344,11 @@ normalizer 始终返回 `version: 2`；保存始终写 `version: 2`。0131 不�
 
 | 项 | 结果 |
 | --- | --- |
-| notification_config 对齐定向测试 | 8 passed（3 unit + 5 live） |
+| notification_config 对齐定向测试（正式迁移器） | 6 passed / 0 skipped |
 | `subscription-notification.test.ts` + `wechat-notification-wiring.test.ts` | 18 passed |
 | `xiaok-migration-preflight.test.ts` | 9 passed |
 | 迁移备份与恢复验证测试 | 20 passed |
 | `npx tsc --noEmit` | 通过 |
 | 定向 ESLint（新增测试） | 0 errors / 0 warnings |
 
-本轮未修改 `admin/drizzle/0021_platform_notification_config.sql`、`admin/src/db/schema.ts`、`meta/_journal.json` 或任何真实企业/模板配置；未创建正式 0131 迁移文件；未执行 `db:migrate`；未发送微信通知；未部署生产。
+I7.4.9.3 已创建正式 `admin/drizzle/0131_platform_notification_config_not_null.sql` 并更新 `meta/_journal.json`；未修改 `0021_platform_notification_config.sql`、`admin/src/db/schema.ts`、`known-hashes.json` 或任何真实企业/模板配置；未执行真实 `db:migrate`；未发送微信通知；未部署生产。

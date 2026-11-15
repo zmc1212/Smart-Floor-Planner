@@ -78,7 +78,7 @@ function baselineLedger(): Ledger {
   });
 }
 
-test('the official validator recognizes both exact historical hashes and eight pending migrations', () => {
+test('the official validator recognizes both exact historical hashes and nine pending migrations', () => {
   const result = inspectLedger(baselineLedger(), inputs);
   assert.equal(result.status, 'passed');
   assert.equal(result.count, 119);
@@ -87,7 +87,7 @@ test('the official validator recognizes both exact historical hashes and eight p
   assert.equal(result.prefixGap, false);
   assert.equal(result.mixedFork, false);
   assert.ok(result.historicalHashes.every(entry => entry.exact));
-  assert.deepEqual(result.pending?.map(tag => tag.slice(0, 4)), ['0120','0124','0125','0126','0127','0128','0129','0130']);
+  assert.deepEqual(result.pending?.map(tag => tag.slice(0, 4)), ['0120','0124','0125','0126','0127','0128','0129','0130','0131']);
 });
 
 test('unrecognized, duplicate or gapped ledger rows cannot produce a pending plan', () => {

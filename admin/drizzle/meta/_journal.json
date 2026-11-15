@@ -890,6 +890,13 @@
       "when": 1795852800000,
       "tag": "0130_xiaok_pilot_project_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1796457600000,
+      "tag": "0131_platform_notification_config_not_null",
+      "breakpoints": true
     }
   ]
 }

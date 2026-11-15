@@ -138,7 +138,7 @@ live('a disposable PG17 restore verifies the ledger, RLS, data and permissions',
   assert.equal(run.body.checks.schema_restore_passed, true);
   assert.equal(run.body.checks.data_restore_passed, true);
   assert.equal(run.body.checks.full_restore_passed, true);
-  assert.equal(run.body.detail.verified.ledger.count, 127);
+  assert.equal(run.body.detail.verified.ledger.count, 128);
   assert.ok(run.body.detail.verified.rls.forcedRlsTableCount > 0);
   assert.ok(run.body.detail.verified.dataRows > 0);
   const admin = new pg.Client({
