@@ -78,6 +78,14 @@ Healthcheck 现可报告最近请求结果及失败原因，并独立显示本�
 
 正式执行仍为 `blocked`。需要绑定当前账本的可恢复备份、维护窗口与写入侧静默确认，以及负责人对该开发库执行范围的批准。`notification_config` 仍可空且有 8 行 NULL，当前 Drizzle 模型与 0021 文件均声明非空和空对象默认值，建议单独审批追加对齐迁移并保留现有模板。Windows Worker 当前停运，健康文件仍为 `stale`。详见 [I7.4.9 只读预检](./xiaok-i749-migration-preflight.md)。
 
+### I7.4.9.1 迁移备份与独立恢复验证能力（2026-11-15）
+
+新增迁移专用 `db:migration-backup` 与 `db:migration-restore-verify`：custom archive 保留 owner/ACL，生成独立 SHA-256 与 `migration-backup-manifest.json`，Manifest 绑定账本条数/摘要/末条、0021/0051 历史 SHA、RLS/FORCE RLS 表清单、Policy 定义摘要、函数/触发器/列/约束/索引、扩展、owner/ACL 与逐表行数/内容摘要。备份前要求目标为已批准库或带隔离标记的可丢弃库、PG17、备份角色具备 `BYPASSRLS`/superuser 与全表全序列 `SELECT`，否则失败关闭。恢复验证只恢复到独立可丢弃库，按源库 Manifest 校验，并显式区分 `schema_restore_passed`、`data_restore_passed`、`ledger_verified`、`rls_verified`、`permissions_verified`、`full_restore_passed`。
+
+隔离 PG17.10 上 12 项真实场景全部通过：正常备份/Manifest/SHA、SHA 与 Manifest 篡改、归档损坏、权限不足、目标等于源库、重复恢复、中途失败不覆盖已验证备份；恢复后 127 条合成账本、167 张 FORCE RLS 表、222 条 Policy 与 14 行合成业务数据均一致。定向 20 项测试通过，预检与迁移器回归、TypeScript、ESLint 通过。
+
+**迁移仍为 `blocked`**：本轮未对 `smart_floor_planner` 执行 `pg_dump`，真实备份、真实恢复回执与维护窗口仍未完成，`notification_config` 结构差异和 Worker `stale` 也仍待处理。详见 [I7.4.9.1 备份与恢复验证](./xiaok-i749-1-backup-restore-verification.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`
