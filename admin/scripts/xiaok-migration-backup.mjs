@@ -352,6 +352,7 @@ export function ledgerFacts(rows, knownHashes = []) {
     digest: sha256(JSON.stringify(normalized)),
     lastId: normalized.at(-1)?.id ?? null,
     lastTimestamp: normalized.at(-1) ? Number(normalized.at(-1).created_at) : null,
+    lastHash: normalized.at(-1)?.hash ?? null,
     historicalHashes: knownHashes.map(entry => {
       const row = normalized.find(candidate => Number(candidate.created_at) === entry.when);
       return {
@@ -773,6 +774,12 @@ async function createBackup({ client, target, password, pgBin, outputDir, mode, 
       migrationLedgerLastId: facts.ledger.lastId,
       migrationLedgerLastTimestamp: facts.ledger.lastTimestamp,
       migrationLedgerDigestAlgorithm: 'sha256:json-v1',
+      latestMigration: {
+        tag: inputs.active.find(entry => entry.when === facts.ledger.lastTimestamp)?.tag ?? null,
+        when: facts.ledger.lastTimestamp,
+        ledgerId: facts.ledger.lastId,
+        hash: facts.ledger.lastHash,
+      },
       ledgerValidation: facts.ledgerValidation.status,
       historicalHashes: facts.ledger.historicalHashes,
       archive: {

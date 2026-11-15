@@ -215,6 +215,8 @@ live('a normal backup writes a readable custom archive and a complete manifest',
 live('the manifest records the ledger, RLS and synthetic business data facts', () => {
   assert.equal(manifest.migrationLedgerCount, 128);
   assert.equal(manifest.migrationLedgerLastId, 128);
+  assert.equal(manifest.latestMigration.tag, '0131_platform_notification_config_not_null');
+  assert.match(manifest.latestMigration.hash, /^[0-9a-f]{64}$/);
   assert.match(manifest.migrationLedgerDigest, /^[0-9a-f]{64}$/);
   assert.deepEqual(manifest.historicalHashes.map(entry => entry.tag),
     ['0021_platform_notification_config', '0051_staff_referrer_network']);

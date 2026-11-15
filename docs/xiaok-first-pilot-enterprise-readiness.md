@@ -102,6 +102,16 @@ Healthcheck 现可报告最近请求结果及失败原因，并独立显示本�
 
 **微云 1454 真实开发库仍未执行迁移。** 加入 0131 后正式待迁移项为 9 条：`0120`、`0124`–`0130`、`0131`；真实库仍为 119 条账本、8 行 NULL。执行前仍需完成 I7.4.9.1 真实备份/恢复验证、维护窗口和写入静默确认。详见 [I7.4.9.3 0131 验收](./xiaok-i749-3-0131-migration-acceptance.md)。
 
+### I7.4.9.4 119→128 完整链路与备份恢复联合验收（2026-11-15）
+
+在全新可丢弃 PG17.10 集群上，用正式迁移器把 119 条合成账本（id `7–125`，0021 id `28`、0051 id `58`）推进到 128 条（id `7–134`），pending 从 9 条降为 0。9 条迁移 SHA 全部与正式 SQL 一致；前 119 条与 0021/0051 历史 SHA 完全不变。0131 回填 8 行 NULL；原 synthetic default 配置文本 SHA-256 `1d4550fc…fdf248c` 与 8 个模板 ID 保持不变。
+
+结构与业务验收覆盖 38 个关系、6 个函数、5 个触发器、167 张 FORCE RLS 表、222 条 Policy；`sfp_app` `rolbypassrls=false`，跨企业读取隔离、跨企业写入 `42501`、非法 Pilot 项目拒绝、Pilot Scope 更新/删除 `42501`、提醒去重 `23505`、投递回执 `23514` 均通过。
+
+迁移备份 `xiaok-mig-20261115t103306894z-780f8616`：archive SHA `afb216d2…20e6ae4`，Manifest SHA `c0e9b88f…c129576a`，Manifest 账本 128 条并记录 0131 SHA `a7fd555f…386291`。独立恢复到 `xiaok_migration_restore_i794`，`full_restore_passed=true`，128 条账本、0021/0051、0131、default 配置、167 张 FORCE RLS 表、222 条 Policy 与权限摘要全部一致。锁超时回滚、未知 SHA、SHA/Manifest 篡改、同源目标、恢复失败保留备份、重复迁移、并发迁移均通过。
+
+回归 **71 passed / 7 skipped**（7 项为 `xiaok-integration-migrations.test.mjs` 的数据库用例，因本机无 pgvector 按设计跳过），TypeScript 与定向 ESLint 通过。**真实 1454 仍未执行迁移、备份或恢复。** 详见 [I7.4.9.4 完整链路验收](./xiaok-i794-full-migration-restore-acceptance.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`
