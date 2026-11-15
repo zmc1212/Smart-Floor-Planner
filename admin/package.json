@@ -52,6 +52,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/postgres-migrate.mjs",
     "check:pilot-readiness": "tsx scripts/xiaok-pilot-readiness.ts",
+    "test:xiaok-v1-product-acceptance": "tsx scripts/xiaok-v1-product-acceptance.ts",
     "check:migration-preflight": "tsx scripts/xiaok-migration-preflight.ts",
     "db:check": "node scripts/postgres-check.mjs",
     "db:backup": "node scripts/postgres-backup.mjs",

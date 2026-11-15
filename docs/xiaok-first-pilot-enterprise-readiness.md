@@ -148,6 +148,14 @@ PG17.10 使用**独立恢复集群**验证：可创建/删除一次性恢复库�
 
 真实 `sfp_restore` 和恢复集群尚未创建；本轮未修改真实角色或数据库。回归：角色 5 passed、备份/恢复 25 passed，TypeScript 与定向 ESLint 通过。详见 [I7.4.9.8 恢复维护角色](./xiaok-i798-restore-maintenance-role.md)。
 
+### I7.5.0 家客来 1.0 第一期纵向闭环验收（2026-11-15）
+
+> 基线：`codex/xiaok-integration`，`cb0014332a42`。隔离 PostgreSQL 17.10 `127.0.0.1:55432/i745_f1_accept`，合成企业 `21`、项目 `38`/`39`、Pilot `i750-pilot`。
+
+在隔离环境使用正式提醒/周报实现与真实百炼 `deepseek-v4.1-flash-1017` 完成第一期产品验收：**20 passed / 0 failed / 2 limited / 1 not_run**。主动提醒生成 20 条、站内投递 14 条（业主/设计师/施工人员，均带 messageId）；项目经理 `failed/no_inbox` 进入工作台待办。四端周报实际生成 5 份（customer/boss/worker/designer/worker），facts 只含试点项目，全部 delivered，角色投影与范围隔离通过，重复执行零新增。确定性阶段问答四问通过；百炼真实调用可达并交付 1/4 轮阶段事实答案，其余模型回答被响应范围/完成声明校验拒绝，故 `knowledgeAnswerStatus=limited`。报告 AI 正文本轮未执行（`not_run`）。
+
+统一状态：`reminderStatus=limited`、`knowledgeAnswerStatus=limited`、`weeklyReportStatus=passed`、四端 `*Delivery=passed`、`idempotencyStatus=passed`、`projectScopeStatus=passed`。**微云 1454 真实环境仍为 `not_run`**：未连接业务库、未执行迁移/备份、未启动真实 Worker、未发送微信、未部署生产。真实试点阻塞仍为 1454 的 9 条待迁移、备份/恢复与维护窗口、Worker `stale`、企业知识/Embedding/pgvector 未配置以及管理员尚未提交试点名单。详见 [I7.5.0 第一期产品验收](./xiaok-v1-first-release-acceptance.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`
