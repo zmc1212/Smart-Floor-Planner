@@ -434,6 +434,23 @@ I7.4.5-F4.1 补充完整 HTTP Route 一致配置验收：`createAssistantJobsPos
 
 ## 通知边界
 
-`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：默认 `enterprise` 仍按有效 active 项目和阶段事实生成并投递；`pilot` 在生成和投递两个环节都只处理该试点最新范围，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：默认 `enterprise` 保持原有生成和投递行为；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。I7.4.5-F1 已在独立 PG17 数据库完成双项目周报真实生成、投递和范围收缩验收；I7.4.5-F2 已完成主动提醒的双项目生成、站内投递、范围收缩、权限与故障验收；I7.4.5-F3 增加提醒/周报统一配置校验，不一致或非法时四个 Worker 入口均跳过（见 I7.4.5-F3 节）；I7.4.5-F4 已抽取统一 Worker 编排并完成四项任务端到端验收；I7.4.5-F4.1 已完成完整 HTTP Route 一致配置验收（见上节）。
+`active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：I7.5.8 起，未配置模式或使用企业模式时，四项业务 Worker 不运行（安全门禁关闭）；只有显式 `pilot` 模式才按试点最新范围生成并投递，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：企业模式在 I7.5.8 中保持关闭；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。I7.4.5-F1 已在独立 PG17 数据库完成双项目周报真实生成、投递和范围收缩验收；I7.4.5-F2 已完成主动提醒的双项目生成、站内投递、范围收缩、权限与故障验收；I7.4.5-F3 增加提醒/周报统一配置校验，不一致或非法时四个 Worker 入口均跳过（见 I7.4.5-F3 节）；I7.4.5-F4 已抽取统一 Worker 编排并完成四项任务端到端验收；I7.4.5-F4.1 已完成完整 HTTP Route 一致配置验收（见上节）。
 
 预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。
+
+## Worker 安全启动门禁（I7.5.8）
+
+`admin/src/lib/xiaok-v1/worker-safety-gate.ts` 提供纯函数 `evaluateWorkerSafetyGate(env)`，在提醒/周报模式一致性检查之上再增加一层部署门禁：
+
+| 配置 | 门禁 | 说明 |
+| --- | --- | --- |
+| 两边 `pilot`，企业/试点一致 | `open` | 仍需每次 tick 解析最新保存范围 |
+| 未配置模式，或只配置企业 ID | `closed` | `pilot_scope_missing` |
+| 任意 `enterprise`（含指定一个企业） | `closed` | `enterprise_scope_not_allowed`，企业全量保持关闭 |
+| 模式/企业/试点不一致或非法 | `closed` | 保留原有 `pilot_worker_alignment` 错误码 |
+
+`runAssistantJobsTick()` 只在门禁 `open` 时调用四项业务 Worker；跳过时返回 `skipped=true`、`reason=worker_safety_gate`、`gateReason` 和错误码。其他 Assistant Job 保持原条件运行。`GET /api/internal/assistant/jobs/preflight`（`CRON_SECRET` 保护）返回门禁、脱敏模式摘要、试点范围状态与**全局**只读队列预览；`assistant-worker.mjs` 在 tick 前调用该接口，门禁关闭退出码 2，预检不可用/无效退出码 1。企业全量没有环境变量旁路。
+
+队列预览在 PostgreSQL `READ ONLY` 事务中统计 queued、expired running、failed、indeterminate，并只把“已到期 queued、过期且未派发供应商、过期且 agent 步骤结果完整”标记为可安全领取；`provider_started_at` 已设置但结果未知保持 indeterminate，`failed`/`indeterminate` 不自动重试。预览不领取、不标记、不发送通知。
+
+验收：隔离 PG17 `i745_f1_accept` 21 passed / 0 failed；门禁、dry-run 不变性、重复启动、并发领取、心跳 fencing、provider start 幂等、未知结果不重放、failed 终态与未保存试点零生成零投递均通过。详见 [I7.5.8 验收](./xiaok-i758-worker-safe-startup-acceptance.md)。

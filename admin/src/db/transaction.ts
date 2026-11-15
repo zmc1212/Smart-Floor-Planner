@@ -33,14 +33,22 @@ export async function setTransactionScope(
   );
 }
 
+type TransactionOptions = { isolationLevel?: 'repeatable read'; readOnly?: boolean };
+
+function beginStatement(options?: TransactionOptions) {
+  const isolation = options?.isolationLevel === 'repeatable read' ? ' isolation level repeatable read' : '';
+  const readOnly = options?.readOnly ? ' read only' : '';
+  return 'begin' + isolation + readOnly;
+}
+
 async function withScopedTransaction<T>(
   scope: TransactionScope,
   callback: (transaction: PostgresTransaction) => Promise<T>,
-  options?: { isolationLevel?: 'repeatable read' }
+  options?: TransactionOptions
 ) {
   const client = await getPostgresPool().connect();
   try {
-    await client.query(options?.isolationLevel === 'repeatable read' ? 'begin isolation level repeatable read' : 'begin');
+    await client.query(beginStatement(options));
     await setTransactionScope(client, scope);
     const transaction = drizzle(client, { schema });
     const result = await callback(transaction);
@@ -57,7 +65,7 @@ async function withScopedTransaction<T>(
 export function withTenantTransaction<T>(
   enterpriseId: bigint | number | string,
   callback: (transaction: PostgresTransaction) => Promise<T>,
-  options?: { isolationLevel?: 'repeatable read' }
+  options?: TransactionOptions
 ) {
   return withScopedTransaction(
     { kind: 'tenant', enterpriseId },
@@ -67,7 +75,8 @@ export function withTenantTransaction<T>(
 }
 
 export function withPlatformTransaction<T>(
-  callback: (transaction: PostgresTransaction) => Promise<T>
+  callback: (transaction: PostgresTransaction) => Promise<T>,
+  options?: TransactionOptions
 ) {
-  return withScopedTransaction({ kind: 'platform' }, callback);
+  return withScopedTransaction({ kind: 'platform' }, callback, options);
 }

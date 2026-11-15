@@ -381,6 +381,16 @@ test('independent worker script calls authenticated handler, persists health and
   const responses: number[] = [];
   process.env.CRON_SECRET = 'assistant-test-internal';
   const server = createServer((incoming, outgoing) => {
+    if (incoming.method === 'GET') {
+      // The Worker startup preflight is a read-only gate check. This test keeps
+      // it local and open; the gate itself is covered by dedicated tests.
+      outgoing.writeHead(200, { 'content-type': 'application/json' });
+      outgoing.end(JSON.stringify({ success: true, data: { safetyGate: {
+        status: 'open', reason: 'pilot_scope_configured', deliveryScope: 'pilot',
+        mode: 'pilot', enterpriseId: tenants[0], pilotId: 'assistant-test-pilot',
+      } } }));
+      return;
+    }
     const request = new Request('http://localhost/api/internal/assistant/jobs/run', {
       method: 'POST', headers: { 'x-cron-secret': String(incoming.headers['x-cron-secret'] || '') },
     });

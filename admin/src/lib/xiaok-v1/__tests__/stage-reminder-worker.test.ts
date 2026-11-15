@@ -104,7 +104,8 @@ test('F/G. the worker route keeps the other jobs, auth guard and delivery flow',
   assert.doesNotMatch(route, /advanceConfiguredStageReminders\(/);
   assert.doesNotMatch(route, /deliverConfiguredStageReminders\(/);
   assert.match(source, /const pilotScopeAlignment = alignmentOf\(env\)/);
-  assert.match(source, /const pilotWorkersEnabled = pilotScopeAlignment\.status === 'aligned'/);
+  assert.match(source, /const workerSafetyGate = safetyGateOf\(env\)/);
+  assert.match(source, /const pilotWorkersEnabled = workerSafetyGate\.status === 'open'/);
   assert.match(source, /advanceReminders\(\{ now, env \}\)/);
   assert.doesNotMatch(source, /advanceStageReminders\(/);
   assert.match(source, /if \(pilotWorkersEnabled\) \{\s*\n\s*try \{ stageReminderChecks = await advanceReminders/);
@@ -116,8 +117,9 @@ test('F/G. the worker route keeps the other jobs, auth guard and delivery flow',
   assert.match(source, /inAppDeliveries = [\s\S]*reportDelivery\?\.delivered \?\? 0/);
   assert.match(source, /if \(pilotWorkersEnabled\) \{\s*\n\s*try \{ stageReminderDeliveries = await deliverReminders/);
   assert.doesNotMatch(source, /deliverStageReminders\(/);
-  assert.match(source, /skipped: true, reason: 'pilot_worker_alignment'/);
+  assert.match(source, /skipped: true, reason: 'worker_safety_gate'/);
   assert.match(source, /pilotScopeAlignment,/);
+  assert.match(source, /workerSafetyGate,/);
   assert.ok(source.indexOf('advanceReminders({ now, env })') < source.indexOf('assistantJob(assistantRun)'));
   assert.ok(source.indexOf('assistantJob(assistantRun)') < source.indexOf('deliverReminders({ now, env })'));
 });

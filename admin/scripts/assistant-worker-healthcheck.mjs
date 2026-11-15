@@ -12,12 +12,15 @@ function processStatusFor(pid) {
 
 function healthStatus({ health, fileError }) {
   if (!health) {
-    return { healthy: false, reason: 'health_file_unavailable', fileError, processStatus: 'unknown', tickStatus: 'unknown' };
+    return { healthy: false, reason: 'health_file_unavailable', fileError, processStatus: 'unknown', tickStatus: 'unknown', safetyGate: null };
   }
 
   const processStatus = processStatusFor(health.workerPid);
   const ageMs = health.lastSuccessAt === null ? null : Date.now() - health.lastSuccessAt;
   const diagnostics = { processStatus, ageSeconds: ageMs === null || ageMs < 0 ? null : Math.floor(ageMs / 1000), ...health };
+  if (health.safetyGate?.status === 'closed') {
+    return { ...diagnostics, healthy: false, tickStatus: 'blocked', reason: 'safety_gate_closed' };
+  }
   if (health.lastErrorCode || health.consecutiveFailures) {
     return { ...diagnostics, healthy: false, tickStatus: 'failed', reason: health.lastErrorCode ?? 'job_execution_failed' };
   }

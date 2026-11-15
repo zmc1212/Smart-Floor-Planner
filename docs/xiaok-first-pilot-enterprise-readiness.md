@@ -200,6 +200,16 @@ PG17.10 使用**独立恢复集群**验证：可创建/删除一次性恢复库�
 
 定向测试 20/20、TypeScript、定向 ESLint 通过。详见[开发环境统一体检](./xiaok-environment-check.md)。
 
+### I7.5.8 Worker 安全启动与试点范围保护（2026-11-16）
+
+> 基线：`codex/xiaok-integration` / `b405ea6e`。未启动真实 Worker、未处理开发库 31 条 queued / 2 条 running / 404 条 failed、未修改真实 1454、未执行迁移、未发送真实通知、未改生产配置。
+
+新增纯函数 `evaluateWorkerSafetyGate()` 与 `GET /api/internal/assistant/jobs/preflight`：未配置试点范围时，提醒与周报四项业务 Worker 在服务端 tick 和 Worker 进程启动两处同时关闭；企业全量与平台全量均保持关闭，只有两边一致指向同一试点才开放。Worker 启动前读取只读 preflight，门禁关闭退出码 2、预检不可用退出码 1，健康文件与 healthcheck 均显示门禁状态。
+
+preflight 同时提供只读 dry-run：queued、expired running、failed、indeterminate 计数，以及可安全重领/未知 provider/终态分类；`failed` 不自动重试，`provider_started_at` 已设置但结果未知保持 indeterminate，预览使用 PostgreSQL `READ ONLY` 事务且不领取任务。
+
+隔离 PG17 `i745_f1_accept` 端到端验收 **20 passed / 0 failed**（合成企业 `31`，运行后清理），覆盖未配置试点、配置不一致、仅明确试点、企业全量拦截、dry-run 前后哈希一致、重复启动、并发领取单持有者、心跳 fencing、重复 provider start 拒绝、过期租约安全回收、未知结果不重放、failed 终态、未保存试点范围零生成零投递；定向测试与回归全部通过，TypeScript 与 ESLint 通过。开发库仍缺 0128–0130 迁移，pilot 模式在迁移前会如实返回 `pilot_scope_unavailable` 并零处理。详见 [I7.5.8 验收](./xiaok-i758-worker-safe-startup-acceptance.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`

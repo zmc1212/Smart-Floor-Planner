@@ -76,25 +76,30 @@ function assertOtherJobsRan(counts: Counts) {
   assert.equal(counts.publicConsents, 1);
 }
 
-// A. Both workers are unscoped enterprise workers.
-test('F4 A. both enterprise workers run once', async () => {
+// A. No explicit pilot scope and no enterprise acknowledgement: both business
+// workers stay closed instead of scanning the whole enterprise by default.
+test('I7.5.8 A. an unconfigured deployment skips all four workers', async () => {
   const { counts, received, tick } = harness({});
   const data = await tick();
   assert.equal(data.pilotScopeAlignment.status, 'aligned');
   assert.equal(data.pilotScopeAlignment.mode, 'enterprise');
-  assertFourCalls(counts, 1);
+  assert.deepEqual([data.workerSafetyGate.status, data.workerSafetyGate.reason,
+    data.workerSafetyGate.errorCode], ['closed', 'pilot_scope_missing', 'worker_pilot_scope_missing']);
+  assertFourCalls(counts, 0);
   assertOtherJobsRan(counts);
-  assert.deepEqual(received, [now, now, now, now]);
+  assert.deepEqual(received, []);
 });
 
-// B. Both workers name the same enterprise.
-test('F4 B. identical enterprise ids run all four once', async () => {
+// B. Both workers name the same enterprise, but enterprise-wide delivery stays
+// closed unless an explicit pilot scope exists.
+test('I7.5.8 B. identical enterprise ids still skip all four', async () => {
   const { counts, tick } = harness({ XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454',
     XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: '1454' });
   const data = await tick();
   assert.equal(data.pilotScopeAlignment.status, 'aligned');
-  assert.deepEqual([data.pilotScopeAlignment.mode, data.pilotScopeAlignment.enterpriseId], ['enterprise', '1454']);
-  assertFourCalls(counts, 1);
+  assert.deepEqual([data.workerSafetyGate.status, data.workerSafetyGate.reason],
+    ['closed', 'enterprise_scope_not_allowed']);
+  assertFourCalls(counts, 0);
   assertOtherJobsRan(counts);
 });
 
@@ -133,13 +138,16 @@ for (const [name, env, errorCode] of mismatches) {
     const data = await tick();
     assert.notEqual(data.pilotScopeAlignment.status, 'aligned');
     assert.equal(data.pilotScopeAlignment.errorCode, errorCode);
+    assert.deepEqual([data.workerSafetyGate.status, data.workerSafetyGate.reason,
+      data.workerSafetyGate.errorCode], ['closed', 'pilot_worker_alignment', errorCode]);
     assertFourCalls(counts, 0);
     assertOtherJobsRan(counts);
     for (const entry of [data.constructionReportChecks, data.stageReminderChecks,
       data.constructionReportDeliveries, data.stageReminderDeliveries]) {
       const value = entry as Record<string, unknown>;
       assert.equal(value.skipped, true);
-      assert.equal(value.reason, 'pilot_worker_alignment');
+      assert.equal(value.reason, 'worker_safety_gate');
+      assert.equal(value.gateReason, 'pilot_worker_alignment');
       assert.equal(value.errorCode, errorCode);
     }
   });
@@ -151,6 +159,7 @@ test('F4 H. an invalid configuration has no enterprise mode', async () => {
   const data = await tick();
   assert.equal(data.pilotScopeAlignment.status, 'invalid');
   assert.equal(data.pilotScopeAlignment.mode, null);
+  assert.equal(data.workerSafetyGate.mode, null);
   assertFourCalls(counts, 0);
 });
 

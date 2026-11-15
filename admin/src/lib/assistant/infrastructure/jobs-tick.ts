@@ -13,6 +13,7 @@ import {
   deliverConfiguredStageReminders,
 } from '@/lib/xiaok-v1/stage-reminder-worker';
 import { checkPilotWorkerAlignment, type PilotWorkerAlignment } from '@/lib/xiaok-v1/pilot-worker-alignment';
+import { evaluateWorkerSafetyGate, type WorkerSafetyGate } from '@/lib/xiaok-v1/worker-safety-gate';
 import { nativeWorkflowEnabled } from '@/lib/native-workflow/live/tenant-allowlist';
 
 /** The optional dependencies keep production behaviour identical while letting
@@ -32,6 +33,7 @@ export type AssistantJobsTickDependencies = {
   advanceConfiguredStageReminders?: typeof advanceConfiguredStageReminders;
   deliverConfiguredStageReminders?: typeof deliverConfiguredStageReminders;
   checkPilotWorkerAlignment?: typeof checkPilotWorkerAlignment;
+  evaluateWorkerSafetyGate?: typeof evaluateWorkerSafetyGate;
   nativeWorkflowEnabled?: typeof nativeWorkflowEnabled;
   runNativeWorkflowScheduleTick?: () => Promise<unknown>;
   runNativeDelegationTick?: () => Promise<unknown>;
@@ -48,6 +50,7 @@ export type AssistantJobsTickData = {
   stageReminderChecks: unknown;
   stageReminderDeliveries: unknown;
   pilotScopeAlignment: PilotWorkerAlignment;
+  workerSafetyGate: WorkerSafetyGate;
   nativeWorkflowSchedule: unknown;
   nativeWorkflowDelegations: unknown;
   nativeWorkflowTools: unknown;
@@ -57,8 +60,11 @@ export type AssistantJobsTickData = {
  *
  * The reminder and weekly-report workers must resolve to the same deployment
  * mode (and, in pilot mode, the same enterprise and pilot) before either may
- * generate or deliver. Other Assistant jobs stay independent and keep running
- * even when one of the pilot workers fails. */
+ * generate or deliver. The startup safety gate additionally refuses an
+ * enterprise-wide run unless the operator explicitly acknowledged that scope,
+ * so a Worker without a pilot configuration cannot scan an enterprise by
+ * default. Other Assistant jobs stay independent and keep running even when
+ * one of the pilot workers fails. */
 export async function runAssistantJobsTick(
   input: AssistantJobsTickDependencies = {},
 ): Promise<AssistantJobsTickData> {
@@ -75,10 +81,16 @@ export async function runAssistantJobsTick(
   const advanceReminders = input.advanceConfiguredStageReminders ?? advanceConfiguredStageReminders;
   const deliverReminders = input.deliverConfiguredStageReminders ?? deliverConfiguredStageReminders;
   const alignmentOf = input.checkPilotWorkerAlignment ?? checkPilotWorkerAlignment;
+  const safetyGateOf = input.evaluateWorkerSafetyGate ?? evaluateWorkerSafetyGate;
   const workflowEnabled = input.nativeWorkflowEnabled ?? nativeWorkflowEnabled;
 
   const pilotScopeAlignment = alignmentOf(env);
-  const pilotWorkersEnabled = pilotScopeAlignment.status === 'aligned';
+  const workerSafetyGate = safetyGateOf(env);
+  const pilotWorkersEnabled = workerSafetyGate.status === 'open';
+  const skippedBusinessWorkers = {
+    skipped: true, reason: 'worker_safety_gate',
+    gateReason: workerSafetyGate.reason, errorCode: workerSafetyGate.errorCode,
+  };
 
   // The B5.9 weekly scheduler runs inside this existing Worker tick. It is
   // loaded only when the enterprise allowlist is explicitly enabled; a
@@ -101,7 +113,7 @@ export async function runAssistantJobsTick(
     try { constructionReportChecks = await advanceReports({ now, env }); }
     catch { constructionReportChecks = { error: 'construction_report_unavailable' }; }
   } else {
-    constructionReportChecks = { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode };
+    constructionReportChecks = skippedBusinessWorkers;
   }
 
   // I7.1 deterministic reminders are isolated from model and report failures.
@@ -110,7 +122,7 @@ export async function runAssistantJobsTick(
     try { stageReminderChecks = await advanceReminders({ now, env }); }
     catch { stageReminderChecks = { error: 'stage_reminder_unavailable' }; }
   } else {
-    stageReminderChecks = { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode };
+    stageReminderChecks = skippedBusinessWorkers;
   }
 
   const data = await assistantJob(assistantRun);
@@ -145,7 +157,7 @@ export async function runAssistantJobsTick(
     constructionReportDeliveries = reportDelivery
       ?? { error: 'construction_report_delivery_unavailable' };
   } else {
-    constructionReportDeliveries = { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode, delivered: 0 };
+    constructionReportDeliveries = { ...skippedBusinessWorkers, delivered: 0 };
   }
 
   const inAppDeliveries = await siteNotifications() + await publicConsents()
@@ -156,7 +168,7 @@ export async function runAssistantJobsTick(
     try { stageReminderDeliveries = await deliverReminders({ now, env }); }
     catch { stageReminderDeliveries = { error: 'stage_reminder_delivery_unavailable' }; }
   } else {
-    stageReminderDeliveries = { skipped: true, reason: 'pilot_worker_alignment', errorCode: pilotScopeAlignment.errorCode };
+    stageReminderDeliveries = skippedBusinessWorkers;
   }
 
   const portfolioCopyClaimed = data.claimed ? false : await portfolioCopy();
@@ -171,6 +183,7 @@ export async function runAssistantJobsTick(
     stageReminderChecks,
     stageReminderDeliveries,
     pilotScopeAlignment,
+    workerSafetyGate,
     nativeWorkflowSchedule,
     nativeWorkflowDelegations,
     nativeWorkflowTools,
