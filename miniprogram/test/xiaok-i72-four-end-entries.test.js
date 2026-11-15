@@ -28,6 +28,21 @@ test('designer and boss workbench shows role reminders and a report entry', () =
   assert.match(home, /<role-workbench id="role-workbench"[^>]*focus="overview"/u);
 });
 
+test('boss and designer reach the shared project facts without going through Mine', () => {
+  const workbench = read('components/role-workbench/role-workbench.wxml');
+  const script = read('components/role-workbench/role-workbench.js');
+  const brief = read('packages/construction/brief/brief.wxml');
+  assert.match(workbench, /bindtap="openConstruction"/u);
+  assert.match(workbench, /项目简报与问题清单/u);
+  assert.match(workbench, /工地协作与需求核对/u);
+  assert.match(script, /'\/packages\/construction\/brief\/brief'/u);
+  assert.match(script, /'\/packages\/construction\/projects\/projects'/u);
+  assert.match(brief, /需介入 · \{\{project\.pendingCount\}\} 项/u);
+  assert.match(brief, /已修正 · \{\{project\.fixedCount\}\} 项/u);
+  assert.match(brief, /catchtap="openProjectIssues"/u);
+  assert.match(brief, /bindtap="openProjects"/u);
+});
+
 test('construction staff keeps photo, voice and current tasks plus a weekly report entry', () => {
   const projects = read('packages/construction/projects/projects.wxml');
   const script = read('packages/construction/projects/projects.js');

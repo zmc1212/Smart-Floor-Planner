@@ -734,6 +734,15 @@ Component({
       wx.navigateTo({ url: '/packages/assistant/chat/chat?followup=1' });
     },
 
+    openConstruction() {
+      const role = this.properties.role || this.data.role;
+      if (role === 'enterprise_admin') {
+        wx.navigateTo({ url: '/packages/construction/brief/brief' });
+      } else if (role === 'designer') {
+        wx.navigateTo({ url: '/packages/construction/projects/projects' });
+      }
+    },
+
     async loadClaimPoolSummary() {
       try {
         const result = await api.request('/lead-claim-pool', 'GET');

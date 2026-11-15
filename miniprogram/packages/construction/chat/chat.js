@@ -68,10 +68,14 @@ Page({
       this._conversationInput = true; this.setData({ textMode: true });
       this.client.input(this._briefMode === 'review' ? '查看事项' + this._briefIssueId + '的需求、图纸和现场记录' : '事项' + this._briefIssueId + '现在在等谁？为什么？');
       this._briefIssueId = '';
+    } else if (this._briefMode === 'plan' && !planRoom && !this.client.state.pending && this.client.state.write && !this.client.state.draft) {
+      this._conversationInput = true; this.setData({ textMode: true });
+      this.client.input('查看本项目的图纸、需求和方案');
+      this._briefMode = '';
     } else if (planRoom && !this.client.state.pending && this.client.state.write && !this.client.state.draft) {
       this._conversationInput = true; this.setData({ textMode: true });
       this.client.input('查看' + planRoom.name + '的图纸、需求和方案');
-      this._briefRoomId = ''; this._briefRoom = '';
+      this._briefRoomId = ''; this._briefRoom = ''; this._briefMode = '';
     }
     this.poll();
   },

@@ -305,12 +305,16 @@ Page({
   },
   openPlan(e) {
     const detail = this.data.detail, planId = String(e.currentTarget.dataset.id || '');
-    const roomId = detail?.approvedPlans?.find(plan => plan.id === planId)?.roomId;
-    if (!this.current() || !detail?.project || detail.project.status === 'archived' || this.data.busy || this.data.pending) return;
+    const plan = planId ? detail?.approvedPlans?.find(item => item.id === planId) : null;
+    if (!this.current() || !detail?.project || detail.project.status === 'archived' || this.data.busy || this.data.pending
+      || planId && !plan) return;
+    const roomId = plan?.roomId;
     const room = String(e.currentTarget.dataset.room || '').slice(0, 50);
     const scope = /^[1-9]\d*$/.test(String(roomId)) ? '&roomId=' + roomId
-      : !planId && room ? '&room=' + encodeURIComponent(room) : '';
-    if (scope) wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(detail.project.id) + '&mode=plan' + scope });
+      : room ? '&room=' + encodeURIComponent(room) : '';
+    // A plan without a room still has a real drawing and revision; open the
+    // project chat in plan mode instead of leaving the tap with no action.
+    wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(detail.project.id) + '&mode=plan' + scope });
   },
   openCamera() { if (this.current() && this.data.detail && !this.data.busy && !this.data.pending && this.data.detail.project.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
   openIdentities() { wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' }); },

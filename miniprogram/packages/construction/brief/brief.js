@@ -3,6 +3,20 @@ const { canAccessRoute } = require('../../../utils/identity-navigation');
 const { errorText } = require('../projects/projects-model');
 const { loadSiteFont } = require('../lib/site-font');
 const route = '/packages/construction/brief/brief';
+const closedIssueStatuses = ['closed', 'resolved', 'dismissed', 'cancelled'];
+function decorateProject(project) {
+  const issues = Array.isArray(project.issues) ? project.issues : [];
+  const pending = issues.filter(item => !closedIssueStatuses.includes(item.status));
+  const fixed = issues.filter(item => item.status === 'closed' || item.status === 'resolved');
+  return {
+    ...project,
+    pendingCount: pending.length,
+    pendingFacts: pending.slice(0, 3).map(item => ({ issueId: item.issueId, label: item.label || item.status,
+      waitingFor: item.waitingFor || '', reason: item.reason || '' })),
+    fixedCount: fixed.length,
+    fixedFacts: fixed.slice(0, 2).map(item => ({ issueId: item.issueId, label: item.label || item.status })),
+  };
+}
 function identity() {
   const g = getApp().globalData || {}, c = g.bootstrap && g.bootstrap.current && g.bootstrap.current.context || {};
   return { key: [c.enterpriseId, c.staffId].filter(Boolean).join(':'), token: g.token || wx.getStorageSync('token'), bootstrap: g.bootstrap || g.userInfo };
@@ -39,7 +53,7 @@ Page({
       if (!this.current(g)) return;
       const d = result.data;
       const stamp = new Date(d.asOf), pad = n => String(n).padStart(2, '0');
-      this.setData({ items: d.items, version: d.version, hasMoreProjects: d.hasMoreProjects,
+      this.setData({ items: (d.items || []).map(decorateProject), version: d.version, hasMoreProjects: d.hasMoreProjects,
         asOf: `${stamp.getMonth() + 1}月${stamp.getDate()}日 ${pad(stamp.getHours())}:${pad(stamp.getMinutes())}`, error: '', loading: false });
     } catch (e) { if (this.current(g)) this.setData({ loading: false, items: [], asOf: '', error: errorText(e) }); }
   },
@@ -48,6 +62,14 @@ Page({
     const p = this.data.items.find(p => p.projectId === pid);
     if (!this.current() || !p || issueId && !p.issues.some(i => i.issueId === issueId)) return;
     wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + pid + (issueId ? '&issueId=' + issueId : '') });
+  },
+  openProjects() {
+    if (this.current()) wx.navigateTo({ url: '/packages/construction/projects/projects' });
+  },
+  openProjectIssues(e) {
+    const pid = String(e.currentTarget.dataset.project || '');
+    if (!this.current() || !/^[1-9]\d*$/.test(pid) || !this.data.items.some(p => p.projectId === pid)) return;
+    wx.navigateTo({ url: '/packages/construction/projects/projects?project=' + pid });
   },
   ask() {
     const items = this.data.items.slice(0, 6), generation = this._generation;

@@ -18,6 +18,15 @@
           <text wx:else class="helper">尚未排期：未排期不视为正常，也不推断逾期。</text>
           <text wx:if="{{project.progressNote}}" class="helper">{{project.progressNote}}</text>
           <text class="brief-summary">{{project.summary}}</text>
+          <view wx:if="{{project.pendingCount || project.fixedCount}}" class="brief-issues">
+            <text wx:if="{{project.pendingCount}}" class="brief-issue-title">需介入 · {{project.pendingCount}} 项</text>
+            <view wx:for="{{project.pendingFacts}}" wx:key="issueId" class="brief-issue-row">
+              <text class="brief-issue-label">{{item.label}}</text>
+              <text class="brief-issue-wait">{{item.waitingFor || '等待责任人处理'}}</text>
+            </view>
+            <text wx:if="{{project.fixedCount}}" class="brief-fixed-count">已修正 · {{project.fixedCount}} 项</text>
+            <button class="brief-issue-link" data-project="{{project.projectId}}" catchtap="openProjectIssues">查看问题与已修正清单 ›</button>
+          </view>
           <text wx:if="{{project.latestRecord}}" class="helper">{{project.latestRecord.authorName}} · 记录{{project.latestRecord.id}}</text>
           <text wx:if="{{project.hasMoreIssues}}" class="helper">仅整理最近50条事项，更多事项请进入原项目查看。</text>
         </view>
@@ -25,7 +34,7 @@
         <text class="brief-originals">每条进展都可以查看原记录 ›</text>
       </view>
       <text class="brief-note">未回复不等于施工异常。未记录明确期限时，不推断逾期。</text>
-      <view class="brief-actions"><button class="primary" bindtap="back">查看项目明细</button><button class="outline" bindtap="ask">追问小K</button></view>
+      <view class="brief-actions"><button class="primary" bindtap="openProjects">查看项目明细</button><button class="outline" bindtap="ask">追问小K</button></view>
     </view>
   </view>
 </view>

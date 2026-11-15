@@ -5,7 +5,7 @@ const path = require('node:path');
 const { createRequire } = require('node:module');
 const file = path.resolve(__dirname, '../packages/construction/brief/brief.js');
 function fixture() {
-  let def, handler = async () => ({ data: { items: [{ projectId: '1', issues: [{ issueId: '2' }] }], asOf: '2026-10-22T12:00:00.000Z', version: 'v1' } });
+  let def, handler = async () => ({ data: { items: [{ projectId: '1', issues: [{ issueId: '2', status: 'awaiting_owner', label: '待整改', waitingFor: '项目经理' }] }], asOf: '2026-10-22T12:00:00.000Z', version: 'v1' } });
   const app = { globalData: { token: 'a', bootstrap: { current: { role: 'construction_staff', capabilities: ['construction.projects'], context: { enterpriseId: '1', staffId: '2' } } } } };
   const calls = [], wx = { getStorageSync: () => '', navigateTo: o => calls.push(o.url), getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 44 }), getMenuButtonBoundingClientRect: () => ({ top: 48, left: 296, height: 32 }) };
   const local = createRequire(file);
@@ -19,6 +19,29 @@ test('brief reentry reloads facts; error clears stale facts and retry restores t
   f.intercept(async () => ({ data: { items: [], asOf: '2026-10-22T12:01:00.000Z', version: 'v2' } })); await f.p.load(); assert.equal(f.p.data.error,''); assert.equal(f.p.data.version,'v2');
   f.p.onHide(); assert.equal(f.p.data.items.length,0); await f.p.onShow(); assert.equal(f.p.data.version,'v2');
 });
+test('brief lists pending and fixed issues from the same project facts and links to the full list', async () => {
+  const f = fixture();
+  f.intercept(async () => ({ data: { items: [{ projectId: '19', name: '项目 A', issues: [
+    { issueId: '31', status: 'awaiting_owner', label: '待整改', waitingFor: '项目经理' },
+    { issueId: '32', status: 'rectifying', label: '整改中', waitingFor: '施工师傅' },
+    { issueId: '33', status: 'closed', label: '已关闭' },
+    { issueId: '34', status: 'resolved', label: '待关闭' },
+    { issueId: '35', status: 'dismissed', label: '已排除' },
+  ] }], asOf: '2026-10-22T12:00:00.000Z', version: 'v1' } }));
+  await f.p.onShow();
+  const item = f.p.data.items[0];
+  assert.equal(item.pendingCount, 2);
+  assert.deepEqual(item.pendingFacts.map(x => x.issueId), ['31', '32']);
+  assert.equal(item.fixedCount, 2);
+  assert.deepEqual(item.fixedFacts.map(x => x.issueId), ['33', '34']);
+  f.p.openProjects();
+  assert.equal(f.calls.at(-1), '/packages/construction/projects/projects');
+  f.p.openProjectIssues({ currentTarget: { dataset: { project: '19' } } });
+  assert.equal(f.calls.at(-1), '/packages/construction/projects/projects?project=19');
+  f.p.openProjectIssues({ currentTarget: { dataset: { project: '20' } } });
+  assert.equal(f.calls.at(-1), '/packages/construction/projects/projects?project=19');
+});
+
 test('identity changes and hidden pages reject late responses; only listed issues can be opened', async () => {
   const f = fixture(); await f.p.onShow();
   f.p.openProject({ currentTarget: { dataset: { project: '1', issue: '2' } } }); assert.match(f.calls[0], /projectId=1&issueId=2/);

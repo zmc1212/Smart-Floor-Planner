@@ -55,6 +55,14 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
           <text wx:if="{{xiaokReminderError}}" class="xiaok-reminder-error">{{xiaokReminderError}}</text>
         </view>
 
+        <view wx:if="{{role === 'enterprise_admin' || role === 'designer'}}" class="role-construction-entry" bindtap="openConstruction" hover-class="card-pressed" aria-role="button" aria-label="{{role === 'enterprise_admin' ? '查看项目简报与问题清单' : '进入工地协作'}}">
+          <view class="role-construction-copy">
+            <text class="role-construction-title">{{role === 'enterprise_admin' ? '项目简报与问题清单' : '工地协作与需求核对'}}</text>
+            <text class="role-construction-detail">{{role === 'enterprise_admin' ? '项目进度 · 需介入事项 · 已修正清单' : '业主需求 · 点位方案 · 差异与现场记录'}}</text>
+          </view>
+          <view class="role-construction-cta"><text>{{role === 'enterprise_admin' ? '查看简报' : '进入工地'}}</text><view class="chevron"></view></view>
+        </view>
+
         <view class="enterprise-action-hub">
           <button wx:if="{{role === 'designer' || role === 'enterprise_admin'}}" class="assistant-handoff-entry" bindtap="openAssistantHandoffs">小K咨询接管</button>
           <text class="enterprise-action-hub-title">{{role === 'enterprise_admin' ? '获客与团队' : '获客与推广'}}</text>
