@@ -186,6 +186,20 @@ PG17.10 使用**独立恢复集群**验证：可创建/删除一次性恢复库�
 
 真实执行结果：**19 passed / 5 failed / 1 limited / 7 not_run（32 项）**，`overall=failed`。`development=failed`（开发库 9 条待迁移）；`isolated-pg17=not_run`（未配置 `XIAOK_ISOLATED_DATABASE_URL`）；`model=failed`（缺 deepseek-flash 映射）；`knowledge=failed`（缺百炼工作区/Key）；`worker=failed`（开发环境心跳 stale、队列积压）；`production=limited`（`.env.production` 指向 `localhost` 模板，仅识别未连接）。定向测试 16/16、TypeScript、定向 ESLint 通过。详见[开发环境统一体检](./xiaok-environment-check.md)。
 
+### I7.5.4 模型环境检查与真实运行优先级对齐（2026-11-16）
+
+> 基线：`codex/xiaok-integration` / `349a3d1a`。只读检查，未解密凭据、未调用 `getPlatformLlmOverrideRuntime`、未写入供应商投影、未产生模型调用费用、未修改 1454、未启动 Worker。
+
+修复 `xiaok:env:check` 与 `executePostgresText` 实际模型路由不一致的问题：
+
+- 同时只读检查 `platform_configs.default.llm_config` 与 `ai_provider_configs`。
+- 按实际优先级判定：平台 LLM 覆盖启用且可用时作为唯一 runtime；关闭或 `llm_config` 字段缺失默认关闭时，使用 `ai_provider_configs` 中启用、具备 `chat` 能力、存在 `chat.general` 映射的供应商（`-fallback` 最后，按 priority/createdAt 排序）；平台覆盖启用但缺少凭据时不回退，直接失败。
+- 分别输出平台配置读取、凭据存在/加密状态、最近匹配测试、百炼 endpoint、provider preset、`deepseek-v4.1-flash-1017`、供应商候选和最终路由；真实模型调用保持 `not_run`。
+
+真实执行结果：**23 passed / 6 failed / 1 limited / 8 not_run（38 项）**，`overall=failed`。`model=failed` 的实际原因是：平台 LLM 覆盖已启用，`providerKey=dashscope`、endpoint 为 `https://dashscope.aliyuncs.com/compatible-mode`、凭据与掩码存在、加密可用，但模型为 `qwen3.7-flash`，不是 `deepseek-v4.1-flash-1017`；最近测试为 `none`；`ai_provider_configs` 有 2 个候选但 `used=false`；最终路由为 `source=llm_settings,model=qwen3.7-flash`。修复必须在平台 LLM 设置中改模型，保持百炼供应商、endpoint 和 preset 不变。其余缺项仍为开发库 9 条待迁移、隔离库未配置、知识库工作区/Key 缺失、开发 Worker stale/队列积压、生产配置仅指向 localhost 模板。
+
+定向测试 20/20、TypeScript、定向 ESLint 通过。详见[开发环境统一体检](./xiaok-environment-check.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`

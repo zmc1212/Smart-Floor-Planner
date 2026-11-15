@@ -396,6 +396,13 @@ export function evaluateIsolatedIndependence(
 
 // ---------------------------------------------------------------- model
 
+export type ProviderCredentialSnapshot = {
+  legacyKey: boolean;
+  credentialsKeyType: 'string' | 'null' | 'missing' | 'other';
+  credentialsKeyLength: number | null;
+  masked: boolean;
+};
+
 export type ProviderSnapshot = {
   key: string;
   baseUrl: string;
@@ -403,73 +410,301 @@ export type ProviderSnapshot = {
   adapterType: string;
   hasKey: boolean;
   modelMappings: unknown;
+  capabilities?: string[];
+  adapterConfig?: unknown;
+  priority?: number;
+  createdAt?: string | null;
+  credential?: ProviderCredentialSnapshot;
 };
 
-function officialBailianOrigin(baseUrl: string): boolean {
+/** A deliberately redacted view of platform_configs.llm_config. Raw encrypted
+ * credentials and masks never enter this type. */
+export type PlatformLlmSnapshot = {
+  query: 'ok' | 'missing_migration' | 'failed';
+  error?: string;
+  rowPresent: boolean;
+  enabled: boolean;
+  providerKey: string;
+  baseUrl: string;
+  model: string;
+  rawBaseUrlValid: boolean;
+  rawModelPresent: boolean;
+  apiKeyField: 'missing' | 'empty' | 'string' | 'invalid';
+  hasApiKey: boolean;
+  apiKeyMasked: boolean;
+  credentialFingerprint: string | null;
+  lastTestStatus: string | null;
+  lastTestBaseUrl: string | null;
+  lastTestModel: string | null;
+  lastTestAt: string | null;
+  lastTestCredentialFingerprint: string | null;
+  lastTestApiKeyMasked: string | null;
+};
+
+const platformOverrideProviderKeys = ['llm-settings-override', 'vlm-settings-override'];
+const expectedPlatformProviderKeys = ['dashscope', 'bailian'];
+
+function runtimeBaseUrl(value: string): string | null {
   try {
-    const url = new URL(baseUrl);
-    return url.protocol === 'https:'
-      && ['dashscope.aliyuncs.com', 'dashscope-intl.aliyuncs.com'].includes(url.hostname)
-      && /^\/compatible-mode(?:\/v1)?\/?$/.test(url.pathname)
-      && !url.username && !url.password && !url.search && !url.hash
-      && (!url.port || url.port === '443');
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+    const path = url.pathname.replace(/\/+$/, '').replace(/\/v1$/i, '');
+    return `${url.origin}${path}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Provider rows are shown without embedded credentials, query or fragment. */
+function displayBaseUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}${url.pathname}`;
+  } catch {
+    return 'invalid';
+  }
+}
+
+function officialBailianRuntime(baseUrl: string): boolean {
+  const runtime = runtimeBaseUrl(baseUrl);
+  if (!runtime) return false;
+  const url = new URL(runtime);
+  return url.protocol === 'https:'
+    && ['dashscope.aliyuncs.com', 'dashscope-intl.aliyuncs.com'].includes(url.hostname)
+    && url.pathname === '/compatible-mode'
+    && !url.search && !url.hash && (!url.port || url.port === '443');
+}
+
+function isLocalBaseUrl(baseUrl: string): boolean {
+  try {
+    return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(new URL(baseUrl).hostname);
   } catch {
     return false;
   }
 }
 
-function collectModelNames(value: unknown, output: string[] = []): string[] {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed) output.push(trimmed);
-    return output;
-  }
-  if (Array.isArray(value)) {
-    value.forEach(entry => collectModelNames(entry, output));
-    return output;
-  }
-  if (value && typeof value === 'object') {
-    Object.values(value as Record<string, unknown>).forEach(entry => collectModelNames(entry, output));
-  }
-  return output;
+function chatGeneralModel(value: unknown): string | null {
+  const chat = value && typeof value === 'object' ? (value as Record<string, unknown>).chat : null;
+  const general = chat && typeof chat === 'object' ? (chat as Record<string, unknown>).general : null;
+  return typeof general === 'string' && general.trim() ? general.trim() : null;
 }
 
-export function evaluateModelConfiguration(
-  providers: ProviderSnapshot[] | null, error?: string,
-): EnvironmentCheckItem[] {
+/** Mirrors listProviderRuntimes: enabled chat providers with a chat.general
+ * mapping, non-fallback first, then priority and creation time. */
+export function providerChatCandidates(providers: ProviderSnapshot[]): ProviderSnapshot[] {
+  return providers
+    .filter(provider => provider.enabled)
+    .filter(provider => !platformOverrideProviderKeys.includes(provider.key))
+    .filter(provider => !provider.capabilities || provider.capabilities.includes('chat'))
+    .filter(provider => Boolean(chatGeneralModel(provider.modelMappings)))
+    .sort((left, right) => {
+      const leftFallback = left.key.endsWith('-fallback') ? 1 : 0;
+      const rightFallback = right.key.endsWith('-fallback') ? 1 : 0;
+      if (leftFallback !== rightFallback) return leftFallback - rightFallback;
+      const leftPriority = left.priority ?? 100;
+      const rightPriority = right.priority ?? 100;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      return (Date.parse(left.createdAt ?? '') || 0) - (Date.parse(right.createdAt ?? '') || 0);
+    });
+}
+
+function providerCredentialIssue(provider: ProviderSnapshot): string | null {
+  if (!provider.hasKey) return '缺少运行时凭据';
+  const credential = provider.credential;
+  if (!credential) return null;
+  if (credential.credentialsKeyType === 'other') return 'credentials_encrypted.apiKey 类型异常';
+  if (credential.credentialsKeyType === 'string' && (credential.credentialsKeyLength ?? 0) === 0 && credential.legacyKey) {
+    return '凭据投影为空但旧字段仍存在';
+  }
+  return null;
+}
+
+function platformTestState(platform: PlatformLlmSnapshot): 'none' | 'stale' | 'legacy' | 'matched' {
+  if (!platform.lastTestStatus) return 'none';
+  if (platform.lastTestBaseUrl !== platform.baseUrl || platform.lastTestModel !== platform.model) return 'stale';
+  if (platform.lastTestCredentialFingerprint) {
+    return platform.lastTestCredentialFingerprint === platform.credentialFingerprint ? 'matched' : 'stale';
+  }
+  return 'legacy';
+}
+
+function platformUnavailableReason(platform: PlatformLlmSnapshot, credentialReady: boolean): string | null {
+  if (platform.query === 'failed') return '平台 LLM 覆盖配置读取失败。';
+  if (!platform.model) return '平台 LLM 覆盖缺少模型名称。';
+  if (isLocalBaseUrl(platform.baseUrl)) return null;
+  if (!platform.hasApiKey) return '平台 LLM 覆盖已启用但未保存 API Key。';
+  if (!credentialReady) return '部署环境缺少可用的凭证加密密钥。';
+  return null;
+}
+
+export function evaluateModelConfiguration(input: {
+  platform: PlatformLlmSnapshot;
+  providers: ProviderSnapshot[] | null;
+  providerError?: string;
+  credentialReady: boolean;
+}): EnvironmentCheckItem[] {
+  const { platform, providers, credentialReady } = input;
   const live = item('model.live_probe', 'model', '真实模型调用', 'not_run', 'not_run',
     '如需真实模型验收，由模型验收脚本在明确授权后单独执行。',
-    'cd admin; npm run xiaok:env:check',
+    verifyCommand,
     '为避免产生模型调用费用，本命令不发起真实推理。');
-  if (!providers) {
-    return [
-      item('model.provider', 'model', '百炼供应商', 'not_run', 'not_run',
-        '先恢复数据库连接，再读取 ai_provider_configs。', verifyCommand,
-        error ? `供应商配置不可读：${error}` : undefined),
-      item('model.deepseek', 'model', 'deepseek-flash 配置', 'not_run', 'not_run',
-        '先恢复数据库连接。', verifyCommand),
-      live,
-    ];
+  const platformActive = platform.query === 'ok' && platform.enabled;
+  const platformItems: EnvironmentCheckItem[] = [];
+
+  if (platform.query === 'failed') {
+    platformItems.push(item('model.platform_config', 'model', '平台 LLM 覆盖配置', 'failed', 'read_failed',
+      '检查 platform_configs.default.llm_config 的读取权限与结构；不要调用 getPlatformLlmOverrideRuntime 做诊断。',
+      verifyCommand,
+      platform.error ? `读取失败：${platform.error}` : '读取失败。'));
+  } else if (platform.query === 'missing_migration') {
+    platformItems.push(item('model.platform_config', 'model', '平台 LLM 覆盖配置', 'limited', 'missing_migration',
+      '按部署流程执行已授权迁移后再复验；本命令不会自动迁移。',
+      verifyCommand,
+      'llm_config 字段缺失；运行时按默认关闭处理并使用 ai_provider_configs。'));
+  } else {
+    platformItems.push(item('model.platform_config', 'model', '平台 LLM 覆盖配置', 'passed',
+      `row=${platform.rowPresent ? 'present' : 'defaults'},enabled=${platform.enabled},providerKey=${platform.providerKey},model=${platform.model},baseUrl=${platform.baseUrl}`,
+      '无需处理；本命令只读配置，不调用 getPlatformLlmOverrideRuntime，也不会写入供应商投影。',
+      verifyCommand));
   }
-  const bailian = providers.filter(provider => officialBailianOrigin(provider.baseUrl));
-  const enabled = bailian.filter(provider => provider.enabled && provider.hasKey);
-  const models = [...new Set(enabled.flatMap(provider => collectModelNames(provider.modelMappings)))];
-  const deepseek = models.find(model => /deepseek/i.test(model)) ?? null;
-  return [
-    item('model.provider', 'model', '百炼供应商', enabled.length ? 'passed' : 'failed',
-      `bailianProviders=${bailian.length},enabledWithKey=${enabled.length}`,
-      '在平台 AI 供应商配置中启用官方百炼（dashscope）兼容模式并保存 API Key；不要更换模型供应商。',
+
+  const platformDisabledReason = platform.query === 'failed'
+    ? '平台配置不可读。'
+    : platform.query === 'missing_migration'
+      ? 'llm_config 字段缺失，运行时使用 ai_provider_configs。'
+      : !platform.enabled ? '平台 LLM 覆盖关闭，运行时使用 ai_provider_configs。' : undefined;
+
+  if (!platformActive) {
+    platformItems.push(
+      item('model.platform_credentials', 'model', '平台覆盖凭据', 'not_run',
+        platform.query === 'failed' ? 'not_run' : 'disabled',
+        '启用平台覆盖后配置凭据；不要覆盖现有 .env。', verifyCommand,
+        platformDisabledReason),
+      item('model.platform_endpoint', 'model', '百炼 endpoint', 'not_run', 'not_run',
+        '启用平台覆盖后复验。', verifyCommand, platformDisabledReason),
+      item('model.platform_preset', 'model', '百炼 provider preset', 'not_run', 'not_run',
+        '启用平台覆盖后复验。', verifyCommand, platformDisabledReason),
+      item('model.platform_model', 'model', 'deepseek-flash 模型', 'not_run', 'not_run',
+        '启用平台覆盖后复验。', verifyCommand, platformDisabledReason),
+      item('model.platform_last_test', 'model', '平台配置最近测试', 'not_run', 'not_run',
+        '启用平台覆盖后复验。', verifyCommand, platformDisabledReason),
+    );
+  } else {
+    const local = isLocalBaseUrl(platform.baseUrl);
+    const credentialIssues = [
+      ...(platform.apiKeyField === 'invalid' ? ['apiKeyEncrypted 字段类型异常'] : []),
+      ...(platform.apiKeyField === 'empty' ? ['apiKeyEncrypted 字段为空'] : []),
+      ...(!platform.hasApiKey && !local ? ['未保存 API Key'] : []),
+      ...(!credentialReady && !local ? ['缺少凭证加密密钥'] : []),
+      ...(platform.hasApiKey && !platform.apiKeyMasked ? ['缺少凭据掩码字段'] : []),
+    ];
+    platformItems.push(item('model.platform_credentials', 'model', '平台覆盖凭据',
+      credentialIssues.length && (platform.apiKeyField === 'invalid' || !platform.hasApiKey || !credentialReady) ? 'failed'
+        : credentialIssues.length ? 'limited' : 'passed',
+      `encrypted=${platform.hasApiKey ? 'present' : 'missing'},masked=${platform.apiKeyMasked ? 'present' : 'missing'},encryption=${credentialReady ? 'ready' : 'missing'},lastTest=${platform.lastTestStatus ?? 'none'}`,
+      '在平台 LLM 设置中保存当前服务商与接口地址的 API Key；不要覆盖现有 .env，也不要更换供应商。',
       verifyCommand,
-      enabled.length ? undefined : bailian.length
-        ? '百炼供应商存在，但未启用或未保存 API Key。'
-        : '未找到官方百炼兼容模式供应商。'),
-    item('model.deepseek', 'model', 'deepseek-flash 配置', deepseek ? 'passed' : 'failed',
-      `configuredModels=${models.slice(0, 10).join(',') || 'none'}`,
-      `在百炼供应商模型映射或企业 Agent 配置中配置 ${specialistModel.model}；保持百炼供应商不变。`,
+      credentialIssues.length ? credentialIssues.join('；') : undefined));
+
+    const officialEndpoint = platform.rawBaseUrlValid && officialBailianRuntime(platform.baseUrl);
+    const runtime = runtimeBaseUrl(platform.baseUrl);
+    platformItems.push(item('model.platform_endpoint', 'model', '百炼 endpoint', officialEndpoint ? 'passed' : 'failed',
+      `runtimeBaseUrl=${runtime ?? 'invalid'},rawBaseUrlValid=${platform.rawBaseUrlValid}`,
+      '在平台 LLM 设置中把 Base URL 设为 https://dashscope.aliyuncs.com/compatible-mode；不要更换供应商。',
       verifyCommand,
-      deepseek ? undefined : `未找到 deepseek-flash 模型映射或企业绑定（期望 ${specialistModel.model}）。`),
-    live,
-  ];
+      officialEndpoint ? undefined : platform.rawBaseUrlValid
+        ? '当前 endpoint 不是官方百炼 compatible-mode。'
+        : 'Base URL 无效或为空，运行时回退到默认地址，不是百炼 endpoint。'));
+
+    const presetOk = expectedPlatformProviderKeys.includes(platform.providerKey);
+    platformItems.push(item('model.platform_preset', 'model', '百炼 provider preset', presetOk ? 'passed' : 'failed',
+      `providerKey=${platform.providerKey}`,
+      '在平台 LLM 设置中使用 dashscope（或 bailian）provider preset；不要更换供应商。',
+      verifyCommand,
+      presetOk ? undefined : 'provider preset 不是 dashscope/bailian。'));
+
+    const modelOk = platform.model === specialistModel.model;
+    platformItems.push(item('model.platform_model', 'model', 'deepseek-flash 模型', modelOk ? 'passed' : 'failed',
+      `model=${platform.model || 'missing'},expected=${specialistModel.model}`,
+      `在平台 LLM 设置中把模型设为 ${specialistModel.model}；保持百炼供应商不变。`,
+      verifyCommand,
+      modelOk ? undefined : '平台覆盖模型不是 deepseek-v4.1-flash-1017。'));
+
+    const testState = platformTestState(platform);
+    platformItems.push(item('model.platform_last_test', 'model', '平台配置最近测试',
+      testState === 'matched' ? (platform.lastTestStatus === '成功' ? 'passed' : 'failed')
+        : testState === 'legacy' ? 'limited' : 'not_run',
+      `state=${testState},status=${platform.lastTestStatus ?? 'none'},at=${platform.lastTestAt ?? 'none'}`,
+      '在平台 LLM 设置中重新测试连接；本命令不会发起真实调用。',
+      verifyCommand,
+      testState === 'none' ? '尚无匹配当前配置的连接测试证据；真实调用 not_run。'
+        : testState === 'stale' ? '最近测试不匹配当前 endpoint/模型/凭据。'
+        : testState === 'legacy' ? '旧测试记录缺少凭据指纹，无法确认仍对应当前凭据。'
+        : platform.lastTestStatus === '成功' ? undefined : '最近连接测试失败。'));
+  }
+
+  const candidates = providers ? providerChatCandidates(providers) : null;
+  const first = candidates?.[0] ?? null;
+  const providersUsed = platform.query === 'missing_migration'
+    || (platform.query === 'ok' && !platform.enabled);
+  const providerIssue = first ? providerCredentialIssue(first) : null;
+  const providerStatus = !providers ? 'not_run'
+    : !providersUsed ? 'passed'
+    : !first ? 'failed'
+    : providerIssue || !credentialReady ? 'failed' : 'passed';
+  platformItems.push(item('model.provider_config', 'model', 'ai_provider_configs 路由',
+    providerStatus,
+    !providers ? 'not_run'
+      : `used=${providersUsed},candidates=${candidates?.length ?? 0},first=${first?.key ?? 'none'},model=${first ? chatGeneralModel(first.modelMappings) ?? 'none' : 'none'},baseUrl=${first ? displayBaseUrl(first.baseUrl) : 'none'},credentials=${first?.hasKey ? 'present' : 'missing'}`,
+    providersUsed
+      ? '在平台 AI 供应商配置中启用支持 chat.general 的供应商并保存凭据；不要擅自更换供应商。'
+      : '平台覆盖启用时，供应商配置不参与最终路由；无需处理。',
+    verifyCommand,
+    !providers ? (input.providerError ? `供应商配置不可读：${input.providerError}` : '供应商配置不可读。')
+      : !providersUsed ? undefined
+      : !first ? '没有启用的 chat.general 供应商。'
+      : providerIssue ? providerIssue
+      : !credentialReady ? '部署环境缺少可用的凭证加密密钥。' : undefined));
+
+  let finalStatus: EnvironmentCheckStatus = 'failed';
+  let finalActual = 'source=unavailable';
+  let finalReason: string | undefined = '没有可用的模型路由。';
+  if (platform.query === 'failed') {
+    finalReason = '平台 LLM 覆盖配置读取失败，运行时无法解析最终模型。';
+  } else if (platformActive) {
+    const unavailable = platformUnavailableReason(platform, credentialReady);
+    const runtime = runtimeBaseUrl(platform.baseUrl);
+    const targetOk = platform.rawBaseUrlValid && officialBailianRuntime(platform.baseUrl)
+      && expectedPlatformProviderKeys.includes(platform.providerKey)
+      && platform.model === specialistModel.model;
+    finalActual = `source=llm_settings,providerKey=${platform.providerKey},baseUrl=${runtime ?? 'invalid'},model=${platform.model || 'none'}`;
+    if (unavailable) {
+      finalReason = unavailable;
+    } else if (!targetOk) {
+      finalReason = '平台覆盖的最终模型不是官方百炼 compatible-mode + dashscope/bailian + deepseek-v4.1-flash-1017。';
+    } else {
+      finalStatus = 'passed';
+      finalReason = undefined;
+    }
+  } else if (providersUsed) {
+    if (!providers) {
+      finalReason = input.providerError ? `供应商配置不可读：${input.providerError}` : '供应商配置不可读。';
+    } else if (!first) {
+      finalReason = '没有启用的 chat.general 供应商。';
+    } else {
+      const model = chatGeneralModel(first.modelMappings);
+      finalActual = `source=ai_providers,providerKey=${first.key},baseUrl=${displayBaseUrl(first.baseUrl)},model=${model ?? 'none'}`;
+      if (!first.hasKey) finalReason = '最终供应商缺少运行时凭据。';
+      else if (!credentialReady) finalReason = '部署环境缺少可用的凭证加密密钥。';
+      else if (providerIssue) finalReason = providerIssue;
+      else { finalStatus = 'passed'; finalReason = undefined; }
+    }
+  }
+  platformItems.push(item('model.final_runtime', 'model', '最终模型路由', finalStatus, finalActual,
+    '按实际执行优先级修复：平台覆盖启用且可用时优先；否则使用 ai_provider_configs。不要擅自更换供应商。',
+    verifyCommand, finalReason));
+
+  return [...platformItems, live];
 }
 
 // ---------------------------------------------------------------- embedding + knowledge
@@ -776,6 +1011,8 @@ export type EnvironmentReportInput = {
   migrationInputs: MigrationInputsSnapshot | null;
   providers: ProviderSnapshot[] | null;
   providerError?: string;
+  platformLlm: PlatformLlmSnapshot;
+  credentialReady: boolean;
   knowledgeTables: KnowledgeTablesSnapshot | null;
   knowledgeError?: string;
   heartbeat: WorkerHeartbeat;
@@ -802,7 +1039,10 @@ export function buildEnvironmentReport(input: EnvironmentReportInput): Environme
     ...evaluateDatabase(input.developmentDatabase, developmentDatabaseScope, input.migrationInputs),
     ...evaluateDatabase(input.isolatedDatabase, isolatedDatabaseScope, input.migrationInputs),
     evaluateIsolatedIndependence(input.developmentDatabase, input.isolatedDatabase),
-    ...evaluateModelConfiguration(input.providers, input.providerError),
+    ...evaluateModelConfiguration({
+      platform: input.platformLlm, providers: input.providers,
+      providerError: input.providerError, credentialReady: input.credentialReady,
+    }),
     ...evaluateEmbeddingConfiguration(input.env),
     ...evaluateKnowledgeConfiguration({ env: input.env, tables: input.knowledgeTables, error: input.knowledgeError }),
     ...evaluateWorkerConfiguration({

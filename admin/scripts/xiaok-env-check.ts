@@ -11,6 +11,7 @@
  * level passed; 2 means failed/gated; 1 means an execution error.
  */
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFile, access, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,13 +19,15 @@ import { parseArgs, promisify } from 'node:util';
 import { loadEnvConfig } from '@next/env';
 import { Client } from 'pg';
 import { readWorkerHeartbeat } from '@/lib/assistant/operations';
+import {
+  DEFAULT_PLATFORM_LLM_CONFIG, isLlmCredentialEncryptionReady, normalizeLlmBaseUrl, normalizeStoredConfig,
+} from '@/lib/platform-llm-config';
 import { loadIntegrationMigrationInputs } from './postgres-integration-migrations.mjs';
 import {
   buildEnvironmentReport, environmentLevels, redactSecrets, requiredDependencies, unmetRequiredLevels,
   type DatabaseEvidence, type DatabaseIdentitySnapshot, type EnvironmentCheckReport, type EnvironmentLevel,
-  type KnowledgeTablesSnapshot,
-  type MigrationInputsSnapshot, type ProviderSnapshot, type QueueSnapshot, type RlsTableSnapshot,
-  type RuntimeSnapshot,
+  type KnowledgeTablesSnapshot, type MigrationInputsSnapshot, type PlatformLlmSnapshot, type ProviderCredentialSnapshot,
+  type ProviderSnapshot, type QueueSnapshot, type RlsTableSnapshot, type RuntimeSnapshot,
 } from './xiaok-env-check-lib';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -33,6 +36,7 @@ const run = promisify(execFile);
 type DatabaseProbe = DatabaseEvidence & {
   providers: ProviderSnapshot[] | null;
   providerError?: string;
+  platformLlm: PlatformLlmSnapshot;
   knowledgeTables: KnowledgeTablesSnapshot | null;
   knowledgeError?: string;
 };
@@ -112,12 +116,72 @@ function connectionFailure(error: unknown) {
   return redactSecrets(`${code ? `${String(code)}: ` : ''}${message.split(/\r?\n/)[0].slice(0, 200)}`);
 }
 
+function defaultPlatformLlm(query: 'missing_migration' | 'failed', error?: string): PlatformLlmSnapshot {
+  return {
+    query, ...(error ? { error } : {}), rowPresent: false, enabled: false,
+    providerKey: DEFAULT_PLATFORM_LLM_CONFIG.providerKey,
+    baseUrl: DEFAULT_PLATFORM_LLM_CONFIG.baseUrl,
+    model: DEFAULT_PLATFORM_LLM_CONFIG.model,
+    rawBaseUrlValid: false, rawModelPresent: false, apiKeyField: 'missing',
+    hasApiKey: false, apiKeyMasked: false, credentialFingerprint: null,
+    lastTestStatus: null, lastTestBaseUrl: null, lastTestModel: null, lastTestAt: null,
+    lastTestCredentialFingerprint: null, lastTestApiKeyMasked: null,
+  };
+}
+
+/** Read platform_configs.llm_config without calling getPlatformLlmOverrideRuntime,
+ * which can upsert the managed provider projection. No credential value leaves
+ * this function other than a SHA-256 fingerprint used for test matching. */
+async function readPlatformLlm(client: Client): Promise<PlatformLlmSnapshot> {
+  await client.query('savepoint xiaok_env_platform_llm');
+  try {
+    const { rows } = await client.query<{ llm_config: unknown }>(
+      "select llm_config from app.platform_configs where key='default'");
+    const raw = rows[0]?.llm_config ?? null;
+    const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const stored = normalizeStoredConfig(raw as Parameters<typeof normalizeStoredConfig>[0]);
+    const rawBaseUrl = typeof record.baseUrl === 'string' ? record.baseUrl.trim() : '';
+    let rawBaseUrlValid = false;
+    if (rawBaseUrl) {
+      try { normalizeLlmBaseUrl(rawBaseUrl); rawBaseUrlValid = true; } catch { rawBaseUrlValid = false; }
+    }
+    const rawKey = record.apiKeyEncrypted;
+    const apiKeyField = rawKey === undefined || rawKey === null
+      ? 'missing' as const
+      : typeof rawKey === 'string' ? (rawKey.trim() ? 'string' as const : 'empty' as const) : 'invalid' as const;
+    const hasApiKey = Boolean(stored.apiKeyEncrypted);
+    return {
+      query: 'ok', rowPresent: rows.length > 0 && raw !== null,
+      enabled: stored.enabled, providerKey: stored.providerKey, baseUrl: stored.baseUrl, model: stored.model,
+      rawBaseUrlValid,
+      rawModelPresent: typeof record.model === 'string' && Boolean(record.model.trim()),
+      apiKeyField, hasApiKey, apiKeyMasked: Boolean(stored.apiKeyMasked),
+      credentialFingerprint: hasApiKey ? createHash('sha256').update(stored.apiKeyEncrypted).digest('hex') : null,
+      lastTestStatus: stored.lastTestStatus, lastTestBaseUrl: stored.lastTestBaseUrl,
+      lastTestModel: stored.lastTestModel, lastTestAt: stored.lastTestAt,
+      lastTestCredentialFingerprint: stored.lastTestCredentialFingerprint,
+      lastTestApiKeyMasked: stored.lastTestApiKeyMasked,
+    };
+  } catch (error) {
+    await client.query('rollback to savepoint xiaok_env_platform_llm').catch(() => undefined);
+    const code = (error as { code?: unknown })?.code;
+    const message = error instanceof Error ? error.message : String(error);
+    const missingMigration = code === '42703'
+      || (message.toLowerCase().includes('llm_config') && message.toLowerCase().includes('column'));
+    return defaultPlatformLlm(missingMigration ? 'missing_migration' : 'failed',
+      redactSecrets(`${code ? `${String(code)}: ` : ''}${message.split(/\r?\n/)[0].slice(0, 200)}`));
+  } finally {
+    await client.query('release savepoint xiaok_env_platform_llm').catch(() => undefined);
+  }
+}
+
 async function probeDatabase(
   databaseUrl: string | undefined,
   options: { includeQueue: boolean },
 ): Promise<DatabaseProbe> {
   const empty: DatabaseProbe = {
-    configured: false, identity: null, rls: null, ledgerRows: null, providers: null, knowledgeTables: null,
+    configured: false, identity: null, rls: null, ledgerRows: null, providers: null,
+    platformLlm: defaultPlatformLlm('failed'), knowledgeTables: null,
   };
   if (!databaseUrl?.trim()) return empty;
   const client = new Client({
@@ -158,15 +222,40 @@ async function probeDatabase(
         'select id,hash,created_at from app.__drizzle_migrations order by id');
       return rows;
     });
+    const platformLlm = await readPlatformLlm(client);
     const providers = await optionalRead(client, async () => {
       const { rows } = await client.query<{
-        key: string; base_url: string; enabled: boolean; adapter_type: string; has_key: boolean; model_mappings: unknown;
-      }>(`select key,base_url,enabled,adapter_type,(api_key_encrypted<>'') as has_key,model_mappings
-        from app.ai_provider_configs order by id`);
-      return rows.map(row => ({
-        key: row.key, baseUrl: row.base_url, enabled: Boolean(row.enabled),
-        adapterType: row.adapter_type, hasKey: Boolean(row.has_key), modelMappings: row.model_mappings,
-      }));
+        key: string; base_url: string; enabled: boolean; adapter_type: string;
+        capabilities: string[] | null; adapter_config: unknown; model_mappings: unknown;
+        priority: number; created_at: string | Date | null;
+        has_legacy_key: boolean; credentials_key_type: string | null;
+        credentials_key_length: number | null; masked: boolean;
+      }>(`select key,base_url,enabled,adapter_type,capabilities,adapter_config,model_mappings,
+          priority,created_at,
+          (api_key_encrypted<>'') as has_legacy_key,
+          jsonb_typeof(credentials_encrypted->'apiKey') as credentials_key_type,
+          length(credentials_encrypted->>'apiKey') as credentials_key_length,
+          (api_key_masked<>'') as masked
+        from app.ai_provider_configs order by priority,created_at`);
+      return rows.map(row => {
+        const credentialsKeyType: ProviderCredentialSnapshot['credentialsKeyType'] =
+          row.credentials_key_type === 'string' ? 'string'
+            : row.credentials_key_type === 'null' ? 'null'
+              : row.credentials_key_type === null ? 'missing' : 'other';
+        const credentialsKeyLength = row.credentials_key_length === null ? null : Number(row.credentials_key_length);
+        return {
+          key: row.key, baseUrl: row.base_url, enabled: Boolean(row.enabled),
+          adapterType: row.adapter_type, modelMappings: row.model_mappings,
+          capabilities: Array.isArray(row.capabilities) ? row.capabilities : undefined,
+          adapterConfig: row.adapter_config, priority: Number(row.priority),
+          createdAt: row.created_at ? String(row.created_at) : null,
+          hasKey: credentialsKeyType === 'string' ? (credentialsKeyLength ?? 0) > 0 : Boolean(row.has_legacy_key),
+          credential: {
+            legacyKey: Boolean(row.has_legacy_key), credentialsKeyType, credentialsKeyLength,
+            masked: Boolean(row.masked),
+          },
+        };
+      });
     });
     const knowledgeTables = await optionalRead(client, async () => {
       const { rows: [row] } = await client.query<KnowledgeTablesSnapshot>(`
@@ -202,6 +291,7 @@ async function probeDatabase(
       ...(ledgerRows === null ? { ledgerError: '迁移账本表不可读或不存在' } : {}),
       providers,
       ...(providers === null ? { providerError: 'ai_provider_configs 不可读或不存在' } : {}),
+      platformLlm,
       knowledgeTables,
       ...(knowledgeTables === null ? { knowledgeError: '知识库表不可读或不存在' } : {}),
       ...(options.includeQueue ? { queue } : {}),
@@ -264,6 +354,8 @@ export async function runEnvironmentCheck(options: { now?: Date } = {}): Promise
     migrationInputs,
     providers: development.providers,
     providerError: development.providerError,
+    platformLlm: development.platformLlm,
+    credentialReady: isLlmCredentialEncryptionReady(),
     knowledgeTables: development.knowledgeTables,
     knowledgeError: development.knowledgeError,
     heartbeat: await readWorkerHeartbeat(process.env),

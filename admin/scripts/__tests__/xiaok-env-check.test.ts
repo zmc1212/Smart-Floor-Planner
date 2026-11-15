@@ -8,8 +8,41 @@ import {
   isolatedDatabaseScope, parsePostgresTarget, redactSecrets, requiredProductionVariables, summarizeEnvironment,
   unmetRequiredLevels,
   type DatabaseEvidence, type DatabaseIdentitySnapshot, type EnvironmentReportInput, type MigrationInputsSnapshot,
-  type QueueSnapshot, type RlsTableSnapshot, type RuntimeSnapshot,
+  type PlatformLlmSnapshot, type ProviderSnapshot, type QueueSnapshot, type RlsTableSnapshot, type RuntimeSnapshot,
 } from '../xiaok-env-check-lib';
+
+const expectedPlatformModel = 'deepseek-v4.1-flash-1017';
+
+const healthyPlatform: PlatformLlmSnapshot = {
+  query: 'ok', rowPresent: true, enabled: true, providerKey: 'dashscope',
+  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  model: expectedPlatformModel, rawBaseUrlValid: true, rawModelPresent: true,
+  apiKeyField: 'string', hasApiKey: true, apiKeyMasked: true,
+  credentialFingerprint: 'fingerprint-current',
+  lastTestStatus: '成功', lastTestBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  lastTestModel: expectedPlatformModel, lastTestAt: '2026-11-16T00:00:00.000Z',
+  lastTestCredentialFingerprint: 'fingerprint-current', lastTestApiKeyMasked: 'masked-value',
+};
+
+const directProvider: ProviderSnapshot = {
+  key: 'bailian-direct', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode', enabled: true,
+  adapterType: 'openai_compatible', hasKey: true, capabilities: ['chat'],
+  modelMappings: { chat: { general: expectedPlatformModel } }, priority: 100,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  credential: { legacyKey: true, credentialsKeyType: 'string', credentialsKeyLength: 120, masked: true },
+};
+
+function platformLlm(overrides: Partial<PlatformLlmSnapshot> = {}): PlatformLlmSnapshot {
+  return { ...healthyPlatform, ...overrides };
+}
+
+function modelItems(
+  platform: PlatformLlmSnapshot,
+  providers: ProviderSnapshot[] | null = [directProvider],
+  credentialReady = true,
+) {
+  return evaluateModelConfiguration({ platform, providers, credentialReady });
+}
 
 const healthyRuntime: RuntimeSnapshot = {
   nodeVersion: 'v24.9.0',
@@ -77,11 +110,9 @@ const healthyReportInput: EnvironmentReportInput = {
     identity: { ...healthyIdentity, database: 'smart_floor_planner_isolated', port: 55432 },
   }),
   migrationInputs,
-  providers: [{
-    key: 'bailian', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode', enabled: true,
-    adapterType: 'openai_compatible', hasKey: true,
-    modelMappings: { chat: { general: 'deepseek-v4.1-flash-1017' } },
-  }],
+  providers: [directProvider],
+  platformLlm: healthyPlatform,
+  credentialReady: true,
   knowledgeTables: { documents: true, chunks: true, vector: true },
   heartbeat: healthyHeartbeat,
 };
@@ -199,21 +230,77 @@ test('isolated independence prevents reusing the development database', () => {
   assert.equal(missing.status, 'not_run');
 });
 
-test('model check requires the official Bailian origin and deepseek-flash mapping', () => {
-  const provider = {
-    key: 'bailian', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode', enabled: true,
-    adapterType: 'openai_compatible', hasKey: true,
-    modelMappings: { chat: { general: 'deepseek-v4.1-flash-1017' } },
-  };
-  assert.equal(evaluateModelConfiguration([provider]).find(entry => entry.id === 'model.deepseek')?.status, 'passed');
-  const qwen = evaluateModelConfiguration([{ ...provider, modelMappings: { chat: { general: 'qwen3.7-flash' } } }]);
-  assert.equal(qwen.find(entry => entry.id === 'model.deepseek')?.status, 'failed');
-  assert.match(qwen.find(entry => entry.id === 'model.deepseek')?.reason ?? '', /deepseek/);
-  const otherSupplier = evaluateModelConfiguration([{ ...provider, baseUrl: 'https://api.deepseek.com/v1' }]);
-  assert.equal(otherSupplier.find(entry => entry.id === 'model.provider')?.status, 'failed');
-  const disabled = evaluateModelConfiguration([{ ...provider, enabled: false }]);
-  assert.equal(disabled.find(entry => entry.id === 'model.provider')?.status, 'failed');
-  assert.equal(evaluateModelConfiguration([provider]).find(entry => entry.id === 'model.live_probe')?.status, 'not_run');
+test('platform LLM override wins when enabled and correctly configured', () => {
+  const items = modelItems(platformLlm());
+  for (const id of [
+    'model.platform_config', 'model.platform_credentials', 'model.platform_endpoint',
+    'model.platform_preset', 'model.platform_model', 'model.platform_last_test',
+    'model.provider_config', 'model.final_runtime',
+  ]) {
+    assert.equal(items.find(entry => entry.id === id)?.status, 'passed', id);
+  }
+  assert.match(items.find(entry => entry.id === 'model.final_runtime')?.actual ?? '', /source=llm_settings/);
+  assert.equal(items.find(entry => entry.id === 'model.live_probe')?.status, 'not_run');
+});
+
+test('platform override disabled uses ai_provider_configs priority', () => {
+  const items = modelItems(platformLlm({
+    enabled: false, apiKeyField: 'missing', hasApiKey: false, apiKeyMasked: false,
+    credentialFingerprint: null, lastTestStatus: null, lastTestBaseUrl: null, lastTestModel: null,
+    lastTestAt: null, lastTestCredentialFingerprint: null, lastTestApiKeyMasked: null,
+  }));
+  assert.equal(items.find(entry => entry.id === 'model.platform_config')?.status, 'passed');
+  assert.equal(items.find(entry => entry.id === 'model.platform_endpoint')?.status, 'not_run');
+  const provider = items.find(entry => entry.id === 'model.provider_config');
+  assert.equal(provider?.status, 'passed');
+  assert.match(provider?.actual ?? '', /used=true/);
+  const final = items.find(entry => entry.id === 'model.final_runtime');
+  assert.equal(final?.status, 'passed');
+  assert.match(final?.actual ?? '', /source=ai_providers,providerKey=bailian-direct/);
+});
+
+test('platform override missing credentials fails without falling back', () => {
+  const items = modelItems(platformLlm({
+    hasApiKey: false, apiKeyField: 'empty', apiKeyMasked: false, credentialFingerprint: null,
+  }));
+  assert.equal(items.find(entry => entry.id === 'model.platform_credentials')?.status, 'failed');
+  const final = items.find(entry => entry.id === 'model.final_runtime');
+  assert.equal(final?.status, 'failed');
+  assert.match(final?.reason ?? '', /API Key/);
+  assert.match(items.find(entry => entry.id === 'model.provider_config')?.actual ?? '', /used=false/);
+});
+
+test('platform override wrong model or endpoint fails the final route', () => {
+  const wrongModel = modelItems(platformLlm({
+    model: 'qwen3.7-flash', lastTestStatus: null, lastTestBaseUrl: null, lastTestModel: null,
+    lastTestAt: null, lastTestCredentialFingerprint: null, lastTestApiKeyMasked: null,
+  }));
+  assert.equal(wrongModel.find(entry => entry.id === 'model.platform_model')?.status, 'failed');
+  assert.equal(wrongModel.find(entry => entry.id === 'model.final_runtime')?.status, 'failed');
+  const wrongEndpoint = modelItems(platformLlm({
+    baseUrl: 'https://api.deepseek.com/v1', lastTestStatus: null, lastTestBaseUrl: null,
+    lastTestModel: null, lastTestAt: null, lastTestCredentialFingerprint: null, lastTestApiKeyMasked: null,
+  }));
+  assert.equal(wrongEndpoint.find(entry => entry.id === 'model.platform_endpoint')?.status, 'failed');
+  assert.equal(wrongEndpoint.find(entry => entry.id === 'model.final_runtime')?.status, 'failed');
+});
+
+test('platform config read failure and credential anomalies are explicit', () => {
+  const failed = modelItems(platformLlm({
+    query: 'failed', error: '42501: permission denied', enabled: false, hasApiKey: false,
+    apiKeyField: 'missing', credentialFingerprint: null,
+  }));
+  assert.equal(failed.find(entry => entry.id === 'model.platform_config')?.status, 'failed');
+  assert.match(failed.find(entry => entry.id === 'model.platform_config')?.reason ?? '', /读取失败/);
+  assert.equal(failed.find(entry => entry.id === 'model.final_runtime')?.status, 'failed');
+
+  const anomaly = modelItems(platformLlm({
+    apiKeyField: 'invalid', hasApiKey: false, apiKeyMasked: false, credentialFingerprint: null,
+  }));
+  const credentials = anomaly.find(entry => entry.id === 'model.platform_credentials');
+  assert.equal(credentials?.status, 'failed');
+  assert.match(credentials?.reason ?? '', /类型异常/);
+  assert.doesNotMatch(JSON.stringify(anomaly), /apiKeyEncrypted=/);
 });
 
 test('embedding and knowledge checks separate configuration from live probes', () => {
