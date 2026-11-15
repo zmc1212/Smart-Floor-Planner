@@ -379,3 +379,15 @@ npm run check:pilot-readiness -- --enterprise-id 1454 --pilot-id '<管理员保�
 - `tmp/xiaok-i743-first-pilot/readiness-1454-run1.json`、`readiness-1454-run2.json`（稳定性复跑）
 - `tmp/xiaok-i743-first-pilot/summary.json`（摘要）
 - `tmp/xiaok-i743-first-pilot/db-before.json`、`db-after.json`（只读快照）
+
+## 10. 隔离环境 AI 正文补充验收（I7.5.1）
+
+I7.5.1 在隔离合成企业 `21` / 项目 `38` 上补齐了四端周报 AI 正文生成，不改变本报告对真实企业 1454 的 `blocked` 结论：
+
+- 复用 I7.5.0 同一批报告版本，通过正式 `construction.report.compose` 任务真实调用百炼 `deepseek-v4.1-flash-1017`。
+- 5 份正文（业主、老板、设计师、施工人员、经理）全部 `knowledge_status=ready`；事实、引用、角色范围、投递与幂等通过。
+- 首稿失败根因是模型复述内部事项编号，被既有完成/数量校验拒绝；未降低校验强度，只加固提示词并做一次修复。
+- `body.model_scope=limited`：knowledge-off 路径模型只写阶段建议段；全四段模型正文需要企业知识库、检索索引与 Embedding 服务。
+- 真实 1454 仍未连接、未迁移、未启动生产 Worker、未发送真实微信；进入真实试点前，本报告第 4 节的迁移、备份/恢复、Worker、项目阶段/计划与知识库 blocker 仍需逐项清零。
+
+完整证据：`docs/xiaok-i751-weekly-report-ai-body-acceptance.md`。

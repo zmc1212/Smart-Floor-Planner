@@ -5,6 +5,7 @@
 > 基线：`cb0014332a42`
 > 日期：`2026-11-15`（Asia/Shanghai）
 > 结论：**隔离环境 20 passed / 0 failed / 2 limited / 1 not_run；真实 1454 环境 `not_run`。**
+> 后续：I7.5.1 已在同一合成夹具上补齐四端周报 AI 正文生成，详见 `docs/xiaok-i751-weekly-report-ai-body-acceptance.md`。
 
 ## 1. 验收范围与环境
 
@@ -77,7 +78,8 @@ npm run test:xiaok-v1-product-acceptance -- --llm-source=development
 | `report.delivery` | passed | 四端（含两名 worker）均 delivered；设计师会话人工接管时 held，恢复 ai 后重试 delivered |
 | `report.idempotent` | passed | 重复执行不新增报告/版本/投递/消息 |
 | `report.scope_isolation` | passed | 项目 39 无提醒、未进入任何周报 facts |
-| `report.body_composition` | **not_run** | facts、角色投影、投递与幂等已验收；模型 AI 正文未执行，本夹具排队任务已取消 |
+| `report.body_composition` | **passed（I7.5.1 补齐）** | 四端与经理共 5 份周报正文由正式 `construction.report.compose` 任务生成并保存；事实、引用、角色、投递、幂等通过；模型正文范围见下 |
+| `report.body_model_scope` | **limited** | 企业知识库未启用时模型只写 `standards` 建议段；进展/待核对/安排由服务端按角色事实生成并引用 |
 
 ### 3.2 统一状态
 
@@ -86,6 +88,7 @@ npm run test:xiaok-v1-product-acceptance -- --llm-source=development
 | `reminderStatus` | **limited**（主动提醒主链路通过；项目经理 no_inbox 按现有入口合同） |
 | `knowledgeAnswerStatus` | **limited**（确定性四问通过；百炼真实调用可达；1/4 轮交付有效模型答案，其余被响应范围/完成声明校验拒绝；企业知识未配置） |
 | `weeklyReportStatus` | **passed** |
+| `reportBodyStatus` | **limited（仅 body.model_scope；四端正文生成与事实校验为 passed）** |
 | `customerDelivery` | **passed** |
 | `designerDelivery` | **passed** |
 | `bossDelivery` | **passed** |
@@ -158,7 +161,17 @@ npm run test:xiaok-v1-product-acceptance -- --llm-source=development
 - 设计师会话 `mode=human` 时投递进入 `held`；恢复 `ai` 后下一次投递变为 `delivered`，未新增报告或版本。
 - 重复执行：`queued=0`、`delivered=0`，报告/版本/投递/消息计数不变。
 
-未执行：报告 AI 正文组合（`construction.report.compose` 的模型正文）。本轮交付验证的是 facts、角色投影、站内投递、权限与幂等；正文组合沿用既有实现，未在本轮重新触发模型生成。本夹具的 5 个排队正文任务已取消并标记 `knowledge_status=not_generated`，不留给后续 Worker tick。
+### 6.1 AI 正文（I7.5.1 补充）
+
+I7.5.1 在同一批报告版本上通过正式 `construction.report.compose` 任务补齐了模型正文：
+
+- customer `67`、boss `68`、designer `70`、施工人员 `71`、经理 `69` 共 5 份正文全部 `knowledge_status=ready`。
+- 真实百炼 `deepseek-v4.1-flash-1017`，9 次真实调用（含 4 个失败角色各一次首稿与一次定向修复），输入约 11,357 tokens、输出约 1,479 tokens。
+- 四端正文均通过项目、阶段、记录、引用、完成声明、日期/数值、员工信息、跨项目与角色范围校验；正文生成后重复投递零新增消息。
+- 首稿失败根因：模型建议复述内部事项编号 `507/509`，被既有完成/数量校验拒绝；未降低校验强度，只加固通用正文提示词并做一次修复。
+- `body.model_scope=limited`：knowledge-off 路径模型只写 `standards` 建议段；进展、待核对、安排由服务端按角色事实生成并引用。完整四段模型正文需要企业知识库与 Embedding 环境。
+
+完整证据与逐项结果见 `docs/xiaok-i751-weekly-report-ai-body-acceptance.md`。
 
 ## 7. 权限与隔离
 
@@ -184,7 +197,7 @@ npm run test:xiaok-v1-product-acceptance -- --llm-source=development
 
 1. **企业知识来源未配置**：模型对“重点注意事项/下一步/检查项”等通用知识回答被 `ungrounded_response_scope` 拒绝。需要按既有知识管理流程发布企业知识文档，并具备可用的 Embedding/检索环境（本机 PG17 无 pgvector）。
 2. **项目经理站内入口**：经理提醒按现有合同进入项目工作台待办，没有私人站内会话；本轮 20 条提醒中经理项保持 `failed/no_inbox`。
-3. **四端周报 AI 正文**：本轮只验证 facts + 角色投影 + 投递；`construction.report.compose` 的模型正文未在本轮重新生成。
+3. **四端周报 AI 正文**：I7.5.1 已补齐五份正文的模型生成、事实/引用/角色校验、投递与幂等；仍缺“全四段均由模型撰写”的企业知识库与 Embedding 环境。
 4. **真实微信/订阅通知**：未验证真机、模板、订阅授权与实际发送。
 5. **真实 Worker 持续运行**：验证通过进程内正式 Worker 入口与真实数据库执行；未启动生产 Worker 进程，也未验证生产端口、心跳与定时调度。
 6. **设计师角色目录**：隔离库原仅预置 `construction_staff` 系统角色；本轮为夹具补入 `designer` 的 `construction-projects` 菜单配置。真实环境需确认角色目录已包含设计师的施工项目权限。
@@ -204,7 +217,7 @@ npm run test:xiaok-v1-product-acceptance -- --llm-source=development
 | --- | --- | --- | --- | --- |
 | 1. 装修阶段主动提醒 | 通过 | **通过（经理 no_inbox 为 limited）** | not_run | 主链路已跑通；真实试点触达待迁移/Worker/配置 |
 | 2. 装修阶段知识问答 | 通过 | **limited** | not_run | 确定性四问已跑通；百炼真实调用可达并交付 1/4 轮阶段事实答案；其余被响应范围/完成声明校验拒绝，通用知识问答缺企业知识来源 |
-| 3. 四端周报 | 通过 | **通过** | not_run | 四端生成、事实隔离、角色投影、站内投递、幂等均通过；AI 正文未在本轮生成 |
+| 3. 四端周报 | 通过 | **通过（I7.5.1：正文生成 + 事实/角色/投递/幂等；模型正文范围为 limited）** | not_run | 四端生成、事实隔离、角色投影、站内投递、幂等与 AI 正文均已跑通；全四段模型正文待企业知识库 |
 | 4. Worker 持续运行及消息投递 | 通过 | **通过（进程内正式入口 + 真实库）** | not_run | 站内消息投递已跑通；真实 Worker 进程、定时调度与微信未验证 |
 
 **明确回答：** 家客来 1.0 四项核心能力中，**主动提醒主链路、四端周报、站内消息投递已经在隔离环境真正跑通**；**阶段知识问答只跑通了“确定性四问 + 1/4 轮百炼阶段事实回答”，其余模型回答被响应范围/完成声明校验拒绝，通用知识问答尚未跑通**；四项能力在**真实微云 1454 环境均未跑通**，阻塞在迁移、备份/恢复、Worker 启动、企业知识来源和真实微信验证。

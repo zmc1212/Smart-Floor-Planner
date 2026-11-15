@@ -1,4 +1,5 @@
-/** I7.5.0 家客来 1.0 第一期产品纵向闭环验收。
+/** I7.5.0 家客来 1.0 第一期产品纵向闭环验收；I7.5.1 复用同一合成夹具补齐
+ * `construction.report.compose` 四端周报 AI 正文。
  *
  * 复用已有隔离 PostgreSQL 17（127.0.0.1:55432/i745_f1_accept），创建本轮独立合成企业、
  * 项目、四类角色、十阶段配置、施工计划、房间、现场记录与站内会话，然后使用正式业务实现
@@ -11,7 +12,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 
@@ -47,6 +48,7 @@ const result: {
   runId: string; startedAt: string; finishedAt?: string; database: string; user: string;
   checks: Array<{ id: string; status: CheckStatus; detail: string; evidence?: unknown }>;
   unified: Record<string, CheckStatus>; ids: Record<string, unknown>; error?: string;
+  unifiedRoleReads?: Record<string, boolean>;
 } = { runId, startedAt: new Date().toISOString(), database: 'i745_f1_accept', user: 'sfp_app',
   checks: [], unified: {}, ids: {} };
 const save = () => fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(result, null, 2));
@@ -79,6 +81,12 @@ async function main() {
   const { stageKnowledgeRegistry } = await import('@/lib/xiaok-v1/stage-knowledge');
   const { advanceConfiguredStageReminders, deliverConfiguredStageReminders } = await import('@/lib/xiaok-v1/stage-reminder-worker');
   const { advanceConfiguredConstructionReports, deliverConfiguredConstructionReports, processConstructionReport } = await import('@/lib/construction/report-worker');
+  const { processReportComposition } = await import('@/lib/construction/report-body-worker');
+  const { enqueueReportBody } = await import('@/lib/construction/report-body-store');
+  const { FollowupService } = await import('@/lib/construction/followup-service');
+  const { reportCompositionProtocol } = await import('@/lib/construction/report-composition');
+  const { generalReportAdviceProtocol } = await import('@/lib/construction/report-general-advice');
+  const { assertReportBodyCitations, serverSectionText } = await import('@/lib/construction/report-citations');
   const { appendMessage, newRun } = await import('@/lib/assistant/core/conversation');
   const { claimJob } = await import('@/lib/assistant/infrastructure/job-queue');
   const { processAnswer } = await import('@/lib/assistant/infrastructure/answer-worker');
@@ -115,6 +123,34 @@ async function main() {
         const mapped = stageForConstructionKey(stage.key);
         return !!mapped && !!reminderPolicyForStage(mapped.stageId);
       }).length });
+
+  // ------------------------------------------------- I7.5.1 report body reuse
+  // The first-release fixture already owns a synthetic enterprise, project,
+  // four role bindings and five delivered weekly reports. Compose their real
+  // `construction.report.compose` bodies on that same snapshot instead of
+  // building a second enterprise or repeating reminder/report infrastructure.
+  const reusable = await discoverReusableFixture();
+  if (reusable) {
+    result.ids.reusedFixture = reusable.ids;
+    await runReportBodyAcceptance(reusable);
+    result.unified = {
+      reminderStatus: 'not_run',
+      knowledgeAnswerStatus: 'not_run',
+      weeklyReportStatus: statusOf('body.compose', 'body.facts', 'body.role_scope', 'body.delivery', 'body.idempotent'),
+      reportBodyStatus: statusOf('body.compose', 'body.model', 'body.facts', 'body.role_scope',
+        'body.distinct', 'body.delivery', 'body.idempotent', 'body.model_scope'),
+      customerDelivery: result.unifiedRoleReads ? (result.unifiedRoleReads.customer ? 'passed' : 'failed') : 'not_run',
+      designerDelivery: result.unifiedRoleReads ? (result.unifiedRoleReads.designer ? 'passed' : 'failed') : 'not_run',
+      bossDelivery: result.unifiedRoleReads ? (result.unifiedRoleReads.boss ? 'passed' : 'failed') : 'not_run',
+      workerDelivery: result.unifiedRoleReads ? (result.unifiedRoleReads.worker ? 'passed' : 'failed') : 'not_run',
+      idempotencyStatus: result.unifiedRoleReads ? statusOf('body.idempotent') : 'not_run',
+      projectScopeStatus: result.unifiedRoleReads ? statusOf('body.role_scope', 'body.scope_isolation') : 'not_run',
+    };
+    result.ids.final = { mode: 'reused-i750-fixture', reports: reusable.reports.map(report => ({
+      reportId: report.report_id, audience: report.audience, revision: report.revision })), model, runId };
+    await closePostgresPool();
+    return;
+  }
 
   // ---------------------------------------------------------------- fixture
   const fixtureNow = new Date();
@@ -722,28 +758,37 @@ async function main() {
     { outsideReports: outsideReports.length, outsideReminders: (await reminderRows(projectB)).length,
       outsideRecord: outsideRecord.recordId });
 
-  // The first release acceptance covers facts, role projection and delivery,
-  // not the model-authored report body. Do not leave this fixture's queued body
-  // composition jobs behind for a later worker tick.
-  const bodyRuns = await withTenantTransaction(enterprise, tx => rows(tx, sql`select r.id::text run_id,j.id::text job_id
-    from app.assistant_runs r join app.assistant_jobs j on j.enterprise_id=r.enterprise_id and j.run_id=r.id
-    where r.enterprise_id=${enterprise} and r.purpose='construction.report.compose'
-    and r.status in ('queued','running') order by r.id`));
-  for (const body of bodyRuns) {
-    await withTenantTransaction(enterprise, async tx => {
-      await tx.execute(sql`update app.assistant_jobs set status='cancelled',updated_at=now(),version=version+1
-        where enterprise_id=${enterprise} and id=${body.job_id} and status in ('queued','running')`);
-      await tx.execute(sql`update app.assistant_runs set status='cancelled',completed_at=now(),updated_at=now(),version=version+1
-        where enterprise_id=${enterprise} and id=${body.run_id} and status in ('queued','running')`);
-      await tx.execute(sql`update app.assistant_quota_reservations set status='released',version=version+1,updated_at=now()
-        where enterprise_id=${enterprise} and run_id=${body.run_id}`);
-      await tx.execute(sql`update app.construction_report_versions set knowledge_status='not_generated',body_run_id=null
-        where enterprise_id=${enterprise} and body_run_id=${body.run_id} and knowledge_status='queued'`);
-    });
-  }
-  check('report.body_composition', 'not_run',
-    '四端周报 facts、角色投影、投递与幂等已验收；模型生成的 AI 正文（construction.report.compose）本轮未执行，排队任务已按本夹具取消',
-    { queuedBodyRuns: bodyRuns.length });
+  // The first release also composes the real model body for every generated
+  // report version. The fixture reports keep their existing facts and delivery
+  // messages; this only adds the `construction.report.compose` body version.
+  const freshBindings: ReuseFixture['bindings'] = {
+    customer: { reportId: String(reports.find(row => String(row.audience) === 'customer')!.report_id),
+      revision: Number(reports.find(row => String(row.audience) === 'customer')!.revision),
+      bindingId: String(ownerBinding.id), conversationId: String(ownerBinding.conversation_id),
+      principal: 'user', principalId: owner },
+    designer: { reportId: String(reports.find(row => String(row.audience) === 'designer')!.report_id),
+      revision: Number(reports.find(row => String(row.audience) === 'designer')!.revision),
+      bindingId: String(designerBinding.id), conversationId: String(designerBinding.conversation_id),
+      principal: 'admin', principalId: designer },
+    boss: { reportId: String(reports.find(row => String(row.audience) === 'boss')!.report_id),
+      revision: Number(reports.find(row => String(row.audience) === 'boss')!.revision),
+      bindingId: String(bossBinding.id), conversationId: String(bossBinding.conversation_id),
+      principal: 'admin', principalId: boss },
+    worker: { reportId: String(reports.find(row => String(row.audience) === 'worker'
+      && String(row.binding_id) === String(workerBinding.id))!.report_id), revision: Number(reports.find(row =>
+      String(row.audience) === 'worker' && String(row.binding_id) === String(workerBinding.id))!.revision),
+      bindingId: String(workerBinding.id), conversationId: String(workerBinding.conversation_id),
+      principal: 'admin', principalId: worker },
+  };
+  const ownerContext = await withTenantTransaction(enterprise, tx => one(tx, sql`select context_version
+    from app.users where enterprise_id=${enterprise} and id=${owner}`));
+  await runReportBodyAcceptance({
+    ids: { enterprise, projectA, projectB, owner, boss, manager, designer, worker },
+    enterprise, projectA, projectB, projectNameA, projectNameB, stageKey,
+    ownerContextVersion: Number(ownerContext?.context_version || 0),
+    roleIds: { owner, boss, manager, designer, worker },
+    bindings: freshBindings, reports: [],
+  });
 
   // ------------------------------------------------------------- unified
   result.unified = {
@@ -753,7 +798,10 @@ async function main() {
     knowledgeAnswerStatus: statusOf('qa.stage_answers') !== 'passed' ? 'failed'
       : modelStatus === 'passed' ? 'passed' : 'limited',
     weeklyReportStatus: statusOf('report.generation', 'report.four_audiences', 'report.facts_same_source',
-      'report.role_digests', 'report.delivery', 'report.idempotent', 'report.scope_isolation'),
+      'report.role_digests', 'report.delivery', 'report.idempotent', 'report.scope_isolation',
+      'body.compose', 'body.facts', 'body.role_scope', 'body.delivery', 'body.idempotent'),
+    reportBodyStatus: statusOf('body.compose', 'body.model', 'body.facts', 'body.role_scope',
+      'body.distinct', 'body.delivery', 'body.idempotent', 'body.model_scope'),
     customerDelivery: deliveredAudiences.includes('customer') ? 'passed' : 'failed',
     designerDelivery: deliveredAudiences.includes('designer') ? 'passed' : 'failed',
     bossDelivery: deliveredAudiences.includes('boss') ? 'passed' : 'failed',
@@ -776,6 +824,628 @@ async function main() {
     model,
     llmSource: liveModelSource || (llmBefore ? 'isolated' : null),
   };
+  // --------------------------------------------------- I7.5.1 body helpers
+  // Reuse the exact I7.5.0 fixture when it is still present. The accepted
+  // reports keep their original facts, bindings and delivered messages; this
+  // round only composes the real `construction.report.compose` body version.
+  type ReuseBinding = { reportId: string; revision: number; bindingId: string; conversationId: string;
+    principal: 'user' | 'admin'; principalId: string };
+  type ReuseFixture = { ids: Record<string, unknown>; enterprise: string; projectA: string; projectB: string;
+    projectNameA: string; projectNameB: string; stageKey: string; ownerContextVersion: number;
+    roleIds: { owner: string; boss: string; manager: string; designer: string; worker: string };
+    bindings: Record<'customer' | 'designer' | 'boss' | 'worker', ReuseBinding>;
+    reports: Array<Record<string, unknown>>; managerReport?: Record<string, unknown> };
+
+  async function discoverReusableFixture(): Promise<ReuseFixture | null> {
+    const projectAName = 'I7.5.0 第一期合成工地（试点内）';
+    const projectBName = 'I7.5.0 第一期合成工地（范围外）';
+    const enterprises = await withPlatformTransaction(tx => rows(tx, sql`select id::text id,name
+      from app.enterprises where name like 'I7.5.0 第一期合成企业-%' and status='active' order by id desc limit 5`));
+    for (const enterprise of enterprises) {
+      const eid = String(enterprise.id);
+      const projects = await withTenantTransaction(eid, tx => rows(tx, sql`select id::text id,name,current_stage_key
+        from app.construction_projects where enterprise_id=${eid} and name in (${projectAName},${projectBName}) order by id`));
+      const projectA = projects.find(row => String(row.name) === projectAName);
+      const projectB = projects.find(row => String(row.name) === projectBName);
+      if (!projectA || !projectB) continue;
+      const admins = await withTenantTransaction(eid, tx => rows(tx, sql`select id::text id,display_name
+        from app.admin_users where enterprise_id=${eid}
+        and display_name in ('I7.5.0 老板','I7.5.0 项目经理','I7.5.0 设计师','I7.5.0 施工人员')`));
+      const owner = await withTenantTransaction(eid, tx => one(tx, sql`select id::text id,context_version
+        from app.users where enterprise_id=${eid} and nickname='I7.5.0 业主' order by id limit 1`));
+      const boss = admins.find(row => String(row.display_name) === 'I7.5.0 老板');
+      const manager = admins.find(row => String(row.display_name) === 'I7.5.0 项目经理');
+      const designer = admins.find(row => String(row.display_name) === 'I7.5.0 设计师');
+      const worker = admins.find(row => String(row.display_name) === 'I7.5.0 施工人员');
+      if (!owner || !boss || !manager || !designer || !worker) continue;
+      const reports = await withTenantTransaction(eid, tx => rows(tx, sql`select r.id::text report_id,r.binding_id::text,
+        b.audience,b.principal_key,b.conversation_id::text,(r.id::text || ':' || v.revision::text) version_id,v.revision,
+        v.knowledge_status,v.body_run_id::text,v.body
+        from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id
+          and v.report_id=r.id and v.revision=r.latest_revision
+        join app.construction_followup_bindings b on b.enterprise_id=r.enterprise_id and b.id=r.binding_id
+        where r.enterprise_id=${eid} and r.kind='weekly' order by r.id`));
+      if (reports.length < 4) continue;
+      const bindingOf = (report: Record<string, unknown>): ReuseBinding => ({
+        reportId: String(report.report_id), revision: Number(report.revision), bindingId: String(report.binding_id),
+        conversationId: String(report.conversation_id),
+        principal: String(report.principal_key).startsWith('user:') ? 'user' : 'admin',
+        principalId: String(report.principal_key).split(':')[1] });
+      const customer = reports.find(row => row.audience === 'customer' && row.principal_key === 'user:' + String(owner.id));
+      const designerReport = reports.find(row => row.audience === 'designer' && row.principal_key === 'admin:' + String(designer.id));
+      const bossReport = reports.find(row => row.audience === 'boss' && row.principal_key === 'admin:' + String(boss.id));
+      const workerReport = reports.find(row => row.audience === 'worker' && row.principal_key === 'admin:' + String(worker.id));
+      const managerReport = reports.find(row => row.audience === 'worker' && row.principal_key === 'admin:' + String(manager.id));
+      if (!customer || !designerReport || !bossReport || !workerReport) continue;
+      return {
+        ids: { enterprise: eid, projectA: String(projectA.id), projectB: String(projectB.id),
+          owner: String(owner.id), boss: String(boss.id), manager: String(manager.id), designer: String(designer.id),
+          worker: String(worker.id), reports: reports.map(row => ({ reportId: row.report_id, audience: row.audience,
+            principalKey: row.principal_key, revision: row.revision, conversationId: row.conversation_id })) },
+        enterprise: eid, projectA: String(projectA.id), projectB: String(projectB.id),
+        projectNameA: projectAName, projectNameB: projectBName, stageKey: String(projectA.current_stage_key),
+        ownerContextVersion: Number(owner.context_version || 0),
+        roleIds: { owner: String(owner.id), boss: String(boss.id), manager: String(manager.id),
+          designer: String(designer.id), worker: String(worker.id) },
+        bindings: { customer: bindingOf(customer), designer: bindingOf(designerReport),
+          boss: bindingOf(bossReport), worker: bindingOf(workerReport) },
+        reports,
+        ...(managerReport ? { managerReport } : {}),
+      };
+    }
+    return null;
+  }
+
+  type ComposeModelState = { configured: boolean; before: unknown; agentBefore: unknown;
+    agentChanged: boolean; reason?: string };
+  async function configureComposeModel(eid: string): Promise<ComposeModelState> {
+    const isolated = await withPlatformTransaction(tx => one(tx, sql`select llm_config from app.platform_configs where key='default'`));
+    const before: unknown = isolated?.llm_config ?? null;
+    let source: Record<string, unknown> | null = null;
+    if (liveModelSource === 'development') {
+      assert.ok(sourceDevelopmentUrl && new URL(sourceDevelopmentUrl).pathname === '/smart_floor_planner',
+        '--llm-source=development requires the development DATABASE_URL');
+      const dev = new pg.Client({ connectionString: sourceDevelopmentUrl });
+      await dev.connect();
+      try {
+        await dev.query('begin read only');
+        const row = await dev.query("select llm_config from app.platform_configs where key='default'");
+        source = row.rows[0]?.llm_config ?? null;
+        await dev.query('rollback');
+      } finally { await dev.end(); }
+    } else if (before && typeof before === 'object' && Object.keys(before as object).length) {
+      source = before as Record<string, unknown>;
+    }
+    const profiles = (source?.profiles ?? {}) as Record<string, Record<string, unknown>>;
+    const profile = profiles.dashscope
+      ?? Object.values(profiles).find(item => item?.apiKeyEncrypted && /dashscope|bailian/iu.test(String(item.baseUrl || '')));
+    if (!source || !profile?.apiKeyEncrypted) {
+      return { configured: false, before, agentBefore: null, agentChanged: false,
+        reason: 'bailian_credentials_not_configured' };
+    }
+    const next = { ...source, ...profile, providerKey: 'dashscope', model, enabled: true,
+      profiles: { ...profiles, dashscope: { ...profile, model, enabled: true } } };
+    await withPlatformTransaction(tx => tx.execute(sql`update app.platform_configs
+      set llm_config=${JSON.stringify(next)}::jsonb where key='default'`));
+    const current = await withTenantTransaction(eid, tx => one(tx, sql`select agent_config,enabled
+      from app.assistant_enterprise_settings where enterprise_id=${eid}`));
+    if (current?.enabled !== true) throw new Error('assistant_enterprise_settings is disabled');
+    const agentBefore = current.agent_config ?? null;
+    const agent = agentBefore as Record<string, unknown> | null;
+    const matches = !!agent && agent.runtime === 'langgraph-v1' && agent.providerKey === 'dashscope'
+      && agent.model === model;
+    if (!matches) {
+      const nextAgent = { runtime: 'langgraph-v1', providerKey: 'dashscope', model, imageInput: false, tools: true,
+        probeVersion: 'i751-report-body-acceptance-v1', enterpriseKnowledgeEnabled: false };
+      await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_enterprise_settings
+        set agent_config=${JSON.stringify(nextAgent)}::jsonb where enterprise_id=${eid}`));
+    }
+    return { configured: true, before, agentBefore, agentChanged: !matches };
+  }
+
+  async function restoreComposeModel(state: ComposeModelState, eid: string) {
+    if (!state.configured) return;
+    let restored = true;
+    try {
+      await withPlatformTransaction(tx => tx.execute(sql`update app.platform_configs
+        set llm_config=${JSON.stringify(state.before ?? {})}::jsonb where key='default'`));
+      if (state.agentChanged) await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_enterprise_settings
+        set agent_config=${JSON.stringify(state.agentBefore)}::jsonb where enterprise_id=${eid}`));
+      const llmBack = await withPlatformTransaction(tx => one(tx, sql`select llm_config from app.platform_configs where key='default'`));
+      if (JSON.stringify(llmBack?.llm_config ?? null) !== JSON.stringify(state.before ?? null)) restored = false;
+      if (state.agentChanged) {
+        const agentBack = await withTenantTransaction(eid, tx => one(tx, sql`select agent_config
+          from app.assistant_enterprise_settings where enterprise_id=${eid}`));
+        if (JSON.stringify(agentBack?.agent_config ?? null) !== JSON.stringify(state.agentBefore ?? null)) restored = false;
+      }
+    } catch (error) {
+      restored = false;
+      check('body.cleanup', 'failed', '隔离库模型配置恢复失败', { error: (error as Error).message });
+    }
+    if (restored) check('body.cleanup', 'passed', '隔离库模型配置已恢复为执行前原值；API Key 未输出、未写入日志', {});
+    else if (!result.checks.some(item => item.id === 'body.cleanup')) {
+      check('body.cleanup', 'failed', '隔离库模型配置未恢复到执行前原值', {});
+    }
+  }
+
+  type SavedBody = { protocol?: string; generalAdvice?: string; projects?: Array<{
+    projectId?: string; selection?: Record<string, unknown>;
+    context?: { snapshots?: Array<{ data?: Array<Record<string, unknown>> }>; sources?: Array<{ kind?: string; text?: string }> };
+    sections?: Record<string, { segments?: Array<{ basis?: string; text?: string;
+      citations?: Array<{ sourceId?: string; quote?: string }> }> }> }> };
+  function bodyOf(report: Record<string, unknown>) {
+    return (report.body && typeof report.body === 'object' ? report.body : null) as SavedBody | null;
+  }
+  function adviceOf(body: SavedBody | null) {
+    return (body?.projects ?? []).flatMap(project =>
+      (project.sections?.standards?.segments ?? []).filter(segment => segment.basis === 'advice')
+        .map(segment => String(segment.text || '')));
+  }
+  function sha256(value: unknown) {
+    return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  }
+  type BodyEvidence = {
+    reportId: string; reportVersionId: string; runId: string | null; audience: string; principalKey: string;
+    modelId: string[]; providerRequestId: string | null; inputTokens: number; outputTokens: number;
+    durationMs: number[]; wallMs: number | null; responseStatus: string | null; groundingStatus: string;
+    finalBodyHash: string | null; factsHash: string | null; bodyErrorCode: string | null; attempts: number;
+    advice: string[]; adviceLength: number; bodyProjects: string[]; generalAdvice: string | null;
+  };
+
+  async function runReportBodyAcceptance(fixture: ReuseFixture) {
+    const eid = fixture.enterprise;
+    const projectIdsOf = (facts: unknown) => ((facts as { projects?: Array<{ id?: unknown }> } | null)?.projects ?? [])
+      .map(project => String(project.id));
+    const reportRows = await withTenantTransaction(eid, tx => rows(tx, sql`select r.id::text report_id,r.binding_id::text,
+      b.audience,b.principal_key,b.conversation_id::text,(r.id::text || ':' || v.revision::text) version_id,v.revision,
+      v.status,v.facts,v.facts_hash,v.body,v.body_generated_at,v.knowledge_status,v.body_error_code,v.body_attempts,
+      v.body_run_id::text
+      from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id
+        and v.report_id=r.id and v.revision=r.latest_revision
+      join app.construction_followup_bindings b on b.enterprise_id=r.enterprise_id and b.id=r.binding_id
+      where r.enterprise_id=${eid} and r.kind='weekly' order by r.id`));
+    const counts = () => withTenantTransaction(eid, tx => one(tx, sql`select
+      (select count(*)::int from app.construction_reports where enterprise_id=${eid}) reports,
+      (select count(*)::int from app.construction_report_versions where enterprise_id=${eid}) versions,
+      (select count(*)::int from app.construction_report_deliveries where enterprise_id=${eid}) deliveries,
+      (select count(*)::int from app.assistant_messages where enterprise_id=${eid}) messages,
+      (select count(*)::int from app.assistant_runs where enterprise_id=${eid}
+        and purpose='construction.report.compose') compose_runs`));
+    const before = await counts();
+    const modelState = await configureComposeModel(eid);
+    try {
+      if (!modelState.configured) {
+        check('body.compose', 'not_run', '未配置真实百炼凭据，正式正文任务未执行（不使用 Mock 冒充通过）',
+          { reason: modelState.reason, reports: reportRows.map(row => row.report_id) });
+        check('body.model_scope', 'not_run', '模型正文未执行', {});
+        return;
+      }
+      check('body.reuse_fixture', 'passed',
+        '复用 I7.5.0 同一合成企业、项目、四端绑定与已投递周报版本，未新建企业、项目、提醒或周报',
+        { enterprise: eid, projectA: fixture.projectA, projectB: fixture.projectB,
+          reports: reportRows.map(row => ({ reportId: row.report_id, audience: row.audience,
+            principalKey: row.principal_key, revision: row.revision, priorKnowledgeStatus: row.knowledge_status })) });
+
+      const enqueued: Array<Record<string, unknown>> = [];
+      const firstDraftEvidence = async (report: Record<string, unknown>) => {
+        const runIdValue = String(report.body_run_id);
+        const firstAttempts = await withPlatformTransaction(tx => rows(tx, sql`select remote_model,status,duration_ms,metadata
+          from app.ai_provider_attempts where assistant_run_id=${runIdValue} order by id`));
+        const firstUsage = await withTenantTransaction(eid, tx => rows(tx, sql`select input_tokens,output_tokens
+          from app.assistant_usage_records where enterprise_id=${eid} and run_id=${runIdValue}`));
+        const runStep = await withTenantTransaction(eid, tx => one(tx, sql`select private_checkpoint
+          from app.assistant_run_steps where enterprise_id=${eid} and run_id=${runIdValue} and step_seq=1100`));
+        const checkpoint = runStep?.private_checkpoint as { toolCalls?: Array<{ arguments?: string }> } | undefined;
+        const requestIds = firstAttempts.map(item => {
+          const metadata = item.metadata as Record<string, unknown> | null;
+          const response = metadata?.assistantResponse as Record<string, unknown> | undefined;
+          return response?.providerRequestId || null;
+        }).filter(Boolean);
+        return { reportId: report.report_id, audience: report.audience, firstRunId: runIdValue,
+          firstError: report.body_error_code || null,
+          firstDraft: checkpoint?.toolCalls?.[0]?.arguments ?? null,
+          firstModelId: firstAttempts.map(item => String(item.remote_model)),
+          firstProviderRequestId: requestIds[0] ? String(requestIds[0]) : null,
+          firstInputTokens: firstUsage.reduce((sum, item) => sum + Number(item.input_tokens || 0), 0),
+          firstOutputTokens: firstUsage.reduce((sum, item) => sum + Number(item.output_tokens || 0), 0),
+          firstDurationMs: firstAttempts.map(item => Number(item.duration_ms || 0)) };
+      };
+      const reopenVersion = (report: Record<string, unknown>) => withTenantTransaction(eid, tx => tx.execute(
+        sql`update app.construction_report_versions set body_run_id=null,knowledge_status='not_generated',body_error_code=null
+          where enterprise_id=${eid} and report_id=${String(report.report_id)} and revision=${Number(report.revision)}`));
+      // A prior durable model result that failed the product guard is re-opened
+      // exactly once for the recorded prompt-root-cause repair. The failed run,
+      // its draft and its usage stay untouched in the audit tables.
+      const repairedThisRun = new Set<string>();
+      const priorRepairs: Array<Record<string, unknown>> = [];
+      for (const report of reportRows) {
+        if (String(report.knowledge_status) === 'ready' && report.body) continue;
+        if (!report.body_run_id) continue;
+        const old = await withTenantTransaction(eid, tx => one(tx, sql`select r.status,j.provider_started_at
+          from app.assistant_runs r join app.assistant_jobs j on j.enterprise_id=r.enterprise_id and j.run_id=r.id
+          where r.enterprise_id=${eid} and r.id=${String(report.body_run_id)}`));
+        if (!old || String(old.status) !== 'failed' || !old.provider_started_at) continue;
+        priorRepairs.push(await firstDraftEvidence(report));
+        await reopenVersion(report);
+        repairedThisRun.add(String(report.report_id));
+      }
+      for (const report of reportRows) {
+        if (String(report.knowledge_status) === 'ready' && report.body) {
+          enqueued.push({ reportId: report.report_id, runId: report.body_run_id, status: 'ready' });
+          continue;
+        }
+        const result = await withTenantTransaction(eid, tx => enqueueReportBody(tx, eid,
+          String(report.report_id), Number(report.revision)));
+        enqueued.push({ reportId: report.report_id, ...result });
+      }
+      check('body.enqueued', enqueued.every(item => item.status !== 'failed') ? 'passed' : 'failed',
+        '通过正式 construction.report.compose 入口为既有周报版本排入正文任务',
+        { enqueued });
+
+      const queryComposed = () => withTenantTransaction(eid, tx => rows(tx, sql`select r.id::text report_id,r.binding_id::text,
+        b.audience,b.principal_key,(r.id::text || ':' || v.revision::text) version_id,v.revision,v.facts,v.facts_hash,
+        v.body,v.body_generated_at,v.knowledge_status,v.body_error_code,v.body_attempts,v.body_run_id::text,
+        br.status body_run_status,br.error_code body_run_error
+        from app.construction_reports r join app.construction_report_versions v on v.enterprise_id=r.enterprise_id
+          and v.report_id=r.id and v.revision=r.latest_revision
+        join app.construction_followup_bindings b on b.enterprise_id=r.enterprise_id and b.id=r.binding_id
+        left join app.assistant_runs br on br.enterprise_id=v.enterprise_id and br.id=v.body_run_id
+        where r.enterprise_id=${eid} and r.kind='weekly' order by r.id`));
+      const wallMs: Record<string, number> = {};
+      const processQueued = async () => {
+        const queuedRuns = await withTenantTransaction(eid, tx => rows(tx, sql`select r.id::text run_id
+          from app.assistant_runs r join app.assistant_jobs j on j.enterprise_id=r.enterprise_id and j.run_id=r.id
+          where r.enterprise_id=${eid} and r.purpose='construction.report.compose'
+          and r.status in ('queued','running') order by r.id`));
+        for (const run of queuedRuns) {
+          const started = Date.now();
+          const lease = await claimJob({ enterpriseId: eid, runId: String(run.run_id) });
+          if (lease) await processReportComposition(lease);
+          wallMs[String(run.run_id)] = Date.now() - started;
+        }
+      };
+      await processQueued();
+      let composed = await queryComposed();
+      const firstPass = composed.map(row => ({ reportId: row.report_id, audience: row.audience,
+        runId: row.body_run_id, knowledgeStatus: row.knowledge_status,
+        errorCode: row.body_error_code || row.body_run_error || null }));
+      // A role whose durable model result fails the product's own commitment or
+      // citation guard gets exactly one repair test with the recorded root cause.
+      // The failed run, its draft and its usage stay in the audit tables; only
+      // the version link is re-admitted through the same formal entry.
+      const summarizeRows = (rowsValue: Array<Record<string, unknown>>) => rowsValue.map(row => ({
+        reportId: row.report_id, audience: row.audience, runId: row.body_run_id,
+        knowledgeStatus: row.knowledge_status, errorCode: row.body_error_code || row.body_run_error || null }));
+      let repair: Record<string, unknown> | null = priorRepairs.length ? {
+        rootCause: 'first draft repeated internal numeric IDs or completion wording and was rejected by the existing commitment guard',
+        attempts: priorRepairs, final: summarizeRows(composed) } : null;
+      const needsRepair = composed.filter(row => String(row.knowledge_status) !== 'ready' && row.body_run_id
+        && !repairedThisRun.has(String(row.report_id)));
+      if (needsRepair.length) {
+        const attempts: Array<Record<string, unknown>> = [...priorRepairs];
+        for (const row of needsRepair) {
+          const attempt = await firstDraftEvidence(row);
+          await reopenVersion(row);
+          const result = await withTenantTransaction(eid, tx => enqueueReportBody(tx, eid,
+            String(row.report_id), Number(row.revision)));
+          attempts.push({ ...attempt, repairRunId: result.runId, repairStatus: result.status });
+        }
+        await processQueued();
+        composed = await queryComposed();
+        repair = { rootCause: 'first draft repeated internal numeric IDs or completion wording and was rejected by the existing commitment guard',
+          attempts, final: summarizeRows(composed) };
+      }
+      const roleAudiences = ['customer', 'designer', 'boss', 'worker'] as const;
+      const evidence: BodyEvidence[] = [];
+      for (const report of composed) {
+        const runIdValue = report.body_run_id ? String(report.body_run_id) : null;
+        const attempts = runIdValue ? await withPlatformTransaction(tx => rows(tx, sql`select id::text,
+          provider_key,remote_model,status,accepted,duration_ms,error_code,metadata
+          from app.ai_provider_attempts where assistant_run_id=${runIdValue} order by id`)) : [];
+        const usage = runIdValue ? await withTenantTransaction(eid, tx => rows(tx, sql`select category,input_tokens,output_tokens,
+          measurement_kind from app.assistant_usage_records where enterprise_id=${eid} and run_id=${runIdValue}`)) : [];
+        const body = bodyOf(report);
+        const advice = adviceOf(body);
+        const requestIds = attempts.map(attempt => {
+          const metadata = attempt.metadata as Record<string, unknown> | null;
+          const response = metadata?.assistantResponse as Record<string, unknown> | undefined;
+          return response?.providerRequestId || metadata?.providerRequestId
+            || (metadata?.requestDiagnostic as Record<string, unknown> | undefined)?.requestId || null;
+        }).filter(Boolean);
+        evidence.push({
+          reportId: String(report.report_id), reportVersionId: String(report.version_id), runId: runIdValue,
+          audience: String(report.audience), principalKey: String(report.principal_key),
+          modelId: attempts.map(attempt => String(attempt.remote_model)),
+          providerRequestId: requestIds[0] ? String(requestIds[0]) : null,
+          inputTokens: usage.reduce((sum, row) => sum + Number(row.input_tokens || 0), 0),
+          outputTokens: usage.reduce((sum, row) => sum + Number(row.output_tokens || 0), 0),
+          durationMs: attempts.map(attempt => Number(attempt.duration_ms || 0)),
+          wallMs: runIdValue ? wallMs[runIdValue] ?? null : null,
+          responseStatus: report.body_run_status ? String(report.body_run_status) : null,
+          groundingStatus: body ? 'citation_checked' : 'not_generated',
+          finalBodyHash: body ? sha256(body) : null,
+          factsHash: report.facts_hash ? String(report.facts_hash) : null,
+          bodyErrorCode: report.body_error_code || report.body_run_error
+            ? String(report.body_error_code || report.body_run_error) : null,
+          attempts: attempts.length, advice, adviceLength: advice.join('').length,
+          bodyProjects: (body?.projects ?? []).map(project => String(project.projectId)),
+          generalAdvice: body?.generalAdvice ? String(body.generalAdvice) : null,
+        });
+      }
+      const roleEvidence = roleAudiences.map(audience => evidence.find(item => item.audience === audience
+        && (audience !== 'worker' || item.principalKey === 'admin:' + fixture.roleIds.worker)));
+      const succeededRoles = roleAudiences.filter((audience, index) => {
+        const item = roleEvidence[index];
+        return !!item && item.responseStatus === 'succeeded' && item.finalBodyHash
+          && item.modelId.length > 0 && item.inputTokens > 0 && item.outputTokens > 0;
+      });
+      const composeStatus: CheckStatus = succeededRoles.length === roleAudiences.length ? 'passed'
+        : succeededRoles.length > 0 ? 'limited' : 'failed';
+      check('body.compose', composeStatus,
+        composeStatus === 'passed' ? '四端周报均通过正式 construction.report.compose 任务生成并保存正文版本'
+          : '部分或全部受众未生成模型正文，按真实结果标记，未用模板文本冒充模型成功',
+        { succeededRoles, evidence, firstPass, repair });
+      const modelStatus: CheckStatus = evidence.some(item => item.runId)
+        && evidence.filter(item => item.runId).every(item => item.modelId.length > 0
+          && item.modelId.every(id => id === model) && item.inputTokens > 0 && item.outputTokens > 0
+          && item.durationMs.some(duration => duration > 0) && item.providerRequestId) ? 'passed'
+        : evidence.some(item => item.runId) ? 'limited' : 'failed';
+      check('body.model', modelStatus,
+        modelStatus === 'passed' ? '四端均记录真实百炼模型 ID、请求 ID、Token、耗时和最终正文哈希'
+          : '模型调用证据不完整，详见每个角色的 provider attempt 与用量',
+        { model, evidence: evidence.map(item => ({ audience: item.audience, reportId: item.reportId,
+          modelId: item.modelId, providerRequestId: item.providerRequestId, inputTokens: item.inputTokens,
+          outputTokens: item.outputTokens, durationMs: item.durationMs, wallMs: item.wallMs,
+          responseStatus: item.responseStatus, finalBodyHash: item.finalBodyHash })) });
+
+      // Fact/citation/role checks on every saved body. The saved version is the
+      // only source; no template text is treated as a model result.
+      const factIssues: Array<Record<string, unknown>> = [];
+      const audienceLeak: Array<Record<string, unknown>> = [];
+      const distinctAdvice: string[] = [];
+      const missingBodies: Array<Record<string, unknown>> = [];
+      for (const report of composed) {
+        const body = bodyOf(report);
+        if (!body) {
+          missingBodies.push({ reportId: report.report_id, audience: report.audience,
+            errorCode: report.body_error_code || report.body_run_error || null });
+          continue;
+        }
+        const facts = report.facts as { projects?: Array<Record<string, unknown>> } | null;
+        const factsProject = facts?.projects?.[0];
+        const project = body?.projects?.[0];
+        const issues: string[] = [];
+        if (body.protocol !== reportCompositionProtocol) issues.push('body_protocol');
+        if (!project || (body?.projects ?? []).length !== 1 || project.projectId !== fixture.projectA) issues.push('body_project');
+        // The saved selection is the per-project report reference. Its own
+        // factsHash binds this reference; the version hash is checked separately.
+        if (String(project?.selection?.reportId) !== String(report.report_id)
+          || Number(project?.selection?.revision) !== Number(report.revision)
+          || String(project?.selection?.bindingId) !== String(report.binding_id)
+          || String(project?.selection?.projectId) !== fixture.projectA
+          || !/^[a-f0-9]{64}$/u.test(String(project?.selection?.factsHash))) issues.push('body_selection');
+        const snapshot = project?.context?.snapshots?.[0]?.data?.[0] as Record<string, unknown> | undefined;
+        if (String(snapshot?.name) !== fixture.projectNameA) issues.push('project_name');
+        if (String(snapshot?.stageKey) !== fixture.stageKey) issues.push('stage_key');
+        if (!factsProject || String(factsProject.id) !== fixture.projectA) issues.push('facts_project');
+        if (String(factsProject?.name) !== fixture.projectNameA) issues.push('facts_name');
+        if (String(factsProject?.stageKey) !== fixture.stageKey) issues.push('facts_stage');
+        if (factsProject?.noPublishedRecords !== false) issues.push('facts_records_missing');
+        const recordTexts = new Set(((factsProject?.records ?? []) as Array<Record<string, unknown>>)
+          .map(record => String((record.data as Record<string, unknown>)?.completed || '')));
+        if (!recordTexts.size) issues.push('facts_records_empty');
+        // A section only needs a citation when this role's facts actually carry
+        // a matching original. Empty pending/arrangement facts stay explicit:
+        // the product adds "没有可核验的原记录引用" when the view is rendered.
+        const pendingQuotes = ((factsProject?.records ?? []) as Array<Record<string, unknown>>)
+          .some(record => String((record.data as Record<string, unknown>)?.pending || '').trim()
+            || String((record.data as Record<string, unknown>)?.coordination || '').trim())
+          || ((factsProject?.publishedRecordItems ?? []) as Array<Record<string, unknown>>)
+            .some(item => String(item.pending || '').trim() || String(item.coordination || '').trim());
+        const arrangementQuotes = ((factsProject?.arrangements ?? []) as unknown[]).length > 0;
+        const requiresCitation = { progress: recordTexts.size > 0, pending: pendingQuotes, arrangements: arrangementQuotes };
+        for (const kind of ['progress', 'pending', 'arrangements'] as const) {
+          const segments = project?.sections?.[kind]?.segments ?? [];
+          if (!segments.length || segments.some(segment => String(segment.text) !== serverSectionText[kind])) {
+            issues.push('server_section:' + kind);
+          }
+          if (requiresCitation[kind] && !segments.some(segment => (segment.citations ?? []).length > 0)) {
+            issues.push('citation_missing:' + kind);
+          }
+        }
+        for (const segment of project?.sections?.progress?.segments ?? []) {
+          for (const citation of segment.citations ?? []) {
+            const quote = String(citation.quote || '');
+            if (!quote.startsWith('本次完成：') || !recordTexts.has(quote.slice('本次完成：'.length))) {
+              issues.push('progress_quote_unbound');
+            }
+          }
+        }
+        if (body?.generalAdvice !== generalReportAdviceProtocol) issues.push('general_advice_protocol');
+        const advice = adviceOf(body).join('\n');
+        if (/验收合格|验收通过|已验收|已付款|已结算|已批准|已完成(?!的)/u.test(advice)) issues.push('false_completion');
+        if (/\d{4}\s*[-/年]\s*\d{1,2}\s*[-/月]\s*\d{1,2}/u.test(advice) || /\d{1,2}月\d{1,2}日/u.test(advice)) {
+          issues.push('invented_date');
+        }
+        if (/\d/u.test(advice)) issues.push('invented_number');
+        if (advice.includes(fixture.projectNameB)) issues.push('other_project');
+        if (advice.includes('I7.5.0 项目经理') || advice.includes('I7.5.0 施工人员')
+          || advice.includes('I7.5.0 设计师') || advice.includes('I7.5.0 老板')) issues.push('staff_identity');
+        try {
+          assertReportBodyCitations(body as never, [{ projectId: fixture.projectA, selection: project?.selection,
+            context: project?.context, facts: factsProject }] as never);
+        } catch (error) {
+          issues.push('citation_invalid:' + (error as Error).message);
+        }
+        if (issues.length) factIssues.push({ reportId: report.report_id, audience: report.audience, issues });
+        const contextText = JSON.stringify(project?.context?.sources ?? []);
+        const forbidden: Record<string, string[]> = {
+          customer: ['补拍卫生间照片', '请核对客厅墙砖排版与现场尺寸', 'workerTasks', 'designerReviews'],
+          designer: ['补拍卫生间照片', 'workerTasks', 'missingMaterials'],
+          boss: [],
+          worker: ['请核对客厅墙砖排版与现场尺寸', 'designerReviews'],
+        };
+        const leaks = forbidden[String(report.audience)]?.filter(token => advice.includes(token)
+          || (String(report.audience) === 'customer' && contextText.includes(token))) ?? [];
+        if (leaks.length) audienceLeak.push({ reportId: report.report_id, audience: report.audience, leaks });
+        if (roleAudiences.includes(report.audience as typeof roleAudiences[number])) {
+          const picked = roleEvidence.find(item => !!item && item.audience === report.audience
+            && (report.audience !== 'worker' || item.principalKey === 'admin:' + fixture.roleIds.worker));
+          if (picked?.reportId === report.report_id) distinctAdvice.push(advice.replace(/\s+/gu, ''));
+        }
+      }
+      const factsStatus: CheckStatus = factIssues.length ? 'failed' : missingBodies.length ? 'limited' : 'passed';
+      check('body.facts', factsStatus,
+        factsStatus === 'passed'
+          ? '四端正文项目、阶段、本周记录与引用均来自同一份已保存 facts；完成事项有原记录引用，未出现虚构验收、日期或数值'
+          : factsStatus === 'limited'
+            ? '已生成正文均通过事实与引用校验；部分受众正文未生成，详见 body.compose'
+            : '正文事实或引用校验失败，详见证据',
+        { issues: factIssues, missingBodies,
+          factsHashes: composed.map(row => ({ reportId: row.report_id, factsHash: row.facts_hash })) });
+      check('body.role_scope', audienceLeak.length === 0 ? 'passed' : 'failed',
+        audienceLeak.length === 0
+          ? '业主正文不含内部事项与员工信息；施工人员不含他人任务；设计师只含本人核对项；老板不含范围外项目'
+          : '角色正文出现受限信息，详见证据', { leaks: audienceLeak });
+      const uniqueAdvice = new Set(distinctAdvice);
+      const distinctStatus: CheckStatus = distinctAdvice.length === 4 && uniqueAdvice.size >= 3 ? 'passed' : 'limited';
+      check('body.distinct', distinctStatus,
+        distinctStatus === 'passed'
+          ? '四端正文不是简单替换标题：模型建议基于各自角色事实且内容有差异'
+          : '四端模型建议差异不足，按真实结果标记 limited',
+        { roles: roleAudiences, distinct: uniqueAdvice.size, advice: distinctAdvice.map(text => text.slice(0, 200)) });
+
+      // The product's knowledge-off report path keeps progress/pending/arrangement
+      // facts server-written and asks the model only for bounded stage advice.
+      check('body.model_scope', 'limited',
+        '既有 knowledge-off 单一路径：四端均生成了模型建议段并保存完整正文版本；进展/待核对/安排由服务端按角色事实生成并引用，不是模型撰写的全四段正文。全四段模型正文需要企业知识库与 Embedding 环境，本轮未扩展该基础设施',
+        { generalAdvice: generalReportAdviceProtocol,
+          modelSections: [...new Set(composed.map(row => bodyOf(row)?.generalAdvice ?? null))] });
+
+      const roleRead = async (role: typeof roleAudiences[number]) => {
+        const binding = fixture.bindings[role];
+        const actor = { enterpriseId: eid, contextVersion: binding.principal === 'user' ? fixture.ownerContextVersion : 0,
+          capabilities: ['assistant.followup.self'],
+          principal: binding.principal === 'user' ? { kind: 'user' as const, userId: binding.principalId }
+            : { kind: 'admin' as const, adminId: binding.principalId } };
+        const service = new FollowupService(actor);
+        return await service.detail(binding.bindingId, binding.reportId, binding.revision) as Record<string, unknown>;
+      };
+      const roleReads: Record<string, Record<string, unknown>> = {};
+      for (const role of roleAudiences) roleReads[role] = await roleRead(role);
+      const viewOf = (detail: Record<string, unknown>) => ((detail.body as Array<Record<string, unknown>> | undefined) ?? [])
+        .find(project => String(project.projectId) === fixture.projectA);
+      const digestOf = (detail: Record<string, unknown>) => JSON.stringify(detail.weeklyReport ?? null);
+      const readIssues: Array<Record<string, unknown>> = [];
+      const readOk: Record<string, boolean> = {};
+      for (const role of roleAudiences) {
+        const detail = roleReads[role];
+        const view = viewOf(detail);
+        const digest = digestOf(detail);
+        const issues: string[] = [];
+        if (detail.available !== true) issues.push('unavailable');
+        if (detail.contentStatus !== 'composed') issues.push('not_composed');
+        if (!view) issues.push('no_project_view');
+        for (const kind of ['progress', 'pending', 'arrangements'] as const) {
+          if (!Array.isArray(view?.[kind]) || !(view?.[kind] as unknown[]).length) issues.push('empty:' + kind);
+        }
+        const standards = (view?.standards as Array<{ text?: string }> | undefined) ?? [];
+        if (!standards.some(segment => String(segment.text || '').startsWith('通用建议（模型知识）：'))) {
+          issues.push('no_model_advice');
+        }
+        if (detail.deliveryState !== 'delivered') issues.push('not_delivered');
+        if (!digest.includes(fixture.projectNameA)) issues.push('digest_project');
+        if (digest.includes(fixture.projectNameB)) issues.push('digest_other_project');
+        if (role === 'customer') {
+          if (digest.includes('补拍卫生间照片') || digest.includes('请核对客厅墙砖排版')) issues.push('customer_internal');
+          if (digest.includes('workerTasks') || digest.includes('designerReviews')) issues.push('customer_role_fields');
+        }
+        if (role === 'worker') {
+          if (!digest.includes('补拍卫生间照片')) issues.push('worker_own_task_missing');
+          if (digest.includes('请核对客厅墙砖排版')) issues.push('worker_other_task');
+        }
+        if (role === 'designer') {
+          if (!digest.includes('请核对客厅墙砖排版')) issues.push('designer_review_missing');
+        }
+        if (issues.length) readIssues.push({ role, reportId: fixture.bindings[role].reportId, issues });
+        readOk[role] = issues.length === 0;
+      }
+      result.unifiedRoleReads = readOk;
+      check('body.role_reads', readIssues.length === 0 ? 'passed' : 'failed',
+        readIssues.length === 0
+          ? '四端通过正式 FollowupService 读取：正文状态 composed，项目事实与角色投影正确，业主无内部事项，施工人员只看本人任务，设计师只看核对项，老板只看获权项目'
+          : '四端正式读取存在角色或正文问题，详见证据',
+        { reads: readIssues, reportIds: Object.fromEntries(roleAudiences.map(role => [role, fixture.bindings[role].reportId])) });
+
+      const deliveryRows = await withTenantTransaction(eid, tx => rows(tx, sql`select d.report_id::text,d.revision,d.state,
+        d.message_id::text,m.conversation_id::text,b.audience,d.binding_id::text
+        from app.construction_report_deliveries d
+        left join app.assistant_messages m on m.enterprise_id=d.enterprise_id and m.id=d.message_id
+        join app.construction_followup_bindings b on b.enterprise_id=d.enterprise_id and b.id=d.binding_id
+        where d.enterprise_id=${eid} order by d.event_id`));
+      const deliveryIssues: string[] = [];
+      for (const role of roleAudiences) {
+        const binding = fixture.bindings[role];
+        const delivery = deliveryRows.find(row => String(row.report_id) === binding.reportId
+          && String(row.binding_id) === binding.bindingId);
+        if (!delivery || delivery.state !== 'delivered' || !delivery.message_id) deliveryIssues.push(role + ':not_delivered');
+        else if (String(delivery.conversation_id) !== binding.conversationId) deliveryIssues.push(role + ':wrong_conversation');
+      }
+      const messagesBeforeDelivery = (await counts())?.messages;
+      const pilotEnv = { XIAOK_WEEKLY_REPORT_MODE: 'pilot', XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: eid,
+        XIAOK_WEEKLY_REPORT_PILOT_ID: 'i750-pilot' };
+      const afterBodyDelivery = await deliverConfiguredConstructionReports({ now: new Date(), env: pilotEnv });
+      const messagesAfterDelivery = (await counts())?.messages;
+      check('body.delivery', deliveryIssues.length === 0 && afterBodyDelivery.delivered === 0
+        && Number(messagesAfterDelivery) === Number(messagesBeforeDelivery) ? 'passed' : 'failed',
+        '正文生成后再次执行正式投递入口：四端既投递消息仍绑定各自会话，未产生重复消息；读取结果与当前报告版本正文一致',
+        { deliveryIssues, afterBodyDelivery, messagesBeforeDelivery, messagesAfterDelivery,
+          deliveries: deliveryRows.map(row => ({ reportId: row.report_id, audience: row.audience, state: row.state,
+            messageId: row.message_id, conversationId: row.conversation_id })) });
+
+      const settings = await withTenantTransaction(eid, tx => one(tx, sql`select next_daily_at,next_weekly_at
+        from app.construction_report_settings where enterprise_id=${eid}`));
+      const earliestDue = Math.min(new Date(String(settings!.next_daily_at)).getTime(),
+        new Date(String(settings!.next_weekly_at)).getTime());
+      const advanceNow = new Date(Math.min(Date.now(), earliestDue - 1000));
+      const repeatAdvance = await advanceConfiguredConstructionReports({ now: advanceNow, env: pilotEnv });
+      const afterCompose = await counts();
+      const repeatBody = [];
+      for (const report of composed) {
+        if (String(report.knowledge_status) !== 'ready') continue;
+        const result = await withTenantTransaction(eid, tx => enqueueReportBody(tx, eid,
+          String(report.report_id), Number(report.revision)));
+        repeatBody.push({ reportId: report.report_id, runId: result.runId, status: result.status,
+          originalRunId: report.body_run_id });
+      }
+      const afterRepeat = await counts();
+      const repeatDelivery = await deliverConfiguredConstructionReports({ now: new Date(), env: pilotEnv });
+      const final = await counts();
+      const sameCounts = (left: Record<string, unknown> | undefined, right: Record<string, unknown> | undefined) =>
+        JSON.stringify(left) === JSON.stringify(right);
+      check('body.idempotent', repeatAdvance.queued === 0 && repeatDelivery.delivered === 0
+        && repeatBody.every(item => item.status === 'ready' && String(item.runId) === String(item.originalRunId))
+        && sameCounts(afterCompose, final) ? 'passed' : 'failed',
+        '重复执行排期、正文入队与投递不新增报告、版本、正文任务或消息；已生成正文复用原 runId',
+        { repeatAdvance, repeatDelivery, repeatBody, before, afterCompose, afterRepeat, final });
+      check('body.scope_isolation', composed.every(row => !projectIdsOf(row.facts).includes(fixture.projectB))
+        && composed.every(row => !JSON.stringify(row.body ?? null).includes(fixture.projectNameB))
+        ? 'passed' : 'failed', '范围外项目不进入任何正文 facts、正文或角色读取',
+        { outsideProject: fixture.projectB });
+
+      result.ids.bodyCompose = {
+        enterprise: eid, projectA: fixture.projectA, projectB: fixture.projectB,
+        reports: evidence, firstPass, repair,
+        roleReads: Object.fromEntries(roleAudiences.map(role => [role, {
+          reportId: fixture.bindings[role].reportId, conversationId: fixture.bindings[role].conversationId,
+          ok: readOk[role] }])),
+        counts: { before, afterCompose, final }, model,
+      };
+    } finally {
+      await restoreComposeModel(modelState, eid);
+    }
+  }
+
   await closePostgresPool();
 }
 

@@ -35,13 +35,32 @@ export async function enqueueReportBody(tx: PostgresTransaction, eid: string, re
   const parent = await one(tx, sql`select context_revision,conversation_id,policy_snapshot from app.assistant_runs where enterprise_id=${eid} and id=${String(v.run_id)}`);
   if (!c || !parent || c.id !== parent.conversation_id || c.context_revision !== parent.context_revision
     || Number((parent.policy_snapshot as Row).reportDispatchEpoch || 1) !== Number(plan.dispatch_epoch)) fail('context_changed');
+  // A body run that was cancelled (for example during a maintenance window) is
+  // not a duplicate scheduled occurrence: the same version still needs its body.
+  // Keep the original first-schedule key for a first admission, but re-admit a
+  // cancelled occurrence as an explicit retry so the unique first-schedule index
+  // does not turn a legitimate re-run into a permanent 23505.
+  let retryOf = v.body_run_id ? String(v.body_run_id) : undefined;
+  if (!v.body_run_id) {
+    const previous = await one(tx, sql`select id,status from app.assistant_runs where enterprise_id=${eid}
+      and purpose='construction.report.compose' and conversation_id=${String(c.id)}
+      and trigger_schedule_key=${`report-body:${reportId}:${revision}:initial`} for update`);
+    if (previous && ['queued','running'].includes(String(previous.status))) {
+      await tx.execute(sql`update app.construction_report_versions set body_run_id=${String(previous.id)},knowledge_status='queued'
+        where enterprise_id=${eid} and report_id=${reportId} and revision=${revision}`);
+      return { runId: String(previous.id), status: String(previous.status) };
+    }
+    if (previous) retryOf = String(previous.id);
+  }
+  const occurrenceKey = `report-body:${reportId}:${revision}:`
+    + (v.body_run_id ? String(v.body_run_id) : retryOf ? 'retry-' + retryOf : 'initial');
   const recipient = deliveryActor(eid, b);
   const actor = { ...recipient, capabilities: [...recipient.capabilities, 'assistant.followup.self',
     recipient.principal.kind === 'user' ? 'assistant.chat.self' : 'assistant.preview.self'] };
   await tx.execute(sql`savepoint report_body_admission`);
   try {
-    const result = await newRun(tx, actor, c, settings, null, v.body_run_id ? String(v.body_run_id) : undefined,
-      { kind: 'scheduled_task', occurrenceKey: `report-body:${reportId}:${revision}:${v.body_run_id || 'initial'}` }, 'construction.report.compose',
+    const result = await newRun(tx, actor, c, settings, null, retryOf,
+      { kind: 'scheduled_task', occurrenceKey }, 'construction.report.compose',
       { protocol: reportCompositionProtocol, reportId, revision, bindingId: String(b.id), dispatchEpoch: Number(plan.dispatch_epoch), factsHash: String(v.facts_hash),
         ...(v.report_kind === 'weekly' ? { workmanship: reportWorkmanshipProtocol } : v.report_kind === 'stage'
           ? { workmanship: serverReminderWorkmanshipProtocol } : {}) });
