@@ -22,9 +22,10 @@ export function fixtureConfig() {
     sfp_migrator: process.env.XIAOK_I749_MIGRATOR_PASSWORD,
     sfp_app: process.env.XIAOK_I749_APP_PASSWORD,
     sfp_auditor: process.env.XIAOK_I749_AUDITOR_PASSWORD,
+    sfp_backup: process.env.XIAOK_I749_BACKUP_PASSWORD,
   };
   if (!baseUrl || !pgBin) return null;
-  if (Object.values(passwords).some(value => !value)) return null;
+  if (['sfp_owner', 'sfp_migrator', 'sfp_app', 'sfp_auditor'].some(key => !passwords[key])) return null;
   try {
     const url = new URL(baseUrl);
     if (!['postgres:', 'postgresql:'].includes(url.protocol)) return null;
@@ -82,10 +83,13 @@ export async function ensureRoles(config) {
   try {
     await client.query("SELECT pg_advisory_lock(hashtext('xiaok-i749-fixture-roles'))");
     for (const [role, attributes] of [
-      ['sfp_migrator', 'NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS'],
-      ['sfp_app', 'NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS'],
-      ['sfp_auditor', 'NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS'],
-      ['sfp_owner', 'NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS'],
+      ['sfp_migrator', 'NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS'],
+      ['sfp_app', 'NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS'],
+      ['sfp_auditor', 'NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS'],
+      ['sfp_owner', 'NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS'],
+      ...(config.passwords.sfp_backup
+        ? [['sfp_backup', 'NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS']]
+        : []),
     ]) {
       const { rows: [existing] } = await client.query(
         'SELECT 1 FROM pg_roles WHERE rolname=$1', [role],
@@ -137,7 +141,7 @@ async function applyHistoricalBaseline(client, inputs) {
   }
 }
 
-async function grantDefaultPrivileges(admin) {
+async function grantDefaultPrivileges(admin, { backup = false } = {}) {
   await admin.query(`ALTER DEFAULT PRIVILEGES FOR ROLE sfp_migrator IN SCHEMA app
     GRANT SELECT,INSERT,UPDATE,DELETE ON TABLES TO sfp_app`);
   await admin.query(`ALTER DEFAULT PRIVILEGES FOR ROLE sfp_migrator IN SCHEMA app
@@ -149,6 +153,13 @@ async function grantDefaultPrivileges(admin) {
   await admin.query(`ALTER DEFAULT PRIVILEGES FOR ROLE sfp_migrator IN SCHEMA app
     GRANT SELECT ON SEQUENCES TO sfp_owner`);
   await admin.query('GRANT USAGE ON SCHEMA app TO sfp_app, sfp_auditor, sfp_owner');
+  if (backup) {
+    await admin.query(`ALTER DEFAULT PRIVILEGES FOR ROLE sfp_migrator IN SCHEMA app
+      GRANT SELECT ON TABLES TO sfp_backup`);
+    await admin.query(`ALTER DEFAULT PRIVILEGES FOR ROLE sfp_migrator IN SCHEMA app
+      GRANT SELECT ON SEQUENCES TO sfp_backup`);
+    await admin.query('GRANT USAGE ON SCHEMA app TO sfp_backup');
+  }
 }
 
 async function seedSyntheticData(app) {
@@ -202,6 +213,7 @@ async function seedSyntheticData(app) {
 export async function provisionSource(config, label) {
   const suffix = randomBytes(5).toString('hex');
   const database = `xiaok_i749_${label}_${suffix}`;
+  const backupRole = config.passwords.sfp_backup ? ',sfp_backup' : '';
   const admin = await connectAdmin(config);
   try {
     await admin.query(`CREATE DATABASE ${database}`);
@@ -213,12 +225,12 @@ export async function provisionSource(config, label) {
     await adminInDatabase.query(`
       REVOKE ALL ON DATABASE ${database} FROM public;
       GRANT CONNECT,CREATE ON DATABASE ${database} TO sfp_migrator;
-      GRANT CONNECT ON DATABASE ${database} TO sfp_app,sfp_auditor,sfp_owner;
+      GRANT CONNECT ON DATABASE ${database} TO sfp_app,sfp_auditor,sfp_owner${backupRole};
       CREATE EXTENSION IF NOT EXISTS btree_gist;
       COMMENT ON DATABASE ${database} IS '${SOURCE_MARKER}';
     `);
     await adminInDatabase.query('CREATE SCHEMA app AUTHORIZATION sfp_migrator');
-    await grantDefaultPrivileges(adminInDatabase);
+    await grantDefaultPrivileges(adminInDatabase, { backup: Boolean(config.passwords.sfp_backup) });
   } finally {
     await adminInDatabase.end();
   }
@@ -234,10 +246,14 @@ export async function provisionSource(config, label) {
 
   const grantClient = await connectAdmin(config, database);
   try {
-    await grantClient.query('GRANT USAGE ON SCHEMA app TO sfp_app,sfp_auditor,sfp_owner');
+    await grantClient.query(`GRANT USAGE ON SCHEMA app TO sfp_app,sfp_auditor,sfp_owner${backupRole}`);
     await grantClient.query('GRANT SELECT ON ALL TABLES IN SCHEMA app TO sfp_owner');
     await grantClient.query('GRANT SELECT ON ALL SEQUENCES IN SCHEMA app TO sfp_owner');
     await grantClient.query('GRANT SELECT ON ALL TABLES IN SCHEMA app TO sfp_auditor');
+    if (config.passwords.sfp_backup) {
+      await grantClient.query('GRANT SELECT ON ALL TABLES IN SCHEMA app TO sfp_backup');
+      await grantClient.query('GRANT SELECT ON ALL SEQUENCES IN SCHEMA app TO sfp_backup');
+    }
   } finally {
     await grantClient.end();
   }

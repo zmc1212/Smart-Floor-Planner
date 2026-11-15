@@ -11,15 +11,18 @@
 > - `backup_execution = not_run`
 > - `restore_verification = not_run`
 > - `migration_execution = not_run`
+>
+> **I7.4.9.6 更新**：最小权限 `sfp_backup` 已在隔离 PG17 验证通过；正式备份默认使用 `sfp_backup`，`sfp_owner` 仅保留为必须显式开启风险开关的兼容路径。真实开发库尚未创建 `sfp_backup`，详见 [I7.4.9.6 最小权限备份角色](./xiaok-i796-least-privilege-backup-role.md)。
 
 ## 1. 结论
 
 **微云 1454 当前尚不具备直接执行真实备份的完整条件。** 数据库身份、PostgreSQL 版本、账本、通知配置、备份账号读取能力、写入静默状态均通过只读核验；但存在两个执行前置阻断：
 
-1. **缺少已批准的 `sfp_owner` 凭据**：`.env.local` 只有 `DATABASE_URL`（`sfp_app`）和 `DATABASE_MIGRATION_URL`（`sfp_migrator`），没有 `XIAOK_MIGRATION_BACKUP_URL`，也没有 `XIAOK_MIGRATION_RESTORE_URL`。迁移备份工具的开发模式要求 `sfp_owner` 的完整 URL，当前无法认证，也不能运行工具。
-2. **默认备份目录空间不足且权限过宽**：默认 `admin/.postgres-backups` 位于 G:，当前可用约 **0.08 GB**；数据库约 **251 MB**，不足以安全生成 archive 和 Manifest。该目录 ACL 还包含 `Authenticated Users: Modify`、`BUILTIN\Users: ReadAndExecute`，不适合保存迁移前备份。
+1. **缺少已批准的 `sfp_backup` 凭据**：`.env.local` 只有 `DATABASE_URL`（`sfp_app`）和 `DATABASE_MIGRATION_URL`（`sfp_migrator`），没有 `XIAOK_MIGRATION_BACKUP_URL`，也没有 `XIAOK_MIGRATION_RESTORE_URL`。迁移备份工具默认要求 `sfp_backup` 的完整 URL；当前无法认证，也不能运行工具。`sfp_owner` 兼容路径存在，但必须显式开启风险开关。
+2. **默认备份目录空间不足且权限过宽**：默认 `admin/.postgres-backups` 位于 G:，当前可用约 **0.08 GB**；数据库约 **251 MB**，不足以安全生成 archive 和 Manifest。该目录 ACL 还包含 `Authenticated Users: Modify`、`BUILTIN\Users: ReadAndExecute`，不适合保存迁移前备份。此外，工具现在会拒绝位于仓库内的目录。
+3. **真实 `sfp_backup` 尚未创建**：隔离验证已通过，但真实角色、授权、密码和默认权限需要负责人单独批准。
 
-补充安全风险：真实 `sfp_owner` 当前是 **superuser + BYPASSRLS**。它具备完整备份能力，但超出最小权限。是否允许继续以该角色执行备份需负责人单独确认；本轮未修改角色。
+补充安全风险：真实 `sfp_owner` 当前是 **superuser + BYPASSRLS**。它具备完整备份能力，但超出最小权限。新计划优先使用 `sfp_backup`；保留 `sfp_owner` 时必须书面接受 SUPERUSER 风险并显式开启 `--allow-legacy-owner`。
 
 在补齐“批准凭据 + 专用受限目录”后，技术条件即具备；准确命令与窗口顺序见下文。
 
@@ -50,9 +53,11 @@
 - default 配置文本 SHA-256：`e34a0f6aba807167be3d0b0f5cba9b17be7ce948c9a9da906e158d81bc7d6a52`；
 - 8 个模板指纹与当前代码默认值一致（`f69746265857`、`e9180ff7fb37`、`cae3683a65ea`、`99f48d91511e`、`c74a7ec2bbfe`、`5c8bf375d406`、`14bb31ab667c`、`ce3bf55e1c3c`）。
 
-## 3. 备份账号 `sfp_owner` 核验
+## 3. 备份账号现状与目标
 
-| 项 | 实测 | 结论 |
+当前真实库的备份候选仍是 `sfp_owner`（下表为实测）；目标账号是隔离环境已验证的 `sfp_backup`。真实 `sfp_backup` 尚未创建。
+
+| 项 | `sfp_owner` 实测 | 结论 |
 | --- | --- | --- |
 | `rolcanlogin` | `true` | 通过 |
 | `rolsuper` | **`true`** | 能力通过，但超出最小权限 |
@@ -66,9 +71,9 @@
 
 `sfp_owner` 具备完整导出能力，但：
 
-- 不应擅自授予/收回 `BYPASSRLS`、`SUPERUSER`；本轮未修改；
-- 建议负责人批准一个最小权限备份角色（非 superuser、BYPASSRLS、全表/全序列 SELECT），或在书面风险接受后继续使用 `sfp_owner`；
-- 在凭据补齐前，`backup_preflight` 不能标记为通过。
+- 真实 `sfp_owner` 是 superuser，建议改用 `sfp_backup`（非 superuser、BYPASSRLS、全表/全序列 SELECT，隔离环境已验证）；
+- 在 `sfp_backup` 创建并注入凭据前，`backup_preflight` 不能标记为通过；
+- 若负责人书面接受 SUPERUSER 风险，可用 `--allow-legacy-owner` 走兼容路径，Manifest 会记录 `profile=legacy_owner` 与 `superuserConfirmed`。
 
 ## 4. 备份工具与参数
 
@@ -82,11 +87,13 @@
 | 远端开发容器 | `sfp-remote-dev-postgres`，镜像 `pgvector/pgvector:0.8.2-pg17`，`127.0.0.1:15432->5432` |
 | 容器内 `pg_dump`/`pg_restore` | `17.10 (Debian 17.10-1.pgdg12+1)` |
 | `POSTGRES_BACKUP_DATABASE` | 未设置；旧工具默认 `smart_floor_planner` |
-| `POSTGRES_BACKUP_USER` | 未设置；旧工具默认 `sfp_owner` |
+| `POSTGRES_BACKUP_USER` | 未设置；旧工具默认 `sfp_owner`；新工具默认 `sfp_backup` |
 | `POSTGRES_DOCKER_SERVICE` | 未设置；旧工具默认 `postgres`，本机无该 Compose 服务 |
 | `XIAOK_MIGRATION_BACKUP_URL` | **未设置** |
 | `XIAOK_MIGRATION_RESTORE_URL` | **未设置** |
-| 默认输出目录 | `admin/.postgres-backups`（G:），可用 **0.08 GB**，不足 |
+| `XIAOK_MIGRATION_ALLOW_LEGACY_OWNER` | 未设置；仅 `sfp_owner` 兼容路径需要 |
+| `XIAOK_MIGRATION_MIN_FREE_BYTES` | 未设置；默认 512 MiB |
+| 默认输出目录 | `admin/.postgres-backups`（G:），位于仓库内且可用 **0.08 GB**，工具会直接拒绝 |
 | 候选输出目录 | `C:` 可用约 **31 GB**，需新建受限目录 |
 | 现有目录 ACL | `Authenticated Users: Modify`、`BUILTIN\Users: ReadAndExecute`，过宽 |
 
@@ -135,24 +142,25 @@
 `backup_preflight` 需同时满足：
 
 1. 负责人批准本次备份窗口和账号使用方式。
-2. 从受控密钥存储注入 `XIAOK_MIGRATION_BACKUP_URL`：`postgresql://sfp_owner:<secret>@127.0.0.1:5432/smart_floor_planner`；不得写入仓库、日志或文档。
-3. 注入 `XIAOK_MIGRATION_RESTORE_URL`（同一批准账号的 `/postgres` 维护连接，用于创建/删除一次性恢复库）；如不批准，恢复验证不能执行。
-4. 在 C: 或其他有足够空间的受控卷创建专用目录（建议至少 10 GB 可用），并收紧 ACL：
+2. 负责人批准创建真实 `sfp_backup`（LOGIN、NOSUPERUSER、BYPASSRLS、NOCREATEDB、NOCREATEROLE、NOREPLICATION），并批准 CONNECT、`app` schema USAGE、现有全部表/序列 SELECT 与默认 SELECT 权限。
+3. 从受控密钥存储注入 `XIAOK_MIGRATION_BACKUP_URL`：`postgresql://sfp_backup:<secret>@127.0.0.1:5432/smart_floor_planner`；不得写入仓库、日志或文档。
+4. 注入 `XIAOK_MIGRATION_RESTORE_URL`（批准的维护连接 `/postgres`，用于创建/删除一次性恢复库）；如不批准，恢复验证不能执行。
+5. 在 C: 或其他有足够空间的受控卷创建专用目录（建议至少 10 GB 可用），并收紧 ACL：
    ```powershell
    $dir = 'C:\sfp-backups\i795-20261115'
    New-Item -ItemType Directory -Force -Path $dir | Out-Null
    icacls $dir /inheritance:r /grant:r "Administrator:(OI)(CI)F" "SYSTEM:(OI)(CI)F"
    ```
-   不要使用现有 `admin/.postgres-backups` 的宽 ACL 目录。
-5. 确认 `pg_dump`/`pg_restore` 为 17.10，数据库为 17.10，目标目录空间足够。
-6. 确认 `sfp_owner` 能力仍为：可登录、superuser 或 BYPASSRLS、全表/全序列 SELECT；若负责人选择最小权限角色，先单独完成角色审批与授权。
-7. 完成一次窗口内最终静默检查：无其他会话、无长事务、无 DDL、Outbox/Jobs/Reports 无新增。
+   工具会拒绝仓库内目录、`Authenticated Users`/`Everyone` 可写目录和空间不足目录。
+6. 确认 `pg_dump`/`pg_restore` 为 17.10，数据库为 17.10，目标目录空间足够。
+7. 确认 `sfp_backup` 能力为：可登录、非 superuser、BYPASSRLS、全表/全序列 SELECT；若负责人坚持 `sfp_owner` 兼容路径，必须书面接受 SUPERUSER 风险并显式开启 `--allow-legacy-owner`。
+8. 完成一次窗口内最终静默检查：无其他会话、无长事务、无 DDL、Outbox/Jobs/Reports 无新增。
 
 ## 7. 正式备份命令（待批准后执行，本轮不执行）
 
 ```powershell
 # 仅从受控密钥存储注入，禁止写入仓库或日志
-$env:XIAOK_MIGRATION_BACKUP_URL = '<approved sfp_owner URL>'
+$env:XIAOK_MIGRATION_BACKUP_URL = '<approved sfp_backup URL>'
 $env:PG_BIN = 'C:\pg17bin\pgsql\bin'
 
 npm run db:migration-backup -- `
@@ -164,8 +172,9 @@ npm run db:migration-backup -- `
 
 约束：
 
-- 开发模式只接受 `127.0.0.1:5432/smart_floor_planner`、`sfp_owner`、非 production；
-- 工具在 `pg_dump` 前检查角色属性、全表/全序列 SELECT、schema USAGE；
+- 开发模式只接受 `127.0.0.1:5432/smart_floor_planner`、`sfp_backup`（默认）或显式风险确认的 `sfp_owner`、非 production；
+- 工具在 `pg_dump` 前检查角色属性、全表/全序列 SELECT、schema USAGE；`sfp_backup` 若为 SUPERUSER 直接拒绝；
+- 工具检查输出目录存在、不在仓库内、ACL 不含 Authenticated Users/Everyone 写权限、空间不低于阈值；失败时不创建任何备份文件；
 - 工具使用 custom archive，**不添加** `--no-owner`/`--no-privileges`；
 - 工具会生成 `database.dump`、`database.dump.sha256`、`migration-backup-manifest.json`；
 - 成功时 Manifest 账本应为 **119** 条（迁移前），`latestMigration` 应为 `0119_platform_portfolio_templates`，0021/0051 历史 SHA 精确记录，0131 尚不存在；
@@ -181,6 +190,10 @@ $manifest.migrationLedgerCount          # 119
 $manifest.migrationLedgerDigest         # 与当前 119 条摘要比对
 $manifest.latestMigration.tag           # 0119_platform_portfolio_templates
 $manifest.historicalHashes              # 0021/0051 完整 SHA + matchesAllowlist
+$manifest.backupRole.name               # sfp_backup
+$manifest.backupRole.profile            # least_privilege
+$manifest.backupRole.rolsuper           # false
+$manifest.backupRole.rolbypassrls       # true
 $manifest.restoreListVerified           # true
 $manifest.archive.ownerMode             # full
 $manifest.archive.privilegesMode        # full
@@ -266,7 +279,7 @@ ORDER BY key;
 
 | 标记 | 状态 | 说明 |
 | --- | --- | --- |
-| `backup_preflight` | **blocked** | 能力通过；缺少 `sfp_owner` 凭据、默认磁盘不足、目录 ACL 过宽 |
+| `backup_preflight` | **blocked** | 能力通过；真实 `sfp_backup` 尚未创建、凭据缺失、默认磁盘不足、目录 ACL 过宽 |
 | `backup_execution` | `not_run` | 本轮禁止真实 `pg_dump` |
 | `restore_verification` | `not_run` | 依赖备份与维护凭据 |
 | `migration_execution` | `not_run` | 另行授权；本轮只读 |

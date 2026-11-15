@@ -42,21 +42,36 @@ test('restore admin connections stay on the approved loopback ports', () => {
 });
 
 function runBackup(database, outputDir) {
-  const result = spawnSync(process.execPath, [
+  const role = config.passwords.sfp_backup ? 'sfp_backup' : 'sfp_owner';
+  const args = [
     backupScript, '--mode', 'isolated', '--database', database,
     '--output-dir', outputDir, '--pg-bin', config.pgBin,
-  ], {
+  ];
+  if (role === 'sfp_owner') args.push('--allow-legacy-owner');
+  const result = spawnSync(process.execPath, args, {
     cwd: adminRoot,
     env: {
       ...process.env,
       PG_BIN: config.pgBin,
-      XIAOK_MIGRATION_BACKUP_URL: urlFor(config, database, 'sfp_owner', config.passwords.sfp_owner),
+      XIAOK_MIGRATION_BACKUP_URL: urlFor(config, database, role, config.passwords[role]),
     },
     encoding: 'utf8',
     timeout: 600_000,
     windowsHide: true,
   });
   return { exitCode: result.status, body: JSON.parse(result.stdout), stderr: result.stderr };
+}
+
+async function secureDirectory(directory) {
+  if (process.platform === 'win32') {
+    const result = spawnSync('icacls', [
+      directory, '/inheritance:r', '/grant:r',
+      `${process.env.USERNAME}:(OI)(CI)F`, 'SYSTEM:(OI)(CI)F',
+    ], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+  } else {
+    await fs.chmod(directory, 0o700);
+  }
 }
 
 function runVerify(manifestPath, targetDatabase) {
@@ -117,6 +132,7 @@ before(async () => {
   await ensureRoles(config);
   source = await provisionSource(config, 'restore');
   workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'xiaok-i749-restore-'));
+  await secureDirectory(workDir);
   const run = runBackup(source.database, workDir);
   assert.equal(run.body.status, 'passed', JSON.stringify(run.body));
   backupDirectory = path.join(workDir, run.body.backupId);
@@ -129,6 +145,9 @@ after(async () => {
 });
 
 live('a disposable PG17 restore verifies the ledger, RLS, data and permissions', async () => {
+  const manifest = JSON.parse(await fs.readFile(path.join(backupDirectory, MANIFEST_FILE), 'utf8'));
+  assert.equal(manifest.backupRole.name, config.passwords.sfp_backup ? 'sfp_backup' : 'sfp_owner');
+  assert.equal(manifest.backupRole.profile, config.passwords.sfp_backup ? 'least_privilege' : 'legacy_owner');
   const target = 'xiaok_migration_restore_ok';
   const run = runVerify(path.join(backupDirectory, MANIFEST_FILE), target);
   assert.equal(run.body.status, 'passed', JSON.stringify(run.body, null, 2));

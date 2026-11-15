@@ -11,12 +11,16 @@ import {
 
 const adminRoot = fileURLToPath(new URL('../', import.meta.url));
 const drizzleDir = path.join(adminRoot, 'drizzle');
+const repoRoot = path.resolve(adminRoot, '..');
 const approvedDatabase = 'smart_floor_planner';
-const approvedBackupRole = 'sfp_owner';
+const leastPrivilegeBackupRole = 'sfp_backup';
+const legacyBackupRole = 'sfp_owner';
+const approvedBackupRoles = new Set([leastPrivilegeBackupRole, legacyBackupRole]);
 const isolatedSourceMarker = 'xiaok-i749-backup-sandbox';
 const isolatedClusterMarker = 'xiaok-i749-isolated-test';
 const isolatedDatabasePattern = /^xiaok_i749_[a-z0-9_]{1,40}$/;
 const blockedIsolatedPorts = new Set([5432, 55432]);
+const defaultMinFreeBytes = 512 * 1024 * 1024;
 
 export const MANIFEST_VERSION = 1;
 export const MANIFEST_FILE = 'migration-backup-manifest.json';
@@ -172,21 +176,32 @@ function safeUrl(raw) {
   }
 }
 
+export function resolveBackupRoleProfile(user, allowLegacyOwner = false) {
+  if (user === leastPrivilegeBackupRole) return { profile: 'least_privilege' };
+  if (user === legacyBackupRole) return allowLegacyOwner ? { profile: 'legacy_owner' } : null;
+  return null;
+}
+
 /**
  * The approved development target. Only the reviewed database, role and
  * loopback port qualify; production is never a backup source for this tool.
  */
-export function resolveApprovedDevelopmentTarget(raw, { nodeEnv, database = approvedDatabase } = {}) {
+export function resolveApprovedDevelopmentTarget(raw, {
+  nodeEnv, database = approvedDatabase, allowLegacyOwner = false,
+} = {}) {
   if (nodeEnv === 'production' || !raw || database !== approvedDatabase) return null;
   const url = safeUrl(raw);
   if (!url || !loopback(url.hostname) || (url.port || '5432') !== '5432') return null;
-  if (url.pathname !== '/' + approvedDatabase || url.username !== approvedBackupRole || !url.password) return null;
+  if (url.pathname !== '/' + approvedDatabase || !url.password) return null;
+  const role = resolveBackupRoleProfile(url.username, allowLegacyOwner);
+  if (!role) return null;
   return {
     target: {
       hostname: url.hostname, connectionAddress: '127.0.0.1', port: 5432,
-      database: approvedDatabase, user: approvedBackupRole,
+      database: approvedDatabase, user: url.username,
     },
     password: decodeURIComponent(url.password),
+    roleProfile: role.profile,
   };
 }
 
@@ -195,20 +210,25 @@ export function resolveApprovedDevelopmentTarget(raw, { nodeEnv, database = appr
  * prefix and database comments make it impossible to point this at the shared
  * development forward or the real development database.
  */
-export function resolveIsolatedTarget(raw, { nodeEnv, database } = {}) {
+export function resolveIsolatedTarget(raw, {
+  nodeEnv, database, allowLegacyOwner = false,
+} = {}) {
   if (nodeEnv === 'production' || !raw || !database) return null;
   if (!isolatedDatabasePattern.test(database) || database === approvedDatabase) return null;
   const url = safeUrl(raw);
   if (!url || !loopback(url.hostname)) return null;
   const port = Number(url.port || 5432);
   if (!Number.isInteger(port) || port < 49152 || blockedIsolatedPorts.has(port)) return null;
-  if (url.pathname !== '/' + database || !url.username) return null;
+  if (url.pathname !== '/' + database) return null;
+  const role = resolveBackupRoleProfile(url.username, allowLegacyOwner);
+  if (!role) return null;
   return {
     target: {
       hostname: url.hostname, connectionAddress: '127.0.0.1', port,
       database, user: url.username,
     },
     password: url.password ? decodeURIComponent(url.password) : '',
+    roleProfile: role.profile,
   };
 }
 
@@ -372,7 +392,7 @@ async function readIdentity(client) {
       shobj_description(
         (SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database()), 'pg_database'
       ) AS purpose,
-      r.rolsuper, r.rolbypassrls, r.rolcanlogin
+      r.rolsuper, r.rolbypassrls, r.rolcanlogin, r.rolcreatedb, r.rolcreaterole, r.rolreplication
     FROM pg_catalog.pg_roles r WHERE r.rolname=current_user
   `);
   return identity;
@@ -641,7 +661,65 @@ export function validateSourceLedger(rows, inputs) {
   }
 }
 
-async function createBackup({ client, target, password, pgBin, outputDir, mode, label, startedAt }) {
+export async function inspectBackupDirectory(directory, {
+  minFreeBytes = defaultMinFreeBytes,
+} = {}) {
+  const resolved = path.resolve(directory);
+  const relative = path.relative(repoRoot, resolved);
+  if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) {
+    return { ok: false, reason: 'backup_directory_inside_repository' };
+  }
+  if (!relative) return { ok: false, reason: 'backup_directory_inside_repository' };
+  const stats = await fs.stat(resolved).catch(() => null);
+  if (!stats?.isDirectory()) return { ok: false, reason: 'backup_directory_missing' };
+
+  let owner = null;
+  if (process.platform === 'win32') {
+    const script = `$acl = Get-Acl -LiteralPath '${resolved.replaceAll("'", "''")}';
+$entries = @($acl.Access | ForEach-Object { [pscustomobject]@{ Identity = $_.IdentityReference.Value; Rights = $_.FileSystemRights.ToString() } });
+[pscustomobject]@{ Owner = $acl.Owner; Access = $entries } | ConvertTo-Json -Compress -Depth 4`;
+    const powershell = path.join(process.env.SystemRoot || 'C:/Windows',
+      'System32/WindowsPowerShell/v1.0/powershell.exe');
+    const result = await runProcess(powershell, ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+      Buffer.from(script, 'utf16le').toString('base64')]);
+    if (result.code !== 0) return { ok: false, reason: 'backup_directory_acl_unreadable' };
+    let acl;
+    try {
+      acl = JSON.parse(result.stdout);
+    } catch {
+      return { ok: false, reason: 'backup_directory_acl_unreadable' };
+    }
+    owner = acl.Owner ?? null;
+    const access = Array.isArray(acl.Access) ? acl.Access : acl.Access ? [acl.Access] : [];
+    const broadWrite = access.filter(entry => /(Authenticated Users|Everyone)/i.test(String(entry.Identity ?? ''))
+      && /(Modify|FullControl|Write|CreateFiles|AppendData|Delete)/i.test(String(entry.Rights ?? '')));
+    if (broadWrite.length) {
+      return { ok: false, reason: 'backup_directory_acl_unsafe',
+        detail: broadWrite.map(entry => ({ identity: entry.Identity, rights: entry.Rights })) };
+    }
+    if (owner && /(Everyone|Authenticated Users)/i.test(owner)) {
+      return { ok: false, reason: 'backup_directory_owner_unsafe', owner };
+    }
+  } else {
+    if ((stats.mode & 0o022) !== 0) {
+      return { ok: false, reason: 'backup_directory_group_or_world_writable' };
+    }
+    if (typeof process.getuid === 'function' && stats.uid !== process.getuid() && stats.uid !== 0) {
+      return { ok: false, reason: 'backup_directory_owner_mismatch' };
+    }
+  }
+
+  const space = await fs.statfs(resolved).catch(() => null);
+  if (!space) return { ok: false, reason: 'backup_directory_space_unknown' };
+  const freeBytes = Number(space.bavail) * Number(space.bsize);
+  if (!Number.isFinite(freeBytes) || freeBytes < minFreeBytes) {
+    return { ok: false, reason: 'backup_directory_insufficient_space', freeBytes, minFreeBytes };
+  }
+  return { ok: true, directory: resolved, owner, freeBytes };
+}
+
+async function createBackup({ client, target, password, pgBin, outputDir, mode, label, startedAt,
+  roleProfile, legacyRiskConfirmed }) {
   const pgDump = resolvePgBinary(pgBin, 'pg_dump');
   const pgRestore = resolvePgBinary(pgBin, 'pg_restore');
   const [pgDumpVersion, pgRestoreVersion] = await Promise.all([
@@ -663,6 +741,15 @@ async function createBackup({ client, target, password, pgBin, outputDir, mode, 
       }
       if (identity.replica) throw new Error('backup_source_is_a_replica');
       if (identity.rolcanlogin !== true) throw new Error('backup_role_cannot_login');
+      if (!['least_privilege', 'legacy_owner'].includes(roleProfile)) {
+        throw new Error('unapproved_backup_role');
+      }
+      if (roleProfile === 'least_privilege' && identity.rolsuper === true) {
+        throw new Error('least_privilege_backup_role_must_not_be_superuser');
+      }
+      if (roleProfile === 'legacy_owner' && identity.rolsuper === true && legacyRiskConfirmed !== true) {
+        throw new Error('superuser_backup_requires_explicit_confirmation');
+      }
       const { rows: [appSchema] } = await client.query("SELECT to_regnamespace('app')::text AS schema");
       if (!appSchema?.schema) throw new Error('app_schema_missing');
       const { rows: [ledgerTable] } = await client.query(
@@ -755,9 +842,16 @@ async function createBackup({ client, target, password, pgBin, outputDir, mode, 
       postgresqlVersionNumber: facts.identity.versionNumber,
       backupRole: {
         name: facts.identity.role,
+        profile: roleProfile,
         rolsuper: facts.identity.rolsuper,
         rolbypassrls: facts.identity.rolbypassrls,
         rolcanlogin: facts.identity.rolcanlogin,
+        rolcreatedb: facts.identity.rolcreatedb,
+        rolcreaterole: facts.identity.rolcreaterole,
+        rolreplication: facts.identity.rolreplication,
+        legacyOwnerRiskConfirmed: roleProfile === 'legacy_owner' && legacyRiskConfirmed === true,
+        superuserConfirmed: roleProfile === 'legacy_owner' && legacyRiskConfirmed === true
+          && facts.identity.rolsuper === true,
         fullReadProof: facts.identity.rolsuper ? 'superuser' : 'bypassrls',
         tableSelectCoverage: {
           checked: true,
@@ -844,6 +938,8 @@ export function parseBackupArguments(argv) {
       'output-dir': { type: 'string' },
       'pg-bin': { type: 'string' },
       label: { type: 'string' },
+      'allow-legacy-owner': { type: 'boolean', default: false },
+      'min-free-bytes': { type: 'string' },
     },
   }).values;
 }
@@ -854,12 +950,34 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   if (!['development', 'isolated'].includes(mode)) {
     return { status: 'blocked', reason: 'unsupported_mode' };
   }
+  const allowLegacyOwner = values['allow-legacy-owner'] === true
+    || env.XIAOK_MIGRATION_ALLOW_LEGACY_OWNER === '1';
   const rawUrl = env.XIAOK_MIGRATION_BACKUP_URL;
+  const requestedRole = safeUrl(rawUrl)?.username;
+  if (requestedRole === legacyBackupRole && !allowLegacyOwner) {
+    return { status: 'blocked', reason: 'legacy_backup_role_requires_explicit_confirmation' };
+  }
+  if (requestedRole && !approvedBackupRoles.has(requestedRole)) {
+    return { status: 'blocked', reason: 'unapproved_backup_role' };
+  }
   const approved = mode === 'development'
-    ? resolveApprovedDevelopmentTarget(rawUrl, { nodeEnv: env.NODE_ENV, database: values.database })
-    : resolveIsolatedTarget(rawUrl, { nodeEnv: env.NODE_ENV, database: values.database });
+    ? resolveApprovedDevelopmentTarget(rawUrl, {
+      nodeEnv: env.NODE_ENV, database: values.database, allowLegacyOwner,
+    })
+    : resolveIsolatedTarget(rawUrl, {
+      nodeEnv: env.NODE_ENV, database: values.database, allowLegacyOwner,
+    });
   if (!approved) return { status: 'blocked', reason: 'unapproved_backup_target' };
   const outputDir = path.resolve(values['output-dir'] ?? path.join(adminRoot, '.postgres-backups'));
+  const requestedMinFree = values['min-free-bytes'] ?? env.XIAOK_MIGRATION_MIN_FREE_BYTES;
+  const minFreeBytes = requestedMinFree === undefined ? defaultMinFreeBytes : Number(requestedMinFree);
+  if (!Number.isSafeInteger(minFreeBytes) || minFreeBytes <= 0) {
+    return { status: 'blocked', reason: 'invalid_min_free_bytes' };
+  }
+  const storage = await inspectBackupDirectory(outputDir, { minFreeBytes });
+  if (!storage.ok) {
+    return { status: 'blocked', reason: storage.reason, detail: storage };
+  }
   const pgBin = values['pg-bin'] ?? env.PG_BIN ?? env.PG_BIN_DIR ?? '';
   const startedAt = Date.now();
   const client = new pg.Client(connectionFor({
@@ -881,10 +999,10 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
         return { status: 'blocked', reason: 'isolated_cluster_marker_missing' };
       }
     }
-    await fs.mkdir(outputDir, { recursive: true });
     const { manifest, finalDirectory } = await createBackup({
       client, target: approved.target, password: approved.password, pgBin,
       outputDir, mode, label: values.label, startedAt,
+      roleProfile: approved.roleProfile, legacyRiskConfirmed: allowLegacyOwner,
     });
     return {
       status: 'passed',

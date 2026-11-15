@@ -120,6 +120,16 @@ Healthcheck 现可报告最近请求结果及失败原因，并独立显示本�
 
 `backup_preflight` 仍为 **blocked**：缺少已批准的 `sfp_owner` 凭据（无 `XIAOK_MIGRATION_BACKUP_URL`/`XIAOK_MIGRATION_RESTORE_URL`）；默认 G: 备份目录仅余约 0.08 GB，不足以容纳 251 MB 数据库；现有 `.postgres-backups` ACL 含 `Authenticated Users: Modify`，不适合保存迁移备份。备份、恢复验证、迁移执行均仍为 `not_run`。回归 20 项备份/恢复测试与 9 项预检测试通过，TypeScript 与定向 ESLint 通过。详见 [I7.4.9.5 真实备份执行方案](./xiaok-i795-real-backup-execution-plan.md)。
 
+### I7.4.9.6 最小权限备份角色 sfp_backup（2026-11-15）
+
+新增并验证专用备份角色设计：`sfp_backup` 为 LOGIN、NOSUPERUSER、BYPASSRLS、NOCREATEDB、NOCREATEROLE、NOREPLICATION，不属于 `sfp_owner`/`sfp_migrator` 成员，不拥有业务表。仅授予 `app` schema USAGE、现有全部表/序列 SELECT，以及未来对象的默认 SELECT；不授予任何写、DDL、账本或迁移权限。
+
+隔离 PG17.10 验证通过：跨 FORCE RLS 读取 1454/1455 全部数据；174 张表、146 个序列 SELECT 覆盖；custom archive 备份成功；独立恢复 `full_restore_passed=true`；INSERT/UPDATE/DELETE/CREATE/ALTER/账本写入均返回 `42501`；`rolsuper=false`、`rolbypassrls=true`、无 owner/migrator 成员关系；`sfp_app` 仍受租户 RLS 限制。缺少 BYPASSRLS 或表 SELECT 时工具 fail closed。
+
+备份工具默认使用 `sfp_backup`；`sfp_owner` 仅保留显式 `--allow-legacy-owner`/环境开关的兼容路径，且 `sfp_backup` 若为 SUPERUSER 会被拒绝。Manifest 记录角色属性、profile、风险确认与覆盖检查。新增目录安全预检：拒绝仓库内目录、Authenticated Users/Everyone 可写 ACL、空间不足目录；失败不创建备份。
+
+真实开发库**尚未创建 `sfp_backup`**，未修改 `sfp_owner` 或 1454 权限。创建真实角色、授权、密码注入、默认权限和保留 legacy 兼容均需负责人单独批准。回归：备份 16 passed、恢复 9 passed、迁移器 18 passed / 7 skipped，TypeScript 与定向 ESLint 通过。详见 [I7.4.9.6 最小权限备份角色](./xiaok-i796-least-privilege-backup-role.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`
