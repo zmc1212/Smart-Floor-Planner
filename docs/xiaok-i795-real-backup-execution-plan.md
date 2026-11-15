@@ -161,7 +161,7 @@
      ```
      必须 `status=passed`，否则不得备份。
 3. 从受控密钥存储注入 `XIAOK_MIGRATION_BACKUP_URL`：`postgresql://sfp_backup:<secret>@127.0.0.1:5432/smart_floor_planner`；不得写入仓库、日志或文档。
-4. 注入 `XIAOK_MIGRATION_RESTORE_URL`（批准的维护连接 `/postgres`，用于创建/删除一次性恢复库）；如不批准，恢复验证不能执行。
+4. 在**独立的一次性 PG17 恢复集群**创建 `sfp_restore`，不授予源库 CONNECT；`XIAOK_MIGRATION_RESTORE_URL` 指向该恢复集群的 `/postgres`，不得复用 `sfp_backup` 或源库维护账号。角色 SQL 与边界见 [I7.4.9.8 恢复维护角色](./xiaok-i798-restore-maintenance-role.md)。
 5. 在 C: 或其他有足够空间的受控卷创建专用目录（建议至少 10 GB 可用），并收紧 ACL：
    ```powershell
    $dir = 'C:\sfp-backups\i795-20261115'
@@ -226,16 +226,29 @@ if ($actual -ne $manifest.backupSha256 -or $actual -ne $shaFile) { throw 'SHA mi
 
 ## 9. 独立恢复验证命令（待批准后执行，本轮不执行）
 
-前提：`XIAOK_MIGRATION_RESTORE_URL` 为批准的维护连接（可创建/删除一次性数据库，且能跨 FORCE RLS 读取）。目标库名与源库不同，且必须是可丢弃库。
+前提：
+
+- 使用**独立的一次性 PG17 恢复集群**，不是源库所在集群；
+- `sfp_restore` 只存在于恢复集群，具备 LOGIN、NOSUPERUSER、CREATEDB、BYPASSRLS、NOCREATEROLE、NOREPLICATION，并仅加入 `sfp_migrator`（真实 app 对象 owner）；
+- 恢复集群已有 `sfp_migrator`/`sfp_owner`/`sfp_app`/`sfp_auditor`/`sfp_backup` 角色，且 `btree_gist` 已由非超级用户 owner 预创建（否则扩展 COMMENT 需要超级用户）；
+- 源库**不授予** `sfp_restore` CONNECT；
+- 目标库名与源库不同，且必须是可丢弃库。
 
 ```powershell
-$env:XIAOK_MIGRATION_RESTORE_URL = '<approved maintenance URL to /postgres>'
+# 恢复集群（示例，待批准）
+psql -h <restore-host> -p <restore-port> -U postgres -d postgres `
+  -v ON_ERROR_STOP=1 -v restore_owner_role=sfp_migrator `
+  -f admin/scripts/sql/xiaok-create-restore-role.sql
+# 再交互式设置密码，禁止写入命令行/仓库：
+# \password sfp_restore
+
+$env:XIAOK_MIGRATION_RESTORE_URL = '<approved sfp_restore URL to the restore cluster /postgres>'
 $env:PG_BIN = 'C:\pg17bin\pgsql\bin'
 
 npm run db:migration-restore-verify -- `
   --manifest C:\sfp-backups\i795-20261115\<backupId>\migration-backup-manifest.json `
   --target-database xiaok_migration_restore_i795 `
-  --mode development `
+  --mode isolated `
   --pg-bin C:\pg17bin\pgsql\bin `
   --keep-target
 ```

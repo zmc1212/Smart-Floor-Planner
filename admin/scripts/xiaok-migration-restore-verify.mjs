@@ -143,6 +143,10 @@ export async function verifyRestore({ manifestPath, targetDatabase, mode, env, k
     fail('unapproved_restore_target');
     return { status: 'rejected', checks, failures, detail };
   }
+  if (admin.user === 'sfp_backup') {
+    fail('backup_role_cannot_restore');
+    return { status: 'rejected', checks, failures, detail };
+  }
 
   const loaded = await readManifest(manifestPath).catch(() => ({ error: 'manifest_unreadable' }));
   if (loaded.error) {

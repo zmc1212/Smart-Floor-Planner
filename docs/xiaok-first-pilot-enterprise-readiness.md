@@ -140,6 +140,14 @@ Healthcheck 现可报告最近请求结果及失败原因，并独立显示本�
 
 真实开发库**尚未创建 `sfp_backup`**，未设置真实密码，未修改 `sfp_owner` 或 1454 权限。恢复账号仍需独立的 CREATEDB/BYPASSRLS/owner 切换维护权限，不复用 `sfp_backup`。回归：角色 6 passed、备份/恢复 25 passed，TypeScript 与定向 ESLint 通过。详见 [I7.4.9.7 角色创建方案](./xiaok-i797-backup-role-provisioning.md)。
 
+### I7.4.9.8 独立恢复维护角色 sfp_restore（2026-11-15）
+
+只读核查确认真实 `app` schema、174 张业务表、146 个序列、33 个函数全部由 `sfp_migrator` 拥有（非 SUPERUSER、非 BYPASSRLS）；`btree_gist`/`plpgsql` 扩展由 `sfp_owner` 超级用户拥有。据此设计 `sfp_restore`：LOGIN、NOSUPERUSER、CREATEDB、BYPASSRLS、NOCREATEROLE、NOREPLICATION，仅加入 `sfp_migrator`，不加入 `sfp_owner`，不授予源库 CONNECT。
+
+PG17.10 使用**独立恢复集群**验证：可创建/删除一次性恢复库、完整恢复 custom archive、恢复业务对象 owner 与 ACL、128 条账本、数据、FORCE RLS/Policy；`full_restore_passed=true`；`rolsuper=false`、`rolcreaterole=false`；源集群无该角色，无法修改源库；`sfp_backup` 凭据被恢复工具拒绝。混合非超级用户 owner 需要对应成员关系；`pg_restore --role` 不能替代成员关系。超级用户拥有的扩展 owner/comment 无法在非超级用户下逐字恢复，恢复集群需预创建扩展并指定非超级用户 owner。
+
+真实 `sfp_restore` 和恢复集群尚未创建；本轮未修改真实角色或数据库。回归：角色 5 passed、备份/恢复 25 passed，TypeScript 与定向 ESLint 通过。详见 [I7.4.9.8 恢复维护角色](./xiaok-i798-restore-maintenance-role.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`
