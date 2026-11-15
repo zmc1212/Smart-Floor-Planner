@@ -16,6 +16,17 @@ npm run check:pilot-readiness -- --enterprise-id 123 --enterprise-audit
 - 三种范围参数互斥。试点验收使用 `--pilot-id`。仅传 ID 列表属于试算，`pilot.scope` 至少为 warning。`--enterprise-audit` 用于全企业盘点。
 - 退出码 `0` 表示 `ready` 或 `limited`，`2` 表示 `blocked`，`1` 表示输入或执行错误。调用方应读取 JSON 的 `readiness`。
 
+## 环境前置
+
+Node/npm/依赖、`.env`、PG17 连接与身份、RLS、迁移账本、百炼模型、Embedding/知识库和 Worker/队列由统一环境入口负责，本预检不再重复实现：
+
+```powershell
+cd admin
+npm run xiaok:env:check -- --require development,isolated-pg17,model,knowledge,worker
+```
+
+环境级别未通过时，先按报告中的修复命令和复验方法处理，再运行本预检。详见[开发环境统一体检](./xiaok-environment-check.md)。
+
 ## 报告
 
 | 字段 | 计入条件 |

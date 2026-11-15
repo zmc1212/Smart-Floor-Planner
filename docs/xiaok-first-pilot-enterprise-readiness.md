@@ -156,6 +156,23 @@ PG17.10 使用**独立恢复集群**验证：可创建/删除一次性恢复库�
 
 统一状态：`reminderStatus=limited`、`knowledgeAnswerStatus=limited`、`weeklyReportStatus=passed`、四端 `*Delivery=passed`、`idempotencyStatus=passed`、`projectScopeStatus=passed`。**微云 1454 真实环境仍为 `not_run`**：未连接业务库、未执行迁移/备份、未启动真实 Worker、未发送微信、未部署生产。真实试点阻塞仍为 1454 的 9 条待迁移、备份/恢复与维护窗口、Worker `stale`、企业知识/Embedding/pgvector 未配置以及管理员尚未提交试点名单。详见 [I7.5.0 第一期产品验收](./xiaok-v1-first-release-acceptance.md)。
 
+### I7.5.2 开发环境统一体检与可重复准备（2026-11-16）
+
+> 基线：`codex/xiaok-integration` / `a5dc1489`。真实开发库 `smart_floor_planner`（`sfp_app`、PostgreSQL 17、FORCE RLS），未执行迁移、未启动/修改 Worker、未写入业务数据、未调用模型或 Embedding、未连接生产。
+
+新增 `npm run xiaok:env:check` 作为开发、验收和排障的统一环境入口，按 `development`、`isolated-pg17`、`model`、`knowledge`、`worker`、`production` 六级输出 `passed/failed/limited/not_run`，每项带实际值、失败原因、修复命令和复验方法，并生成脱敏 JSON。`--require` 供后续验收脚本做前置门禁，避免每个脚本重复实现环境检测。
+
+真实执行结果：**19 passed / 5 failed / 0 limited / 4 not_run（28 项）**，`overall=failed`，与已有试点阻塞一致：
+
+- `development=passed`：Node `v24.9.0`、npm `11.6.0`、依赖 `7/7`、`.env.local` 与必要/可选变量齐全。
+- `isolated-pg17=failed`：连接、PG17、`sfp_app` 非超级用户/非 BYPASSRLS、只读事务、7 张核心表 FORCE RLS 均通过；迁移账本 119 条，**9 条待执行**（`0120`、`0124`–`0131`）。
+- `model=failed`：官方百炼供应商已启用且有 Key，但只配置 `qwen3.7-flash`，未找到 `deepseek-v4.1-flash-1017` 映射或企业绑定。
+- `knowledge=failed`：知识库表与 pgvector 存在；默认百炼模式缺少 `ASSISTANT_BAILIAN_RAG_WORKSPACE_ID` / `ASSISTANT_BAILIAN_RAG_API_KEY`；本地 Embedding 变量存在但当前模式为 `bailian`。
+- `worker=failed`：`CRON_SECRET` 与端点正常；心跳 `stale`（约 84,500 秒前）；队列 `queued=31,running=2,failed=404`，最早排队约 273,864 秒。
+- `production=passed`：只读边界通过，生产变量清单 37 个键齐全；部署与生产 Worker 明确 `not_run`。
+
+本轮未自动迁移、未重建数据库、未覆盖 `.env`、未更换模型供应商、未产生模型/Embedding 费用、未修改真实 1454、未启动或修改生产 Worker。定向测试 10/10、TypeScript、定向 ESLint 通过。用法、状态定义、脱敏规则和当前真实结果见[开发环境统一体检](./xiaok-environment-check.md)。
+
 ## 历史企业盘点（I7.4.3）
 
 > 仓库：`zmc1212/Smart-Floor-Planner`
