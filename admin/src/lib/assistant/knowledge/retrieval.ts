@@ -227,6 +227,7 @@ function localBinding(corpus: Corpus, version: AuthorizedVersion, profile: Retur
 }
 
 function canFallback(error: BailianKnowledgeError) {
+  if (error.httpStatus === 401 || error.httpStatus === 403 || error.operation === 'mapping') return false;
   return ['bailian_knowledge_not_configured','transport_error','provider_downgrade'].includes(error.providerCode)
     || (error.httpStatus ?? 0) >= 500 || [408, 429].includes(error.httpStatus ?? 0);
 }

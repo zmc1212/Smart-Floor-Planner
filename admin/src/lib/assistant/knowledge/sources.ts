@@ -122,6 +122,7 @@ export async function citationProjection(tx:PostgresTransaction,actor:ActorConte
   const location = origin ? `${origin.title} · ${origin.locator}` : file ? `${file.name} · ${file.label}` : undefined;
   const sourceLocation = source.platform_knowledge ? ['平台公共知识', location].filter(Boolean).join(' · ') : location;
   return {id:String(citation.id),available:true,title:source.title,version:String(citation.document_version_id),versionNumber:Number(source.version_number),
+    sourceHash:String(citation.source_hash),contentHash:String(source.content_hash),
     knowledge:knowledgeProvenance(source),chapter:file?.section ?? [],page:file?.page ?? origin?.page ?? null,
     referenceCase:source.source_type==='reference_case',
     quote:source.text?String(citation.quote_snapshot):'',locator:citation.locator,isDraft:citation.is_draft,

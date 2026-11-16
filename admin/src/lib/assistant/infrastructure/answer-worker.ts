@@ -2,10 +2,10 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
-import { AssistantError, fail, safeText, type Evidence, type KnowledgeRetriever, type TextModelGateway } from '../contracts';
+import { AssistantError, fail, fingerprint, safeText, type Evidence, type KnowledgeRetriever, type TextModelGateway } from '../contracts';
 import { KnowledgeSearchUnavailable, retrieveKnowledge } from '../knowledge/retrieval';
 import { answerMessages, insufficientAnswer, parseSelection } from '../knowledge/answer';
-import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, heartbeat, markProviderStarted, runContext, type Lease } from './job-queue';
+import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, heartbeat, markProviderStarted, recoverKnowledgeAnswer, runContext, type Lease } from './job-queue';
 import { isStageChatQuestion, stageChatForConversation } from '@/lib/xiaok-v1/stage-chat-service';
 import { classifyStageIntent } from '@/lib/xiaok-v1/stage-router';
 import { specialistProtocol } from '../specialists/registry';
@@ -28,6 +28,7 @@ import { processNativeRagAnswer } from '../fastgpt/rag-worker';
 import { processAgentV2Answer } from '../fastgpt/agent-v2/worker';
 import { fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
 import { publicHistoryScope } from '../agent/history';
+import { companyPracticeRequested, knowledgeOriginalRequested } from '../agent/read-tool-input';
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
 export async function processAnswer(lease:Lease,deps:Dependencies={}) {
@@ -49,6 +50,7 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
           and conversation_id=${String(context.run.conversation_id)} and id=${String(context.run.trigger_message_id)}`);
         if (!message) return null;
         const text = safeText(message.content as Parameters<typeof safeText>[0]);
+        if (runKnowledgeEnabled(policy) && (companyPracticeRequested(text) || knowledgeOriginalRequested(text))) return null;
         if (!isStageChatQuestion(text)) return null;
         if (classifyStageIntent(text) === 'clarification') {
           if ((context.conversation.entry_snapshot as Row).activePublicSite) return null;
@@ -192,10 +194,12 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
       const contextDiagnostic=diagnostic?{...diagnostic,candidates:diagnostic.candidates.map(c=>{
         const included=evidence.find(e=>e.ref.id===c.ref.id);return {...c,contextIncluded:!!included,contextChars:included?Array.from(included.text).length:0};
       })}:undefined;
-      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,input_summary,source_refs,status)
+      const originals = diagnostic ? evidence.map(item => candidates.find(original => original.ref.id === item.ref.id)!) : undefined;
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,input_summary,source_refs,private_checkpoint,status)
         values(${lease.enterpriseId},${lease.runId},${Number(context.job.attempts)*10},'retrieval','knowledge.search.v1',1,
-        ${JSON.stringify({queryChars:query.length,candidateCount:candidates.length,promptVersion:'extractive-selection-v5-scoped-intent',knowledgeStatus:'ready',diagnostic:contextDiagnostic})}::jsonb,
-        ${JSON.stringify(evidence.map(e=>({ref:e.ref,hash:e.hash})))}::jsonb,'succeeded')`);
+        ${JSON.stringify({queryChars:query.length,candidateCount:candidates.length,promptVersion:'extractive-selection-v5-scoped-intent',knowledgeStatus:'ready',diagnostic:contextDiagnostic,
+          ...(diagnostic ? { knowledgeContextHash: fingerprint(diagnostic.context) } : {})})}::jsonb,
+        ${JSON.stringify(evidence.map(e=>({ref:e.ref,hash:e.hash})))}::jsonb,${originals ? JSON.stringify(originals) : null}::jsonb,'succeeded')`);
     });
     if(!evidence.length) {await completeAnswer(lease,insufficientAnswer,[],null,followup);return;}
     await heartbeat(lease);
@@ -216,10 +220,15 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     });
     await completeAnswer(lease,parseSelection(output.text,evidence),evidence,output.attemptId || null,followup);
   }catch(e){
+    const recovery = stage === 'model' && !returned ? await recoverKnowledgeAnswer(lease, e) : null;
+    if (recovery?.completed) return;
     // An explicit payment rejection is a known failure, not an ambiguous timeout.
     // Keep usage/cost unreconciled: this error is not a provider billing receipt.
     const paymentRejected=stage==='model' && e instanceof AiProviderError && e.code==='HTTP_402';
-    try{await failRun(lease,paymentRejected?'provider_payment_required':e instanceof AssistantError?e.code:stage==='model'?'model_unavailable':'retrieval_unavailable',
-      returned || paymentRejected, e instanceof KnowledgeSearchUnavailable ? { retrieval: e.diagnostic } : undefined);}catch(error){if(!(error instanceof AssistantError && error.code==='context_changed'))throw error;}
+    const code = recovery?.blocked ?? (paymentRejected ? 'provider_payment_required'
+      : e instanceof AssistantError ? e.code : stage === 'model' ? 'model_unavailable' : 'retrieval_unavailable');
+    const details = e instanceof KnowledgeSearchUnavailable ? { retrieval: e.diagnostic }
+      : recovery ? { modelFailure: recovery.failure, fallbackBlocked: recovery.blocked ?? null } : undefined;
+    try{await failRun(lease,code,returned || paymentRejected,details);}catch(error){if(!(error instanceof AssistantError && error.code==='context_changed'))throw error;}
   }
 }

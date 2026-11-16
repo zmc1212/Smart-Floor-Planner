@@ -16,7 +16,7 @@ import { agentModelLimits, modelTurnProtocolIssue, type ModelTool, type ModelTur
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { projectMessage, resolveEvidence } from '../knowledge/sources';
 import { delegationOwnerPurpose } from '@/lib/native-workflow/live/delegation-chat';
-import { runContext, failRun, heartbeat, completeAnswer, completeDelegationReply, delegationAnswerRejected, type Lease } from '../infrastructure/job-queue';
+import { runContext, failRun, heartbeat, completeAnswer, completeDelegationReply, delegationAnswerRejected, recoverKnowledgeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, recoverableUnavailableRead, agentReadProtocol, agentToolReplyProtocol, agentTurnScheduleProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig, agentCapabilityFingerprint } from './config';
 import { finalResponseShapeIssue, finalResponseShapeProtocol } from './final-response-shape';
@@ -502,6 +502,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
   summary?: (messages: ModelMessage[], tools: ModelTool[], turn: number, requestTools?: ModelTool[]) => Promise<ModelTurnOutput>;
 } = {}) {
   let outcomeKnown = false;
+  let textFailure: unknown;
   let reviewEnabled = false;
   let sharedContextBound = false;
   let reportSource: BusinessSnapshot | null = null;
@@ -1437,7 +1438,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ...(nativeFinalization&&purpose==='answer'&&!tools.length?{nativeFinalProjection:finalProjection}:{}),
               ...(initial.config.imageContext ? {imageContext:initial.config.imageContext} : {}) },
             beforeProviderCall,
-          });
+          }).catch(error => { if (purpose === 'answer') textFailure = error; throw error; });
           // A workflow file may exist for another capability only; then the
           // answer path must stay on the configured model provider.
           const workflow = !injected && purpose === 'answer' && !consultation && !specialist && !initial.mediaRefs.length ? fastGPTWorkflows() : undefined;
@@ -1458,7 +1459,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             });
           const output = injected ? await (async () => {
             await beforeProviderCall();
-            return { agentOutput: await injected(modelMessages, tools, turn, dispatchTools), attemptId: null };
+            return { agentOutput: await injected(modelMessages, tools, turn, dispatchTools)
+              .catch(error => { if (purpose === 'answer') textFailure = error; throw error; }), attemptId: null };
           })() : knowledge ? await dispatchKnowledge().catch(async error => {
             // The optional FastGPT workflow never reached its model port (for
             // example the isolated service is down). Answer through the same
@@ -2491,6 +2493,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                     ${JSON.stringify(selected.map(e => ({ ref: e.ref, hash: e.hash })))}::jsonb,${JSON.stringify(selected)}::jsonb)
                   on conflict(enterprise_id,run_id,step_seq) do update set status='succeeded',source_refs=excluded.source_refs,private_checkpoint=excluded.private_checkpoint`);
                 await tx.execute(sql`update app.assistant_run_steps set input_summary=${JSON.stringify({ knowledgeStatus, diagnostic,
+                    ...(diagnostic ? { knowledgeContextHash: fingerprint(diagnostic.context) } : {}),
                     ...(ragTool ? { binding, tool: name } : {}), ...(questionCoverage ? { questionCoverage } : {}) })}::jsonb
                   where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
                 if (!ragTool && !specialist && (knowledgeProviderMode() === 'local' || diagnostic?.fallback)) await recordQueryDispatch(tx);
@@ -2945,7 +2948,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     }
     // Execution failure and billing are separate: failRun retains dispatched
     // reservations for reconciliation, including definitive HTTP rejections.
-    try { await failRun(lease, code, outcomeKnown || rejected || code === 'provider_payment_required'); }
+    const recovery = error === textFailure ? await recoverKnowledgeAnswer(lease, error) : null;
+    if (recovery?.completed) return;
+    try { await failRun(lease, recovery?.blocked ?? code, outcomeKnown || rejected || code === 'provider_payment_required',
+      recovery ? { modelFailure: recovery.failure, fallbackBlocked: recovery.blocked ?? null } : undefined); }
     catch (e) { if (!(e instanceof AssistantError && e.code === 'context_changed')) throw e; }
   }
 }

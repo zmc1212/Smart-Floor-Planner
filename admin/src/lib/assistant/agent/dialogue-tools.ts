@@ -113,6 +113,7 @@ export function dialogueEnterpriseSearch(rt: DialogueToolRuntime) {
             ${JSON.stringify({ protocol: rt.protocol, tool: 'search_enterprise', query,
               candidates: 'diagnostic' in retrieved ? retrieved.diagnostic.candidates.length : 0, selected: evidence.length,
               ...('diagnostic' in retrieved ? { provider: retrieved.diagnostic.provider, fallback: retrieved.diagnostic.fallback,
+                knowledgeContextHash: fingerprint(retrieved.diagnostic.context),
                 managedIndex: retrieved.diagnostic.managedIndex } : { provider: unavailable }), receipt })}::jsonb)`);
         if (hosted) {
           const requests = 'diagnostic' in retrieved ? retrieved.diagnostic.managedIndex?.requests ?? []

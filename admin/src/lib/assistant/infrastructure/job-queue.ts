@@ -1,16 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { reportContext } from '@/lib/construction/report-reference';
+import { AiProviderError } from '@/lib/ai/provider-types';
 import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { AssistantError, fail, fingerprint, type ActorContext, type MessageContent, type Evidence } from '../contracts';
+import { AssistantError, fail, fingerprint, safeText, type ActorContext, type MessageContent, type Evidence } from '../contracts';
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { processKnowledgeJob } from '../knowledge/index-worker';
 import { processManagedKnowledgeCleanup } from '../knowledge/managed-cleanup';
 import { processAnswer } from './answer-worker';
 import { resolveEvidence, validatePreviewSnapshot } from '../knowledge/sources';
 import { saveKnowledgeCitation } from '../knowledge/save-citation';
-import { parseAnswer, safeInsufficientContent, type GroundedAnswer } from '../knowledge/answer';
+import { factsOnlyMode, factsOnlyNotice, parseAnswer, safeInsufficientContent, type GroundedAnswer } from '../knowledge/answer';
+import { knowledgeContext } from '../knowledge/applicability-context';
+import { factsOnlyKnowledgeAnswer } from '../agent/synthesis';
+import { explicitHumanHandoffRequested } from '../agent/read-tool-input';
+import { explicitNeedWriteStatement } from '../agent/memory';
 import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 import { assertKnowledgePolicy, runKnowledgeEnabled } from '../knowledge-policy';
 
@@ -333,48 +338,142 @@ export async function completeGuidance(lease: Lease, text: string) {
   });
 }
 /** Final answer and citations commit together, after all current authorization checks. */
-export async function completeAnswer(lease:Lease,answer:GroundedAnswer,evidence:Evidence[],attemptId:string|null,followup?:string,guard?:(tx:PostgresTransaction)=>Promise<void>) {
-  answer=parseAnswer(JSON.stringify(answer),evidence);
-  return withTenantTransaction(lease.enterpriseId,async tx=>{
-    const {job,conversation:c}=await runContext(tx,lease);
+export async function completeAnswer(lease: Lease, answer: GroundedAnswer, evidence: Evidence[], attemptId: string | null,
+  followup?: string, guard?: (tx: PostgresTransaction) => Promise<void>) {
+  return withTenantTransaction(lease.enterpriseId, async tx => {
+    const state = await runContext(tx, lease);
     if (guard) await guard(tx);
-    const step=await one(tx,sql`select source_refs from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+    const step = await one(tx, sql`select source_refs from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
       and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`);
-    if(!step || fingerprint(step.source_refs)!==fingerprint(evidence.map(e=>({ref:e.ref,hash:e.hash}))))fail('context_changed');
-    const sources=new Map<string,Evidence>();
-    for(const e of evidence) {
-      const source=await resolveEvidence(tx,lease.actor,c,e);
-      if(!source || !String(source.text).includes(e.text))fail('context_changed');
-      sources.set(e.ref.id,e);
-    }
-    const initial=answer.answerKind==='insufficient_evidence'?safeInsufficientContent():{version:1 as const,blocks:[]};
-    const message=await appendMessage(tx,lease.actor,String(c.id),{author:'assistant',content:initial,runId:lease.runId});
-    const content:MessageContent=answer.answerKind==='insufficient_evidence'?initial:{version:1,blocks:[]};
-    const saved=new Map<string,string>();
-    for(const segment of answer.segments) {
-      content.blocks.push({type:'text',text:segment.text});
-      for(const citation of segment.citations) {
-        const source=sources.get(citation.sourceId);
-        if(!source)fail('invalid_model_citation',502);
-        let citationId=saved.get(citation.sourceId);
-        if(!citationId) {
-          citationId=await saveKnowledgeCitation(tx,lease.actor,c,lease.runId,String(message.id),source,citation.quote,false);
-          saved.set(citation.sourceId,citationId);
-        }
-        content.blocks.push({type:'citation',citationId,fallbackText:'知识来源'});
-      }
-    }
-    if (followup) content.blocks.push({ type: 'text', text: followup });
-    await tx.execute(sql`update app.assistant_messages set content=${JSON.stringify(content)}::jsonb,answer_kind=${answer.answerKind} where enterprise_id=${lease.enterpriseId} and id=${String(message.id)}`);
-    await tx.execute(sql`update app.assistant_runs set answer_kind=${answer.answerKind} where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
-    await tx.execute(sql`update app.assistant_quota_reservations set status=${job.provider_started_at?'reconciling':'released'},version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
-    if(!job.provider_started_at) await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
-      values(${lease.enterpriseId},${lease.runId},${'answer:'+lease.runId},'tokens',0,'observed',0,0) on conflict do nothing`);
-    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,provider_attempt_id,input_summary,status)
-      values(${lease.enterpriseId},${lease.runId},${Number(job.attempts)*10+2},'answer',${attemptId},${JSON.stringify({answerKind:answer.answerKind,citations:saved.size})}::jsonb,'succeeded')`);
-    await finish(tx,lease,'succeeded',null,String(message.id));
-    return String(message.id);
+    if (!step || fingerprint(step.source_refs) !== fingerprint(knowledgeReferences(evidence)))
+      fail('context_changed');
+    return commitKnowledgeAnswer(tx, lease, state, answer, evidence, attemptId, followup);
   });
+}
+
+const knowledgeReferences = (evidence: Evidence[]) => evidence.map(e => ({ ref: e.ref, hash: e.hash }));
+const latestKnowledgeRead = (tx: PostgresTransaction, lease: Lease) => one(tx, sql`select
+  step_seq,status,source_refs,private_checkpoint,input_summary from app.assistant_run_steps
+  where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='retrieval'
+  and capability_name='knowledge.search.v1' order by step_seq desc limit 1`);
+
+function modelFailure(error: unknown) {
+  if (error instanceof AiProviderError) {
+    return { code: error.code, disposition: error.disposition, httpStatus: error.status ?? null, diagnostic: error.diagnostic ?? null };
+  }
+  if (error instanceof AssistantError && error.code === 'model_unavailable') {
+    return { code: error.code, disposition: 'unavailable' as const, httpStatus: error.status, diagnostic: null };
+  }
+  return null;
+}
+
+type KnowledgeDegradation = {
+  retrievalStep: number;
+  modelFailure: NonNullable<ReturnType<typeof modelFailure>>;
+  providerAttemptStatus: string | null;
+};
+
+/** Use the current run's authorized read, even when a text invocation has an
+ * unknown bill. Completing this message never completes the provider attempt. */
+export async function recoverKnowledgeAnswer(lease: Lease, error: unknown) {
+  const failure = modelFailure(error);
+  if (!failure) return null;
+  try {
+    const completed = await withTenantTransaction(lease.enterpriseId, async tx => {
+      const state = await runContext(tx, lease);
+      const { run, conversation } = state;
+      if (run.purpose !== 'reply' || run.trigger_kind !== 'user_message'
+        || !['customer_consultation', 'construction_followup'].includes(String(conversation.purpose))
+        || (conversation.entry_snapshot as Row).activePublicSite || reportContext(conversation.entry_snapshot).selection)
+        return false;
+      const step = await latestKnowledgeRead(tx, lease);
+      const summary = step?.input_summary as Row | undefined, boundContext = summary?.knowledgeContextHash;
+      if (!step || step.status !== 'succeeded' || typeof boundContext !== 'string' || !Array.isArray(step.private_checkpoint)) return false;
+      const evidence = step.private_checkpoint as Evidence[];
+      if (fingerprint(step.source_refs) !== fingerprint(knowledgeReferences(evidence))) fail('context_changed');
+      if (boundContext !== fingerprint(await knowledgeContext(tx, lease.actor, conversation))) fail('context_changed');
+      const trigger = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
+        and conversation_id=${String(conversation.id)} and id=${String(run.trigger_message_id)}
+        and author_kind in ('user','admin')`);
+      if (!trigger) fail('context_changed');
+      const question = safeText(trigger.content as MessageContent);
+      if (explicitNeedWriteStatement(question) || explicitHumanHandoffRequested(question)) return false;
+      const answer = factsOnlyKnowledgeAnswer(question, evidence);
+      const attempt = await one(tx, sql`select id,status,error_code from app.ai_provider_attempts
+        where enterprise_id=${lease.enterpriseId} and assistant_run_id=${lease.runId} order by id desc limit 1`);
+      // An earlier successful tool-selection turn cannot witness a later failure.
+      const failedAttempt = attempt?.error_code === failure.code ? attempt : null;
+      const modelStep = await one(tx, sql`select step_seq from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
+        and run_id=${lease.runId} and kind='agent_model' and status='running' order by step_seq desc limit 1`);
+      const attemptId = failedAttempt ? String(failedAttempt.id) : null;
+      if (modelStep) await tx.execute(sql`update app.assistant_run_steps
+        set status=${failure.disposition === 'unknown' ? 'indeterminate' : 'failed'},provider_attempt_id=${attemptId},
+          input_summary=input_summary || ${JSON.stringify({ modelFailure: failure })}::jsonb
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${Number(modelStep.step_seq)}`);
+      await commitKnowledgeAnswer(tx, lease, state, answer, evidence, attemptId, undefined,
+        { retrievalStep: Number(step.step_seq), modelFailure: failure, providerAttemptStatus: failedAttempt ? String(failedAttempt.status) : null });
+      return true;
+    });
+    return { completed, failure };
+  } catch (blocked) {
+    if (!(blocked instanceof AssistantError)) throw blocked;
+    return { completed: false, failure, blocked: blocked.code };
+  }
+}
+
+async function commitKnowledgeAnswer(tx: PostgresTransaction, lease: Lease,
+  { job, conversation }: Awaited<ReturnType<typeof runContext>>, answer: GroundedAnswer, evidence: Evidence[],
+  attemptId: string | null, followup?: string, degradation?: KnowledgeDegradation) {
+  const validated = parseAnswer(JSON.stringify(answer), evidence);
+  const sources = new Map<string, Evidence>();
+  for (const item of evidence) {
+    const source = await resolveEvidence(tx, lease.actor, conversation, item);
+    if (!source || !String(source.text).includes(item.text)
+      || degradation && (!source.published_at || String(source.published_version_id) !== item.ref.version
+        || !!source.platform_knowledge !== (item.knowledge?.scope === 'platform'))) fail('context_changed');
+    sources.set(item.ref.id, item);
+  }
+  const isFactsOnly = !!degradation && validated.answerKind === 'grounded';
+  const content: MessageContent = validated.answerKind === 'insufficient_evidence' ? safeInsufficientContent()
+    : isFactsOnly ? { version: 1, answerMode: factsOnlyMode, blocks: [{ type: 'notice', code: factsOnlyMode, fallbackText: factsOnlyNotice }] }
+    : { version: 1, blocks: [] };
+  const message = await appendMessage(tx, lease.actor, String(conversation.id),
+    { author: 'assistant', content, runId: lease.runId });
+  const saved = new Map<string, string>();
+  for (const segment of validated.segments) {
+    if (isFactsOnly) {
+      const scope = sources.get(segment.citations[0].sourceId)?.knowledge?.scope;
+      content.blocks.push({ type: 'text', text: scope === 'platform' ? '平台公共知识原文'
+        : scope === 'project' ? '项目审核资料原文' : '企业审核资料原文' });
+    }
+    content.blocks.push({ type: 'text', text: segment.text });
+    for (const citation of segment.citations) {
+      const source = sources.get(citation.sourceId);
+      if (!source) fail('invalid_model_citation', 502);
+      let citationId = saved.get(citation.sourceId);
+      if (!citationId) {
+        citationId = await saveKnowledgeCitation(tx, lease.actor, conversation, lease.runId, String(message.id), source, citation.quote, isFactsOnly);
+        saved.set(citation.sourceId, citationId);
+      }
+      content.blocks.push({ type: 'citation', citationId, fallbackText: '知识来源' });
+    }
+  }
+  if (followup) content.blocks.push({ type: 'text', text: followup });
+  await tx.execute(sql`update app.assistant_messages set content=${JSON.stringify(content)}::jsonb,answer_kind=${validated.answerKind}
+    where enterprise_id=${lease.enterpriseId} and id=${String(message.id)}`);
+  await tx.execute(sql`update app.assistant_runs set answer_kind=${validated.answerKind}
+    where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
+  await tx.execute(sql`update app.assistant_quota_reservations set status=${job.provider_started_at ? 'reconciling' : 'released'},
+    version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+  if (!job.provider_started_at) await tx.execute(sql`insert into app.assistant_usage_records
+    (enterprise_id,run_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
+    values(${lease.enterpriseId},${lease.runId},${'answer:' + lease.runId},'tokens',0,'observed',0,0) on conflict do nothing`);
+  const receipt = { answerKind: validated.answerKind, citations: saved.size,
+    ...(degradation ? { fallback: factsOnlyMode, answerMode: isFactsOnly ? factsOnlyMode : null, ...degradation } : {}) };
+  await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,provider_attempt_id,input_summary,status)
+    values(${lease.enterpriseId},${lease.runId},${Number(job.attempts) * 10 + 2},'answer',${attemptId},${JSON.stringify(receipt)}::jsonb,'succeeded')`);
+  await finish(tx, lease, 'succeeded', null, String(message.id));
+  return String(message.id);
 }
 async function deliverMetrics(enterpriseId?: string) {
   const targets = await withPlatformTransaction(tx => rows(tx, sql`select enterprise_id,id from app.domain_event_deliveries

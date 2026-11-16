@@ -37,6 +37,14 @@ Native 预读沿本轮授权与原文目录。独立引用标记只解析本轮�
 
 沿用 LangGraph 对会话历史和跨线程记忆的区分。写入依赖当前应用授权、PostgreSQL Outbox 和业务回执，工具调用及回传沿百炼 Responses 协议。[LangGraph 记忆](https://docs.langchain.com/oss/javascript/langgraph/add-memory) · [LangGraph 持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence) · [百炼 Responses 协议](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses)
 
+## I7.5.20 正式知识问答降级
+
+C01 正式知识问答在文本调用失败时复用当次成功的 `knowledge.search.v1` 回执。回答提交事务绑定租户、会话和当前项目上下文，复核每份有效审核来源后引用完整短摘录，分别标注企业/项目和平台公共来源。消息保存 `content.answerMode=facts_only`，任务回执保留检索步骤、原始模型错误及可用的调用状态。资料低相关、有冲突或已失效时，根据原因使用 `insufficient_evidence` 或既有上下文、检索错误。
+
+消息和引用沿既有租约原子提交。超时保留原调用和待核对的计费状态。相同请求键返回原任务，新请求重新取当前来源并可使用已恢复的模型。重开引用时再次检查版本、项目、阶段和权限。[I7.5.20 验收](xiaok-i7520-facts-only-ai-acceptance.md)。
+
+降级复用 LangGraph 按错误类型处理与 LangChain 按资格切换的做法。图重放可能重复已执行步骤，小 K 以 PostgreSQL 任务回执恢复。百炼接口分别标识凭据、权限和限流错误。[LangGraph 错误处理](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-graph-api) · [LangChain 源码](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/runnables/base.ts) · [LangGraph 恢复问题](https://github.com/langchain-ai/langgraph/issues/9185) · [百炼 RAG 错误码](https://help.aliyun.com/zh/model-studio/rag-api-errors)。
+
 ## R6 原生施工复核与托管知识
 
 **Limited。** 基线 `41b0639517f79f7135ea78801c3cfcc6159e44b5`。原 C01 咨询读取私有记忆、当前项目和 R4 知识工具。查无授权来源时，终稿 schema 仅接受无引用的通用建议或缺项说明。引用打开时复验原文、当前版本和项目权限。PPT 第18页提供项目团队安排防水和后续检查的依据，具体准备清单和管根做法仍由项目团队核对。

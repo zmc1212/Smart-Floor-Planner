@@ -6,7 +6,7 @@ import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { AssistantError, fail, fingerprint, safeText, type Evidence, type MessageContent } from '../contracts';
 import { agentModelLimits, modelTurnProtocolIssue, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import { recordAgentModelUsage } from '../core/model-usage';
-import { completeRun, completeDelegationReply, delegationAnswerRejected, failRun, heartbeat, markProviderStarted, runContext, type Lease } from '../infrastructure/job-queue';
+import { completeRun, completeDelegationReply, delegationAnswerRejected, failRun, heartbeat, markProviderStarted, recoverKnowledgeAnswer, runContext, type Lease } from '../infrastructure/job-queue';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { saveKnowledgeCitation } from '../knowledge/save-citation';
 import { nativeConversation } from '../fastgpt/rag-session';
@@ -557,6 +557,7 @@ async function establishRunReadContract(lease: Lease, record: NativeRunReadContr
 
 export async function processNativeAgentAnswer(lease: Lease) {
   let timer: ReturnType<typeof setInterval> | undefined;
+  let textFailure: unknown;
   // Set when a guard meets a dispatched-but-unrecorded model step: the run
   // must stay indeterminate instead of being labelled a known failure.
   let outcomeUnknown = false;
@@ -1129,7 +1130,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           requireTool: nativeFirstTurnRequiresTool(turn, dispatchTools) } },
         metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, turn, purpose: 'answer', probeVersion: config.probeVersion },
         beforeProviderCall,
-      });
+      }).catch(error => { textFailure = error; throw error; });
       if (!output.agentOutput) fail('invalid_model_answer', 502);
       lastAttemptId = String(output.attemptId);
       await recordAgentModelUsage(lease.enterpriseId, lease.runId, turn, output);
@@ -1500,6 +1501,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
       try { if (await completeDelegationReply(lease, { rejectedAnswer: code })) return; }
       catch (e) { if (!(e instanceof AssistantError && e.code === 'context_changed')) throw e; }
     }
-    await failRun(lease, code, known);
+    const recovery = error === textFailure ? await recoverKnowledgeAnswer(lease, error) : null;
+    if (recovery?.completed) return;
+    await failRun(lease, recovery?.blocked ?? code, known,
+      recovery ? { modelFailure: recovery.failure, fallbackBlocked: recovery.blocked ?? null } : undefined);
   } finally { if (timer) clearInterval(timer); }
 }

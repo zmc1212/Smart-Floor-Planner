@@ -1,7 +1,41 @@
 import { fail, type Evidence, type MessageContent } from '../contracts';
+import { chineseTerms, expandChineseQuery, queryExpansionConfiguration, queryLexicalScore } from './chinese-lexical';
+import { knowledgeTextAllowed } from './provenance';
 export const INSUFFICIENT_TEXT='目前没有足够的企业知识资料支持回答这个问题，请补充具体问题或联系企业工作人员确认。';
 export type GroundedAnswer={answerKind:'grounded'|'insufficient_evidence';segments:Array<{text:string;citations:Array<{sourceId:string;quote:string}>}>};
 export const insufficientAnswer:GroundedAnswer={answerKind:'insufficient_evidence',segments:[]};
+export const factsOnlyMode = 'facts_only';
+export const factsOnlyNotice = '文本模型暂不可用。以下为本次查到的审核资料原文。未列出的参数、适用条件和现场结论，请让项目团队核实。';
+
+/** Use a whole short excerpt so qualifiers stay with the original statement. */
+export function factsOnlyCandidates(question: string, evidence: Evidence[]) {
+  if (!knowledgeTextAllowed(question)) return [];
+  const query = expandChineseQuery(question);
+  return evidence.filter(item => {
+    if (item.ref.type !== 'knowledge_chunk' || !item.knowledge?.published || item.knowledge.sourceType === 'reference_case'
+      || item.professional?.applicability.status === 'not_applicable') return false;
+    const terms = chineseTerms(item.text).filter(term => !term.startsWith('renovation:'));
+    // The excerpt itself needs to match; titles, topic groups and history cannot supply facts.
+    return queryLexicalScore(terms, query) >= 2 * queryExpansionConfiguration.originalWeight;
+  });
+}
+
+export function quoteFactsOnly(evidence: Evidence[], companyOnly: boolean): GroundedAnswer {
+  const seen = new Set<string>();
+  const enterprise = evidence.filter(e => e.knowledge?.scope !== 'platform');
+  const sources = [...enterprise, ...evidence.filter(e => e.knowledge?.scope === 'platform')];
+  const segments: GroundedAnswer['segments'] = [];
+  for (const source of sources) {
+    const quote = source.text.trim(), text = answerQuoteText(quote);
+    // An independent complete passage is required; don't truncate a rule to fit.
+    if (quote.length > 400 || text.length < 4 || /^问：/u.test(text) || seen.has(text)) continue;
+    seen.add(text);
+    segments.push({ text, citations: [{ sourceId: source.ref.id, quote }] });
+    if (segments.length === 3) break;
+  }
+  if (companyOnly && !segments.some(segment => enterprise.some(source => source.ref.id === segment.citations[0].sourceId))) return insufficientAnswer;
+  return segments.length ? { answerKind: 'grounded', segments } : insufficientAnswer;
+}
 /** Remove FAQ framing only; the citation snapshot remains an exact original span. */
 function answerQuoteText(quote:string):string {
   return quote.replace(/^问：[^\n]*\n(?=答：)/gmu,'').replace(/^答：/gmu,'').trim();

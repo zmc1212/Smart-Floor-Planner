@@ -131,6 +131,7 @@ export async function executePostgresText(input: {
   const runtimes = llmOverride
     ? [llmOverride]
     : await listProviderRuntimes(capability, input.logicalModelKey);
+  if (!runtimes.length && input.owner.kind === 'assistant_run') failNoAssistantRuntime();
   if (!runtimes.length) throw new Error(`没有可用的 AI 供应商支持 ${input.logicalModelKey}`);
 
   let lastError: unknown;
@@ -265,7 +266,12 @@ export async function executePostgresText(input: {
     }
   }
 
+  if (!lastError && input.owner.kind === 'assistant_run') failNoAssistantRuntime();
   throw lastError || new Error('所有 AI 供应商均不可用');
+}
+
+function failNoAssistantRuntime(): never {
+  throw new AssistantError('model_unavailable', 503);
 }
 
 /** Compatibility wrapper: existing workflow callers and return values stay unchanged. */

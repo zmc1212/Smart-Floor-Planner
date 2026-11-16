@@ -735,6 +735,8 @@ P2S 第一批 C01/C02/S01/U01 的聊天与接待主链路 **Implemented**，自�
 
 小 K 既有会话与引用接口提供企业和项目知识检索。业主可查获权项目的对客版本，共享项目会话按实时成员与角色授权。I7.5.15 核验服务端取得的当前阶段与有效来源版本。启用平台语料时，企业证据优先，补充材料以 `knowledge.scope=platform` 标识，保留可核验的原页与摘录。企业做法类阶段提示仍使用企业证据。引用弹层通过既有会话权限重新读取来源，撤回使依赖的托管与平台引文失效。有效检索无可靠依据时返回 `insufficient_evidence`。托管可用性故障可切换到兼容的 Qwen3/pgvector 索引，备用失败返回 `retrieval_unavailable`。托管接入为 **Limited**，待实测获批工作空间。共享项目查询可用企业资料对照获权施工进度及已发布记录。网页引用保留独立来源类型和链接。[I7.5.15 接入与验收](./xiaok-i7515-bailian-rag-integration.md)
 
+**I7.5.20 正式知识问答降级（Implemented）。** 文本模型调用失败时，原 C01 用已有提示、正文和引用入口展示 `facts_only`，企业/项目审核原文与平台公共知识各有标注。打开引用重新校验权限，可查看标题、可用页码、版本和摘录。撤权后原回答失效，依据不足使用既有 `insufficient_evidence` 提示。[I7.5.20 验收](./xiaok-i7520-facts-only-ai-acceptance.md)。
+
 1B知识回答、结构化引用/失效校验、无依据处理及本人预览后端 **Implemented**。同一ConversationService/JobQueue在授权检索后调用现有文本模型；每段回答必须引用本次证据及逐字摘录，最终提交复查权限、epoch、hash/profile和有效期。无候选/低相关或模型明确无依据时保存固定insufficient_evidence notice；检索故障、非法引用或畸形输出不会冒充有效回答。0061新增强制RLS引用表及消息/run answer_kind；引用与最终消息、终态同事务落库，reset/purge已包含引用。后续读取会隐藏已撤回/受限/过期/draft编辑失效来源及整条依赖回答，仍获授权的旧发布版本标记historical。
 
 FAQ回答整理 **Implemented**，使用`extractive-selection-v3-faq`：问题标题仅作匹配上下文，不作为答案候选；不超过400字符的短答案保留完整条件。优先选择一条直接、完整的答案，仅补充尚未覆盖的必要信息，相同正文确定性去重。展示只去除FAQ的问答外壳，引用快照仍是连续原文；最终校验不允许新增解释或删掉答案的限制条件。已保存的旧消息不回写。开发环境企业1454/客户645/线索1818复测截图中的水电开工问题，返回一段正文和一个可用引用；conversation109/run80只有一条用户消息和一条助手消息，重新读取历史内容一致。证据：`tmp/xiaok-vector/faq-answer-live.json`；回归覆盖位于`answer-selection.test.ts`和`assistant-answers.test.ts`。路由、API、权限、小程序结构/样式/素材及已批准PPT设计不变。

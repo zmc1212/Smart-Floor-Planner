@@ -9,7 +9,7 @@ export type ActorContext = {
 export type MessageBlock = { type: 'text'; text: string }
   | { type: 'citation'; citationId: string; fallbackText: string }
   | { type: 'notice'; code: string; fallbackText: string };
-export type MessageContent = { version: 1; blocks: MessageBlock[]; reportContextVersion?: number };
+export type MessageContent = { version: 1; blocks: MessageBlock[]; reportContextVersion?: number; answerMode?: 'facts_only' };
 export type InvocationOwner = { kind: 'generation'; generationId: bigint }
   | { kind: 'assistant_run'; runId: bigint } | { kind: 'knowledge_job'; jobId: bigint };
 export type RunTrigger = { kind: 'user_message'; messageId: string }

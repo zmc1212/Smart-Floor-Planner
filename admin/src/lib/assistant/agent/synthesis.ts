@@ -12,7 +12,7 @@ import type { HistorySnapshot, HistoryRef } from './history';
 import { modelCitationCatalog, resolveCatalogCitation, engineeringClaimText, selectedCatalogCitationIds } from './citation-catalog';
 import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase, isCatalogSynthesisDraft } from './synthesis-repair';
 import { formalBusinessResultKeys } from './formal-business-repair';
-import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
+import { companyPracticeRequested, originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 import { numericCitationCandidates } from './citation-coverage';
 import { groundedNumberTokens, printedNumberSupported } from './prose-number-view';
 import { provenanceMetadataText } from './parameter-provenance';
@@ -23,6 +23,7 @@ import { reportCoordinationText } from './report-question-plan';
 import type { SourceQuestionCoverage } from './source-question-coverage';
 import { originalMessageId } from './context-budget';
 import { publishedSiteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
+import { factsOnlyCandidates, insufficientAnswer, quoteFactsOnly } from '../knowledge/answer';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history' | 'web'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; knowledge?: KnowledgeProvenance; web?: import('../contracts/web-source').WebSourceLocator; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'>; reportScope?: ReportSourceScope };
@@ -57,6 +58,13 @@ function conflictingKnowledgeClaims(sources: SynthesisSource[]) {
 export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
   return sources.some(s => s.kind === 'knowledge' && /适用范围未核实|规则存在冲突|规则出现冲突/.test(s.text))
     || conflictingKnowledgeClaims(sources).length > 0;
+}
+
+/** Provider failure uses reviewed quotations through the same conflict boundary. */
+export function factsOnlyKnowledgeAnswer(question: string, evidence: Evidence[]) {
+  const relevant = factsOnlyCandidates(question, evidence);
+  return unresolvedSynthesisConflict(knowledgeSynthesisSources(relevant)) ? insufficientAnswer
+    : quoteFactsOnly(relevant, companyPracticeRequested(question));
 }
 
 /** Keep standard tool pairs and the actual current original after tool data.

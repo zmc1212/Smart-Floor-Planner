@@ -54,6 +54,7 @@ import { runRetryAwaitingReconciliation, runUsageReconciled, unresolvedProviderO
 import { portfolioCopyBudget } from './model-task-budget';
 import { discoveryReplies } from './discovery';
 import { assistantDailyLimitsEnabled } from './daily-limits';
+import { factsOnlyMode } from '../knowledge/answer';
 import { reportContext, reportContextView, selectedReport } from '@/lib/construction/report-reference';
 import type { ReportCompositionScope } from '@/lib/construction/report-composition';
 import { samePublicRef, type PublicContextRef } from '@/lib/construction/public-contract';
@@ -224,13 +225,17 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if (purpose === 'reply' && actor.principal.kind === 'user') await cancelQueuedPublicIntro(tx, actor.enterpriseId, String(c.id));
   if (!report && purpose !== 'site.record' && await one(tx, sql`select id from app.assistant_runs where enterprise_id=${actor.enterpriseId} and conversation_id=${String(c.id)} and status in ('queued','running') and purpose not in ('construction.report.facts','construction.report.compose')`)) fail('conversation_busy');
   // Match C01's existing unknown-result state at the service boundary too.
-  // A distinct question is not permission to bypass an unresolved dispatch;
-  // confirmed usage review is the same recovery proof projected to the client.
+  // A committed knowledge recovery resolves delivery while the original
+  // provider attempt and quota reservation remain open for billing review.
   if (!speech && !report && (privateFollowup || ['customer_consultation','construction_followup'].includes(String(c.purpose)) && actor.principal.kind === 'user'
     || c.purpose==='project_collaboration' && purpose==='site.question' && actor.capabilities.includes('assistant.project.shared')) && await one(tx, sql`select r.id from
-    (select id,enterprise_id,status,error_code from app.assistant_runs where enterprise_id=${actor.enterpriseId}
+    (select id,enterprise_id,status,error_code,output_message_id from app.assistant_runs where enterprise_id=${actor.enterpriseId}
       and conversation_id=${String(c.id)} and purpose not in ('speech.transcribe','construction.report.facts','construction.report.compose') order by created_at desc,id desc limit 1) r
-    where ${unresolvedProviderOutcome()} and not ${runUsageReconciled()}`)) fail('provider_outcome_unknown');
+    where ${unresolvedProviderOutcome()} and not ${runUsageReconciled()}
+      and not (r.status='succeeded' and r.output_message_id is not null and exists (
+        select 1 from app.assistant_run_steps s where s.enterprise_id=r.enterprise_id and s.run_id=r.id
+        and s.kind='answer' and s.status='succeeded' and s.input_summary->>'fallback'=${factsOnlyMode}
+      ))`)) fail('provider_outcome_unknown');
   const budget = (await one(tx, sql`select coalesce(sum(reserved_requests),0) requests,
     coalesce(sum(case when status='settled' then coalesce(settled_tokens,reserved_tokens) else reserved_tokens end),0) tokens,
     coalesce(sum(case when status='settled' then coalesce(settled_cost_micros,reserved_cost_micros) else reserved_cost_micros end),0) cost

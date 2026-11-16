@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Evidence } from '../contracts';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
-import { knowledgeSynthesisSources, parseSynthesis, synthesisInstructions } from '../agent/synthesis';
+import { factsOnlyKnowledgeAnswer, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions } from '../agent/synthesis';
 import { sourceCitationCatalog } from '../agent/citation-catalog';
 import { compileModelRequest } from '../agent/model-request';
 import { synthesisQuestionPrefix } from '../agent/model-policy';
@@ -28,6 +28,41 @@ const raw = JSON.stringify({ kind: 'knowledge_explanation', answers: {
   Q2: [segment('顺序是先铺管再穿线，不能先把线穿好再铺管。')],
 } });
 const context = { currentQuestion: question };
+
+const waterproofQuestion = '按我们公司的防水施工资料，卫生间防水和后续检查由谁安排？';
+const originalWaterproof = '卫生间防水施工和后续检查，由项目团队安排。具体开工条件由项目团队现场核实。';
+const reviewedSource: Evidence = {
+  ref: { type: 'knowledge_chunk', id: '2', version: '7' }, hash: 'fixture',
+  text: originalWaterproof,
+  knowledge: {
+    enterpriseName: '合成企业', documentId: '9', title: '卫生间防水施工资料', versionId: '7', versionNumber: 1,
+    scope: 'enterprise', projectId: null, category: '工艺', sourceType: 'manual_text',
+    effectiveFrom: '2026-11-16T00:00:00Z', effectiveTo: null, published: true,
+  },
+};
+
+test('facts-only returns the entire reviewed excerpt and keeps unsupported work values out', () => {
+  const result = factsOnlyKnowledgeAnswer(waterproofQuestion, [reviewedSource]);
+  assert.deepEqual(result, { answerKind: 'grounded', segments: [{
+    text: originalWaterproof, citations: [{ sourceId: '2', quote: originalWaterproof }],
+  }] });
+});
+
+test('facts-only rejects drafts, unrelated text, reference cases and unresolved rules', () => {
+  for (const source of [
+    { ...reviewedSource, knowledge: { ...reviewedSource.knowledge!, published: false } },
+    { ...reviewedSource, knowledge: { ...reviewedSource.knowledge!, sourceType: 'reference_case' } },
+    { ...reviewedSource, text: '客厅隔音施工。' },
+    { ...reviewedSource, text: originalWaterproof + '例外条款。'.repeat(100) },
+    { ...reviewedSource, text: originalWaterproof + '规则存在冲突，适用范围未核实。' },
+  ]) assert.equal(factsOnlyKnowledgeAnswer(waterproofQuestion, [source]).answerKind, 'insufficient_evidence');
+});
+
+test('facts-only platform evidence can answer a general question but cannot stand in for company practice', () => {
+  const platform: Evidence = { ...reviewedSource, knowledge: { ...reviewedSource.knowledge!, scope: 'platform' } };
+  assert.equal(factsOnlyKnowledgeAnswer('卫生间防水施工和后续检查一般由谁安排？', [platform]).answerKind, 'grounded');
+  assert.equal(factsOnlyKnowledgeAnswer(waterproofQuestion, [platform]).answerKind, 'insufficient_evidence');
+});
 
 test('specialist quantity fallback preserves the justified segment and keeps the original draft private', () => {
   const page = '管道穿过楼板时，应对管道与基层的交接处进行密封处理。';
