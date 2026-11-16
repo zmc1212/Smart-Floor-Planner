@@ -6,7 +6,7 @@
 
 **`READY_WITH_CONDITIONS`**
 
-代码级发布阻塞已全部关闭：干净检出 Admin 生产构建、TypeScript、小程序生产编译、Docker 镜像构建与内容审计、129 账本迁移后备份、等价 Linux PG17.10 独立恢复、Worker 隔离验收均通过。生产配置最终预检显示：未注入时门禁 10 项失败，合并自有密钥计划后降至 7 项，全部为数据库、百炼、Embedding 与 Worker 健康路径等外部配置；第三方凭据未伪造、不阻塞构建。仍不能直接上线的原因只有生产配置、真实凭据、真机与独立审批，全部集中在本报告第 10 节的一张审批表。
+代码级发布阻塞已全部关闭：干净检出 Admin 生产构建、TypeScript、小程序生产编译、Docker 镜像构建与内容审计、129 账本迁移后备份、等价 Linux PG17.10 独立恢复、Worker 隔离验收均通过。生产配置最终预检显示：未注入时门禁 10 项失败，合并自有密钥计划后降至 7 项；本轮已交付运行时 env 模板、无硬编码口令的角色初始化脚本和注入计划应用器，并在仓库外隔离副本完成“应用计划 → 门禁 7 项外部配置 → 补齐模拟值后通过”的验证。第三方凭据未伪造、不阻塞构建。仍不能直接上线的原因只有生产配置、真实凭据、真机与独立审批，全部集中在本报告第 10 节的一张外部输入清单。
 
 ## 1. 基线与工作树
 
@@ -222,6 +222,30 @@
 | Worker / 通知 | 无 `XIAOK_STAGE_REMINDER_*`/`XIAOK_WEEKLY_REPORT_*`，门禁关闭；开发库 pilot scope 0；平台通知配置版本 2、8 模板、`subscriptionMessagesEnabled` 未设置（关闭） |
 | 账号口令 | `INITIAL_ADMIN_PASSWORD` 与 `DEPLOY_SMOKE_PASSWORD` 同值，需轮换并在上线后移除初始管理员口令 |
 
+### 7.6 上线准备包与隔离验证（本轮）
+
+| 交付物 | 路径 | 说明 |
+| --- | --- | --- |
+| 运行时 env 模板 | `admin/deployment/production/runtime.env.template` | 所有必填键与占位值；占位值会被门禁拒绝 |
+| 生产角色初始化 | `admin/deployment/production/postgres-roles.sql` | psql 变量注入口令，无硬编码密码；幂等创建/更新 `sfp_app`/`sfp_migrator`/`sfp_auditor`/`sfp_backup` |
+| 注入计划应用器 | `admin/scripts/apply-secret-plan.mjs` | 只接受五项自有密钥及 `_PREVIOUS`；有效值不覆盖；原子写、权限收紧；`--check`/`--apply` |
+
+隔离验证（目标 `C:\sfp-release-i7524\isolated\runtime.env`，仓库外）：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 复制 `.env.production` 后应用计划 | INTERNAL 替换占位、AI 填充缺失、MEDIA 替换占位并填充 `MEDIA_*_PREVIOUS`；JWT/CRON 保持原值 |
+| 重复执行 `--check` | `changed=false`，不再写入 |
+| 计划应用后门禁 | 退出 1，仅剩 7 项外部配置：数据库 URL×2、百炼×2、Embedding×2、Worker 健康路径 |
+| 补齐模拟外部值后门禁 | 退出 0 |
+| 模板单独跑门禁 | 退出 1，12 项占位值被拒绝（失败关闭） |
+| Compose（隔离完整 env） | 5 个服务解析成功；admin 与 worker 均使用 `/shared/assistant-worker-health.json`，共享 `assistant_health` 卷 |
+| 镜像 | 复用 `sfp-admin:i7524-rc2` 审计：`.env=0`、密钥=0、uploads=0、scripts=8；归档 SHA 校验一致 |
+| 回滚脚本 | `bash -n deploy.sh` 退出 0；`rollback` 使用上一镜像、不重复备份、不回滚迁移 |
+| 129 账本备份恢复 | 复用 I7.5.24 证据，未重新执行 |
+
+`.env.production` 内容未修改（SHA-256 仍为 `4795f2ed…`）；计划只应用到隔离副本。
+
 ## 8. 四端最终回归
 
 复用 I7.5.21 r14 证据（提交级源码在 `1d1e8879..HEAD` 对四端页面/业务逻辑零改动）：
@@ -271,23 +295,21 @@
 
 ## 10. 最终审批表（一次性）
 
-以下事项已合并重复项，按上线阻断程度排序；需要真实凭据、外部账号、真机、付费资源或生产审批：
+以下只保留确实需要外部账号、地址或授权的内容；模板、注入脚本、部署与回滚演练等内部操作已由本轮交付物覆盖，不再列为人工输入。
 
-| # | 审批事项 | 负责人 | 需要提供/确认 | 阻断级别 | 当前状态 |
-| --- | --- | --- | --- | --- | --- |
-| 1 | 生产数据库接入 | 运维/DBA | `DATABASE_URL`、`DATABASE_MIGRATION_URL`、`POSTGRES_PASSWORD` 与 `sfp_app`/`sfp_migrator`/`sfp_auditor` 口令；受控主机，禁止 `localhost`/`_local_only`/占位 | 阻断上线 | 待办（当前 URL 指向 localhost，迁移 URL 仍含占位） |
-| 2 | 自有密钥注入 | 运维/安全 | 把 `~/.sfp-secrets/sfp-production-secrets.env` 合并进运行时 env：`INTERNAL_SECRET`、`AI_PROVIDER_KEY_ENCRYPTION_SECRET`、`MEDIA_STORAGE_KEY_ENCRYPTION_SECRET` 及 `MEDIA_*_PREVIOUS` | 阻断上线 | 计划已生成，待注入 |
-| 3 | 百炼托管 RAG | 知识运营 | `ASSISTANT_BAILIAN_RAG_WORKSPACE_ID`、`API_KEY`、`CATEGORY_ID`（默认 `default`）、`EMBEDDING_MODEL=text-embedding-v4` | 阻断 AI 知识 | 待办（生产缺失） |
-| 4 | 生产 Embedding | 运维/AI | `ASSISTANT_EMBEDDING_URL`、`ASSISTANT_EMBEDDING_API_KEY`；非回环，或批准的 sidecar | 阻断 AI 知识 | 待办（生产缺失） |
-| 5 | 默认文本模型 | 产品/技术 | 确认继续 `qwen3.7-flash`，或完成 DeepSeek Flash 协议/费用验证后再启用 Responses API | 阻断配置确认 | 待办 |
-| 6 | 知识库映射与发布 | 知识运营 | 企业库/平台库映射、批准文档上传、索引、发布、引用冒烟 | 阻断知识上线 | 待办 |
-| 7 | 微信小程序 | 小程序负责人 | AppID/AppSecret/HTTPS 域名已配置且 AppID 与项目一致；确认生产归属、完成真机四端验收后发布 | 阻断真机/发布 | 配置已就绪，待归属确认与真机 |
-| 8 | Worker 试点与通知 | Worker 负责人 | 试点企业/项目 ID、启动窗口、`CRON_SECRET`、共享健康卷；是否开启 `subscriptionMessagesEnabled` | 阻断 Worker 启动 | 待办（门禁关闭、通知关闭） |
-| 9 | 账号与口令 | 安全 | `INITIAL_ADMIN_PASSWORD` 与 `DEPLOY_SMOKE_PASSWORD` 当前同值；轮换 Smoke 专用最小权限账号，上线后移除初始管理员口令 | 阻断安全上线 | 待办 |
-| 10 | 运行时文件与部署回滚 | 发布负责人 | 运行时 env 仓库外或构建上下文内且被 `.dockerignore` 排除、600、未跟踪；完成部署与回滚演练 | 阻断上线 | 待办 |
-| 11 | 可选第三方密钥 | 产品 | 高德、酷家乐、Pollinations、Google、LongCat 替换占位或明确不启用 | 非阻断 | 待办 |
+| # | 需要提供 | 具体内容 | 阻断级别 |
+| --- | --- | --- | --- |
+| 1 | 生产数据库地址与账号 | 主机、端口、数据库名（`smart_floor_planner`），`sfp_app`/`sfp_migrator`/`sfp_auditor`/`sfp_backup` 口令，owner/`POSTGRES_PASSWORD`；禁止 localhost/`_local_only`/占位 | 阻断上线 |
+| 2 | 百炼托管 RAG | 北京 Workspace ID、API Key、Category（默认 `default`）、`text-embedding-v4` | 阻断 AI 知识 |
+| 3 | 生产 Embedding | 服务 URL、API Key；非回环，或批准的 sidecar | 阻断 AI 知识 |
+| 4 | 微信生产授权 | 生产归属确认 + 真机四端验收；AppID/AppSecret/HTTPS 域名已配置 | 阻断真机/发布 |
+| 5 | Worker 试点授权 | 试点企业 ID、项目 ID、启动窗口、是否开启外部通知 | 阻断 Worker |
+| 6 | 安全授权 | 轮换 Smoke 专用口令、上线后移除初始管理员口令 | 阻断安全上线 |
+| 7 | 可选第三方 | 高德、酷家乐、Pollinations、Google、LongCat 的 Key，或明确不启用 | 非阻断 |
 
-**上线判定：** 第 1–4、6、8–10 项完成并重跑 `check:production-env` 退出 0 后，才具备正式上线条件；第 5、7 项需产品确认，第 11 项不阻断。
+**不属于外部输入、但需确认的事项：** 默认文本模型继续 `qwen3.7-flash` 还是切换 DeepSeek（产品/技术）；知识库批准文档清单与索引/发布（使用第 2、3 项凭据，由知识运营执行）；部署窗口与变更单（内部发布审批）。
+
+**上线判定：** 第 1–3、5–6 项提供后填入受控运行时 env，执行 `secrets:apply-plan` 与 `check:production-env` 并退出 0；第 4 项完成归属确认与真机验收；第 7 项可选。全部满足后即可正式上线。
 
 ## 11. 范围冻结确认
 
@@ -336,6 +358,8 @@ CAD 深度解析、设计师独立点位工作区增强、经理私聊通知保�
 | 密钥初始化验收 | `docs/xiaok-v1-secret-bootstrap-acceptance.md` | — |
 | 生产预检配置 | `tmp/xiaok-i7524/preflight-config.json` | `2c14ba771d4e053cabb82b7fab5ee9acd058ea2c5b4729577c260752e1122431` |
 | 门禁未注入 | `tmp/xiaok-i7524/preflight-gate-before.log` | `758b4ec71a1b962e08ecbc36e92c8b218ebebc737182e35dd5dacdf17c343afc` |
+| 隔离环境预检 | `tmp/xiaok-i7524/isolated-preflight.json` | `5b6701d46e7187909e03e4f414f997d73ed3022b90779d842937e28a25054f6c` |
+| 计划应用幂等 | `tmp/xiaok-i7524/apply-plan-idempotent.json` | `654420a00e61b9ab2da7890ab7d8fcd3858f9b8d78bfcd85a1ca3a6b574695f3` |
 
 历史验收证据（`tmp/xiaok-i7521`、`tmp/xiaok-i7522`、`tmp/xiaok-i7523`、`docs/xiaok-i75*.md`）全部保留，未覆盖、未删除。
 

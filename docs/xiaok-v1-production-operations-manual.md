@@ -70,6 +70,25 @@ npm run secrets:bootstrap -- --production-plan --env-path /opt/sfp/.env.producti
 - 计划中的 `<NAME>_PREVIOUS` 必须与新密钥一起注入；确认旧凭据可读后，才可清理。
 - 计划只包含缺失或占位/无效的键；有效密钥不覆盖。
 - 百炼、Embedding、微信、Smoke 账号不会自动生成，缺失时标记 `pending`。
+- 运行时 env 模板：`deployment/production/runtime.env.template`；模板中的 `replace_with_...` 会被门禁拒绝，必须替换或由计划注入。
+- 应用自有密钥计划：
+
+```bash
+node scripts/apply-secret-plan.mjs --plan ~/.sfp-secrets/sfp-production-secrets.env \
+  --target /opt/sfp/.env.production --check
+node scripts/apply-secret-plan.mjs --plan ~/.sfp-secrets/sfp-production-secrets.env \
+  --target /opt/sfp/.env.production --apply --fix-permissions
+```
+
+  已有有效值不会被覆盖；只填充缺失或无效项，并写入 `<NAME>_PREVIOUS`。
+- 生产数据库角色（无硬编码口令）：
+
+```bash
+psql -v ON_ERROR_STOP=1 -v app_password='...' -v migrator_password='...' \
+  -v auditor_password='...' -v backup_password='...' \
+  -v database='smart_floor_planner' \
+  -f deployment/production/postgres-roles.sql
+```
 
 运行时 env 文件（`SFP_RUNTIME_ENV_FILE`，默认 `<deploy-root>/.env.production`）要求：
 
@@ -91,7 +110,7 @@ npm run secrets:bootstrap -- --production-plan --env-path /opt/sfp/.env.producti
 1. 从发布提交干净检出，确认 `git status` 为空。
 2. `cd admin && npm ci`；`npm run build`；确认 `.next/standalone` 生成。
 3. 构建镜像：`docker build --build-arg SFP_RELEASE_VERSION=<版本> -t <镜像>:<版本> .`；用第 6 节命令抽查镜像内容。
-4. 准备运行时 env 文件（不进入镜像；600、未跟踪、满足 2.4 要求）。`docker compose config` 会解析并输出 env_file 的值，必须重定向 stdout（例如 `>/dev/null`），不得打印到终端或日志。
+4. 准备运行时 env 文件（不进入镜像；600、未跟踪、满足 2.4 要求）。可从 `deployment/production/runtime.env.template` 复制，再用 `apply-secret-plan` 注入自有密钥。`docker compose config` 会解析并输出 env_file 的值，必须重定向 stdout（例如 `>/dev/null`），不得打印到终端或日志。
 5. 执行 `deploy.sh`：先运行生产环境门禁，再创建迁移前备份，迁移器无待执行项时不重复迁移。
 6. 启动 `postgres`、`admin`、`lead-claim-worker`；等待健康检查与登录 smoke 通过。
 7. 首次启用 AI 知识前完成第 5 节映射/上传/索引/引用冒烟。
