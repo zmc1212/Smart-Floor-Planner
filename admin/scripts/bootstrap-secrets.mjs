@@ -14,9 +14,13 @@
  * Usage:
  *   node scripts/bootstrap-secrets.mjs
  *   node scripts/bootstrap-secrets.mjs --check --json
- *   node scripts/bootstrap-secrets.mjs --env-file .env.test
+ *   node scripts/bootstrap-secrets.mjs --env-path .env.test
  *   node scripts/bootstrap-secrets.mjs --production-plan
  *   node scripts/bootstrap-secrets.mjs --production-plan --plan-output C:\secrets\sfp.env
+ *
+ * `--env-file` is intentionally not used: Node consumes that flag itself even
+ * after the script path, so the CLI uses `--env-path` and also accepts
+ * SFP_SECRETS_ENV_FILE.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -538,7 +542,7 @@ function printHuman(result) {
 async function main() {
   const values = parseArgs({
     options: {
-      'env-file': { type: 'string' },
+      'env-path': { type: 'string' },
       'production-plan': { type: 'boolean', default: false },
       check: { type: 'boolean', default: false },
       json: { type: 'boolean', default: false },
@@ -547,8 +551,9 @@ async function main() {
     },
   }).values;
   const mode = values['production-plan'] ? 'production' : 'local';
-  const envFile = values['env-file']
-    ? path.resolve(process.cwd(), values['env-file'])
+  const requestedEnvFile = values['env-path'] ?? process.env.SFP_SECRETS_ENV_FILE;
+  const envFile = requestedEnvFile
+    ? path.resolve(process.cwd(), requestedEnvFile)
     : path.join(adminRoot, mode === 'production' ? '.env.production' : '.env.local');
   const result = await runBootstrap({
     envFile, mode, check: values.check,

@@ -123,33 +123,35 @@
 
 ## 6. 生产密钥与环境变量
 
-复用 I7.5.23 的失败关闭实现，本轮只做只读核对与门禁执行：
+复用 I7.5.23 的失败关闭实现；本轮新增 Secret Bootstrap 与部署运行时文件检查，不重复开发密钥模块。
 
 | 项目 | 状态 | 实测 |
 | --- | --- | --- |
-| JWT 安全 | `passed` | 生产缺失/默认/短/占位即失败；23 项安全定向测试全通过 |
-| AI 凭据加密 | `passed` | 生产必须 `AI_PROVIDER_KEY_ENCRYPTION_SECRET`，不得与 JWT 共用 |
-| 管理员密码 | `passed` | `randomBytes(18)` 一次性密码；固定 `123456` 全仓 0 处 |
-| 统一生产门禁 | `passed`（拒绝当前配置） | 对当前 `.env.production` 退出 1：裸环境 10 项、compose 注入模拟 9 项 |
-| 密钥长度/占位/独立性 | `failed`（配置） | `INTERNAL_SECRET`、`MEDIA_STORAGE_KEY_ENCRYPTION_SECRET` 占位；缺 `AI_PROVIDER_KEY_ENCRYPTION_SECRET` |
-| 数据库账号/口令 | `failed`（配置） | `.env.production` 的 `DATABASE_URL` 指向 `localhost`，沿用开发口令 |
-| Docker Secrets | `limited` | compose 无 `secrets:`，密钥走 `env_file`；数据库口令有 `_local_only` 回退，依赖门禁兜底 |
-| 环境隔离 | `passed` | `.env.local`/`.env.production` 均未跟踪；镜像内 `.env*=0` |
-| 口令复用 | `failed`（配置） | `INITIAL_ADMIN_PASSWORD` 与 `DEPLOY_SMOKE_PASSWORD` 同值；上线后需移除初始管理员口令 |
+| Secret Bootstrap | `passed` | 本地/测试五项自有密钥已生成；重复执行 `changed=false`；同名脚本 16/16 测试通过 |
+| 自有密钥长度/占位/重复 | `passed`（本地/计划） | 五项均 64 字符、互不重复；`.env.local`/`.env.test` 全部 `valid` |
+| 生产注入计划 | `passed`（待注入） | `~/.sfp-secrets/sfp-production-secrets.env` 含 `INTERNAL_SECRET`、`AI_*`、`MEDIA_*` 与 `MEDIA_*_PREVIOUS`；`.env.production` 未修改（SHA-256 `4795f2ed…`） |
+| 密钥轮换兼容 | `passed` | AI Provider 密文 3/3 可解密；唯一真实媒体密文可解密；5 条非密文占位数据轮换前即不可解密 |
+| 统一生产门禁 | `passed`（拒绝未注入配置） | 计划合并后仅剩数据库 URL、百炼、Embedding、Worker 健康路径；补齐模拟外部值后退出 0 |
+| 部署运行时文件 | `passed` | `deploy.sh` 拒绝 Git 跟踪、group/world 权限、构建上下文未排除 `.env*` 的文件 |
+| 数据库账号/口令 | `failed`（待审批） | `.env.production` 的 `DATABASE_URL` 指向 `localhost`，沿用开发口令 |
+| 百炼/Embedding/微信 | `pending`（待审批） | 未生成、未伪造；Bootstrap 仅标记 `pending`，不阻塞构建 |
+| Docker Secrets | `limited` | compose 使用受控 `env_file`（可指向仓库外绝对路径）；数据库口令仍有 `_local_only` 回退，由门禁与部署文件检查兜底 |
+| 环境隔离 | `passed` | `.env.local`/`.env.test`/`.env.production` 均未跟踪；镜像内 `.env*=0` |
+| 口令复用 | `failed`（待审批） | `INITIAL_ADMIN_PASSWORD` 与 `DEPLOY_SMOKE_PASSWORD` 同值；上线后需移除初始管理员口令 |
 
 ## 7. Docker 与发布包
 
 ### 7.1 干净检出构建
 
-从 `git archive HEAD admin` 的全新目录（无未提交改动、无 `.env`）构建：
+从 `git archive HEAD admin` 的全新目录（无未提交改动、无 `.env`）构建；本轮配置收口再次从 `2538727a` 重建：
 
 | 步骤 | 结果 |
 | --- | --- |
-| `npm ci` | 退出 0，60.1 秒，1,324 包，npmmirror 源 |
-| `npm run build` | 退出 0，119.3 秒，117 个静态页面，Next.js 16.4.6 |
-| `tsc --noEmit` | 退出 0 |
+| `npm ci` | 退出 0，91.2 秒，1,324 包，npmmirror 源 |
+| `npm run build` | 退出 0，82.4 秒，117 个静态页面，392 条路由 |
+| `tsc --noEmit` | 退出 0，21.5 秒 |
 | `check:survey-runtime` | 退出 0（83 文件一致） |
-| standalone | 12,047 文件 / 350.76 MiB；`.env*=0`、密钥文件 0、uploads 0、`*.test.*` 0 |
+| standalone | 12,048 文件 / 350.79 MiB；`.env*=0`、密钥文件 0、uploads 0、`*.test.*` 0 |
 | 体积差异 | 较 I7.5.23 基线 +589 文件 / +42.8 MiB，原因是锁文件安装的 Next 16.4.6（基线树为 16.2.3）与整项目追踪增长；页面数不变 |
 
 ### 7.2 镜像构建与内容审计
@@ -177,15 +179,15 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 镜像 | `sfp-admin:i7524-final` |
-| 镜像 ID | `sha256:b1aca5a9133f04206a7dc930011f77202c7276a1589c0eb2e6b403bd1ed87b0e` |
-| 镜像大小 | 284,367,283 字节 |
+| 镜像 | `sfp-admin:i7524-rc2`（从 `2538727a` 干净重建） |
+| 镜像 ID | `sha256:3a9a31a0d99358be1f558e114ad38cd6eaf778de71a6a47b9f681cb1e398c584` |
+| 镜像大小 | 284,372,310 字节 |
 | 基础镜像 | `node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5`（Node 24.22.3） |
-| `docker save` 归档 | `sfp-admin-i7524-final.tar` |
-| 归档大小 | 284,400,128 字节 |
-| 归档 SHA-256 | `3a25d48a6f76cb0a13b92e75fcd4add89eeea4c73e499d367c122daee3ed5cc5` |
+| `docker save` 归档 | `sfp-admin-i7524-rc2-clean.tar` |
+| 归档大小 | 284,405,248 字节 |
+| 归档 SHA-256 | `0b04c4caea49e34b99f861a9bdddfe54d6f7178500181e4a9d146a34ce2bc83c` |
 | Dockerfile SHA-256 | `4ca6b503044f1b14903abb1e76eeeea9aa550ff6dd8c7de0dbd84fb0f5f63e0c` |
-| 构建时间 | 2026-11-16T13:55:25Z |
+| 构建时间 | 2026-11-16（本轮干净重建） |
 
 ### 7.3 Compose 与部署门禁
 
@@ -193,6 +195,14 @@
 - `admin` 与 `assistant-worker` 均设置 `ASSISTANT_WORKER_HEALTH_FILE=/shared/assistant-worker-health.json`，并挂载同一 `assistant_health` 卷。
 - `deploy.sh` 在数据库操作前运行 `node scripts/production-env-check.mjs`；未启动 `assistant-worker`。
 - 当前 `.env.production` 会在门禁处失败退出，这是预期保护。
+
+### 7.4 发布配置收口
+
+- **密钥链路**：`secrets:bootstrap` 生成/校验 `.env.local`、`.env.test` 与生产注入计划；`deploy.sh` 读取受控运行时文件并在容器内执行 `production-env-check`；两者使用同一组五项自有密钥。
+- **运行时文件守卫**：`deploy.sh` 拒绝 Git 跟踪、group/world 权限、构建上下文内且 `.dockerignore` 未排除 `.env*` 的文件。实测五种场景结果符合预期。
+- **Compose 读取**：仓库外 `production-complete.env`（模拟值）执行 `docker compose --profile assistant --profile migration config` 退出 0，健康路径由 compose 注入。`docker compose config` 会输出解析后的密钥值，必须重定向 stdout。
+- **门禁闭合**：计划合并后仅剩数据库 URL、百炼、Embedding、Worker 健康路径等外部项；补齐模拟值后门禁退出 0。裸环境（无 env 文件）退出 1、15 项缺失，属预期失败关闭。
+- **第三方 pending**：百炼、Embedding、微信、Smoke 账号未生成、未伪造，Bootstrap 仅提示，不阻塞构建。
 
 ## 8. 四端最终回归
 
@@ -247,9 +257,9 @@
 
 | # | 事项 | 负责人 | 需要提供/确认 | 当前状态 |
 | --- | --- | --- | --- | --- |
-| 1 | 替换 `INTERNAL_SECRET` | 运维/安全 | ≥32 字符独立随机值 | 待办 |
-| 2 | 替换 `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET` | 运维/安全 | ≥32 字符独立随机值 | 待办 |
-| 3 | 新增 `AI_PROVIDER_KEY_ENCRYPTION_SECRET` | 运维/安全 | ≥32 字符，≠`JWT_SECRET` | 待办 |
+| 1 | 注入 `INTERNAL_SECRET` | 运维/安全 | 计划已生成，合并进运行时 env | 计划已生成，待注入 |
+| 2 | 注入 `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET` 及 `_PREVIOUS` | 运维/安全 | 计划已生成，保留旧值保证历史密文可读 | 计划已生成，待注入 |
+| 3 | 注入 `AI_PROVIDER_KEY_ENCRYPTION_SECRET` | 运维/安全 | 计划已生成，≥32 字符，≠`JWT_SECRET` | 计划已生成，待注入 |
 | 4 | 生产 `DATABASE_URL` / `DATABASE_MIGRATION_URL` | 运维/DBA | 受控主机、账号、口令，禁止 `_local_only` | 待办 |
 | 5 | `POSTGRES_PASSWORD` 与三个应用角色口令 | 运维/DBA | 显式设置并同步 `sfp_app`/`sfp_migrator`/`sfp_auditor` | 待办 |
 | 6 | 百炼北京 Workspace/API Key/Category | 知识运营 | `ASSISTANT_BAILIAN_RAG_*` 生产值 | 待办 |
@@ -263,6 +273,7 @@
 | 14 | 外部通知授权 | 产品/合规 | 是否开启 `subscriptionMessagesEnabled` | 待办（默认关闭） |
 | 15 | 生产部署与回滚演练 | 发布负责人 | 部署窗口、上一镜像、变更单 | 待办 |
 | 16 | 可选第三方密钥（高德/酷家乐/Pollinations/Google/LongCat） | 产品 | 替换占位或明确不启用 | 待办 |
+| 17 | 运行时 env 文件托管 | 运维 | 仓库外或构建上下文内且被 `.dockerignore` 排除；600、未跟踪；`deploy.sh` 会强制校验 | 待办 |
 
 ## 11. 范围冻结确认
 
@@ -284,10 +295,10 @@ CAD 深度解析、设计师独立点位工作区增强、经理私聊通知保�
 
 镜像回执：
 
-- 镜像：`sfp-admin:i7524-final`
-- 镜像 ID：`sha256:b1aca5a9133f04206a7dc930011f77202c7276a1589c0eb2e6b403bd1ed87b0e`
-- 镜像大小：284,367,283 字节
-- 归档 SHA-256：`3a25d48a6f76cb0a13b92e75fcd4add89eeea4c73e499d367c122daee3ed5cc5`
+- 镜像：`sfp-admin:i7524-rc2`
+- 镜像 ID：`sha256:3a9a31a0d99358be1f558e114ad38cd6eaf778de71a6a47b9f681cb1e398c584`
+- 镜像大小：284,372,310 字节
+- 归档 SHA-256：`0b04c4caea49e34b99f861a9bdddfe54d6f7178500181e4a9d146a34ce2bc83c`
 
 ## 13. 证据索引
 
@@ -300,8 +311,15 @@ CAD 深度解析、设计师独立点位工作区增强、经理私聊通知保�
 | AI/密钥审计 | `tmp/xiaok-i7524/agent-b/summary.md` | `23689c5bd67ec4845b9e6bfaf2e53fce61ae9262885bd585f3a3f3dad0a932c6` |
 | 四端复核 | `tmp/xiaok-i7524/agent-d/summary.md` | `22c37691a7301e5196b938522b40b9e79a7eee0987d8ab66a847e0e0b0e3259d` |
 | 干净构建日志 | `C:\sfp-build-i7524\logs\admin-build.log` | `ee5f78629f9c0d34430a805c9e1353d154bc0c197b2b114a721681eb887c097f` |
-| 镜像审计 | `C:\sfp-build-i7524\docker\image-audit-final.txt` | `2befc85f08b5ad488b052c722c2ebfbb66d674aeda024ca3281d982325ccead1` |
+| 镜像审计 | `C:\sfp-build-i7524\docker\image-audit-rc2-clean.txt` | `2befc85f08b5ad488b052c722c2ebfbb66d674aeda024ca3281d982325ccead1` |
 | 小程序编译日志 | `C:\sfp-build-i7524\mini\preview.log` | `a745b9358b323e6d0d0d6651873cbaceb923f2373cbc5f1d05db2e647793a515` |
+| 本轮干净构建（2538727a） | `C:\sfp-build-i7524\rc2-logs\admin-build.log` | `3d8c7714c79227143a6128fe718368e0812761c5360f6fc3e6bddb9da1edfec4` |
+| 本轮 TypeScript | `C:\sfp-build-i7524\rc2-logs\tsc.log` | `189f98eecd3bffb10263959dfd83fd44b1abfe8191ad4e168e3e8373c2b6ee60` |
+| 本轮 standalone 审计 | `C:\sfp-build-i7524\rc2-logs\standalone-audit.json` | `ef03ca9367ef97a9c94e82bfb273d9e0d36794a220f86abd922aa28dd41185d7` |
+| 生产门禁通过 | `C:\sfp-build-i7524\rc2-logs\production-gate-pass.log` | `36404f70612af1763f68bd917ce9ffe35646e11eaf73a50e11b4636e1a41e03c` |
+| 裸环境门禁拒绝 | `C:\sfp-build-i7524\rc2-logs\production-gate-bare.log` | `ebcb8e6d20bc5e0eee1a12225c58e462af4bf7e4f8bd4996c726d10a50bb3578` |
+| 部署运行时文件守卫 | `tmp/xiaok-i7524/deploy-env-guard-test.sh` | `32970777c3ce9792d5b2ffd41aae05f5c81929183ad1f79213f6f7e9f09aad1c` |
+| 密钥初始化验收 | `docs/xiaok-v1-secret-bootstrap-acceptance.md` | — |
 
 历史验收证据（`tmp/xiaok-i7521`、`tmp/xiaok-i7522`、`tmp/xiaok-i7523`、`docs/xiaok-i75*.md`）全部保留，未覆盖、未删除。
 

@@ -54,16 +54,43 @@
 
 任一缺失、不一致、pilot 不存在/未激活/为空或查询失败时，Worker 必须以退出码 2 停止，不得回退企业全量。
 
-### 2.4 生产密钥获取
+### 2.4 自有密钥初始化与运行时文件
 
-生产密钥由运维在受控密码库生成并注入运行环境；不得写入 Git、镜像、工单或日志。本轮未生成或写入任何真实生产密钥。
+自有密钥（`JWT_SECRET`、`INTERNAL_SECRET`、`AI_PROVIDER_KEY_ENCRYPTION_SECRET`、`MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`、`CRON_SECRET`）由 Secret Bootstrap 生成，不手工拼接：
+
+```bash
+cd admin
+npm run secrets:bootstrap                      # 本地 .env.local，幂等
+npm run secrets:bootstrap -- --env-path .env.test
+npm run secrets:check                          # 只检查
+npm run secrets:bootstrap -- --production-plan --env-path /opt/sfp/.env.production
+```
+
+- 生产只生成仓库外的注入计划（默认 `~/.sfp-secrets/sfp-production-secrets.env`），不修改 `.env.production`。
+- 计划中的 `<NAME>_PREVIOUS` 必须与新密钥一起注入；确认旧凭据可读后，才可清理。
+- 计划只包含缺失或占位/无效的键；有效密钥不覆盖。
+- 百炼、Embedding、微信、Smoke 账号不会自动生成，缺失时标记 `pending`。
+
+运行时 env 文件（`SFP_RUNTIME_ENV_FILE`，默认 `<deploy-root>/.env.production`）要求：
+
+1. 不得被 Git 跟踪；
+2. POSIX 权限 600（不得 group/world 可读）；
+3. 若位于 `admin/` 构建上下文内，`.dockerignore` 必须包含 `.env*`；
+4. `deploy.sh` 在触碰数据库前强制校验上述三项，任一不满足直接退出。
+
+### 2.5 仍需人工审批
+
+- 百炼北京 Workspace/Key 与 Embedding 服务（`ASSISTANT_BAILIAN_RAG_*`、`ASSISTANT_EMBEDDING_*`）。
+- 生产数据库地址、账号与口令（`DATABASE_URL`、`DATABASE_MIGRATION_URL`、`POSTGRES_PASSWORD`）。
+- 微信 AppID/AppSecret、业务域名与真机验收。
+- 默认文本模型确认，以及 Worker 试点范围、启动窗口和外部通知授权。
 
 ## 3. 标准部署流程
 
 1. 从发布提交干净检出，确认 `git status` 为空。
 2. `cd admin && npm ci`；`npm run build`；确认 `.next/standalone` 生成。
 3. 构建镜像：`docker build --build-arg SFP_RELEASE_VERSION=<版本> -t <镜像>:<版本> .`；用第 6 节命令抽查镜像内容。
-4. 准备运行时 env 文件（不进入镜像），运行 `docker compose --env-file <env> config` 核对服务与卷。
+4. 准备运行时 env 文件（不进入镜像；600、未跟踪、满足 2.4 要求）。`docker compose config` 会解析并输出 env_file 的值，必须重定向 stdout（例如 `>/dev/null`），不得打印到终端或日志。
 5. 执行 `deploy.sh`：先运行生产环境门禁，再创建迁移前备份，迁移器无待执行项时不重复迁移。
 6. 启动 `postgres`、`admin`、`lead-claim-worker`；等待健康检查与登录 smoke 通过。
 7. 首次启用 AI 知识前完成第 5 节映射/上传/索引/引用冒烟。

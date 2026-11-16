@@ -29,6 +29,31 @@ done
 [[ -f "$VERSION_FILE" ]] || fail "VERSION file not found: $VERSION_FILE"
 [[ -f "$IMAGE_FILE" ]] || fail "IMAGE_NAME file not found: $IMAGE_FILE"
 [[ -f "$ENV_FILE" ]] || fail "Server runtime environment file not found: $ENV_FILE"
+
+# The runtime environment file carries production secrets. It must not be
+# tracked by Git, must not be readable by other accounts, and may only sit in
+# the image build context when .dockerignore excludes .env*.
+ENV_FILE_ABS="$(cd "$(dirname "$ENV_FILE")" && pwd)/$(basename "$ENV_FILE")"
+if [[ "$ENV_FILE_ABS" == "$SCRIPT_DIR"/* ]]; then
+  tr -d '\r' < "$SCRIPT_DIR/.dockerignore" | grep -qx '\.env\*' \
+    || fail "Runtime environment file is inside the image build context and .dockerignore does not exclude .env*"
+fi
+if command -v git >/dev/null 2>&1 && git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git -C "$SCRIPT_DIR" ls-files --error-unmatch -- "$ENV_FILE_ABS" >/dev/null 2>&1 \
+    && fail "Runtime environment file is tracked by Git: $ENV_FILE_ABS"
+fi
+env_mode=""
+if command -v stat >/dev/null 2>&1; then
+  env_mode="$(stat -c '%a' "$ENV_FILE_ABS" 2>/dev/null || true)"
+  if [[ -z "$env_mode" ]]; then
+    env_mode="$(stat -f '%Lp' "$ENV_FILE_ABS" 2>/dev/null || true)"
+  fi
+fi
+if [[ -n "$env_mode" ]]; then
+  (( (8#$env_mode & 077) == 0 )) || fail "Runtime environment file must not grant group/world access: chmod 600 $ENV_FILE_ABS"
+fi
+ENV_FILE="$ENV_FILE_ABS"
+
 [[ -d "$SCRIPT_DIR/drizzle" ]] || fail "Drizzle migration directory not found"
 [[ -f "$SCRIPT_DIR/drizzle/meta/_journal.json" ]] || fail "Drizzle journal not found"
 [[ -f "$SCRIPT_DIR/docker/postgres/init/001-roles.sql" ]] || fail "PostgreSQL role initialization file not found"

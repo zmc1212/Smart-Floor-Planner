@@ -56,6 +56,7 @@
 | `npm run secrets:check` | 退出 0，全部 `valid` |
 | 重复执行 | `changed=false applied=false`，文件内容不变 |
 | 第三方待配置 | `DEPLOY_SMOKE_USERNAME`、`DEPLOY_SMOKE_PASSWORD`（仅提示，不阻塞） |
+| 测试环境 `.env.test` | 五项密钥生成成功，权限受限、Git 忽略；`secrets:bootstrap --env-path .env.test --check` 退出 0 |
 
 ### 2.1 真实开发库密文回读
 
@@ -84,6 +85,29 @@
 
 生产注入要求：把计划文件的键值合并进批准的运行时密钥库，禁止覆盖整个 env 文件；先部署 `*_PREVIOUS` 与新密钥，确认旧凭据仍可读后，再清理 `*_PREVIOUS`。生产门禁 `check:production-env` 仍会因百炼/Embedding 缺失而拒绝部署，这是预期行为。
 
+### 3.1 与 deploy.sh、Compose 的衔接
+
+`deploy.sh` 默认读取 `<deploy-root>/.env.production`，也支持 `SFP_RUNTIME_ENV_FILE` 指向受控文件。本轮新增运行时文件安全检查：
+
+- 解析为绝对路径后，若位于 `admin/` 构建上下文内，要求 `.dockerignore` 精确包含 `.env*`；
+- 若在 Git 工作树内，`git ls-files --error-unmatch` 命中即拒绝；
+- POSIX 下要求权限不得授予 group/world 访问（建议 `chmod 600`），`stat` 不可用时跳过；
+- 检查通过后才执行 `docker compose --env-file` 与 `production-env-check`。
+
+行为验证（Windows Git Bash 模拟）：
+
+| 场景 | 结果 |
+| --- | --- |
+| 仓库外、未跟踪、600 | PASS |
+| 构建上下文内、`.dockerignore` 含 `.env*`、600 | PASS |
+| 构建上下文内、`.dockerignore` 未排除 `.env*` | 拒绝 `dockerignore` |
+| 已被 Git 跟踪 | 拒绝 `tracked` |
+| 权限 640 / 644 | 拒绝 `permissions` |
+
+Compose 验证：使用仓库外的 `production-complete.env`（模拟值）执行 `docker compose --profile assistant --profile migration config`，退出 0，`ASSISTANT_WORKER_HEALTH_FILE=/shared/assistant-worker-health.json` 由 compose 注入。注意 `docker compose config` 会解析并输出 env_file 的值，必须重定向 stdout；`deploy.sh` 已使用 `>/dev/null`，不得去掉。
+
+门禁衔接：把计划合并进 `.env.production` 后，门禁只剩数据库 URL、百炼、Embedding、Worker 健康路径等外部项；补齐模拟第三方值后 `production-env-check` 退出 0，证明自有密钥部分已闭合。
+
 ## 4. 命令
 
 ```bash
@@ -91,11 +115,13 @@ cd admin
 npm run secrets:bootstrap                     # 本地生成/补齐
 npm run secrets:bootstrap -- --check          # 只检查，不写盘
 npm run secrets:bootstrap -- --fix-permissions # 收紧 env 文件权限
-npm run secrets:bootstrap -- --env-file .env.test
+npm run secrets:bootstrap -- --env-path .env.test
 npm run secrets:bootstrap -- --production-plan
 npm run secrets:bootstrap -- --production-plan --plan-output D:\secrets\sfp.env
 npm run test:secrets
 ```
+
+`--env-path` 而不是 `--env-file`：Node 自身会在脚本参数中消费 `--env-file`，导致 `not found`；脚本同时接受 `SFP_SECRETS_ENV_FILE` 环境变量。
 
 管理脚本入口同时写入 [package.json](../admin/package.json)。
 
@@ -112,7 +138,7 @@ npm run test:secrets
 
 | 检查 | 结果 |
 | --- | --- |
-| `npm run test:secrets` | 15/15 通过 |
+| `npm run test:secrets` | 16/16 通过 |
 | `npx tsx --test src/lib/__tests__/credential-encryption.test.ts` | 8/8 通过（新增 JWT/AI/媒体轮换兼容 4 项） |
 | `npx tsx --test src/lib/ai/__tests__/media-storage.test.ts` | 21/21 通过 |
 | TypeScript | 干净检出 + 本轮 `crypto.ts`/测试副本执行 `tsc --noEmit` 退出 0 |

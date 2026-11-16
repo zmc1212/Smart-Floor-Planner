@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import {
   PREVIOUS_SUFFIX,
   SELF_OWNED_SECRETS,
+  classifySecretValue,
   evaluateAclEntries,
   findDuplicateGroups,
   isInsideRepository,
@@ -236,6 +237,29 @@ test('check mode reports without writing', async () => {
     assert.equal(await fs.readFile(envFile, 'utf8'), before);
     assert.ok(result.entries.some((entry) => entry.status === 'rotated'));
   });
+});
+
+test('production plan closes every self-owned key and keeps rotation history', () => {
+  const env = new Map(Object.entries({
+    JWT_SECRET: 'j'.repeat(64),
+    INTERNAL_SECRET: 'replace_with_at_least_32_random_characters',
+    MEDIA_STORAGE_KEY_ENCRYPTION_SECRET: 'replace_with_a_long_random_secret',
+    CRON_SECRET: 'c'.repeat(64),
+  }));
+  const plan = planSecrets(env, { generate: fakeGenerator() });
+  const writes = new Map([...env, ...plan.previousWrites.map((entry) => [entry.name, entry.value])]);
+  for (const write of plan.writes) writes.set(write.name, write.value);
+  for (const meta of SELF_OWNED_SECRETS) {
+    assert.equal(classifySecretValue(writes.get(meta.name), meta.minLength).state, 'valid', meta.name);
+  }
+  assert.equal(plan.writes.some((entry) => entry.name === 'JWT_SECRET'), false);
+  assert.equal(plan.writes.some((entry) => entry.name === 'CRON_SECRET'), false);
+  for (const entry of plan.entries.filter((item) => item.status === 'rotated' && item.encryption)) {
+    assert.ok(
+      plan.previousWrites.some((previous) => previous.name === `${entry.name}${PREVIOUS_SUFFIX}`),
+      `${entry.name} must keep a previous value`,
+    );
+  }
 });
 
 test('production plan never edits the env file and stays outside the repository', async () => {
