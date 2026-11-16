@@ -52,6 +52,9 @@ RUN mkdir -p /data/ai-assets && chown -R nextjs:nodejs /data/ai-assets
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Runtime configuration comes from the compose env_file/mounted secrets, never
+# from a developer .env file that happened to be present during the build.
+RUN rm -f .env .env.local .env.production .env.development .env.test
 
 # 2. 【新增】明确拷贝 scripts 目录，这样镜像里才有 seed-admin.js
 COPY --from=builder /app/scripts ./scripts

@@ -89,6 +89,7 @@ echo 'Validating production runtime safety settings before touching PostgreSQL..
   const requiredSecret = (name, length = 32) => {
     const value = process.env[name]?.trim() || "";
     if (value.length < length) errors.push(`${name} must contain at least ${length} characters`);
+    if (/replace|your_|example|change_me|placeholder/i.test(value)) errors.push(`${name} must not use a placeholder value`);
   };
   requiredSecret("JWT_SECRET");
   requiredSecret("INTERNAL_SECRET");
