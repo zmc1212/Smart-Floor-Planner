@@ -40,11 +40,12 @@ test('development and tests keep a local-only fallback while production requires
 });
 
 test('mini program token signing fails closed and verification returns null without production JWT', async () => {
-  const previousNodeEnv = process.env.NODE_ENV;
-  const previousSecret = process.env.JWT_SECRET;
+  const env = process.env as Record<string, string | undefined>;
+  const previousNodeEnv = env.NODE_ENV;
+  const previousSecret = env.JWT_SECRET;
   try {
-    process.env.NODE_ENV = 'production';
-    delete process.env.JWT_SECRET;
+    env.NODE_ENV = 'production';
+    delete env.JWT_SECRET;
     await assert.rejects(
       signMiniProgramToken({
         sub: '1', id: '1', mode: 'customer', role: 'user', contextVersion: 1, source: 'wechat',
@@ -53,9 +54,9 @@ test('mini program token signing fails closed and verification returns null with
     );
     assert.equal(await verifyMiniProgramToken('not-a-token'), null);
   } finally {
-    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previousNodeEnv;
-    if (previousSecret === undefined) delete process.env.JWT_SECRET;
-    else process.env.JWT_SECRET = previousSecret;
+    if (previousNodeEnv === undefined) delete env.NODE_ENV;
+    else env.NODE_ENV = previousNodeEnv;
+    if (previousSecret === undefined) delete env.JWT_SECRET;
+    else env.JWT_SECRET = previousSecret;
   }
 });
