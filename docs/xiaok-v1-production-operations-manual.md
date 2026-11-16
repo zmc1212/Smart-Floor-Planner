@@ -7,8 +7,8 @@
 | 项目 | 值 |
 | --- | --- |
 | 源码分支 | `codex/xiaok-integration` |
-| 发布候选提交 | `08058bfa`（基线 `f1c9ec5c`） |
-| Admin 镜像 | `sfp-admin:i7524-final`（SHA-256 见交付报告） |
+| 发布候选提交 | `fd79b027`（镜像构建源码 `2538727a`） |
+| Admin 镜像 | `sfp-admin:i7524-rc2`（SHA-256 见交付报告） |
 | 数据库迁移 | 129 条账本，末条 `0132_assistant_platform_knowledge_citations`（ID 135） |
 | 小程序 | AppID `wxa7728432f59779d1`，生产预览编译 9.0 MB |
 
