@@ -1,5 +1,5 @@
 import * as jose from 'jose';
-import { getJwtSecret } from './jwt-secret';
+import { getJwtSecret, JwtSecretUnavailableError } from './jwt-secret';
 
 export interface MiniProgramJWTPayload extends jose.JWTPayload {
   sub: string;           // Base user ID
@@ -47,7 +47,9 @@ export async function verifyMiniProgramToken(token: string): Promise<MiniProgram
     }
     return payload as MiniProgramJWTPayload;
   } catch (error) {
-    console.error('[JWT] Verification failed:', error);
+    if (!(error instanceof JwtSecretUnavailableError)) {
+      console.error('[JWT] Verification failed:', error);
+    }
     return null;
   }
 }
