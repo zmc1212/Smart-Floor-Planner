@@ -28,7 +28,20 @@ async function workerFixture(t, respond) {
   const directory = await mkdtemp(path.join(tmpdir(), 'sfp-worker-test-'));
   const healthFile = path.join(directory, 'health.json');
   const requests = [];
+  let refuseTick = false;
   const server = createServer((req, res) => {
+    if (req.method === 'GET' && req.url?.endsWith('/preflight')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ success: true, data: { safetyGate: {
+        status: 'open', reason: 'pilot_scope_configured', deliveryScope: 'pilot', mode: 'pilot',
+        enterpriseId: '1', pilotId: 'worker-test',
+      } } }));
+      return;
+    }
+    if (refuseTick) {
+      req.socket.destroy();
+      return;
+    }
     requests.push({ method: req.method, url: req.url, authorized: req.headers['x-cron-secret'] === secret });
     respond?.(res, requests.length);
   });
@@ -52,11 +65,13 @@ async function workerFixture(t, respond) {
     ...process.env,
     NODE_ENV: 'test',
     ASSISTANT_WORKER_ENDPOINT: endpoint,
+    ASSISTANT_WORKER_PREFLIGHT_ENDPOINT: endpoint.replace(/\/run$/, '/preflight'),
     ASSISTANT_WORKER_HEALTH_FILE: healthFile,
     CRON_SECRET: secret,
   };
   return {
     server, directory, healthFile, requests,
+    refuseTick() { refuseTick = true; },
     start(overrides) {
       child = spawn(process.execPath, [workerScript], { env: { ...env, ...overrides }, stdio: ['ignore', 'pipe', 'pipe'] });
       exited = once(child, 'close');
@@ -167,9 +182,7 @@ test('Worker retains the prior success during failures and clears the streak aft
 
 test('Worker identifies a refused endpoint without a synthetic HTTP status', async (t) => {
   const fixture = await workerFixture(t);
-  const closed = once(fixture.server, 'close');
-  fixture.server.close();
-  await closed;
+  fixture.refuseTick();
   fixture.start();
   const health = await fixture.health(h => h.lastErrorCode === 'endpoint_unreachable');
   assert.ok(health.lastRequestAt);
