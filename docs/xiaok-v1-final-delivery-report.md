@@ -13,7 +13,7 @@
 - 已执行 `git fetch origin`。本地 HEAD、`origin/codex/xiaok-integration` 均为 `f1c9ec5c47ce43ba35521af31f987459ec8def0b`。
 - 最近提交：`f1c9ec5c`（I7.5.23 验收文档）、`742ded56`、`4aeecb0b`、`8f78f941`、`deb21590`（安全加固）、`3e95131e`（发布打包加固）、`c39b5830`（I7.5.21 四端验收）。
 - 主工作区在开始时存在其他 Agent 的 35 个已跟踪修改和 3 个未跟踪文件（`admin/tsconfig.i7523a.json`、`miniprogram/utils/native-preview.js`、`家客来微任务开发协调_SKILL.md`），本轮全部原样保留，未回退、未纳入提交。
-- 本轮只新增/修改发布相关文件：`admin/Dockerfile`、`admin/.dockerignore`、本报告与另外两份交付文档。
+- 本轮发布相关提交：`08058bfa`（镜像打包修复 + 三份交付文档）。基线仍为 `f1c9ec5c`；后续文档提交只改文档，不改变构建产物。
 
 ## 2. 本轮完成的工作
 
@@ -274,7 +274,7 @@ CAD 深度解析、设计师独立点位工作区增强、经理私聊通知保�
 
 | 项目 | 值 |
 | --- | --- |
-| 源码提交 | 见推送后的最终提交 SHA |
+| 源码提交 | `08058bfa`（发布打包修复与交付文档；基线 `f1c9ec5c`） |
 | Admin 干净构建 | 退出 0，117 页，12,047 文件 / 350.76 MiB |
 | 小程序生产编译 | 通过，9.0 MB（9,487,895 字节），预览二维码 `preview.png`（SHA-256 `42a305956c11dc81a0bc6f2b8f1fc940c3e47a9fc486014cf80664caafbd6492`） |
 | 数据库备份 | `a03b7e1b…`（110,311,205 字节，Manifest `d8f720dc…`） |
