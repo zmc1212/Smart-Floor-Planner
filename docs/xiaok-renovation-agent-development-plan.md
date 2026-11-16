@@ -24,12 +24,12 @@ I6.16 防水 Agent V1.1 候选，复用 I6.15 原咨询委托。V1 冻结值与�
 | --- | --- |
 | 交付与负责人 | I7.5.15 百炼托管 RAG 主服务接入，`codex/xiaok-integration` 单一负责人。方法约束：先验证真实回答，禁止补丁循环。 |
 | 用户入口与结果 | 既有后台知识导入、索引和发布，及小 K 会话检索和来源回读。 |
-| 已证缺口 | 北京专用 Workspace 与 Key 缺少获批证据，真实托管和 DeepSeek Flash 本轮 `not_run`。 |
-| 已完成 | 复用 KnowledgeService、KnowledgeOperations 和 KnowledgeRetriever/Evidence。企业与公共库映射、项目与阶段授权、版本和原文核验、Qwen3/pgvector 兼容降级完成隔离验收。 |
-| 下一动作 | 推送单独提交后停止。获批 Workspace 与专用凭据可用时再按有界范围验收真实 API。 |
-| 必要验收 | 合成双企业、公共语料、独立 PG17、授权、出处版本回读、故障与幂等。执行 TypeScript 和定向 ESLint。 |
+| 已证缺口 | 北京按量知识库服务未开通，实云增量导入和检索拒绝 `Index.BailianIndexServiceNotOpen`。托管路径为 `limited`。 |
+| 已完成 | 北京鉴权、水电与防水首份索引、双企业和项目访问隔离、Qwen3/pgvector 故障降级通过。两次 DeepSeek Responses 使用本地获权证据，实测页码、原文、版本读回及退役。 |
+| 下一动作 | 北京按量知识库服务获准开通后，在有界范围补托管检索、公共库补充、同库更新和远程文档清理。 |
+| 必要验收 | 沿用双企业、公共语料、独立 PG17、项目阶段授权、出处版本、故障和幂等。已经验证的两条模型首答复用现有回执。 |
 | 失败与调用边界 | 实测及计费见交付报告。采购、生产知识库、批量上传、正式模型配置和真实 1454 依用户本轮边界。 |
-| 环境与资源 | PG17.10 与 pgvector 0.8.2 隔离副本，`sfp_app`，本机固定 revision Qwen3-Embedding-0.6B。 |
+| 环境与资源 | PG17.10、pgvector 0.8.2、`sfp_app`、固定 Qwen3-Embedding-0.6B。北京专用 Workspace 的临时库和文件已清理，推理权限恢复。 |
 | 证据与后继 | [I7.5.15 接入验收](xiaok-i7515-bailian-rag-integration.md) · [I7.5.14](xiaok-i7514-real-ai-knowledge-acceptance.md) · [试点范围](xiaok-pilot-project-scope.md)。 |
 
 ## 3. 复用哪些成果

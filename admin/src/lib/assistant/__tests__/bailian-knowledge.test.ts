@@ -37,6 +37,14 @@ test('an incomplete successful mutation keeps its request ID and unknown outcome
     && error.operation === 'create_v2' && error.requestId === 'r-1' && !error.outcomeKnown);
 });
 
+test('binds the real create_v2 pipeline ID and rejects conflicting index identities', async () => {
+  const provider = new BailianKnowledgeProvider(cfg, async () => ok({ pipelineId:'index-id', ingestionId:'job-id' }));
+  assert.equal((await provider.createIndex('fixture','file-id')).value, 'index-id');
+  const conflict = new BailianKnowledgeProvider(cfg, async () => ok({ id:'index-id', pipelineId:'other-index' }));
+  await assert.rejects(conflict.createIndex('fixture','file-id'), error => error instanceof BailianKnowledgeError
+    && error.requestId === 'r-1' && !error.outcomeKnown);
+});
+
 test('managed retrieval downgrade is an unavailable response with a receipt', async () => {
   const provider = new BailianKnowledgeProvider(cfg, async () => ok({ isDowngrade:true, nodes:[] }));
   await assert.rejects(provider.retrieve({ indexId:'index-id', tags:['owned-tag'], query:'水路', topK:5 }),

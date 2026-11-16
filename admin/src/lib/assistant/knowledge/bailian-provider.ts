@@ -188,7 +188,10 @@ export class BailianKnowledgeProvider implements ManagedKnowledgeProvider {
       sinkType: 'BUILT_IN', sourceType: SOURCE, embeddingModelName: this.model, chunkSize: 800,
       docIds: [fileId], dataSources: [{ sourceType: SOURCE }],
     });
-    return { ...r, value: this.responseId(r, r.value.id, 'create_v2') };
+    const { id: indexId, pipelineId } = r.value;
+    if (indexId != null && pipelineId != null && indexId !== pipelineId)
+      throw new BailianKnowledgeError('create_v2', 'invalid_response', r.requestId, 200, false);
+    return { ...r, value: this.responseId(r, indexId ?? pipelineId, 'create_v2') };
   }
 
   async listIndices() {

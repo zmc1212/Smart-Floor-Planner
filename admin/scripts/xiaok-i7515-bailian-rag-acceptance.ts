@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
 import { sql } from 'drizzle-orm';
 import { one, type Row } from '@/db/repositories/assistant-repository';
@@ -21,6 +22,7 @@ import { KnowledgeService, type KnowledgeActor } from '@/lib/assistant/knowledge
 import { resolveEvidence } from '@/lib/assistant/knowledge/sources';
 import type { ActorContext, TextModelGateway } from '@/lib/assistant/contracts';
 import { mockBailianRag } from './xiaok-r4-bailian-mock';
+import { LiveBailianAcceptance } from './xiaok-i7515-bailian-live';
 
 const target = new URL(process.env.XIAOK_I7515_DATABASE_URL ?? 'http://missing');
 const owner = new URL(process.env.XIAOK_I7515_OWNER_URL ?? 'http://missing');
@@ -52,6 +54,9 @@ const [water, waterproof] = fixture.drafts;
 const qWater = '家里现在做水电施工，这一步水路主要做什么？';
 const qWaterproof = '卫生间接下来做防水，施工和后续检查由谁安排？';
 const cloud = mockBailianRag();
+const liveCore = process.argv[3] === '--live-core';
+const live = liveCore || process.argv[3] === '--live'
+  ? new LiveBailianAcceptance(path.join(out, 'live-receipts.json')) : null;
 const checks: Array<{ name: string; status: string; evidence?: unknown }> = [];
 const prefix = 'i7515-' + randomUUID().slice(0, 8);
 type Draft = { documentId: string; versionId: string; expectedVersion: number; expectedEditVersion: number };
@@ -61,11 +66,13 @@ function binding() {
   const names = execFileSync('git', ['ls-files','-c','-o','--exclude-standard','-z','--',
     'src/db','src/lib/assistant','src/lib/construction','src/lib/ai','src/lib/platform-llm-config.ts','src/lib/postgresql.ts',
     'src/lib/xiaok-v1','src/lib/native-workflow','drizzle','package-lock.json','package.json',
-    'scripts/xiaok-i7515-bailian-rag-acceptance.ts','scripts/xiaok-r4-bailian-mock.ts','scripts/fixtures/xiaok-ppt-craft-preview.json',
+    'scripts/xiaok-i7515-bailian-rag-acceptance.ts','scripts/xiaok-i7515-bailian-live.ts',
+    'scripts/xiaok-r4-bailian-mock.ts','scripts/fixtures/xiaok-ppt-craft-preview.json',
     'scripts/xiaok-embedding/server.py']).toString().split('\0').filter(Boolean).sort();
   const hash = createHash('sha256');
   for (const name of names) hash.update(name).update('\0').update(readFileSync(name)).update('\0');
-  const config = { provider: process.env.ASSISTANT_KNOWLEDGE_PROVIDER, embeddingProvider: process.env.ASSISTANT_EMBEDDING_PROVIDER,
+  const config = { provider: process.env.ASSISTANT_KNOWLEDGE_PROVIDER, liveWorkspace: live?.workspace, liveCore,
+    embeddingProvider: process.env.ASSISTANT_EMBEDDING_PROVIDER,
     embeddingUrl: process.env.ASSISTANT_EMBEDDING_URL, database: target.pathname, pgPort: target.port };
   return { files: names.length, sha256: hash.update(JSON.stringify(config)).digest('hex'), config };
 }
@@ -124,16 +131,20 @@ async function customer(a: KnowledgeActor, label: string, stage: string): Promis
   return { actor, chat, project, conversation: String((await chat.create(randomUUID())).id) };
 }
 
-const indexCount = () => cloud.calls.filter(c => c.path.endsWith('/addFile')).length;
+const indexCount = () => live?.count('addFile') ?? cloud.calls.filter(c => c.path.endsWith('/addFile')).length;
 async function drain(store: KnowledgeService, jobId: string) {
   const eid = store.actor.enterpriseId;
-  for (let poll = 0; poll < 8; poll++) {
+  for (let poll = 0; poll < (live ? 30 : 8); poll++) {
     const lease = await claimKnowledgeJob({ enterpriseId: eid, jobId });
     assert.ok(lease);
     await runKnowledgeJob(lease);
     const job = await store.execute('job',{jobId});
     if (job.status === 'succeeded') return job;
     assert.equal(job.status, 'queued', JSON.stringify(job));
+    if (live) {
+      await delay(4200);
+      continue;
+    }
     await withTenantTransaction(eid,tx => tx.execute(sql`update app.assistant_jobs set available_at=now()
       where enterprise_id=${eid} and id=${jobId} and status='queued'`));
   }
@@ -197,6 +208,98 @@ const select = (source?: string, text?: string): TextModelGateway => ({
   },
 });
 
+// The account-level import rejection only blocks adding to an existing library.
+// Exercise both stages through separate synthetic enterprise mappings.
+async function checkLiveCore(bailian: LiveBailianAcceptance) {
+  const a = await manager('A'), b = await manager('B');
+  const waterCustomer = await customer(a,'water','utilities'), bathCustomer = await customer(b,'bath','waterproof');
+  const otherBath = await customer(b,'other-bath','waterproof');
+  const as = new KnowledgeService(a), bs = new KnowledgeService(b);
+  const wet = await check('02_water_upload_and_index', () => publishFile(as,water,'utilities'));
+  const bath = await check('03_waterproof_project_upload_and_index', () => publishFile(bs,waterproof,'waterproof',bathCustomer.project));
+  const scenarios = [
+    { customer:waterCustomer, query:qWater, draft:wet.draft, page:17, quote:water.body },
+    { customer:bathCustomer, query:qWaterproof, draft:bath.draft, page:18, quote:waterproof.body.split('\n\n').at(-1)! },
+  ];
+  await check('04_distinct_enterprise_mappings_and_denials', async () => {
+    const indices = [wet.job.managed as Row, bath.job.managed as Row];
+    assert.notEqual(indices[0].index_id,indices[1].index_id);
+    assert.ok(indices.every(index => index.workspace_id===bailian.workspace));
+    const requests = bailian.count('retrieve');
+    await assert.rejects(retrieveKnowledge(bathCustomer.conversation,waterCustomer.actor,qWater,await epoch(a.enterpriseId)),/assistant_resource_not_found/);
+    await assert.rejects(retrieveKnowledge(waterCustomer.conversation,bathCustomer.actor,qWaterproof,await epoch(b.enterpriseId)),/assistant_resource_not_found/);
+    assert.deepEqual((await search(otherBath,qWaterproof,bath.draft.documentId)).evidence,[]);
+    assert.deepEqual((await search(bathCustomer,qWater,wet.draft.documentId)).evidence,[]);
+    assert.deepEqual((await search(waterCustomer,qWaterproof,bath.draft.documentId)).evidence,[]);
+    assert.equal(bailian.count('retrieve'),requests);
+    return { enterprises:[a.enterpriseId,b.enterpriseId], projects:[waterCustomer.project,bathCustomer.project,otherBath.project], indices };
+  });
+  let answerProvider: typeof BAILIAN_RAG | typeof LOCAL_PGVECTOR = BAILIAN_RAG;
+  try {
+    await check('05_hosted_retrieval_both_stages', async () => {
+      const results = [];
+      for (const scenario of scenarios) {
+        const result = await search(scenario.customer,scenario.query);
+        assert.equal(result.diagnostic.provider,BAILIAN_RAG);
+        const requests = result.diagnostic.managedIndex?.requests;
+        assert.ok(requests?.length && requests.every(request => request.requestId));
+        assert.ok(result.evidence.some(value => value.ref.version===scenario.draft.versionId && value.text.trim()===scenario.quote));
+        assert.ok(result.evidence.every(value => value.ref.version===scenario.draft.versionId));
+        results.push(result);
+      }
+      return results;
+    });
+  } catch {
+    process.exitCode = 1;
+    answerProvider = LOCAL_PGVECTOR;
+  }
+  await check('06_real_local_fallback_for_hosted_index', async () => {
+    bailian.fault('transport');
+    const result = await search(waterCustomer,qWater);
+    assert.equal(result.diagnostic.provider,LOCAL_PGVECTOR);
+    assert.equal(result.diagnostic.fallback?.reason,'transport_error');
+    assert.equal(result.evidence[0]?.ref.version,wet.draft.versionId);
+    return result;
+  });
+  process.env.ASSISTANT_KNOWLEDGE_PROVIDER = answerProvider;
+  let bathCitation: string | null = null;
+  try {
+    for (const scenario of scenarios) {
+      await check('07_deepseek_citation_page_' + scenario.page, async () => {
+        const run = await submit(scenario.customer,scenario.query,bailian.model);
+        assert.equal(run.answerKind,'grounded',JSON.stringify(run));
+        const message = (await scenario.customer.chat.messages(scenario.customer.conversation)).items.find(m => m.answerKind==='grounded')!;
+        const citations = await Promise.all(message.citations.map(item => scenario.customer.chat.citation(item.id)));
+        const citation = citations.find(value => value.available && 'quote' in value && value.quote===scenario.quote);
+        assert.ok(citation?.available && 'page' in citation);
+        assert.equal(citation.page,scenario.page);
+        assert.equal(citation.version,scenario.draft.versionId);
+        assert.equal(citation.versionNumber,1);
+        const projectScoped = scenario.customer === bathCustomer;
+        assert.equal(citation.knowledge.scope,projectScoped ? 'project' : 'enterprise');
+        assert.equal(citation.knowledge.projectId,projectScoped ? scenario.customer.project : null);
+        if (projectScoped) bathCitation = citation.id;
+        return { query:scenario.query, retrievalProvider:answerProvider, runId:run.id, citation };
+      });
+    }
+  } finally {
+    process.env.ASSISTANT_KNOWLEDGE_PROVIDER = BAILIAN_RAG;
+  }
+  await check('08_real_withdrawal_and_cleanup', async () => {
+    assert.ok(bathCitation);
+    const key = randomUUID(), input = { documentId:bath.draft.documentId, expectedVersion:bath.draft.expectedVersion };
+    const retired = await bs.execute('retire',input,key);
+    assert.deepEqual(await bs.execute('retire',input,key),JSON.parse(JSON.stringify(retired)));
+    assert.equal((await bathCustomer.chat.citation(bathCitation)).available,false);
+    assert.deepEqual((await search(bathCustomer,qWaterproof,bath.draft.documentId)).evidence,[]);
+    assert.equal(await processManagedKnowledgeCleanup(undefined,{enterpriseId:b.enterpriseId}),true);
+    const job = await bs.execute('job',{jobId:String(bath.job.id)});
+    assert.ok((job.managed as Row).removed_at,JSON.stringify(job.managed));
+    assert.equal(await processManagedKnowledgeCleanup(undefined,{enterpriseId:b.enterpriseId}),false);
+    return { withdrawnCitation:bathCitation, managed:job.managed };
+  });
+}
+
 async function main() {
   const safety = await withPlatformTransaction(tx => one(tx, sql`select current_database() as database,current_user as role,
     current_setting('server_version_num')::int as version,
@@ -209,6 +312,13 @@ async function main() {
     && Number(safety.version)<180000 && safety.pgvector==='0.8.2' && /^xiaok-i7515-/.test(String(safety.marker))
     && safety.configured===0 && safety.libraries===0, 'Use an empty marked PostgreSQL 17 application database');
   await check('01_workspace_config', async () => {
+    if (live) {
+      const row = await withPlatformTransaction(tx => one(tx, sql`select count(*)::int as existing from app.enterprises`));
+      assert.equal(row?.existing, 0, 'Live acceptance requires a business-data-free database');
+      const requestId = await live.start();
+      assert.ok(requestId);
+      return { safety, workspace: live.workspace, requestId };
+    }
     assert.throws(bailianKnowledgeConfig,/bailian_knowledge_not_configured/);
     cloud.install();
     const listing = await new BailianKnowledgeProvider().listIndices();
@@ -216,6 +326,7 @@ async function main() {
     assert.ok(listing.requestId);
     return { safety, workspace: bailianKnowledgeConfig().workspaceId, requestId: listing.requestId };
   });
+  if (live && liveCore) return checkLiveCore(live);
   const a = await manager('A'), b = await manager('B'), platform = await manager('platform',true);
   await assert.rejects(withTenantTransaction(a.enterpriseId,tx => tx.execute(sql`insert into app.assistant_platform_knowledge_library
     (enterprise_id) values(${a.enterpriseId})`)), (error: Error) => (error.cause as {code?: string})?.code === '42501');
@@ -267,9 +378,11 @@ async function main() {
   });
   await check('07_ab_and_project_permission', async () => {
     const looked = await search(outside,qWater);
-    const privateSlice = cloud.getSlices(String((foreign.job.managed as Row).index_id),String((foreign.job.managed as Row).index_document_id))[0];
-    assert.ok(privateSlice);
-    cloud.intercept.extraSlices = [{...privateSlice,score:1}];
+    if (!live) {
+      const privateSlice = cloud.getSlices(String((foreign.job.managed as Row).index_id),String((foreign.job.managed as Row).index_document_id))[0];
+      assert.ok(privateSlice);
+      cloud.intercept.extraSlices = [{...privateSlice,score:1}];
+    }
     try {
       assert.ok((await search(waterCustomer,qWater)).evidence.every(e=>e.ref.version!==foreign.draft.versionId));
     } finally { cloud.intercept.extraSlices = []; }
@@ -284,7 +397,7 @@ async function main() {
   });
   const citations = await check('08_grounded_citation_readback', async () => {
     const quote = waterproof.body.split('\n\n').at(-1)!;
-    const grounded = await submit(bathCustomer,qWaterproof,select(undefined,quote));
+    const grounded = await submit(bathCustomer,qWaterproof,live?.model ?? select(undefined,quote));
     assert.equal(grounded.answerKind,'grounded',JSON.stringify(grounded));
     const message = (await bathCustomer.chat.messages(bathCustomer.conversation)).items.find(m => m.answerKind==='grounded')!;
     const citation = await bathCustomer.chat.citation(message.citations[0].id);
@@ -295,15 +408,23 @@ async function main() {
     assert.equal(citation.quote,quote);
     assert.equal(citation.professional?.origin?.title,'家客来小K装修服务功能方案.pptx');
     await assert.rejects(waterCustomer.chat.citation(citation.id),/assistant_resource_not_found/);
-    const publicRun = await submit(waterCustomer,'家里的用水管路主要做什么？',select('平台公共知识'));
+    const publicRun = await submit(waterCustomer,'家里的用水管路主要做什么？',live?.model ?? select('平台公共知识'));
     assert.equal(publicRun.answerKind,'grounded',JSON.stringify(publicRun));
     const publicMessage = (await waterCustomer.chat.messages(waterCustomer.conversation)).items.find(m => m.answerKind==='grounded')!;
     const publicCitation = await waterCustomer.chat.citation(publicMessage.citations[0].id);
     assert.ok(publicCitation.available && 'page' in publicCitation);
     assert.equal(publicCitation.page,17);
-    assert.equal(publicCitation.knowledge.scope,'platform');
-    assert.match(publicCitation.sourceLocation ?? '',/^平台公共知识 · /);
-    assert.equal(publicCitation.version,shared.draft.versionId);
+    if (live) {
+      const scope = publicCitation.version === wet.draft.versionId ? 'enterprise' : 'platform';
+      assert.ok([wet.draft.versionId, shared.draft.versionId].includes(publicCitation.version));
+      assert.equal(publicCitation.knowledge.scope,scope);
+      assert.equal(publicCitation.quote,water.body);
+      if (scope === 'platform') assert.match(publicCitation.sourceLocation ?? '',/^平台公共知识 · /);
+    } else {
+      assert.equal(publicCitation.knowledge.scope,'platform');
+      assert.match(publicCitation.sourceLocation ?? '',/^平台公共知识 · /);
+      assert.equal(publicCitation.version,shared.draft.versionId);
+    }
     await assert.rejects(outside.chat.citation(publicCitation.id),/assistant_resource_not_found/);
     return { citation, publicCitation };
   });
@@ -324,51 +445,63 @@ async function main() {
     return { notice:notice.answerKind, current:current.ref };
   });
   await check('10_real_local_fallback_and_recovery', async () => {
-    cloud.intercept.unavailableNext='transport';
+    if (live) live.fault('transport');
+    else cloud.intercept.unavailableNext='transport';
     const pinned = await search(waterCustomer,qWater);
     assert.equal(pinned.diagnostic.provider,LOCAL_PGVECTOR);
     assert.equal(pinned.diagnostic.fallback?.reason,'transport_error');
     assert.ok(pinned.diagnostic.embeddingUsage?.inputTokens);
     assert.deepEqual(pinned.evidence[0]?.ref,primary.evidence[0].ref);
-    cloud.intercept.unavailableNext='gateway';
+    if (live) live.fault('gateway');
+    else cloud.intercept.unavailableNext='gateway';
     const waterproofLocal = await search(bathCustomer,qWaterproof);
     assert.equal(waterproofLocal.diagnostic.provider,LOCAL_PGVECTOR);
     assert.equal(waterproofLocal.evidence[0]?.ref.version,bath.draft.versionId);
-    assert.ok(waterproofLocal.diagnostic.managedIndex?.requestId);
+    if (!live) assert.ok(waterproofLocal.diagnostic.managedIndex?.requestId);
     assert.equal((await search(waterCustomer,qWater)).diagnostic.provider,BAILIAN_RAG);
-    const cloudCalls = cloud.calls.length;
+    const cloudCalls = live?.receipts.length ?? cloud.calls.length;
     process.env.ASSISTANT_KNOWLEDGE_PROVIDER=LOCAL_PGVECTOR;
     try {
       const localOnly = await search(waterCustomer,qWater);
       assert.equal(localOnly.diagnostic.provider,LOCAL_PGVECTOR);
       assert.deepEqual(localOnly.evidence[0]?.ref,primary.evidence[0].ref);
-      assert.equal(cloud.calls.length,cloudCalls);
+      assert.equal(live?.receipts.length ?? cloud.calls.length,cloudCalls);
     } finally { process.env.ASSISTANT_KNOWLEDGE_PROVIDER=BAILIAN_RAG; }
     return { water:{evidence:pinned.evidence,diagnostic:pinned.diagnostic},
       waterproof:{evidence:waterproofLocal.evidence,diagnostic:waterproofLocal.diagnostic} };
   });
   await check('11_dual_outage_wrong_profile_and_auth_denial', async () => {
-    cloud.intercept.failNext='retrieve';
+    if (live) live.fault('denied');
+    else cloud.intercept.failNext='retrieve';
     await assert.rejects(search(waterCustomer,qWater), error => error instanceof KnowledgeSearchUnavailable
       && error.httpStatus===403 && !error.fallbackError);
     const original = process.env.ASSISTANT_EMBEDDING_URL!;
     const modelBefore = mockModelCalls;
     try {
-      process.env.ASSISTANT_EMBEDDING_URL='http://127.0.0.1:18116';
-      cloud.intercept.unavailableNext='transport';
+      if (live) {
+        live.stopEmbedding = true;
+        live.fault('transport');
+      } else {
+        process.env.ASSISTANT_EMBEDDING_URL='http://127.0.0.1:18116';
+        cloud.intercept.unavailableNext='transport';
+      }
       const fresh = String((await bathCustomer.chat.create(randomUUID())).id);
       const failed = await submit({...bathCustomer,conversation:fresh},qWaterproof,select());
       assert.equal(failed.status,'failed');
       assert.equal(failed.errorCode,'retrieval_unavailable');
       assert.equal(mockModelCalls,modelBefore);
-    } finally { process.env.ASSISTANT_EMBEDDING_URL=original; }
+    } finally {
+      if (live) live.stopEmbedding = false;
+      process.env.ASSISTANT_EMBEDDING_URL=original;
+    }
     const eid = a.enterpriseId, vid = wet.draft.versionId;
     const originalChunks = await withTenantTransaction(eid,tx => tx.execute(sql`select id,locator from app.assistant_knowledge_chunks
       where enterprise_id=${eid} and document_version_id=${vid}`));
     try {
       await withTenantTransaction(eid,tx => tx.execute(sql`update app.assistant_knowledge_chunks set locator=locator-'localEmbeddingProfile'
         where enterprise_id=${eid} and document_version_id=${vid}`));
-      cloud.intercept.unavailableNext='gateway';
+      if (live) live.fault('gateway');
+      else cloud.intercept.unavailableNext='gateway';
       await assert.rejects(search(waterCustomer,qWater), error => error instanceof KnowledgeSearchUnavailable
         && error.fallbackError==='local_index_incompatible');
     } finally {
@@ -376,13 +509,13 @@ async function main() {
         set locator=${JSON.stringify(row.locator)}::jsonb where enterprise_id=${eid} and id=${String(row.id)}`));
     }
     const key = process.env.ASSISTANT_BAILIAN_RAG_API_KEY;
-    const cloudCalls = cloud.calls.length;
+    const cloudCalls = live?.receipts.length ?? cloud.calls.length;
     try {
       delete process.env.ASSISTANT_BAILIAN_RAG_API_KEY;
       const missingKey = await search(waterCustomer,qWater);
       assert.equal(missingKey.diagnostic.provider,LOCAL_PGVECTOR);
       assert.equal(missingKey.diagnostic.fallback?.reason,'bailian_knowledge_not_configured');
-      assert.equal(cloud.calls.length,cloudCalls);
+      assert.equal(live?.receipts.length ?? cloud.calls.length,cloudCalls);
     } finally { process.env.ASSISTANT_BAILIAN_RAG_API_KEY=key; }
     return { doubleOutage:'retrieval_unavailable', permissionStatus:403, incompatible:'local_index_incompatible', missingKeyRequests:0 };
   });
@@ -406,13 +539,14 @@ async function main() {
     const oldJob = await as.execute('job',{jobId:String(bath.job.id)});
     const oldRemote = oldJob.managed as Row;
     assert.ok(oldRemote.removed_at && oldRemote.cleanup_request_id);
-    const calls = cloud.calls.length;
+    const calls = live?.receipts.length ?? cloud.calls.length;
     assert.equal(await processManagedKnowledgeCleanup(undefined,{enterpriseId:a.enterpriseId}),false);
-    assert.equal(cloud.calls.length,calls);
+    assert.equal(live?.receipts.length ?? cloud.calls.length,calls);
     const key = randomUUID(), input = {documentId:shared.draft.documentId,expectedVersion:shared.draft.expectedVersion};
     const retired = await ps.execute('retire',input,key);
     assert.deepEqual(await ps.execute('retire',input,key),JSON.parse(JSON.stringify(retired)));
-    assert.equal((await waterCustomer.chat.citation(citations.publicCitation.id)).available,false);
+    if (citations.publicCitation.knowledge.scope === 'platform')
+      assert.equal((await waterCustomer.chat.citation(citations.publicCitation.id)).available,false);
     assert.equal(await processManagedKnowledgeCleanup(undefined,{enterpriseId:platform.enterpriseId}),true);
     assert.equal(await processManagedKnowledgeCleanup(undefined,{enterpriseId:platform.enterpriseId}),false);
     const stale = await withTenantTransaction(a.enterpriseId,async tx => {
@@ -422,7 +556,7 @@ async function main() {
     assert.equal(stale,undefined);
     return { prior:oldRemote, current:updatedJob.managed, withdrawnPlatform:citations.publicCitation.id };
   });
-  await check('13_revalidate_project_stage_after_provider_dispatch', async () => {
+  if (!live) await check('13_revalidate_project_stage_after_provider_dispatch', async () => {
     const service = new ConstructionService(a), projectId = waterCustomer.project;
     async function setStage(stageKey: string) {
       const current = await service.execute('detail',{projectId});
@@ -452,11 +586,17 @@ async function run() {
       evidence:error instanceof Error ? error.stack : String(error) });
     throw error;
   } finally {
+    if (live) {
+      try { await check('live_resource_cleanup', () => live.cleanup()); }
+      catch { process.exitCode=1; }
+    }
     await closePostgresPool();
     const after = binding();
     writeFileSync(path.join(out,'result.json'),JSON.stringify({ before,after,source:fixture.source,checks,
       mock: { cloudRequests:cloud.calls.length, textSelections:mockModelCalls },
-      real:{bailianRag:'not_run',deepseek:'not_run',cloudCalls:0,costCny:0},
+      real:live ? { workspace: live.workspace, bailianRag:live.count('retrieve') ? 'executed' : 'incomplete',
+        deepseek:live.modelResults.length ? 'executed' : 'not_run', receiptsFile:'live-receipts.json',
+        requests:live.receipts.length } : {bailianRag:'not_run',deepseek:'not_run',cloudCalls:0,costCny:0},
     },(_key,value)=>typeof value==='bigint' ? String(value) : value,2));
     assert.equal(after.sha256,before.sha256,'Source or config changed during acceptance');
   }
