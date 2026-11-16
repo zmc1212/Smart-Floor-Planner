@@ -401,7 +401,8 @@ function contradictedPublishedRecord(text: string, sources: SynthesisSource[]) {
  * rewritten as a company requirement without a current enterprise original. */
 function unsupportedEnterpriseClaim(text: string, citations: Citations, sources: SynthesisSource[], unavailable?: boolean) {
   if (!unavailable) return false;
-  if (citations.some(citation => sources.some(source => source.sourceId === citation.sourceId && source.kind === 'knowledge'))) return false;
+  if (citations.some(citation => sources.some(source => source.sourceId === citation.sourceId && source.kind === 'knowledge'
+    && source.knowledge?.scope !== 'platform'))) return false;
   return text.split(/[。！？!?；;\n]/u).some(sentence => {
     if (/(?:本次|本轮|这次)?(?:未|没有|没能|没取得|无法|不能|缺|待核实)|不想|不会|不应|以免|避免|以[^。；\n]{1,24}为准|不代表|不属于|并非|不等于|不等同|不作(?:为)?|不冒充/u.test(sentence)) return false;
     // A general description of what enterprise standards usually cover, or a

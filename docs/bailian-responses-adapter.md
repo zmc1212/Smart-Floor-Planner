@@ -399,6 +399,8 @@ node --env-file=.env.local --import tsx scripts/xiaok-r3-web-acceptance.ts --liv
 
 ## 12. R4 企业知识库
 
+当前主备 Provider、公共语料映射及验证状态见 [I7.5.15](./xiaok-i7515-bailian-rag-integration.md)。以下保留 R4 的接入与验收记录。
+
 百炼北京业务空间为每个企业创建独立托管知识库，使用内置向量存储和 `text-embedding-v4`。导入沿上传租约、OSS PUT、文件注册、解析状态、显式单文件索引、任务状态和切片读取。应用通过 `Retrieve` 获取向量与关键词召回，由原小 K Agent 组织回答。托管接口的混合分数默认阈值为 0.12，可按调用调整。已有中文词法支持关键词模式，重排序可在已授权候选上接入。纯向量模式由显式本地 Provider 提供。[RAG API 概览](https://help.aliyun.com/zh/model-studio/rag-api-overview) · [创建知识库](https://help.aliyun.com/zh/model-studio/rag-api-create-index) · [切片列表](https://help.aliyun.com/zh/model-studio/rag-api-list-chunks) · [直接检索](https://help.aliyun.com/zh/model-studio/rag/channels)
 
 - `ASSISTANT_KNOWLEDGE_PROVIDER=bailian` 是默认模式。Admin API 和知识任务 Worker 使用相同的 `ASSISTANT_BAILIAN_RAG_WORKSPACE_ID`、`ASSISTANT_BAILIAN_RAG_API_KEY`、`ASSISTANT_BAILIAN_RAG_CATEGORY_ID` 和 `ASSISTANT_BAILIAN_RAG_EMBEDDING_MODEL`。数据类目默认 `default`，模型默认 `text-embedding-v4`，也可在创建新索引前配置 `qwen3.7-text-embedding`。现有索引的工作空间及向量模型固定。`local` 兼容已有 Embedding Gateway 与 pgvector；现存本地版本可走兼容模式，托管模式的混合检索以托管发布版本为范围。迁移 `0121`、`0122` 增加项目作用域和企业/版本托管映射。历史 `0060` 的新库执行允许纯 PostgreSQL，已执行的库由增量迁移保留现有向量列。[百炼鉴权](https://help.aliyun.com/zh/model-studio/rag-api-authentication)

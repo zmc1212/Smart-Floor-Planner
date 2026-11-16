@@ -17,7 +17,7 @@ export type RunTrigger = { kind: 'user_message'; messageId: string }
 export type ResourceRef = { type: string; id: string; version?: string };
 export type KnowledgeProvenance = {
   enterpriseName: string; documentId: string; title: string; versionId: string; versionNumber: number;
-  scope: 'enterprise' | 'project'; projectId: string | null; category: string; sourceType: string;
+  scope: 'enterprise' | 'project' | 'platform'; projectId: string | null; category: string; sourceType: string;
   effectiveFrom: string; effectiveTo: string | null; published: boolean;
 };
 export type Evidence = { knowledge?: KnowledgeProvenance; ref: ResourceRef; text: string; hash: string; similarity?:number; professional?: ProfessionalEvidence; reportStage?: ReportWorkmanshipStage; file?: import('./source-file').FileLocator; web?: import('./web-source').WebSourceLocator };

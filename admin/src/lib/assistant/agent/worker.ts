@@ -41,7 +41,7 @@ import { materialShareCompletionClaim } from '@/lib/construction/material-sharin
 import { recommendDesigners, revalidateDesignerSnapshot, designerNotice, type DesignerCard, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
 import { LAYOUT_OPTIONS, STYLE_OPTIONS } from '@/lib/portfolio/options';
 import { CITY_OPTIONS } from '@/lib/portfolio/regions';
-import { authorizeKnowledgeRead, readKnowledgeTarget, retrieveKnowledge, type KnowledgeSearchOptions, type RetrievalDiagnostic } from '../knowledge/retrieval';
+import { authorizeKnowledgeRead, KnowledgeSearchUnavailable, readKnowledgeTarget, retrieveKnowledge, type KnowledgeSearchOptions, type RetrievalDiagnostic } from '../knowledge/retrieval';
 import { createKnowledgeToolRegistry, isKnowledgeTool, knowledgeToolsForProvider, knowledgeToolNames, knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { BailianKnowledgeError, knowledgeProviderMode } from '../knowledge/bailian-provider';
 import { ToolExecutor } from '../tools/executor';
@@ -2465,11 +2465,6 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 evidence = await scoped(tx => readKnowledgeTarget(tx, lease.actor, conversationId, epoch,
                   name === 'knowledge_get_document' ? { documentId: id(input.documentId) } : { versionId: id(input.versionId), chunkId: id(input.chunkId) }));
               } else {
-                const profile = await scoped(tx => one(tx, sql`select active_index_profile_id from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`));
-                if (!profile?.active_index_profile_id && (!ragTool || knowledgeProviderMode() !== 'bailian' || input.mode === 'keyword')) {
-                  evidence = []; knowledgeStatus = 'not_ready';
-                }
-                else {
                   const query = anchorKnowledgeQuery(input.query as string, safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
                   const options = ragTool ? { mode: input.mode, category: input.category, scope: input.scope, documentId: input.documentId,
                     topK: input.topK, minSimilarity: input.minSimilarity, signal,
@@ -2483,7 +2478,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                     sourceMode.naturalKnowledge?'ranked':'document_coverage',workflowKnowledge);
                   evidence = result.evidence;
                   diagnostic = result.diagnostic;
-                }
+                  if (!evidence.length && diagnostic.profileId === '0') knowledgeStatus = 'not_ready';
               }
               signal?.throwIfAborted();
               const selected = (ragTool || diagnostic?.managedIndex ? evidence : evidence.filter(e => e.similarity === undefined || e.similarity >= 0.3)).slice(0, 5);
@@ -2498,7 +2493,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 await tx.execute(sql`update app.assistant_run_steps set input_summary=${JSON.stringify({ knowledgeStatus, diagnostic,
                     ...(ragTool ? { binding, tool: name } : {}), ...(questionCoverage ? { questionCoverage } : {}) })}::jsonb
                   where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
-                if (!ragTool && !specialist && knowledgeProviderMode() === 'local') await recordQueryDispatch(tx);
+                if (!ragTool && !specialist && (knowledgeProviderMode() === 'local' || diagnostic?.fallback)) await recordQueryDispatch(tx);
                 if (diagnostic?.embeddingUsage) await tx.execute(sql`update app.assistant_usage_records set quantity=${diagnostic.embeddingUsage.inputTokens},input_tokens=${diagnostic.embeddingUsage.inputTokens},measurement_kind='observed',updated_at=now(),version=version+1
                   where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and operation_key=${usageKey} and category='query_embedding'`);
               });
@@ -2552,7 +2547,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               try { return await runRead(input); }
               catch (error) {
                 if (!specialist || !(error instanceof AssistantError) || error.code !== 'retrieval_unavailable') throw error;
-                const provider = error instanceof BailianKnowledgeError ? { code: error.providerCode, requestId: error.requestId } : null;
+                const provider = error instanceof KnowledgeSearchUnavailable ? error.diagnostic
+                  : error instanceof BailianKnowledgeError ? { code: error.providerCode, requestId: error.requestId } : null;
                 await scoped(tx => tx.execute(sql`update app.assistant_run_steps set status='failed',
                   input_summary=coalesce(input_summary,'{}'::jsonb) || ${JSON.stringify({ knowledgeStatus: 'unavailable', error: error.code, provider })}::jsonb
                   where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence} and status='running'`));
@@ -2578,7 +2574,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const packet = JSON.parse(outcome.content) as { result?: Row; truncated?: boolean };
             if (packet.truncated) fail('agent_context_budget_exceeded', 422);
             const audit = { ...outcome.record, content: undefined,
-              ...(executionError instanceof BailianKnowledgeError ? { provider: { name: 'bailian',
+              ...(executionError instanceof KnowledgeSearchUnavailable ? { provider: executionError.diagnostic }
+                : executionError instanceof BailianKnowledgeError ? { provider: { name: 'bailian',
                 code: executionError.providerCode, requestId: executionError.requestId, status: executionError.httpStatus,
                 outcomeKnown: executionError.outcomeKnown } } : {}) };
             await scoped(async tx => {

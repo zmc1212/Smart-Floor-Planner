@@ -94,7 +94,7 @@ async function configuredEnterpriseKnowledge(input: {
   try {
     const retrieved = await retrieveKnowledge(input.conversationId, input.actor, input.question, input.knowledgeEpoch,
       undefined, undefined, 'document_coverage', { mode: 'keyword', topK: 3 }, input.tx);
-    const items = retrieved.evidence.filter(item => item.knowledge)
+    const items = retrieved.evidence.filter(item => item.knowledge && item.knowledge.scope !== 'platform')
       .map(item => ({ sourceId: item.ref.id, title: item.knowledge!.title,
         quote: Array.from(item.text).slice(0, 220).join('') }));
     return { items, status: items.length ? 'available' : 'not_configured' };

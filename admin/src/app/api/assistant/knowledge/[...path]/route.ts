@@ -11,7 +11,7 @@ const fields:Record<string,string[]>={
   edit:['expectedEditVersion','body','faq','effectiveFrom','effectiveTo','referenceCase','professional'], index:['expectedEditVersion'],
   publish:['expectedVersion','expectedEditVersion'],retire:['expectedVersion'],
   share:['expectedVersion','entryCode'],
-  createFile:['title','category','audience','fileName','fileBase64','authorization','projectId','effectiveFrom','effectiveTo'],
+  createFile:['title','category','audience','fileName','fileBase64','authorization','projectId','effectiveFrom','effectiveTo','professional'],
   replaceFile:['expectedEditVersion','fileName','fileBase64','authorization'],parse:['expectedEditVersion'],cancelParse:['expectedEditVersion'],
   reviewFile:['expectedEditVersion','acknowledgeWarnings','excludedBlockIds'],
 };

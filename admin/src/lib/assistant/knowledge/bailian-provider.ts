@@ -11,19 +11,23 @@ const CATEGORY_TYPE = 'UNSTRUCTURED';
 const remoteId = /^[a-zA-Z0-9_.:-]{1,240}$/;
 const workspaceName = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
+export const BAILIAN_RAG = 'BAILIAN_RAG';
+export const LOCAL_PGVECTOR = 'LOCAL_PGVECTOR';
+
 export function knowledgeProviderMode(): 'bailian' | 'local' {
   const mode = process.env.ASSISTANT_KNOWLEDGE_PROVIDER?.trim() || 'bailian';
-  if (mode !== 'bailian' && mode !== 'local') fail('knowledge_provider_invalid', 503);
-  return mode;
+  if (mode === BAILIAN_RAG || mode === 'bailian') return 'bailian';
+  if (mode === LOCAL_PGVECTOR || mode === 'local') return 'local';
+  return fail('knowledge_provider_invalid', 503);
 }
 export function bailianKnowledgeConfig() {
   const workspaceId = process.env.ASSISTANT_BAILIAN_RAG_WORKSPACE_ID?.trim() ?? '';
   const apiKey = process.env.ASSISTANT_BAILIAN_RAG_API_KEY?.trim() ?? '';
   const category = process.env.ASSISTANT_BAILIAN_RAG_CATEGORY_ID?.trim() || 'default';
   const model = process.env.ASSISTANT_BAILIAN_RAG_EMBEDDING_MODEL?.trim() || BAILIAN_KNOWLEDGE_MODEL;
-  if (!workspaceId || !apiKey) fail('bailian_knowledge_not_configured', 503);
-  if (!workspaceName.test(workspaceId) || !remoteId.test(category)
+  if (workspaceId && !workspaceName.test(workspaceId) || !remoteId.test(category)
     || !['text-embedding-v4', 'qwen3.7-text-embedding'].includes(model)) fail('bailian_knowledge_config_invalid', 503);
+  if (!workspaceId || !apiKey) fail('bailian_knowledge_not_configured', 503);
   return { workspaceId, apiKey, category, model };
 }
 
@@ -120,14 +124,23 @@ export class BailianKnowledgeProvider implements ManagedKnowledgeProvider {
     }
     let envelope: Record<string, unknown>;
     try { envelope = await readJson(response); } catch { envelope = {}; }
-    const requestId = id(envelope.request_id ?? envelope.requestId);
+    const requestId = id(envelope.request_id ?? envelope.requestId) ?? id(response.headers.get('x-request-id'));
     const status = typeof envelope.status === 'number' ? envelope.status : envelope.status_code;
     if (!response.ok || envelope.code !== 'Success' || envelope.success === false || (status !== undefined && status !== 200)) {
-      const businessStatus = typeof status === 'number' ? status : response.status;
+      const businessStatus = response.ok && typeof status === 'number' ? status : response.status;
       throw new BailianKnowledgeError(operation, id(envelope.code) ?? 'invalid_response', requestId, businessStatus,
         businessStatus >= 400 && businessStatus < 500 && ![408, 409].includes(businessStatus));
     }
-    return { value: object(envelope.data), requestId };
+    const usage = object(envelope.usage);
+    const tokens = usage.input_tokens ?? usage.prompt_tokens;
+    return { value: object(envelope.data), requestId,
+      usage: typeof tokens === 'number' && Number.isSafeInteger(tokens) && tokens >= 0 ? { inputTokens: tokens } : null };
+  }
+
+  private responseId(receipt: { requestId: string | null }, value: unknown, operation: string) {
+    const result = id(value);
+    if (!result) throw new BailianKnowledgeError(operation, 'invalid_response', receipt.requestId, 200, false);
+    return result;
   }
 
   async upload(file: { name: string; data: Buffer; tag: string }) {
@@ -159,7 +172,7 @@ export class BailianKnowledgeProvider implements ManagedKnowledgeProvider {
     const registered = await this.request(connector + 'addFile', {
       leaseId, category, categoryType: CATEGORY_TYPE, parser: 'AUTO_SELECT', tags: [file.tag],
     });
-    return { value: requiredId(registered.value.fileId), requestId: registered.requestId };
+    return { ...registered, value: this.responseId(registered, registered.value.fileId, 'addFile') };
   }
 
   async fileStatus(fileId: string): Promise<ManagedReceipt<ManagedState>> {
@@ -175,7 +188,7 @@ export class BailianKnowledgeProvider implements ManagedKnowledgeProvider {
       sinkType: 'BUILT_IN', sourceType: SOURCE, embeddingModelName: this.model, chunkSize: 800,
       docIds: [fileId], dataSources: [{ sourceType: SOURCE }],
     });
-    return { value: requiredId(r.value.id), requestId: r.requestId };
+    return { ...r, value: this.responseId(r, r.value.id, 'create_v2') };
   }
 
   async listIndices() {
@@ -187,8 +200,9 @@ export class BailianKnowledgeProvider implements ManagedKnowledgeProvider {
     const r = await this.request(index + 'job/create', {
       indexId, sourceType: SOURCE, docIds: [fileId], chunkMode: 'length', chunkSize: 800, overlapSize: 120, enableHeaders: true,
     });
-    if (r.value.pipelineId !== indexId) fail('bailian_knowledge_response_invalid', 503);
-    return { value: requiredId(r.value.ingestionId), requestId: r.requestId };
+    if (r.value.pipelineId !== indexId)
+      throw new BailianKnowledgeError('job/create', 'invalid_response', r.requestId, 200, false);
+    return { ...r, value: this.responseId(r, r.value.ingestionId, 'job/create') };
   }
 
   async importStatus(indexId: string, jobId: string): Promise<ManagedReceipt<ManagedState>> {
@@ -214,8 +228,11 @@ export class BailianKnowledgeProvider implements ManagedKnowledgeProvider {
     const r = await this.request(index + 'retrieve', {
       index_id: input.indexId, query: input.query, top_k: input.topK, search_filters: [{ tags: input.tags }],
     }, undefined, input.signal);
-    if (r.value.isDowngrade === true) fail('retrieval_unavailable', 503);
-    return { value: slices(r.value.nodes), requestId: r.requestId };
+    if (r.value.isDowngrade === true)
+      throw new BailianKnowledgeError('retrieve', 'provider_downgrade', r.requestId, 200, true);
+    if (!Array.isArray(r.value.nodes))
+      throw new BailianKnowledgeError('retrieve', 'invalid_response', r.requestId, 200, false);
+    return { ...r, value: slices(r.value.nodes) };
   }
 
   async deleteDocument(indexId: string, documentId: string) {

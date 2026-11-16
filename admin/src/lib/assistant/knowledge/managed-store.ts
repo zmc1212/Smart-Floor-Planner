@@ -4,16 +4,28 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint } from '../contracts';
 import { bailianKnowledgeConfig } from './bailian-provider';
+import { EMBEDDING_PROFILE } from '../infrastructure/embedding-gateway';
+
+export const fallbackEmbeddingProfile = fingerprint(EMBEDDING_PROFILE);
+export async function hasLocalKnowledgeVector(tx: PostgresTransaction) {
+  return !!await one(tx, sql`select 1 from pg_attribute a join pg_type t on t.oid=a.atttypid
+    where a.attrelid='app.assistant_knowledge_chunks'::regclass and a.attname='embedding'
+    and t.typname='vector' and a.atttypmod=${EMBEDDING_PROFILE.dimensions}`);
+}
 
 export type ManagedLibrary = Row & { workspace_id: string; index_name: string; index_id: string | null; index_profile_id: string; provision_job_id: string | null };
 export async function managedLibrary(tx: PostgresTransaction, enterpriseId: string) {
   return one<ManagedLibrary>(tx, sql`select * from app.assistant_managed_knowledge_libraries where enterprise_id=${enterpriseId}`);
 }
 
+export function managedIndexConfiguration(workspaceId: string, model: string) {
+  return { key: 'bailian:' + workspaceId + ':' + model,
+    config: { provider: 'bailian', workspaceId, model, chunking: 'reviewed-file-and-bailian-v1' } };
+}
+
 export async function managedProfile(tx: PostgresTransaction, enterpriseId: string, settings: Row, initialize: boolean) {
   const { workspaceId, model } = bailianKnowledgeConfig();
-  const config = { provider: 'bailian', workspaceId, model, chunking: 'reviewed-file-and-bailian-v1' };
-  const key = 'bailian:' + workspaceId + ':' + model;
+  const { config, key } = managedIndexConfiguration(workspaceId, model);
   let library = await managedLibrary(tx, enterpriseId);
   if (!library && initialize) {
     const profile = (await one(tx, sql`insert into app.assistant_knowledge_index_profiles(enterprise_id,profile_key,configuration)

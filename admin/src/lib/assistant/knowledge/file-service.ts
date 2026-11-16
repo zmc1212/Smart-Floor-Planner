@@ -4,6 +4,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import type { KnowledgeActor } from './service';
 import { fail } from '../contracts';
 import type { SourceFile, FileLocator } from '../contracts/source-file';
+import type { ProfessionalKnowledge } from '../contracts/professional';
 import { uploadedFile, fileContent } from './source-file';
 import { withTenantTransaction } from '@/db/transaction';
 import { authorizeKnowledgeManager } from './manager';
@@ -72,7 +73,7 @@ export async function reviewFile(tx: PostgresTransaction, actor: KnowledgeActor,
     || new Set(input.excludedBlockIds).size !== input.excludedBlockIds.length || input.excludedBlockIds.some(x => typeof x !== 'string' || !original.parsed!.blocks.some(b => b.id === x))) fail('knowledge_file_review_required', 422);
   const file: SourceFile = { ...original, review: { adminId: actor.adminId, at: new Date().toISOString(), excluded: [...input.excludedBlockIds] as string[] } };
   if (!file.parsed!.blocks.some(b => !file.review!.excluded.includes(b.id) && b.kind !== 'heading')) fail('knowledge_file_review_required', 422);
-  const c = fileContent(file);
+  const c = fileContent(file, v.professional as ProfessionalKnowledge | null);
   assertKnowledgeText(file.name, c.rendered);
   return (await one(tx, sql`update app.assistant_knowledge_versions set source_file=${JSON.stringify(file)}::jsonb,body=${c.body},content_hash=${c.hash},edit_version=edit_version+1,
     index_status='pending',indexed_hash=null,chunk_count=0,updated_at=now() where enterprise_id=${actor.enterpriseId} and id=${String(v.id)} returning *`))!;

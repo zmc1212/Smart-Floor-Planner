@@ -3,15 +3,17 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AssistantError, fail, fingerprint, type EmbeddingGateway } from '../contracts';
-import { assertEmbeddingProfile, embeddingGateway, configuredEmbeddingProfile } from '../infrastructure/embedding-gateway';
+import { assertEmbeddingProfile, embeddingGateway, configuredEmbeddingProfile, EMBEDDING_PROFILE } from '../infrastructure/embedding-gateway';
 import { activeProfile, content, knowledgeManager, type KnowledgeActor } from './service';
 import { chunkDocument, type Chunk } from './chunk-gateway';
 import { chineseTerms } from './chinese-lexical';
 import { fileChunks, fileContent, parseSourceFile } from './source-file';
 import type { SourceFile, FileLocator } from '../contracts/source-file';
+import type { ProfessionalKnowledge } from '../contracts/professional';
 import { BailianKnowledgeError } from './bailian-provider';
 import type { ManagedKnowledgeProvider, ManagedReceipt } from './managed-provider';
 import { runManagedIndex } from './managed-index';
+import { hasLocalKnowledgeVector } from './managed-store';
 
 export type KnowledgeLease = { actor: KnowledgeActor; jobId: string; token: string };
 async function target(tx: PostgresTransaction, lease: KnowledgeLease) {
@@ -80,16 +82,23 @@ type Dependencies = { chunk?: (text: string)=>Promise<Chunk[]>; embedding?: Embe
 export async function runKnowledgeJob(lease: KnowledgeLease, deps?: Dependencies) {
   const eid=lease.actor.enterpriseId;
   let localParse=false;
-  async function call<T>(operation: string, ordinal: number, fn: ()=>Promise<T>, tokens: (result:T)=>number|null): Promise<T> {
+  async function call<T>(operation: string, ordinal: number, fn: ()=>Promise<T>, tokens: (result:T)=>number|null,
+    backup = false): Promise<T> {
     const attempt = await withTenantTransaction(eid,async tx=>{
       const { profile } = await target(tx,lease);
       if (!profile) fail('context_changed');
-      const configured = configuredEmbeddingProfile();
+      const configured = backup ? EMBEDDING_PROFILE : configuredEmbeddingProfile();
       await tx.execute(sql`update app.assistant_jobs set provider_started_at=coalesce(provider_started_at,now()),lease_expires_at=now()+interval '150 seconds',heartbeat_at=now() where enterprise_id=${eid} and id=${lease.jobId}`);
       return (await one(tx,sql`insert into app.assistant_knowledge_attempts(enterprise_id,job_id,lease_token,operation,batch_ordinal,profile_key,model_revision,status)
-        values(${eid},${lease.jobId},${lease.token},${operation},${ordinal},${String(profile.profile_key)},${configured.revision},'started') returning id`))!;
+        values(${eid},${lease.jobId},${lease.token},${operation},${ordinal},
+          ${backup ? configured.id : String(profile.profile_key)},${configured.revision},'started') returning id`))!;
     });
-    const result = await fn();
+    const result = await fn().catch(async error => {
+      if (backup) await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_knowledge_attempts
+        set status='failed',error_code=${error instanceof AssistantError ? error.code : 'local_vector_unavailable'},completed_at=now()
+        where enterprise_id=${eid} and id=${String(attempt.id)} and status='started'`));
+      throw error;
+    });
     await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_knowledge_attempts set status='succeeded',input_tokens=${tokens(result)},completed_at=now()
       where enterprise_id=${eid} and id=${String(attempt.id)} and status='started'`));
     return result;
@@ -122,6 +131,7 @@ export async function runKnowledgeJob(lease: KnowledgeLease, deps?: Dependencies
     await withTenantTransaction(eid,async tx=>{
       await persist(tx,receipt.value);
       await tx.execute(sql`update app.assistant_knowledge_attempts set status='succeeded',provider_request_id=${receipt.requestId},
+        input_tokens=${receipt.usage?.inputTokens ?? null},
         completed_at=now() where enterprise_id=${eid} and id=${String(attempt.id)}`);
     });
     return receipt.value;
@@ -140,7 +150,8 @@ export async function runKnowledgeJob(lease: KnowledgeLease, deps?: Dependencies
           values(${eid},${lease.jobId},${lease.token},'parse',0,'local-file-v1','local-file-v1','started',0)`);
         return asset;
       });
-      const parsed=await (deps?.parse??parseSourceFile)(asset.data as Buffer,file.format), next:SourceFile={...file,parsed,review:null},c=fileContent(next);
+      const parsed=await (deps?.parse??parseSourceFile)(asset.data as Buffer,file.format), next:SourceFile={...file,parsed,review:null};
+      const c=fileContent(next,v.professional as ProfessionalKnowledge | null);
       await withTenantTransaction(eid,async tx=>{
         await target(tx,lease);
         await tx.execute(sql`update app.assistant_knowledge_versions set source_file=${JSON.stringify(next)}::jsonb,body=${c.body},content_hash=${c.hash},edit_version=edit_version+1,index_status='pending',updated_at=now()
@@ -154,7 +165,29 @@ export async function runKnowledgeJob(lease: KnowledgeLease, deps?: Dependencies
     const c=content(String(v.source_type),v);
     if (c.hash!==v.content_hash) fail('context_changed');
     if ((profile?.configuration as Row)?.provider === 'bailian') {
-      await runManagedIndex(lease,tx=>target(tx,lease),mutate,c.rendered,deps?.managed);
+      await runManagedIndex(lease,tx=>target(tx,lease),mutate,c.rendered,async texts => {
+        if ((process.env.ASSISTANT_EMBEDDING_PROVIDER || 'local') !== 'local'
+          || (!deps?.embedding && (!process.env.ASSISTANT_EMBEDDING_URL || !process.env.ASSISTANT_EMBEDDING_API_KEY))
+          || !await withTenantTransaction(eid,hasLocalKnowledgeVector)) return null;
+        try {
+          const gateway = deps?.embedding ?? embeddingGateway();
+          assertEmbeddingProfile(gateway, EMBEDDING_PROFILE);
+          const signal = AbortSignal.timeout(45_000);
+          const vectors: number[][] = [];
+          for (let i = 0; i < texts.length; i += 8) {
+            signal.throwIfAborted();
+            const batch = texts.slice(i, i + 8);
+            const result = await call('embed', i / 8, () => gateway.embed(batch, 'document', signal),
+              r => r.usage?.inputTokens ?? null, true);
+            if (result.vectors.length !== batch.length) return null;
+            vectors.push(...result.vectors);
+          }
+          return vectors;
+        } catch (error) {
+          if (error instanceof AssistantError && error.code === 'context_changed') throw error;
+          return null;
+        }
+      },deps?.managed);
       return;
     }
     const gateway=deps?.embedding ?? embeddingGateway();
@@ -195,6 +228,8 @@ export async function runKnowledgeJob(lease: KnowledgeLease, deps?: Dependencies
       const pending=await one(tx,sql`select id from app.assistant_knowledge_attempts where enterprise_id=${eid}
         and job_id=${lease.jobId} and status in ('started','unknown') limit 1`);
       const local=job.kind==='knowledge_parse';
+      if (e instanceof BailianKnowledgeError && e.requestId) await tx.execute(sql`update app.assistant_managed_knowledge_imports
+        set indexed_request_id=${e.requestId} where enterprise_id=${eid} and job_id=${lease.jobId}`);
       await stop(tx,job,!local&&pending?'indeterminate':'failed',!local&&pending?'provider_outcome_unknown':e instanceof AssistantError?e.code:local&&e instanceof Error&&/^knowledge_file_/.test(e.message)?e.message:'index_failed');
     });
   }

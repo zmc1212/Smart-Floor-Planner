@@ -59,7 +59,7 @@ export function answerExcerpts(evidence:Evidence[]) {
     }
     add(e.text.slice(0,faqs[0]?.index ?? e.text.length));
     faqs.forEach((faq,i)=>add(e.text.slice(faq.index!+faq[0].length,faqs[i+1]?.index ?? e.text.length),faq[1]));
-    return passages.map(p=>({sourceId:e.ref.id,...p}));
+    return passages.map(p=>({sourceId:e.ref.id,...p,...(e.knowledge?.scope==='platform' ? { source: '平台公共知识' } : {})}));
   })
     .map((e,i)=>({...e,selectionId:`E${i+1}`}));
 }

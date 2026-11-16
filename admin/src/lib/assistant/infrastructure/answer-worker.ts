@@ -3,14 +3,14 @@ import { withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { AssistantError, fail, safeText, type Evidence, type KnowledgeRetriever, type TextModelGateway } from '../contracts';
-import { retrieveKnowledge } from '../knowledge/retrieval';
+import { KnowledgeSearchUnavailable, retrieveKnowledge } from '../knowledge/retrieval';
 import { answerMessages, insufficientAnswer, parseSelection } from '../knowledge/answer';
 import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, heartbeat, markProviderStarted, runContext, type Lease } from './job-queue';
 import { isStageChatQuestion, stageChatForConversation } from '@/lib/xiaok-v1/stage-chat-service';
 import { configuredGuidance, conversationGuidance, guidanceProgress } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
 import { textGateway } from './model-gateway';
-import { embeddingGateway } from './embedding-gateway';
+import { configuredEmbeddingProfile, embeddingGateway } from './embedding-gateway';
 import { chatFirstProgress, defaultGuidance } from '../requirements/guidance';
 import { needsDesignerSuggestion, designerSuggestion } from '../handoff/intent';
 import { agentConfig } from '../agent/config';
@@ -144,8 +144,8 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     if(Buffer.byteLength(JSON.stringify(answerMessages(query,history,[])))>9000)fail('invalid_message',422);
     const retrievalQuery=history.length?history.join('\n')+'\n当前问题：'+query:query;
     await heartbeat(lease);
-    const embedding=embeddingGateway();
-    const meteredEmbedding={...embedding,embed:async (...args:Parameters<typeof embedding.embed>)=>{
+    const meteredEmbedding={get profile(){return configuredEmbeddingProfile();},embed:async (...args:Parameters<ReturnType<typeof embeddingGateway>['embed']>)=>{
+      const embedding=embeddingGateway();
       const operation='query:'+lease.jobId+':'+lease.token;
       await withTenantTransaction(lease.enterpriseId,async tx=>{
         await runContext(tx,lease);
@@ -166,7 +166,7 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     for(const e of candidates) {
       // Only reject near-unrelated vectors here. The selector judges answerability
       // across the authorized semantic/lexical shortlist, including lower-scoring paraphrases.
-      if(e.similarity!==undefined && e.similarity<0.3)continue;
+      if(diagnostic?.provider!=='BAILIAN_RAG' && e.similarity!==undefined && e.similarity<0.3)continue;
       const prefix=Array.from(e.text).slice(0,600).join('');
       const end=Math.max(prefix.lastIndexOf('。'),prefix.lastIndexOf('！'),prefix.lastIndexOf('？'),prefix.lastIndexOf('\n'));
       const snippet={...e,text:Array.from(e.text).length>600?(end<0?'':prefix.slice(0,end+1)):e.text};
@@ -205,6 +205,7 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     // An explicit payment rejection is a known failure, not an ambiguous timeout.
     // Keep usage/cost unreconciled: this error is not a provider billing receipt.
     const paymentRejected=stage==='model' && e instanceof AiProviderError && e.code==='HTTP_402';
-    try{await failRun(lease,paymentRejected?'provider_payment_required':e instanceof AssistantError?e.code:stage==='model'?'model_unavailable':'retrieval_unavailable',returned || paymentRejected);}catch(error){if(!(error instanceof AssistantError && error.code==='context_changed'))throw error;}
+    try{await failRun(lease,paymentRejected?'provider_payment_required':e instanceof AssistantError?e.code:stage==='model'?'model_unavailable':'retrieval_unavailable',
+      returned || paymentRejected, e instanceof KnowledgeSearchUnavailable ? { retrieval: e.diagnostic } : undefined);}catch(error){if(!(error instanceof AssistantError && error.code==='context_changed'))throw error;}
   }
 }

@@ -47,11 +47,12 @@ export async function processManagedKnowledgeCleanup(provider?: ManagedKnowledge
   try {
     if (claimed.index_id) {
       const indexId = String(claimed.index_id);
-      const doc = await findManagedDocument(client,indexId,fileId,tag);
-      if (doc) {
-        const removed = await client.deleteDocument(indexId,doc.id);
+      const boundId = claimed.index_document_id ? String(claimed.index_document_id) : undefined;
+      const docId = boundId ?? (await findManagedDocument(client,indexId,fileId,tag))?.id;
+      if (docId) {
+        const removed = await client.deleteDocument(indexId,docId);
         requestId = removed.requestId;
-        if (!removed.value && await findManagedDocument(client,indexId,fileId,tag)) fail('bailian_knowledge_removal_pending',503);
+        if (!removed.value && await findManagedDocument(client,indexId,fileId,tag,docId)) fail('bailian_knowledge_removal_pending',503);
       }
     }
     const removed = await client.deleteFile(fileId);

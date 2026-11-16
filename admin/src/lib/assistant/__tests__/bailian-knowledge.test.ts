@@ -31,6 +31,19 @@ test('Bailian refuses to send original bytes to a non-OSS upload target', async 
   assert.equal(calls, 1);
 });
 
+test('an incomplete successful mutation keeps its request ID and unknown outcome', async () => {
+  const provider = new BailianKnowledgeProvider(cfg, async () => ok({ pipeline_name:'fixture' }));
+  await assert.rejects(provider.createIndex('fixture','file-id'), error => error instanceof BailianKnowledgeError
+    && error.operation === 'create_v2' && error.requestId === 'r-1' && !error.outcomeKnown);
+});
+
+test('managed retrieval downgrade is an unavailable response with a receipt', async () => {
+  const provider = new BailianKnowledgeProvider(cfg, async () => ok({ isDowngrade:true, nodes:[] }));
+  await assert.rejects(provider.retrieve({ indexId:'index-id', tags:['owned-tag'], query:'水路', topK:5 }),
+    error => error instanceof BailianKnowledgeError && error.providerCode === 'provider_downgrade'
+      && error.requestId === 'r-1');
+});
+
 test('managed slices keep whole approved clauses and reject ambiguous or out-of-scope anchors', () => {
   const text = '基层清理完成并签署检查记录后才可安排下一道工序。\n记录不齐时需先补齐，再申请复核。';
   const base: ManagedSlice = { id:'k1', workspaceId:'llm-r4', indexId:'index1', documentId:'doc1', text:'清理完成并签署检查记录后才可安排', section:[], score:0.4 };

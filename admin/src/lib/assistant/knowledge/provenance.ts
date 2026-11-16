@@ -14,9 +14,11 @@ export function assertKnowledgeText(...values: unknown[]) {
 /** Title, scope and version are resolved from the same authorized row as the excerpt. */
 export function knowledgeProvenance(row: Row): KnowledgeProvenance {
   return {
-    enterpriseName: String(row.enterprise_name), documentId: String(row.document_id), title: String(row.title),
+    enterpriseName: row.platform_knowledge ? '平台公共知识' : String(row.enterprise_name),
+    documentId: String(row.document_id), title: String(row.title),
     versionId: String(row.document_version_id), versionNumber: Number(row.version_number),
-    scope: row.scope === 'project' ? 'project' : 'enterprise', projectId: row.project_id ? String(row.project_id) : null,
+    scope: row.platform_knowledge ? 'platform' : row.scope === 'project' ? 'project' : 'enterprise',
+    projectId: row.project_id ? String(row.project_id) : null,
     category: String(row.category), sourceType: String(row.source_type),
     effectiveFrom: new Date(String(row.effective_from)).toISOString(),
     effectiveTo: row.effective_to ? new Date(String(row.effective_to)).toISOString() : null,

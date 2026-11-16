@@ -6,7 +6,7 @@ export type ProfessionalKnowledge = {
   conditions: Array<{ field: 'stage' | 'room' | 'material' | 'city'; operator: 'in' | 'not_in'; values: string[] }>;
   prerequisites: string[];
   exceptions: string[];
-  origin: { title: string; version: string; locator: string; authority: 'enterprise_rule' | 'manufacturer' | 'reference' };
+  origin: { title: string; version: string; locator: string; page?: number; authority: 'enterprise_rule' | 'manufacturer' | 'reference' };
   claim: { key: string; value: string } | null;
   review: { note: string; adminId: string; reviewedAt: string };
 };

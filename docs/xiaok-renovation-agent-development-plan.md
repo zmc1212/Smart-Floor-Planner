@@ -22,15 +22,15 @@ I6.16 防水 Agent V1.1 候选，复用 I6.15 原咨询委托。V1 冻结值与�
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | I7.4.4 显式试点范围与只读预检，`codex/xiaok-integration` 单一负责人。方法约束：先验证真实回答，禁止补丁循环。 |
-| 用户入口与结果 | 企业管理员用管理端 API 保存项目清单，运维用 `--pilot-id` 检查所选版本。 |
-| 已证缺口 | 企业全量预检受范围外项目缺项影响。现有提醒与周报按原规则运行，存在范围外投递风险。 |
-| 已完成 | 版本化配置、权限和跨租户引用校验、企业安全项、项目缺项及范围外影响诊断。 |
-| 下一动作 | 由企业管理员提供实际首批项目，按已保存范围复检。运行时触达与部署另行授权。 |
-| 必要验收 | 独立 PG17 的 A–H、权限、并发保存、企业安全与只读快照；TypeScript、定向 ESLint。 |
-| 失败与调用边界 | 真实企业范围未选择，真实环境未复检，触达规则只报告。I7.3 四端与既有未验项见历史证据。 |
-| 环境与资源 | PG17 `127.0.0.1:55448/pilot_readiness_eval`，非超级用户 `sfp_app`，合成数据。 |
-| 证据与后继 | [试点范围](xiaok-pilot-project-scope.md)、[首家预检](xiaok-first-pilot-enterprise-readiness.md)、[I7.3 验收](xiaok-i73-pilot-acceptance.md)。 |
+| 交付与负责人 | I7.5.15 百炼托管 RAG 主服务接入，`codex/xiaok-integration` 单一负责人。方法约束：先验证真实回答，禁止补丁循环。 |
+| 用户入口与结果 | 既有后台知识导入、索引和发布，及小 K 会话检索和来源回读。 |
+| 已证缺口 | 北京专用 Workspace 与 Key 缺少获批证据，真实托管和 DeepSeek Flash 本轮 `not_run`。 |
+| 已完成 | 复用 KnowledgeService、KnowledgeOperations 和 KnowledgeRetriever/Evidence。企业与公共库映射、项目与阶段授权、版本和原文核验、Qwen3/pgvector 兼容降级完成隔离验收。 |
+| 下一动作 | 推送单独提交后停止。获批 Workspace 与专用凭据可用时再按有界范围验收真实 API。 |
+| 必要验收 | 合成双企业、公共语料、独立 PG17、授权、出处版本回读、故障与幂等。执行 TypeScript 和定向 ESLint。 |
+| 失败与调用边界 | 实测及计费见交付报告。采购、生产知识库、批量上传、正式模型配置和真实 1454 依用户本轮边界。 |
+| 环境与资源 | PG17.10 与 pgvector 0.8.2 隔离副本，`sfp_app`，本机固定 revision Qwen3-Embedding-0.6B。 |
+| 证据与后继 | [I7.5.15 接入验收](xiaok-i7515-bailian-rag-integration.md) · [I7.5.14](xiaok-i7514-real-ai-knowledge-acceptance.md) · [试点范围](xiaok-pilot-project-scope.md)。 |
 
 ## 3. 复用哪些成果
 

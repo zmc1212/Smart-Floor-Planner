@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fail, fingerprint } from '../contracts';
 import type { SourceFile, ParsedFile, FileBlock, FileLocator } from '../contracts/source-file';
+import type { ProfessionalKnowledge } from '../contracts/professional';
 import type { Chunk } from './chunk-gateway';
 import { assertKnowledgeText } from './provenance';
 
@@ -47,10 +48,10 @@ export function filePassages(file: SourceFile) {
     // Heading/table context is copied from the same parsed original, never synthesized.
     text: [b.section.join(' / '), ...(b.headers || []), b.text, ...(b.notes || [])].filter((s, i, a) => s && a.indexOf(s) === i).join('\n') }));
 }
-export function fileContent(file: SourceFile) {
+export function fileContent(file: SourceFile, professional?: ProfessionalKnowledge | null) {
   const body = filePassages(file).map(p => p.text).join('\n\n');
   if (body.length > 16000 || Buffer.byteLength(body) > 48000) fail('knowledge_file_text_limit', 422);
-  return { body, hash: fingerprint({ source: 'file', file }), rendered: body };
+  return { body, hash: fingerprint({ source: 'file', file, ...(professional ? { professional } : {}) }), rendered: body };
 }
 export function reviewedFilePassages(file: SourceFile) {
   if (!file.parsed || !file.review) fail('knowledge_file_review_required');

@@ -11,9 +11,11 @@ import { publicMessageProjection } from '@/lib/construction/public-projections';
 import { planMessageProjection } from '@/lib/construction/site-plans';
 import { siteResultProjection } from '@/lib/construction/site-results';
 import type { FileLocator } from '../contracts/source-file';
+import type { ProfessionalKnowledge } from '../contracts/professional';
 import { fileQuoteSpans } from './source-file';
 import { knowledgeProvenance, knowledgeRowAllowed } from './provenance';
 import { sourceIndexReady } from './managed-store';
+import { platformKnowledgeScope, platformKnowledgeSupplement, readPlatformKnowledge } from './platform-library';
 import { citationWebSource, parseWebCitationId, webCitationForAnswer, webSourceErrorCode, type WebSourceChecks } from '../agent/web-evidence';
 import { designerMessageProjection } from '@/lib/portfolio/designer-recommendation';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
@@ -59,21 +61,35 @@ export function sourceScope(actor:ActorContext,c:Row,historical=false,projectId?
 export const sourceReady=sql`v.index_status='ready' and v.indexed_hash=v.content_hash and c.content_hash=v.content_hash
   and c.index_profile_id=v.index_profile_id and ${sourceIndexReady}
   and ip.status='active' and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`;
+export function sourceStage(stage?: string) {
+  if (!stage) return sql`true`;
+  return sql`not exists (select 1 from jsonb_array_elements(v.professional->'conditions') condition
+    where condition->>'field'='stage' and (
+      (condition->>'operator'='in' and not (condition->'values' ? ${stage}::text))
+      or (condition->>'operator'='not_in' and (condition->'values' ? ${stage}::text))))`;
+}
 export async function resolveEvidence(tx:PostgresTransaction,actor:ActorContext,conversation:Row,evidence:Evidence,historical=false) {
   if(evidence.ref.type!=='knowledge_chunk') return undefined;
   const stageContext = evidence.reportStage ? await reportStageKnowledgeContext(tx,actor,conversation,evidence.reportStage) : undefined;
   if (evidence.reportStage && !stageContext) return undefined;
   const context = stageContext ?? await knowledgeContext(tx,actor,conversation);
-  const row=await one(tx,sql`select c.*,d.id as document_id,d.title,d.source_type,d.scope,d.project_id,d.category,d.published_version_id,
+  const lookup = (enterpriseId: string, platform: boolean) => one(tx,sql`select c.*,d.id as document_id,d.title,d.source_type,d.scope,d.project_id,d.category,d.published_version_id,
+    ${platform}::boolean as platform_knowledge,
     v.published_at,v.version_number,v.edit_version,v.professional,v.effective_from,v.effective_to,e.name as enterprise_name
     from app.assistant_knowledge_chunks c join app.assistant_knowledge_versions v on v.enterprise_id=c.enterprise_id and v.id=c.document_version_id
     join app.assistant_knowledge_documents d on d.enterprise_id=v.enterprise_id and d.id=v.document_id
     join app.enterprises e on e.id=d.enterprise_id
     join app.assistant_enterprise_settings s on s.enterprise_id=c.enterprise_id
     join app.assistant_knowledge_index_profiles ip on ip.enterprise_id=c.enterprise_id and ip.id=c.index_profile_id
-    where c.enterprise_id=${actor.enterpriseId} and c.id=${id(evidence.ref.id)} and v.id=${id(evidence.ref.version)}
-    and c.text_hash=${evidence.hash} and ${sourceReady} and ${sourceScope(actor,conversation,historical,context.projectId)}`);
-  if (row && !knowledgeRowAllowed(row)) return undefined;
+    where c.enterprise_id=${enterpriseId} and c.id=${id(evidence.ref.id)} and v.id=${id(evidence.ref.version)} and e.status='active'
+    and c.text_hash=${evidence.hash} and ${sourceReady} and ${sourceStage(context.stage)}
+    and ${platform ? platformKnowledgeScope : sourceScope(actor,conversation,historical,context.projectId)}`);
+  let row = evidence.knowledge?.scope === 'platform' ? undefined : await lookup(actor.enterpriseId, false);
+  if (!row) {
+    const corpus = await platformKnowledgeSupplement(tx, actor, conversation);
+    if (corpus) row = await readPlatformKnowledge(tx, corpus, () => lookup(corpus, true));
+  }
+  if (row && (!knowledgeRowAllowed(row) || fingerprint(row.text) !== row.text_hash)) return undefined;
   if (row && evidence.professional && (fingerprint(evidence.professional.entry)!==fingerprint(row.professional)
     || evidence.professional.contentHash!==row.content_hash || fingerprint(evidence.professional.context)!==fingerprint(context))) return undefined;
   if(row && evidence.file && fingerprint(evidence.file)!==fingerprint((row.locator as {file?:FileLocator})?.file))return undefined;
@@ -100,14 +116,19 @@ export async function citationProjection(tx:PostgresTransaction,actor:ActorConte
   if(!citation.chunk_id) return unavailable;
   const source=await resolveEvidence(tx,actor,c,{ref:{type:String(citation.resource_type),id:String(citation.chunk_id),version:String(citation.document_version_id)},hash:String(citation.source_hash),text:''},
     (citation.locator as { synthesis?: boolean } | null)?.synthesis !== true);
-  if(!source) return unavailable;
+  if(!source || String(source.enterprise_id)!==String(citation.source_enterprise_id ?? citation.enterprise_id)) return unavailable;
   const file=(source.locator as {file?:FileLocator})?.file;
+  const professional = source.professional as ProfessionalKnowledge | null, origin = professional?.origin;
+  const location = origin ? `${origin.title} · ${origin.locator}` : file ? `${file.name} · ${file.label}` : undefined;
+  const sourceLocation = source.platform_knowledge ? ['平台公共知识', location].filter(Boolean).join(' · ') : location;
   return {id:String(citation.id),available:true,title:source.title,version:String(citation.document_version_id),versionNumber:Number(source.version_number),
-    knowledge:knowledgeProvenance(source),chapter:file?.section ?? [],page:file?.page ?? null,
+    knowledge:knowledgeProvenance(source),chapter:file?.section ?? [],page:file?.page ?? origin?.page ?? null,
     referenceCase:source.source_type==='reference_case',
     quote:source.text?String(citation.quote_snapshot):'',locator:citation.locator,isDraft:citation.is_draft,
-    ...(file?{sourceLocation:`${file.name} · ${file.label}`,sourceFile:file,quoteSpans:fileQuoteSpans(String(source.text),String(citation.quote_snapshot),Number((source.locator as Row).start))}:{}),
-    ...(source.professional ? {professional:{kind:(source.professional as Row).kind,origin:(source.professional as Row).origin,conditions:(source.professional as Row).conditions,prerequisites:(source.professional as Row).prerequisites,exceptions:(source.professional as Row).exceptions}} : {}),
+    ...(sourceLocation ? { sourceLocation } : {}),
+    ...(file ? { sourceFile:file, quoteSpans:fileQuoteSpans(String(source.text),String(citation.quote_snapshot),Number((source.locator as Row).start)) } : {}),
+    ...(professional ? { professional: {kind:professional.kind,origin,conditions:professional.conditions,
+      prerequisites:professional.prerequisites,exceptions:professional.exceptions} } : {}),
     historical:String(source.published_version_id)!==String(citation.document_version_id)};
 }
 export async function webCitationProjection(tx: PostgresTransaction, actor: ActorContext, c: Row, citationId: string, checked?: WebSourceChecks) {

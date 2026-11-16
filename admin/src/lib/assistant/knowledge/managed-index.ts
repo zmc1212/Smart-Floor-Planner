@@ -4,8 +4,8 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint } from '../contracts';
 import type { SourceFile } from '../contracts/source-file';
-import { BailianKnowledgeProvider, MANAGED_PAGE_SIZE } from './bailian-provider';
-import { managedLibrary } from './managed-store';
+import { BailianKnowledgeError, BailianKnowledgeProvider, MANAGED_PAGE_SIZE } from './bailian-provider';
+import { fallbackEmbeddingProfile, managedLibrary } from './managed-store';
 import type { ManagedKnowledgeProvider, ManagedReceipt, ManagedSlice } from './managed-provider';
 import { approvedTextPassages, bindManagedSlices } from './managed-slices';
 import { reviewedFilePassages } from './source-file';
@@ -18,10 +18,11 @@ type Mutation = <T>(operation: IndexOperation, execute: () => Promise<ManagedRec
 type IndexTarget = (tx: PostgresTransaction) => Promise<{ job: Row; v: Row; profile: Row | null }>;
 const maxImportAgeMs = 30 * 60_000;
 
-export async function findManagedDocument(provider: ManagedKnowledgeProvider, indexId: string, fileId: string, tag: string) {
+export async function findManagedDocument(provider: ManagedKnowledgeProvider, indexId: string, fileId: string, tag: string, boundId?: string) {
   for (let page = 1; page <= 20; page++) {
     const { value } = await provider.listDocuments(indexId, page);
-    const matches = value.documents.filter(row => row.id === fileId || (row.tags.includes(tag) && row.id.startsWith(fileId + '_')));
+    const matches = value.documents.filter(row => boundId ? row.id === boundId
+      : row.tags.includes(tag) && (row.id === fileId || row.id.startsWith(fileId + '_')));
     if (matches.length > 1) fail('bailian_knowledge_document_ambiguous', 503);
     if (matches[0]) return matches[0];
     if (page * MANAGED_PAGE_SIZE >= value.total) return null;
@@ -30,6 +31,7 @@ export async function findManagedDocument(provider: ManagedKnowledgeProvider, in
 }
 
 export async function runManagedIndex(lease: KnowledgeLease, target: IndexTarget, mutate: Mutation, rendered: string,
+  backup: (texts: string[]) => Promise<number[][] | null>,
   provider: ManagedKnowledgeProvider = new BailianKnowledgeProvider()) {
   const eid = lease.actor.enterpriseId, jobId = lease.jobId;
   const admitted = await withTenantTransaction(eid, async tx => {
@@ -78,7 +80,8 @@ export async function runManagedIndex(lease: KnowledgeLease, target: IndexTarget
   }
   const parsed = await provider.fileStatus(fileId);
   if (parsed.value === 'pending') return pending();
-  if (parsed.value !== 'ready') fail('bailian_knowledge_parse_failed', 422);
+  if (parsed.value !== 'ready')
+    throw new BailianKnowledgeError('describeFile', 'parse_failed', parsed.requestId, 200, true, 'bailian_knowledge_parse_failed');
 
   let indexId = library.index_id;
   let ingestionId = binding.ingestion_id ? String(binding.ingestion_id) : null;
@@ -110,7 +113,8 @@ export async function runManagedIndex(lease: KnowledgeLease, target: IndexTarget
   if (ingestionId) {
     const ingestion = await provider.importStatus(indexId, ingestionId);
     if (ingestion.value === 'pending') return pending();
-    if (ingestion.value !== 'ready') fail('bailian_knowledge_index_failed', 503);
+    if (ingestion.value !== 'ready')
+      throw new BailianKnowledgeError('index_job/status', 'ingestion_failed', ingestion.requestId, 200, true, 'bailian_knowledge_index_failed');
   }
   const document = await findManagedDocument(provider, indexId, fileId, tag);
   if (!document || ['PENDING','RUNNING','PROCESSING','INIT'].includes(document.status)) return pending();
@@ -130,6 +134,7 @@ export async function runManagedIndex(lease: KnowledgeLease, target: IndexTarget
   if (!chunks.length || passages.some(p => p.original.trim() && p.file?.kind !== 'heading' && !coveredPassages.has(p.start)))
     fail('bailian_knowledge_source_unverified', 422);
   if (chunks.length > 512) fail('knowledge_file_block_limit', 422);
+  const vectors = await backup(chunks.map(chunk => chunk.text));
   await withTenantTransaction(eid, async tx => {
     const { job } = await target(tx);
     const updated = await one(tx, sql`update app.assistant_managed_knowledge_imports
@@ -139,11 +144,13 @@ export async function runManagedIndex(lease: KnowledgeLease, target: IndexTarget
     await tx.execute(sql`delete from app.assistant_knowledge_chunks where enterprise_id=${eid} and document_version_id=${String(v.id)}`);
     for (const [ordinal, chunk] of chunks.entries()) {
       const locator = { start:chunk.start, end:chunk.end, unit:'unicode_code_point', managed:chunk.slice,
+        ...(vectors ? { localEmbeddingProfile: fallbackEmbeddingProfile } : {}),
         ...(chunk.file ? {file:chunk.file} : {}) };
       await tx.execute(sql`insert into app.assistant_knowledge_chunks
-        (enterprise_id,document_version_id,index_profile_id,ordinal,text,text_hash,content_hash,locator,terms)
+        (enterprise_id,document_version_id,index_profile_id,ordinal,text,text_hash,content_hash,locator,terms,embedding)
         values(${eid},${String(v.id)},${String(job.index_profile_id)},${ordinal},${chunk.text},${fingerprint(chunk.text)},${String(v.content_hash)},
-        ${JSON.stringify(locator)}::jsonb,ARRAY(select jsonb_array_elements_text(${JSON.stringify(chineseTerms(chunk.text))}::jsonb)))`);
+        ${JSON.stringify(locator)}::jsonb,ARRAY(select jsonb_array_elements_text(${JSON.stringify(chineseTerms(chunk.text))}::jsonb)),
+        ${vectors ? sql`${JSON.stringify(vectors[ordinal])}::vector` : sql`null`})`);
     }
     await tx.execute(sql`update app.assistant_knowledge_versions set index_status='ready',indexed_hash=content_hash,
       chunk_count=${chunks.length},updated_at=now() where enterprise_id=${eid} and id=${String(v.id)}`);

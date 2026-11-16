@@ -12,10 +12,12 @@ import { professionalKnowledge, professionalText } from './professional';
 import { fileContent, uploadedFile } from './source-file';
 import { storeOriginal, queueFileParse, reviewFile } from './file-service';
 import type { SourceFile } from '../contracts/source-file';
+import type { ProfessionalKnowledge } from '../contracts/professional';
 import { parseMineruPage, type MineruPage } from './mineru';
 import { assertKnowledgeText } from './provenance';
 import { knowledgeProviderMode } from './bailian-provider';
-import { managedProfile, revokeManagedImports, sourceIndexReady } from './managed-store';
+import { hasLocalKnowledgeVector, managedProfile, revokeManagedImports, sourceIndexReady } from './managed-store';
+import { platformKnowledgeEnterpriseId } from './platform-library';
 
 export type KnowledgeActor = { enterpriseId: string; adminId: string };
 export function text(value: unknown, max: number, allowEmpty = false): string {
@@ -29,10 +31,11 @@ export function expected(value: unknown): number {
 export function content(source: string, input: Row) {
   if (source === 'file') {
     const file = input.source_file as SourceFile | null;
-    if (!file?.parsed || !file.review || input.professional != null) fail('knowledge_file_review_required');
-    const c = fileContent(file);
+    if (!file?.parsed || !file.review) fail('knowledge_file_review_required');
+    const professional = professionalKnowledge(input.professional);
+    const c = fileContent(file, professional);
     assertKnowledgeText(c.rendered);
-    return { ...c, faq: [], reference: null, professional: null };
+    return { ...c, faq: [], reference: null, professional };
   }
   const body = text(input.body ?? '', 16000, true);
   if (source === 'reference_case') {
@@ -77,8 +80,7 @@ export async function knowledgeManager(tx: PostgresTransaction, actor: Knowledge
 export async function activeProfile(tx: PostgresTransaction, enterpriseId: string, settings: Row, initialize = false) {
   if (knowledgeProviderMode() === 'bailian') return managedProfile(tx, enterpriseId, settings, initialize);
   const configured = configuredEmbeddingProfile();
-  if (initialize && !await one(tx, sql`select 1 from pg_attribute a join pg_type t on t.oid=a.atttypid
-    where a.attrelid='app.assistant_knowledge_chunks'::regclass and a.attname='embedding' and t.typname='vector'`))
+  if (initialize && !await hasLocalKnowledgeVector(tx))
     fail('local_vector_unavailable', 503);
   const existing = settings.active_index_profile_id ? await one(tx, sql`select configuration from app.assistant_knowledge_index_profiles
     where enterprise_id=${enterpriseId} and id=${String(settings.active_index_profile_id)}`) : undefined;
@@ -123,9 +125,12 @@ export class KnowledgeService {
             where enterprise_id=${a.enterpriseId} and id=${id(input.jobId)} and kind in ('knowledge_index','knowledge_parse')`);
           if (!job) fail('assistant_resource_not_found',404);
           const managed = await one(tx,sql`select i.ready,i.revoked_at,i.removed_at,i.cleanup_error,i.cleanup_request_id,i.indexed_request_id,
+            i.workspace_id,l.index_id,i.file_id,i.index_document_id,i.ingestion_id,
             i.file_id is not null as uploaded,i.index_document_id is not null as indexed
-            from app.assistant_managed_knowledge_imports i where i.enterprise_id=${a.enterpriseId} and i.job_id=${String(job.id)}`);
-          const attempts = managed ? await rows(tx,sql`select operation,status,error_code,provider_request_id from app.assistant_knowledge_attempts
+            from app.assistant_managed_knowledge_imports i join app.assistant_managed_knowledge_libraries l
+              on l.enterprise_id=i.enterprise_id and l.workspace_id=i.workspace_id
+            where i.enterprise_id=${a.enterpriseId} and i.job_id=${String(job.id)}`);
+          const attempts = managed ? await rows(tx,sql`select operation,status,error_code,provider_request_id,model_revision,input_tokens from app.assistant_knowledge_attempts
             where enterprise_id=${a.enterpriseId} and job_id=${String(job.id)} order by id`) : [];
           return { ...job, ...(managed ? { managed, attempts } : {}) };
         }
@@ -144,10 +149,11 @@ export class KnowledgeService {
           const audience = input.audience ?? 'staff_internal';
           if (!['customer_public','staff_internal'].includes(String(audience))) fail('invalid_message',422);
           const dates = validity(input), d = await createDocument('file', String(audience));
-          const file = await storeOriginal(tx,a,String(d.id),input), c = fileContent(file);
+          const professional = professionalKnowledge(input.professional,{adminId:a.adminId,reviewedAt:new Date().toISOString()});
+          const file = await storeOriginal(tx,a,String(d.id),input), c = fileContent(file, professional);
           const v = (await one(tx,sql`insert into app.assistant_knowledge_versions
-            (enterprise_id,document_id,version_number,source_asset_id,source_file,content_hash,effective_from,effective_to,created_by)
-            values(${a.enterpriseId},${String(d.id)},1,${file.assetId},${JSON.stringify(file)}::jsonb,${c.hash},
+            (enterprise_id,document_id,version_number,source_asset_id,source_file,professional,content_hash,effective_from,effective_to,created_by)
+            values(${a.enterpriseId},${String(d.id)},1,${file.assetId},${JSON.stringify(file)}::jsonb,${professional ? JSON.stringify(professional) : null}::jsonb,${c.hash},
               coalesce(${dates.from}::timestamptz,now()),${dates.to}::timestamptz,${a.adminId}) returning *`))!;
           return {document:d,draft:v,...await queueFileParse(tx,a,v)};
         }
@@ -212,7 +218,7 @@ export class KnowledgeService {
             const original = v.source_file as SourceFile;
             if (original.format !== 'pdf' || input.assetHash !== original.hash) fail('knowledge_file_invalid', 422);
             const file: SourceFile = { ...original, parsed: parseMineruPage(input.mineru as MineruPage), review: null };
-            const c = fileContent(file);
+            const c = fileContent(file, v.professional as ProfessionalKnowledge | null);
             await tx.execute(sql`update app.assistant_jobs set status='cancelled',lease_token=null,lease_expires_at=null,last_error='context_changed',updated_at=now()
               where enterprise_id=${a.enterpriseId} and knowledge_version_id=${String(v.id)} and status in ('queued','running')`);
             const updated = (await one(tx, sql`update app.assistant_knowledge_versions set source_file=${JSON.stringify(file)}::jsonb,body=${c.body},content_hash=${c.hash},
@@ -246,14 +252,14 @@ export class KnowledgeService {
             where enterprise_id=${a.enterpriseId} and knowledge_version_id=${String(v.id)} and status in ('queued','running')`);
           if (action==='reviewFile') return reviewFile(tx,a,v,input);
           if (action==='cancelParse') return {versionId:String(v.id),status:'cancelled'};
-          const file=await storeOriginal(tx,a,did,input),c=fileContent(file);
+          const file=await storeOriginal(tx,a,did,input),c=fileContent(file,v.professional as ProfessionalKnowledge | null);
           const updated=(await one(tx,sql`update app.assistant_knowledge_versions set source_asset_id=${file.assetId},source_file=${JSON.stringify(file)}::jsonb,body='',faq='[]',content_hash=${c.hash},edit_version=edit_version+1,
             index_status='pending',indexed_hash=null,chunk_count=0,updated_at=now() where enterprise_id=${a.enterpriseId} and id=${String(v.id)} returning *`))!;
           return {draft:updated,...await queueFileParse(tx,a,updated)};
         }
         if (action === 'edit') {
           if (v.published_at) fail('version_conflict');
-          if (d.source_type==='file' && (input.body!==undefined || input.faq!==undefined || input.professional!=null)) fail('invalid_message',422);
+          if (d.source_type==='file' && (input.body!==undefined || input.faq!==undefined)) fail('invalid_message',422);
           if (d.source_type==='reference_case' && input.professional != null) fail('invalid_professional_knowledge',422);
           const c = content(String(d.source_type),{source_file:v.source_file,body:input.body ?? v.body,faq:input.faq ?? v.faq,referenceCase:input.referenceCase ?? v.reference_case,
             professional:professionalKnowledge(input.professional===undefined?v.professional:input.professional,{adminId:a.adminId,reviewedAt:new Date().toISOString()})});
@@ -281,6 +287,9 @@ export class KnowledgeService {
         }
         if (action === 'publish') {
           if (d.status === 'retired') fail('version_conflict');
+          if (a.enterpriseId === await platformKnowledgeEnterpriseId(tx)
+            && (d.scope !== 'enterprise' || d.audience !== 'customer_public' || d.source_type === 'reference_case'
+              || (v.professional as ProfessionalKnowledge | null)?.origin.authority === 'enterprise_rule')) fail('knowledge_platform_source_invalid', 422);
           if (d.scope === 'project' && !await one(tx, sql`select id from app.construction_projects
             where enterprise_id=${a.enterpriseId} and id=${d.project_id ?? null} and status='active' for share`))
             fail('assistant_resource_not_found',404);

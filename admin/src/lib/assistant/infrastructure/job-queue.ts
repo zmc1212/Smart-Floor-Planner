@@ -8,7 +8,8 @@ import { appendMessage, terminalEvent } from '../core/conversation';
 import { processKnowledgeJob } from '../knowledge/index-worker';
 import { processManagedKnowledgeCleanup } from '../knowledge/managed-cleanup';
 import { processAnswer } from './answer-worker';
-import { resolveEvidence, validatePreviewSnapshot, previewPolicy } from '../knowledge/sources';
+import { resolveEvidence, validatePreviewSnapshot } from '../knowledge/sources';
+import { saveKnowledgeCitation } from '../knowledge/save-citation';
 import { parseAnswer, safeInsufficientContent, type GroundedAnswer } from '../knowledge/answer';
 import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 import { assertKnowledgePolicy, runKnowledgeEnabled } from '../knowledge-policy';
@@ -245,7 +246,7 @@ export async function completeReportComposition(lease: Lease, commit: (tx: Postg
     await finish(tx, lease, 'succeeded', null);
   });
 }
-export async function failRun(lease: Lease, code: string, outcomeKnown=false) {
+export async function failRun(lease: Lease, code: string, outcomeKnown=false, details?: Row) {
   return withTenantTransaction(lease.enterpriseId, async tx => {
     const { job, run } = await live(tx, lease);
     const queryUnknown = run.purpose === 'construction.report.compose' && !!await one(tx, sql`select id from app.assistant_usage_records
@@ -254,7 +255,7 @@ export async function failRun(lease: Lease, code: string, outcomeKnown=false) {
     const status = unknown ? 'indeterminate' : 'failed';
     await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
       values(${lease.enterpriseId},${lease.runId},${Number(job.attempts)},${code === 'retrieval_unavailable' ? 'retrieval' : 'execution'},${status},
-      ${JSON.stringify({ code: unknown ? 'provider_outcome_unknown' : code })}::jsonb) on conflict do nothing`);
+      ${JSON.stringify({ ...details, code: unknown ? 'provider_outcome_unknown' : code })}::jsonb) on conflict do nothing`);
     await tx.execute(sql`update app.assistant_quota_reservations set status=${job.provider_started_at || queryUnknown ? 'reconciling' : 'released'},version=version+1,updated_at=now()
       where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
     if (run.purpose === 'speech.transcribe' && (run.policy_snapshot as Row).localSpeech)
@@ -340,11 +341,11 @@ export async function completeAnswer(lease:Lease,answer:GroundedAnswer,evidence:
     const step=await one(tx,sql`select source_refs from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
       and kind='retrieval' and status='succeeded' order by step_seq desc limit 1`);
     if(!step || fingerprint(step.source_refs)!==fingerprint(evidence.map(e=>({ref:e.ref,hash:e.hash}))))fail('context_changed');
-    const sources=new Map<string,Row>();
+    const sources=new Map<string,Evidence>();
     for(const e of evidence) {
       const source=await resolveEvidence(tx,lease.actor,c,e);
       if(!source || !String(source.text).includes(e.text))fail('context_changed');
-      sources.set(e.ref.id,source);
+      sources.set(e.ref.id,e);
     }
     const initial=answer.answerKind==='insufficient_evidence'?safeInsufficientContent():{version:1 as const,blocks:[]};
     const message=await appendMessage(tx,lease.actor,String(c.id),{author:'assistant',content:initial,runId:lease.runId});
@@ -354,15 +355,11 @@ export async function completeAnswer(lease:Lease,answer:GroundedAnswer,evidence:
       content.blocks.push({type:'text',text:segment.text});
       for(const citation of segment.citations) {
         const source=sources.get(citation.sourceId);
-        if(!source || !String(source.text).includes(citation.quote))fail('invalid_model_citation',502);
+        if(!source)fail('invalid_model_citation',502);
         let citationId=saved.get(citation.sourceId);
         if(!citationId) {
-          const isDraft=lease.actor.principal.kind==='admin' && c.purpose==='knowledge_preview' && previewPolicy(c).drafts.some(d=>d.id===String(source.document_version_id));
-          const row=(await one(tx,sql`insert into app.assistant_message_citations(enterprise_id,conversation_id,message_id,run_id,source_kind,resource_type,resource_id,resource_version,
-            document_id,document_version_id,chunk_id,source_hash,quote_snapshot,locator,is_draft)
-            values(${lease.enterpriseId},${String(c.id)},${String(message.id)},${lease.runId},'knowledge','knowledge_chunk',${citation.sourceId},${String(source.document_version_id)},
-            ${String(source.document_id)},${String(source.document_version_id)},${citation.sourceId},${String(source.text_hash)},${citation.quote},${JSON.stringify(source.locator)}::jsonb,${isDraft}) returning id`))!;
-          citationId=String(row.id);saved.set(citation.sourceId,citationId);
+          citationId=await saveKnowledgeCitation(tx,lease.actor,c,lease.runId,String(message.id),source,citation.quote,false);
+          saved.set(citation.sourceId,citationId);
         }
         content.blocks.push({type:'citation',citationId,fallbackText:'知识来源'});
       }

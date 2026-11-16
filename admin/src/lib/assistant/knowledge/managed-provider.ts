@@ -1,4 +1,4 @@
-export type ManagedReceipt<T> = { value: T; requestId: string | null };
+export type ManagedReceipt<T> = { value: T; requestId: string | null; usage?: { inputTokens: number } | null };
 export type ManagedDocument = { id: string; status: string; tags: string[] };
 export type ManagedSlice = {
   id: string; workspaceId: string; indexId: string; documentId: string;

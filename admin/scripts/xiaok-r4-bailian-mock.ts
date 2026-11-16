@@ -18,7 +18,8 @@ export function mockBailianRag() {
   const files = new Map<string, File>();
   const libraries = new Map<string, { name: string; documents: Set<string> }>();
   const ingestions = new Map<string, { indexId: string; polls: number }>();
-  const intercept = { extraSlices: [] as Slice[], failNext: null as string | null, beforeRetrieve: null as null | (() => Promise<unknown>) };
+  const intercept = { extraSlices: [] as Slice[], failNext: null as string | null,
+    unavailableNext: null as 'transport' | 'gateway' | null, beforeRetrieve: null as null | (() => Promise<unknown>) };
   const getSlices = (indexId: string, fileId: string): Slice[] => {
     const file = files.get(fileId);
     if (!file || !libraries.get(indexId)?.documents.has(fileId)) return [];
@@ -116,6 +117,10 @@ export function mockBailianRag() {
         return done({ nodes: slices, total: slices.length, isDowngrade: false });
       }
       if (operation === 'retrieve') {
+        const unavailable = intercept.unavailableNext;
+        intercept.unavailableNext = null;
+        if (unavailable === 'transport') throw new TypeError('synthetic network failure');
+        if (unavailable === 'gateway') return Response.json({ code: 'ServiceUnavailable', status_code: 503, request_id: id }, { status: 503 });
         await intercept.beforeRetrieve?.();
         const indexId = String(body.index_id), tags = (body.search_filters as Array<{ tags: string[] }>)[0].tags;
         const terms = new Set(chineseTerms(String(body.query)));

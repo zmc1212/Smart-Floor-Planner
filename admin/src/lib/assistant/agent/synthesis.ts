@@ -585,7 +585,8 @@ function formalStatusEvidence(citations: Array<{ sourceId: string }>, sources: S
 function qualifiedStandardQuote(source: SynthesisSource | undefined, quote: string, context: SynthesisReviewContext) {
   const qualified = source?.web?.standard?.kind === 'standard_text'
     || context.specialistAcceptance && source?.kind === 'knowledge' && source.knowledge?.published
-      && source.knowledge.sourceType !== 'reference_case' && source.evidence?.professional?.applicability.status !== 'not_applicable';
+      && source.knowledge.scope !== 'platform' && source.knowledge.sourceType !== 'reference_case'
+      && source.evidence?.professional?.applicability.status !== 'not_applicable';
   return !!qualified && !!source && source.text.includes(quote);
 }
 
@@ -981,10 +982,12 @@ function checkedSynthesis(raw: string, sources: SynthesisSource[], context: Synt
         && source.evidence.file.parser.endsWith(':time-v1')
         && /(?:^|[^\d:])(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?(?![\d:])/.test(citation.quote)) citedClock = true;
     }
-    if (context.enterpriseKnowledgeAuthority && webAnswerBoundaryIssues(s.text, 1).some(issue => issue.startsWith('claimed_enterprise_'))
-      && !s.citations.some(citation => sources.some(source => source.sourceId === citation.sourceId && source.kind === 'knowledge'
-        && source.knowledge?.published && source.knowledge.sourceType !== 'reference_case'
-        && source.evidence?.professional?.applicability.status !== 'not_applicable'))) fail('ungrounded_response_scope', 502);
+    const citedKnowledge = sources.filter(source => source.kind === 'knowledge' && s.citations.some(c => c.sourceId === source.sourceId));
+    if ((context.enterpriseKnowledgeAuthority || citedKnowledge.some(source => source.knowledge?.scope === 'platform'))
+      && webAnswerBoundaryIssues(s.text, 1).some(issue => issue.startsWith('claimed_enterprise_'))
+      && !citedKnowledge.some(source => source.knowledge?.published && source.knowledge.scope !== 'platform'
+        && source.knowledge.sourceType !== 'reference_case' && source.evidence?.professional?.applicability.status !== 'not_applicable'))
+      fail('ungrounded_response_scope', 502);
     if (unverifiedStandardStatus(s.text, standardCitations, standards)) fail('standard_status_unverified', 502);
     // Source assertions retain exact numerical grounding. In explicitly bound
     // model-knowledge chat, uncited advice has the same scope as a general

@@ -20,8 +20,10 @@ export function professionalKnowledge(value: unknown, reviewer?: {adminId:string
   if (value == null) return null;
   const v=object(value,['version','kind','topics','conditions','prerequisites','exceptions','origin','claim','review']);
   if (v.version !== 1 || !Object.hasOwn(professionalKinds,String(v.kind)) || !Array.isArray(v.conditions) || v.conditions.length > 8) fail('invalid_professional_knowledge',422);
-  const origin=object(v.origin,['title','version','locator','authority']);
+  const origin=object(v.origin,['title','version','locator','page','authority']);
   if (!['enterprise_rule','manufacturer','reference'].includes(String(origin.authority))) fail('invalid_professional_knowledge',422);
+  if (origin.page !== undefined && (typeof origin.page !== 'number' || !Number.isSafeInteger(origin.page) || origin.page < 1))
+    fail('invalid_professional_knowledge',422);
   const review=object(v.review,['note','adminId','reviewedAt']);
   const stamp=reviewer || {adminId:text(review.adminId,19),reviewedAt:text(review.reviewedAt,40)};
   if (!/^[1-9]\d{0,18}$/.test(stamp.adminId) || !Number.isFinite(Date.parse(stamp.reviewedAt))) fail('invalid_professional_knowledge',422);
@@ -35,7 +37,8 @@ export function professionalKnowledge(value: unknown, reviewer?: {adminId:string
   const claim=v.claim == null ? null : object(v.claim,['key','value']);
   const result:ProfessionalKnowledge={version:1,kind:v.kind as ProfessionalKnowledge['kind'],topics:list(v.topics,12,80),conditions,
     prerequisites:list(v.prerequisites,12,300),exceptions:list(v.exceptions,12,300),
-    origin:{title:text(origin.title,200),version:text(origin.version,100),locator:text(origin.locator,200),authority:origin.authority as ProfessionalKnowledge['origin']['authority']},
+    origin:{title:text(origin.title,200),version:text(origin.version,100),locator:text(origin.locator,200),
+      ...(typeof origin.page === 'number' ? {page:origin.page} : {}),authority:origin.authority as ProfessionalKnowledge['origin']['authority']},
     claim:claim?{key:text(claim.key,100),value:text(claim.value,200)}:null,review:{note:text(review.note,500,true),...stamp}};
   if (Buffer.byteLength(JSON.stringify(result))>15000) fail('invalid_professional_knowledge',422);
   return result;
