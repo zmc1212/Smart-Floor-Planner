@@ -1,5 +1,7 @@
 # Remote Development Connection Record
 
+**V1 development database migration applied in I7.5.17 (2026-11-16).** The approved `127.0.0.1:5432` forward to the development primary applied ten migrations through 0132, from 119 to 129 ledger entries. The preceding archive passed full logical restore on the independent i798 instance. The source remains UTF8 with libc `en_US.utf8` and glibc 2.36. i798 uses `C`, so an equivalent rollback switch requires a matching Linux PostgreSQL target. [DBA execution and rollback evidence](./xiaok-i7512-dba-execution-report.md#i7517-开发库正式执行)
+
 <!-- xiaok-mineru-native -->
 
 **Remote MinerU: deployment/local parsing Implemented; XiaoK dialogue remains Limited.** Explicit user authorization on2026-11-07 covers dedicated `D:/Smart-Floor-Planner-Dev/mineru-pilot`. Isolated Python3.12.10/MinerU4.1.7, dependency lock, official Python signature and hashes are retained. Native Windows ONNX/DirectML plus llama.cpp selected RTX4080. Nineteen model files, about2.12GB, come from official OpenDataLab ModelScope repositories. State/caches are isolated and telemetry disabled; inference is local, global PATH/Python/default Worker stay unchanged, and no public server port is opened. All20 existing containers retain identity/start/status and every mount field after canonicalizing mount order; no other service was restarted or migrated.

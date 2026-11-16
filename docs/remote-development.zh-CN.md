@@ -1,5 +1,7 @@
 # 远端开发连接记录
 
+**I7.5.17 已完成 V1 开发库迁移（2026-11-16）。** 经批准的 `127.0.0.1:5432` 转发连接开发主库，执行至 0132 的十条迁移，账本从 119 条增至 129 条。迁移前归档在独立 i798 实例完成全量逻辑恢复。源库为 UTF8、libc `en_US.utf8`、glibc 2.36。i798 使用 `C`，等价回滚切换需使用匹配的 Linux PostgreSQL 目标。 [DBA 执行与回滚证据](./xiaok-i7512-dba-execution-report.md#i7517-开发库正式执行)
+
 <!-- xiaok-mineru-native -->
 
 **远端MinerU：部署及本地解析Implemented，小K真实问答仍Limited。** 用户2026-11-07明确授权，专用目录`D:/Smart-Floor-Planner-Dev/mineru-pilot`已安装独立Python3.12.10/MinerU4.1.7，依赖锁、官方Python签名及hash留存。Windows原生ONNX/DirectML+llama.cpp已识别RTX4080；19模型文件约2.12GB来自官方OpenDataLab ModelScope库，独立状态/缓存、关闭遥测、本机推理，不改全局PATH/Python或默认Worker，不设公网服务端口。现有20容器身份/启动/状态/全部挂载字段前后一致（仅规范化挂载排序），未重启或迁移其他服务。

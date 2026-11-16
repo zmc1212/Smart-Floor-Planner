@@ -1,6 +1,30 @@
-# 家客来 I7.5.12.2 DBA 执行报告
+# 家客来 V1 数据库迁移 DBA 执行报告
 
-2026-11-16（Asia/Shanghai）。历史开发库真实备份和 i798 完整逻辑恢复已通过。I7.5.16 在 14:37 只读复核了同一归档及回执，当前十条候选迁移的统一门禁为 `passed`。正式迁移状态为 `not_run`，审批和本窗口备份及恢复仍待执行。 [I7.5.16 最终审查](./xiaok-i7516-migration-final-review.md)
+## I7.5.17 开发库正式执行
+
+2026-11-16（Asia/Shanghai）。用户授权在停写窗口内重做真实备份和 i798 恢复，并在通过判定后直接迁移。候选提交为 `5a312a304f02ca9e2191139755a35bcd55b9f701`。源库 `127.0.0.1:5432/smart_floor_planner`（系统标识 `7696770731622109222`）已由 `sfp_migrator` 执行十条迁移，账本 **119 → 129**。 [正式迁移执行单](./xiaok-i7512-v1-database-migration-runbook.md) · [迁移清单与 SHA](./xiaok-i7516-migration-final-review.md)
+
+### 本窗口回执
+
+| 项目 | 实测结果 |
+| --- | --- |
+| 停写核验 | 源库其他连接、开放事务、应用监听、Worker、活动任务租约和活动投递租约均为 0。两条历史 `running` 任务的租约均已过期。备份后再读源库，逐表数据、账本、结构、RLS、权限和扩展摘要与归档一致。 |
+| 真实备份 | 14:49:54–14:50:44，`sfp_backup`，退出码 0。归档 `xiaok-mig-20261116t064954589z-df1a3c3d` 有 110,204,825 字节，目录表 2,612 项，其中 174 项表数据。归档 SHA-256 为 `35bf54a585bd85a10395f6e23eddd733595a4b9afb80c9b71cd0956d243b0cfc`，Manifest 摘要为 `f183a7cfcbb4441e1370e45b840e4b1903abeb9e3974c251f971d2a597f62cf5`。 |
+| i798 独立恢复 | 14:51:49–14:52:05，`sfp_restore`，`pg_restore` 和验证器均退出 0，`full_restore_passed=true`。核对 173 张业务表、99,302 行、119 条账本、153 张 FORCE RLS 表、208 条策略、扩展和权限。演练库 `xiaok_migration_restore_i7517_20261116t064718` 按 OID/owner/用途标记清理，读回确认已释放。 |
+| 五项门禁 | 14:54:23，备份、恢复、迁移、环境、总状态均为 `passed`，退出码 0。输入前后哈希一致，门禁绑定本窗口的归档和恢复回执。 |
+| 正式迁移 | 14:55:35–14:55:36，运行器退出 0。迁移后预检退出 0，`pending=[]`、委托结构 `integrated`。119 条账本前缀摘要一致，十条后缀的顺序、时间戳和 Windows 检出 SQL 哈希全部匹配。末条 ID 135，账本 SHA-256 为 `1700b801c7bfcae7f5e7f5c59058e84c840890cf7ac614bd937bfa33a1ba65c6`。 |
+
+迁移后 189 张 `app` 表含账本，167 张 FORCE RLS 表，222 条策略。原有策略摘要一致，15 张新表均为零行。按预期新增列和回填归一化后，173 张原业务表的 99,302 行及摘要全部匹配。1,035 条历史引用均绑定原企业，平台列全空，三条新来源 FK 已验证。平台映射对 `sfp_app` 只有 SELECT。8 条通知配置 NULL 已补为 `{}`，`defaultRowDigest` 仍为 `e34a0f6aba807167be3d0b0f5cba9b17be7ce948c9a9da906e158d81bc7d6a52`。以 `sfp_app` 在获权会话读回一条历史引用，原文快照一致，无租户上下文和异企业上下文对 1454 的引用均可见 0 行。
+
+### 排序规则与回滚决策
+
+源库和 i798 均为 UTF8。源库使用 libc `en_US.utf8`，glibc 和数据库记录版本均为 `2.36`。i798 的实际演练库使用 `C`，实测 `a/A` 次序相反，`lower('É')` 分别得到 `é` 和 `É`。源库 653 个列和 150 个索引依赖默认排序规则。i798 用于验证完整逻辑恢复。提交后的等价回滚应在另行批准的独立 Linux PG17 目标复用相同镜像、glibc、locale 和扩展，再验证原账本、数据、RLS、权限、文本行为和提交后的写入差异。实际源镜像已读回 `en_US.utf8` 可用，迁移后源库 locale 一致。本次没有执行回滚切换。 [PostgreSQL 17 区域设置](https://www.postgresql.org/docs/17/locale.html) · [创建数据库与模板](https://www.postgresql.org/docs/17/sql-createdatabase.html)
+
+归档、Manifest、SHA 边车和 `xiaok-i7517-i798-restore-receipt.json` 保存在 `C:\sfp-backups\i7512-20261116\xiaok-mig-20261116t064954589z-df1a3c3d\`。源库、门禁和迁移核验原始回执位于 `tmp/xiaok-i7517/window-20261116T064718277Z/`，包括 `gate-before-migration.json`、`migration-command.exit.json`、`post-migration-integrity.json` 和 `post-migration-citation-auth.json`。当前归档为 119 条账本的迁移前副本。应用监听和 Worker 均为 0，正式公共库仍为空。
+
+## I7.5.12.2 和 I7.5.16 历史证据
+
+2026-11-16。12:44 的历史真实备份和 i798 完整逻辑恢复已通过。I7.5.16 于 14:37 只读复核同一归档和回执，129 项 Journal 的十条候选统一门禁通过。 [I7.5.16 最终审查](./xiaok-i7516-migration-final-review.md)
 
 ## 源库与独立实例
 
@@ -47,7 +71,7 @@
 | `overall_readiness` | `failed` | `passed` | `passed` |
 | 命令退出码 | `2` | `0` | `0` |
 
-历史集成分支按 128 项 Journal 和九条待迁移校验，额外的 0132 触发 `v1_sql_or_journal_drift` 和 `unexpected_pre_migration_ledger`。当前 129 项 Journal、十条 SQL 和源库依赖全部通过，保留旧 119 条账本摘要。归档和回执覆盖迁移前 119 条结构；排序兼容与审批按执行单确认。 [V1 数据库迁移执行单](./xiaok-i7512-v1-database-migration-runbook.md)
+历史集成分支按 128 项 Journal 和九条待迁移校验，额外的 0132 触发 `v1_sql_or_journal_drift` 和 `unexpected_pre_migration_ledger`。I7.5.16 校验 129 项 Journal、十条 SQL 和源库依赖，并保留迁移前 119 条账本摘要。该归档和回执覆盖迁移前结构。 [V1 数据库迁移执行单](./xiaok-i7512-v1-database-migration-runbook.md)
 
 ## 本地回执
 

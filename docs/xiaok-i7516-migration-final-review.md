@@ -1,6 +1,6 @@
 # 家客来 I7.5.16 百炼 RAG 迁移最终审查
 
-2026-11-16（Asia/Shanghai）。**0132 纳入第一版十条迁移，审查通过，正式执行待签批。** 开工从 `git fetch origin` 后的 `origin/codex/xiaok-integration` 取得基线 `dc39b4832421906ae877f8b877da547a405dd98e`。核对主工作区与九个已挂载的其他工作树，均无未提交迁移。各工作树已有改动留存。 [DBA 执行报告](./xiaok-i7512-dba-execution-report.md) · [正式迁移执行单](./xiaok-i7512-v1-database-migration-runbook.md)
+2026-11-16（Asia/Shanghai）。**I7.5.16 审查通过，0132 纳入第一版十条迁移。** 开工从 `git fetch origin` 后的 `origin/codex/xiaok-integration` 取得基线 `dc39b4832421906ae877f8b877da547a405dd98e`。核对主工作区与九个已挂载的其他工作树，均无未提交迁移。以下为当时的审查快照。 [I7.5.17 开发库执行回执](./xiaok-i7512-dba-execution-report.md#i7517-开发库正式执行) · [正式迁移执行单](./xiaok-i7512-v1-database-migration-runbook.md)
 
 ## 迁移文件与 Journal
 

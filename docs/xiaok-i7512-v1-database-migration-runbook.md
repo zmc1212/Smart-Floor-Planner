@@ -1,6 +1,6 @@
 # 家客来 I7.5.12 第一版数据库迁移执行单
 
-状态 **已完成 I7.5.16 审查，待签批执行**。V1 批次为 `codex/xiaok-integration` 开发库 `127.0.0.1:5432/smart_floor_planner` 的 **119 → 129**，隔离恢复实例为 i798 `127.0.0.1:55437`。按已审查的十条迁移、Journal 和实际候选提交签批。历史真实归档与恢复回执已在当前门禁通过只读复核。 [最终审查、SHA 与审批](./xiaok-i7516-migration-final-review.md) · [DBA 执行报告](./xiaok-i7512-dba-execution-report.md)
+状态 **I7.5.17 已执行并核验**。2026-11-16 在 `codex/xiaok-integration` 的开发库 `127.0.0.1:5432/smart_floor_planner` 完成 **119 → 129**。停写窗口的新备份、i798 独立逻辑恢复和五项迁移前门禁均通过。迁移后使用 `check:migration-preflight` 核对 129 条账本和 `pending=[]`。下列步骤记录这批迁移的执行条件和回滚流程。 [最终审查与 SHA](./xiaok-i7516-migration-final-review.md) · [I7.5.17 执行回执](./xiaok-i7512-dba-execution-report.md#i7517-开发库正式执行)
 
 ## 审批和凭据
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | 源库全量导出 | 复用已核验的 `sfp_backup`。DBA 批准本窗口的真实导出并复核 `LOGIN`、`BYPASSRLS`、`CONNECT`、`app` 的 `USAGE` 及表/序列 `SELECT`。要求 `NOSUPERUSER`、无业务写权限、无 owner/migrator 成员关系。受控进程注入 `XIAOK_MIGRATION_BACKUP_URL`。 |
 | 归档保管 | 指定仓库外的受限目录、授权操作者、保留期限和责任人。当前核验目录为 `C:\sfp-backups\i7512-20261116`，可用空间至少满足当前源库逻辑大小和 10 GiB 运维阈值中的较大值。 |
-| 独立恢复 | DBA 审批本窗口对真实归档的访问和新演练库的创建及清理。复核 i798 的隔离标记 `xiaok-i749-isolated-test`、模板扩展及所有者、`sfp_restore` 登录和 `sfp_migrator` 的 `INHERIT/SET`。`XIAOK_MIGRATION_RESTORE_URL` 使用 i798 的 `postgres` 维护库。明确 `en_US.utf8` 与 `C` 的排序差异如何处置，以及实际回滚目标需要的排序兼容性。 |
+| 独立恢复 | DBA 审批本窗口对真实归档的访问和新演练库的创建及清理。复核 i798 的隔离标记 `xiaok-i749-isolated-test`、模板扩展及所有者、`sfp_restore` 登录和 `sfp_migrator` 的 `INHERIT/SET`。`XIAOK_MIGRATION_RESTORE_URL` 使用 i798 的 `postgres` 维护库。i798 的 `C` 用于逻辑恢复演练。等价回滚目标需具备源库的 UTF8、libc `en_US.utf8`、glibc 2.36 和相同扩展。 |
 | 正式执行 | 负责人确认开发库端点、候选 SHA、十条 SQL 的实际执行哈希、维护窗口、停写和回滚责任人。由 `sfp_migrator` 通过显式注入的 `DATABASE_MIGRATION_URL` 执行一次，预先核对其解析到核验过的开发端点。 |
 
 维护凭据从安全渠道注入当前进程。执行单、Git、命令历史和回执只记录变量名及检查结果。操作使用专用账号，保留原业务租户权限。
@@ -67,6 +67,6 @@ npm run xiaok:migration -- --backup-dir $BackupDir --pg-bin $PgBin --target-data
 | 备份、SHA、恢复或门禁失败 | 停在执行前。保留日志、归档和失败回执。由 DBA 查明缺项后选用新输出或新演练库重试。 |
 | 事务报错并已回滚 | 保持停写。复核账本仍 119 条、摘要与迁移前一致、迁移目标结构未提交。序列号可能留下空洞。记录 SQLSTATE（如 0131 取锁超时 `55P03`），核对阻塞原因，再由负责人决定新窗口。 |
 | 超时、断连或提交结果未知 | 保持停写和原归档。先从核验端点重新只读查询，按 119 条与旧结构、129 条与新结构的实测状态归类。若状态不一致，由 DBA 保留现场并排查。 |
-| 已提交、验证失败或需回退 | 回滚责任人另行批准切换。保全现库和提交后的写入快照。使用同一已验证归档，在新批准的独立目标恢复，校验源前置账本、数据摘要、权限、RLS 和通知配置。按备份时间盘点并协调提交后的变动，确认应用访问与监控后再切换连接。旧库和经验证的备份继续留存。 |
+| 已提交、验证失败或需回退 | 回滚责任人另行批准切换。保全现库和提交后的写入快照。以本窗口已验证归档恢复到另行批准、与源 locale 和扩展等价的独立 Linux PG17 目标，校验前置账本、数据摘要、权限、RLS、通知配置和文本比较。按备份时间协调后续写入，确认应用访问与监控后再切换连接。旧库和经验证的备份继续留存。 |
 
 填写回执时记录候选 SHA、源归档编号/时间/SHA、停写与审批人、目标端口及角色、排序差异处置、五项门禁状态、实际账本及配置摘要、恢复或执行退出码、切换决定和责任人。 [当前 DBA 环境与回执](./xiaok-i7512-dba-execution-report.md)
