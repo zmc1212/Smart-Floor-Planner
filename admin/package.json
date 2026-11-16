@@ -53,6 +53,8 @@
     "db:migrate": "node scripts/postgres-migrate.mjs",
     "check:pilot-readiness": "tsx scripts/xiaok-pilot-readiness.ts",
     "xiaok:env:check": "tsx scripts/xiaok-env-check.ts",
+    "xiaok:migration": "tsx scripts/xiaok-migration-readiness.ts",
+    "test:xiaok-migration": "tsx --test scripts/__tests__/xiaok-migration-readiness.test.ts scripts/__tests__/xiaok-migration-preflight.test.ts",
     "test:xiaok-env-check": "npx tsx --test scripts/__tests__/xiaok-env-check.test.ts",
     "test:xiaok-v1-product-acceptance": "tsx scripts/xiaok-v1-product-acceptance.ts",
     "check:migration-preflight": "tsx scripts/xiaok-migration-preflight.ts",

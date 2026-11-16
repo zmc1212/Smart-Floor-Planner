@@ -12,15 +12,15 @@ import {
 const adminRoot = fileURLToPath(new URL('../', import.meta.url));
 const drizzleDir = path.join(adminRoot, 'drizzle');
 const repoRoot = path.resolve(adminRoot, '..');
-const approvedDatabase = 'smart_floor_planner';
+export const approvedDatabase = 'smart_floor_planner';
 const leastPrivilegeBackupRole = 'sfp_backup';
 const legacyBackupRole = 'sfp_owner';
 const approvedBackupRoles = new Set([leastPrivilegeBackupRole, legacyBackupRole]);
-const isolatedSourceMarker = 'xiaok-i749-backup-sandbox';
-const isolatedClusterMarker = 'xiaok-i749-isolated-test';
+export const isolatedSourceMarker = 'xiaok-i749-backup-sandbox';
+export const isolatedClusterMarker = 'xiaok-i749-isolated-test';
 const isolatedDatabasePattern = /^xiaok_i749_[a-z0-9_]{1,40}$/;
 const blockedIsolatedPorts = new Set([5432, 55432]);
-const defaultMinFreeBytes = 512 * 1024 * 1024;
+export const defaultMinFreeBytes = 512 * 1024 * 1024;
 
 export const MANIFEST_VERSION = 1;
 export const MANIFEST_FILE = 'migration-backup-manifest.json';
@@ -170,6 +170,8 @@ function safeUrl(raw) {
     const url = new URL(raw);
     if (!['postgres:', 'postgresql:'].includes(url.protocol)) return null;
     if (url.search || url.hash || !url.username || !url.pathname || url.pathname === '/') return null;
+    decodeURIComponent(url.password);
+    decodeURIComponent(url.pathname);
     return url;
   } catch {
     return null;
@@ -268,12 +270,9 @@ export function pgPasswordEnv(password) {
 }
 
 function childEnv(extra) {
-  const env = { ...process.env, PGCONNECT_TIMEOUT: '15', ...extra };
-  delete env.DATABASE_URL;
-  delete env.DATABASE_MIGRATION_URL;
-  delete env.XIAOK_MIGRATION_BACKUP_URL;
-  delete env.XIAOK_MIGRATION_RESTORE_URL;
-  return env;
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+    !/^PG|^(DATABASE_URL|DATABASE_MIGRATION_URL|XIAOK_MIGRATION_(BACKUP|RESTORE)_URL)$/i.test(key)));
+  return { ...env, PGCONNECT_TIMEOUT: '15', PGSSLMODE: 'disable', ...extra };
 }
 
 export function resolvePgBinary(directory, name) {
@@ -296,7 +295,11 @@ export function runProcess(command, args, { env, cwd, inputFile } = {}) {
     });
     if (inputFile) {
       const input = createReadStream(inputFile);
-      input.on('error', reject);
+      input.on('error', error => {
+        child.kill();
+        reject(error);
+      });
+      child.once('close', () => input.destroy());
       child.stdin.on('error', () => undefined);
       input.pipe(child.stdin);
     }
@@ -666,18 +669,38 @@ export async function inspectBackupDirectory(directory, {
 } = {}) {
   const resolved = path.resolve(directory);
   const relative = path.relative(repoRoot, resolved);
-  if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) {
+  if (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`)) {
     return { ok: false, reason: 'backup_directory_inside_repository' };
   }
-  if (!relative) return { ok: false, reason: 'backup_directory_inside_repository' };
-  const stats = await fs.stat(resolved).catch(() => null);
+  if (path.dirname(resolved) === resolved || (process.platform === 'win32' && !/^[A-Z]:\\/i.test(resolved))) {
+    return { ok: false, reason: 'backup_directory_must_be_local_non_root' };
+  }
+  const stats = await fs.lstat(resolved).catch(() => null);
+  for (let cursor = resolved; ; cursor = path.dirname(cursor)) {
+    const entry = await fs.lstat(cursor).catch(() => null);
+    if (entry?.isSymbolicLink()) return { ok: false, reason: 'backup_directory_symlink' };
+    const git = await fs.lstat(path.join(cursor, '.git')).catch(error => {
+      if (['ENOENT', 'ENOTDIR'].includes(error.code)) return null;
+      throw error;
+    });
+    if (git) return { ok: false, reason: 'backup_directory_inside_repository' };
+    if (cursor === path.dirname(cursor)) break;
+  }
   if (!stats?.isDirectory()) return { ok: false, reason: 'backup_directory_missing' };
 
+  const space = await fs.statfs(resolved).catch(() => null);
+  if (!space) return { ok: false, reason: 'backup_directory_space_unknown' };
+  const freeBytes = Number(space.bavail) * Number(space.bsize);
+  if (!Number.isFinite(freeBytes) || freeBytes < minFreeBytes) {
+    return { ok: false, reason: 'backup_directory_insufficient_space', freeBytes, minFreeBytes };
+  }
   let owner = null;
   if (process.platform === 'win32') {
-    const script = `$acl = Get-Acl -LiteralPath '${resolved.replaceAll("'", "''")}';
-$entries = @($acl.Access | ForEach-Object { [pscustomobject]@{ Identity = $_.IdentityReference.Value; Rights = $_.FileSystemRights.ToString() } });
-[pscustomobject]@{ Owner = $acl.Owner; Access = $entries } | ConvertTo-Json -Compress -Depth 4`;
+    const script = `$ErrorActionPreference = 'Stop'
+$acl = Get-Acl -LiteralPath '${resolved.replaceAll("'", "''")}'
+$sid = [System.Security.Principal.SecurityIdentifier]
+$allowed = @($acl.GetAccessRules($true, $true, $sid) | Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value })
+[pscustomobject]@{ Owner = $acl.GetOwner($sid).Value; Allowed = $allowed } | ConvertTo-Json -Compress`;
     const powershell = path.join(process.env.SystemRoot || 'C:/Windows',
       'System32/WindowsPowerShell/v1.0/powershell.exe');
     const result = await runProcess(powershell, ['-NoProfile', '-NonInteractive', '-EncodedCommand',
@@ -689,33 +712,28 @@ $entries = @($acl.Access | ForEach-Object { [pscustomobject]@{ Identity = $_.Ide
     } catch {
       return { ok: false, reason: 'backup_directory_acl_unreadable' };
     }
-    owner = acl.Owner ?? null;
-    const access = Array.isArray(acl.Access) ? acl.Access : acl.Access ? [acl.Access] : [];
-    const broadWrite = access.filter(entry => /(Authenticated Users|Everyone)/i.test(String(entry.Identity ?? ''))
-      && /(Modify|FullControl|Write|CreateFiles|AppendData|Delete)/i.test(String(entry.Rights ?? '')));
-    if (broadWrite.length) {
-      return { ok: false, reason: 'backup_directory_acl_unsafe',
-        detail: broadWrite.map(entry => ({ identity: entry.Identity, rights: entry.Rights })) };
+    owner = acl.Owner;
+    const broad = /^(?:S-1-1-0|S-1-5-(?:4|7|11|32-54[56])|S-1-5-21-(?:\d+-){3}51[345]|S-1-15-2-[12])$/i;
+    if (typeof owner !== 'string' || !Array.isArray(acl.Allowed)) {
+      return { ok: false, reason: 'backup_directory_acl_unreadable', freeBytes, minFreeBytes };
     }
-    if (owner && /(Everyone|Authenticated Users)/i.test(owner)) {
-      return { ok: false, reason: 'backup_directory_owner_unsafe', owner };
+    if (broad.test(owner) || acl.Allowed.some(sid => broad.test(sid))) {
+      return { ok: false, reason: 'backup_directory_acl_unsafe', freeBytes, minFreeBytes };
     }
   } else {
-    if ((stats.mode & 0o022) !== 0) {
-      return { ok: false, reason: 'backup_directory_group_or_world_writable' };
+    if ((stats.mode & 0o077) !== 0) {
+      return { ok: false, reason: 'backup_directory_group_or_world_accessible', freeBytes, minFreeBytes };
     }
     if (typeof process.getuid === 'function' && stats.uid !== process.getuid() && stats.uid !== 0) {
       return { ok: false, reason: 'backup_directory_owner_mismatch' };
     }
   }
 
-  const space = await fs.statfs(resolved).catch(() => null);
-  if (!space) return { ok: false, reason: 'backup_directory_space_unknown' };
-  const freeBytes = Number(space.bavail) * Number(space.bsize);
-  if (!Number.isFinite(freeBytes) || freeBytes < minFreeBytes) {
-    return { ok: false, reason: 'backup_directory_insufficient_space', freeBytes, minFreeBytes };
-  }
-  return { ok: true, directory: resolved, owner, freeBytes };
+  return { ok: true, directory: resolved, owner, freeBytes, minFreeBytes };
+}
+
+function backupFailure(reason, detail) {
+  return Object.assign(new Error(reason), { backupReason: reason, detail });
 }
 
 async function createBackup({ client, target, password, pgBin, outputDir, mode, label, startedAt,
@@ -726,101 +744,101 @@ async function createBackup({ client, target, password, pgBin, outputDir, mode, 
     toolVersion(pgDump), toolVersion(pgRestore),
   ]);
   if (versionMajor(pgDumpVersion) !== 17 || versionMajor(pgRestoreVersion) !== 17) {
-    throw new Error('pg_client_major_must_be_17');
+    throw backupFailure('pg_client_major_must_be_17');
   }
 
   const inputs = await readManifestInputs();
-  const facts = await (async () => {
-    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    try {
-      const identity = await readIdentity(client);
-      if (identity.database !== target.database || identity.role !== target.user
-        || identity.sessionRole !== target.user) throw new Error('database_identity_mismatch');
-      if (identity.versionNumber < 170000 || identity.versionNumber >= 180000) {
-        throw new Error('postgres_major_must_be_17');
-      }
-      if (identity.replica) throw new Error('backup_source_is_a_replica');
-      if (identity.rolcanlogin !== true) throw new Error('backup_role_cannot_login');
-      if (!['least_privilege', 'legacy_owner'].includes(roleProfile)) {
-        throw new Error('unapproved_backup_role');
-      }
-      if (roleProfile === 'least_privilege' && identity.rolsuper === true) {
-        throw new Error('least_privilege_backup_role_must_not_be_superuser');
-      }
-      if (roleProfile === 'legacy_owner' && identity.rolsuper === true && legacyRiskConfirmed !== true) {
-        throw new Error('superuser_backup_requires_explicit_confirmation');
-      }
-      const { rows: [appSchema] } = await client.query("SELECT to_regnamespace('app')::text AS schema");
-      if (!appSchema?.schema) throw new Error('app_schema_missing');
-      const { rows: [ledgerTable] } = await client.query(
-        "SELECT to_regclass('app.__drizzle_migrations')::text AS ledger",
-      );
-      if (!ledgerTable?.ledger) throw new Error('migration_ledger_missing');
-      const coverage = await readCoverage(client);
-      const issues = assertBackupRole(identity, coverage);
-      if (issues.length) {
-        const error = new Error(issues[0].code);
-        error.issues = issues;
-        throw error;
-      }
-      const { rows: ledgerRows } = await client.query(
-        'SELECT id,hash,created_at FROM app.__drizzle_migrations ORDER BY id',
-      );
-      const ledgerValidation = validateSourceLedger(ledgerRows, inputs);
-      if (ledgerValidation.status !== 'passed') {
-        const error = new Error('ledger_validation_failed');
-        error.detail = ledgerValidation.reason;
-        throw error;
-      }
-      await client.query('SAVEPOINT delegation_check');
-      try {
-        await verifyDelegationSchema(client, ledgerValidation.schema);
-      } catch {
-        await client.query('ROLLBACK TO SAVEPOINT delegation_check');
-        throw new Error('delegation_schema_mismatch');
-      } finally {
-        await client.query('RELEASE SAVEPOINT delegation_check');
-      }
-      const collected = await collectDatabaseFacts(client, {
-        includeData: true, knownHashes: inputs.knownHashes,
-      });
-      return { ...collected, coverage, ledgerValidation };
-    } finally {
-      await client.query('COMMIT').catch(() => undefined);
-    }
-  })();
-
   const backupId = `xiaok-mig-${new Date(startedAt).toISOString().replace(/[-:.]/g, '').toLowerCase()}-${randomBytes(4).toString('hex')}`;
-  const workDirectory = path.join(outputDir, `.tmp-${backupId}-${randomBytes(4).toString('hex')}`);
+  const workDirectory = await fs.mkdtemp(path.join(outputDir, `.tmp-${backupId}-`));
   const finalDirectory = path.join(outputDir, backupId);
-  await fs.mkdir(workDirectory, { recursive: true });
   const archivePath = path.join(workDirectory, ARCHIVE_FILE);
   let manifest;
   try {
-    const dump = await runDumpToFile(pgDump, [
-      '--format=custom',
-      '--compress=6',
-      '--no-password',
-      '--lock-wait-timeout=30000',
-      '--host', target.connectionAddress,
-      '--port', String(target.port),
-      '--username', target.user,
-      '--dbname', target.database,
-    ], { env: pgPasswordEnv(password), file: archivePath });
-    if (dump.code !== 0) {
-      throw new Error(`pg_dump_failed:${dump.stderr.trim().slice(-600) || dump.code}`);
-    }
+    const facts = await (async () => {
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      try {
+        const identity = await readIdentity(client);
+        if (identity.database !== target.database || identity.role !== target.user
+          || identity.sessionRole !== target.user) throw backupFailure('database_identity_mismatch');
+        if (identity.versionNumber < 170000 || identity.versionNumber >= 180000) {
+          throw backupFailure('postgres_major_must_be_17');
+        }
+        if (identity.replica) throw backupFailure('backup_source_is_a_replica');
+        if (identity.rolcanlogin !== true) throw backupFailure('backup_role_cannot_login');
+        if (!['least_privilege', 'legacy_owner'].includes(roleProfile)) {
+          throw backupFailure('unapproved_backup_role');
+        }
+        if (roleProfile === 'least_privilege' && identity.rolsuper === true) {
+          throw backupFailure('least_privilege_backup_role_must_not_be_superuser');
+        }
+        if (roleProfile === 'legacy_owner' && identity.rolsuper === true && legacyRiskConfirmed !== true) {
+          throw backupFailure('superuser_backup_requires_explicit_confirmation');
+        }
+        const { rows: [appSchema] } = await client.query("SELECT to_regnamespace('app')::text AS schema");
+        if (!appSchema?.schema) throw backupFailure('app_schema_missing');
+        const { rows: [ledgerTable] } = await client.query(
+          "SELECT to_regclass('app.__drizzle_migrations')::text AS ledger",
+        );
+        if (!ledgerTable?.ledger) throw backupFailure('migration_ledger_missing');
+        const coverage = await readCoverage(client);
+        const issues = assertBackupRole(identity, coverage);
+        if (issues.length) {
+          const error = backupFailure(issues[0].code);
+          error.issues = issues;
+          throw error;
+        }
+        const { rows: ledgerRows } = await client.query(
+          'SELECT id,hash,created_at FROM app.__drizzle_migrations ORDER BY id',
+        );
+        const ledgerValidation = validateSourceLedger(ledgerRows, inputs);
+        if (ledgerValidation.status !== 'passed') {
+          const error = backupFailure('ledger_validation_failed');
+          error.detail = ledgerValidation.reason;
+          throw error;
+        }
+        await client.query('SAVEPOINT delegation_check');
+        try {
+          await verifyDelegationSchema(client, ledgerValidation.schema);
+        } catch {
+          await client.query('ROLLBACK TO SAVEPOINT delegation_check');
+          throw backupFailure('delegation_schema_mismatch');
+        } finally {
+          await client.query('RELEASE SAVEPOINT delegation_check');
+        }
+        const collected = await collectDatabaseFacts(client, {
+          includeData: true, knownHashes: inputs.knownHashes,
+        });
+        const { rows: [{ snapshot }] } = await client.query("SELECT pg_export_snapshot() AS snapshot");
+        const dump = await runDumpToFile(pgDump, [
+          '--format=custom',
+          '--compress=6',
+          '--no-password',
+          '--snapshot', snapshot,
+          '--lock-wait-timeout=30000',
+          '--host', target.connectionAddress,
+          '--port', String(target.port),
+          '--username', target.user,
+          '--dbname', target.database,
+        ], { env: pgPasswordEnv(password), file: archivePath });
+        if (dump.code !== 0) {
+          throw backupFailure('pg_dump_failed', { exitCode: dump.code });
+        }
+        return { ...collected, coverage, ledgerValidation };
+      } finally {
+        await client.query('ROLLBACK').catch(() => undefined);
+      }
+    })();
     const stats = await fs.stat(archivePath).catch(() => null);
-    if (!stats?.size) throw new Error('pg_dump_created_an_empty_archive');
+    if (!stats?.size) throw backupFailure('pg_dump_created_an_empty_archive');
     const archiveSha256 = await sha256File(archivePath);
 
     const list = await runProcess(pgRestore, ['--list'], { inputFile: archivePath });
-    if (list.code !== 0) throw new Error('pg_restore_list_failed');
+    if (list.code !== 0) throw backupFailure('pg_restore_list_failed');
     const tocEntries = parseTocEntries(list.stdout);
     const missing = missingTableDataEntries(tocEntries, facts.dataSummary);
-    if (!tocEntries.length) throw new Error('pg_restore_list_empty');
+    if (!tocEntries.length) throw backupFailure('pg_restore_list_empty');
     if (missing.length) {
-      const error = new Error('archive_missing_table_data');
+      const error = backupFailure('archive_missing_table_data');
       error.detail = missing.join(', ');
       throw error;
     }
@@ -909,6 +927,7 @@ async function createBackup({ client, target, password, pgBin, outputDir, mode, 
       dataSummary: facts.dataSummary,
       relations: facts.relations,
       backupStatus: 'complete',
+      snapshotConsistent: true,
     };
     manifest.manifestDigest = computeManifestDigest(manifest);
     const shape = validateManifestShape(manifest);
@@ -918,13 +937,16 @@ async function createBackup({ client, target, password, pgBin, outputDir, mode, 
     await fs.writeFile(path.join(workDirectory, MANIFEST_FILE),
       JSON.stringify(manifest, null, 2) + '\n', { flag: 'wx' });
     await fs.access(finalDirectory).then(
-      () => { throw new Error('backup_id_collision'); },
+      () => { throw backupFailure('backup_id_collision'); },
       () => undefined,
     );
     await fs.rename(workDirectory, finalDirectory);
     return { manifest, finalDirectory };
   } catch (error) {
-    await fs.rm(workDirectory, { recursive: true, force: true }).catch(() => undefined);
+    for (const name of [ARCHIVE_FILE, SHA256_FILE, MANIFEST_FILE]) {
+      await fs.unlink(path.join(workDirectory, name)).catch(() => undefined);
+    }
+    await fs.rmdir(workDirectory).catch(() => undefined);
     throw error;
   }
 }
@@ -953,7 +975,15 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   const allowLegacyOwner = values['allow-legacy-owner'] === true
     || env.XIAOK_MIGRATION_ALLOW_LEGACY_OWNER === '1';
   const rawUrl = env.XIAOK_MIGRATION_BACKUP_URL;
-  const requestedRole = safeUrl(rawUrl)?.username;
+  if (!rawUrl?.trim()) return { status: 'blocked', reason: 'backup_credentials_missing' };
+  const url = safeUrl(rawUrl);
+  if (mode === 'development' && url && !url.password) {
+    return { status: 'blocked', reason: 'backup_credentials_incomplete' };
+  }
+  const requestedRole = url?.username;
+  if (mode === 'development' && requestedRole === legacyBackupRole) {
+    return { status: 'blocked', reason: 'development_backup_requires_sfp_backup' };
+  }
   if (requestedRole === legacyBackupRole && !allowLegacyOwner) {
     return { status: 'blocked', reason: 'legacy_backup_role_requires_explicit_confirmation' };
   }
@@ -1017,7 +1047,8 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
   } catch (error) {
     return {
       status: 'failed',
-      reason: error?.message?.split('\n')[0].slice(0, 400) ?? 'backup_failed',
+      reason: error?.backupReason ?? 'backup_failed',
+      sqlstate: /^[A-Z0-9]{5}$/.test(error?.code ?? '') ? error.code : null,
       detail: error?.detail ?? null,
       issues: error?.issues ?? null,
     };
@@ -1030,9 +1061,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   main().then(result => {
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     process.exitCode = result.status === 'passed' ? 0 : result.status === 'blocked' ? 2 : 1;
-  }).catch(error => {
+  }).catch(() => {
     process.stdout.write(JSON.stringify({
-      status: 'failed', reason: error?.message?.split('\n')[0] ?? 'backup_execution_error',
+      status: 'failed', reason: 'backup_execution_error',
     }) + '\n');
     process.exitCode = 1;
   });

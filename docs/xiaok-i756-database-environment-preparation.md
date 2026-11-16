@@ -9,6 +9,20 @@
 
 ---
 
+## I7.5.12 当前只读复核
+
+从 `admin` 运行 `npm run xiaok:migration`。当前工位在 PATH 中缺少 PG 客户端，使用已验证的 `--pg-bin C:\pg17bin\pgsql\bin` 可找到三项 17.10。正式步骤、证据和回滚见 [第一版迁移执行单](./xiaok-i7512-v1-database-migration-runbook.md)。
+
+| 门禁 | 当前结果 | 证据或缺项 |
+| --- | --- | --- |
+| `backup_readiness` | `failed` | 源目录候选 `C:\sfp-backups\i7512-20261116` 不存在，`admin/.postgres-backups` 在 Git 工作树内，历史 `C:\i794\backups` 的 ACL 含宽泛授权。本机 C: 空闲约 22 GiB、G: 约 28 GiB，高于 512 MiB 默认下限。源库目录查无 `sfp_backup`，缺 `XIAOK_MIGRATION_BACKUP_URL`，真实归档检查 `not_run`。 |
+| `restore_readiness` | `failed` | 源集群无 `sfp_restore`，两个历史隔离实例未运行，缺 `XIAOK_MIGRATION_RESTORE_URL` 及本次验证回执。真实恢复 `not_run`。 |
+| `migration_readiness` | `passed` | 账本 119 条，末条 `0119`、ID 125，0021/0051 精确。9 个原始 SHA、journal 顺序、依赖与 0131 的只读检查均通过。真实 `sfp_migrator` 登录、账本一致和权限通过。0131 待回填 8 行，原 `default` 行摘要已记录。 |
+| `environment_readiness` | `limited` | 已核对开发转发、PG17、客户端版本和当时的 0 Worker/0 应用监听/0 其他数据库客户端。独立恢复端点未连接。 |
+| `overall_readiness` | `failed` | 等待受限目录、真实备份和独立恢复证据。维护窗口和单批次执行由负责人签批。 |
+
+命令默认只读。退出码 `0` 表示全部 `passed`，`2` 表示任一项尚未就绪，`1` 表示工具异常。报告仅包含变量名、固定错误码、可核对的摘要和元数据。实际输出为本机 `tmp/xiaok-i7512-readiness-final.json`。已核对历史 `C:\i794\evidence\acceptance.json` 和三份保留的归档清单，均对应合成库。以下早期数据和文件指纹仍保留为 I7.5.6 基线。
+
 ## 1. 调查边界与并行保护
 
 | 项 | 结果 |
@@ -201,8 +215,8 @@
 | --- | --- | --- |
 | `db:backup` → `postgres-backup.mjs` | 旧版日常备份：`docker compose exec postgres pg_dump -U sfp_owner --no-owner --no-privileges` | **不可用**：Docker 未运行；且 `--no-owner/--no-privileges` 产出的归档**不能**通过迁移级恢复校验（`permissions_verified=false`） |
 | `db:restore-drill` → `postgres-restore-drill.mjs` | 旧版恢复演练：docker 内 `dropdb/createdb/pg_restore/psql` | **不可用且已过时**：依赖 Docker；硬编码期望 68 表/47 RLS/88 policy 与当前 174/153/208 不符；还引用已不存在的 `app.migration_checkpoints` |
-| `db:migration-backup` → `xiaok-migration-backup.mjs` | **迁移级备份**：custom archive（保留 owner+ACL）+ 独立 `.sha256` + `migration-backup-manifest.json`（账本/RLS/policy/函数/触发器/权限/逐表数据摘要） | **可运行但缺凭据与安全目录** |
-| `db:migration-restore-verify` → `xiaok-migration-restore-verify.mjs` | **迁移级恢复校验**：恢复到独立可丢弃库并逐项比对 Manifest | **可运行但缺凭据**，且目标集群/角色需满足约束 |
+| `db:migration-backup` → `xiaok-migration-backup.mjs` | **迁移级备份**：custom archive（保留 owner+ACL）+ 独立 `.sha256` + `migration-backup-manifest.json`（账本/RLS/policy/函数/触发器/权限/逐表数据摘要） | **源码具备同快照导出，等待受限目录、`sfp_backup` 和导出凭据** |
+| `db:migration-restore-verify` → `xiaok-migration-restore-verify.mjs` | **迁移级恢复校验**：恢复到独立可丢弃库并逐项比对 Manifest | 使用独立 PG17、`sfp_restore` 和不存在的新库名，等待实际目标及凭据 |
 | `check:backup-role` → `xiaok-backup-role-preflight.ts` | 只读核验备份角色最小权限 | 可运行；真实库**尚无** `sfp_backup` 可核验 |
 | `prepare-xiaok-backup-directory.ps1` | 目录安全预检：拒绝仓库内路径、清理继承 ACL、10 GB 空间门禁 | 可用（需指定非仓库路径） |
 | `scripts/sql/xiaok-create-backup-role.sql` | 创建 `sfp_backup`（LOGIN/NOSUPERUSER/**BYPASSRLS**）并只授 SELECT | 未执行（需审批） |
@@ -212,9 +226,9 @@
 | 角色 | 属性 | 结论 |
 | --- | --- | --- |
 | `sfp_backup` | **不存在** | 最小权限备份路径不可用 |
-| `sfp_owner` | LOGIN + **SUPERUSER + BYPASSRLS + CREATEDB** | 可作为 `--allow-legacy-owner` 兼容路径，但属超权限，需显式确认 |
+| `sfp_owner` | LOGIN + **SUPERUSER + BYPASSRLS + CREATEDB** | 源库超权限历史角色。当前开发导出路径固定使用 `sfp_backup` |
 | `sfp_migrator` | 非超管 / 非 BYPASSRLS | 不能作为备份角色（工具会以 `backup_role_missing_bypass_rls` 失败关闭） |
-| `sfp_restore` | **不存在** | I7.4.9.8 设计的独立恢复维护角色尚未创建 |
+| `sfp_restore` | **不存在** | 维护角色只部署于另行批准的独立恢复集群，源库保持无该角色 |
 
 ### 5.3 凭据与目录现状
 
@@ -245,23 +259,11 @@
 
 `verifyRestore()` 会依次校验：Manifest 格式/摘要 → 归档 SHA-256 → `pg_restore --list` 完整性 → 版本兼容（Manifest/pg_restore/目标服务端均须 PG17）→ 恢复到 `xiaok_migration_restore_*` → 账本 digest/末条 ID+timestamp → 0021/0051 历史白名单 → 逐表行数与内容摘要 → RLS/FORCE RLS 清单 → policy 摘要 → 函数/触发器/列/约束/索引/扩展摘要 → 权限（owner+ACL）摘要。只有全部为真才 `full_restore_passed=true`，**不会仅凭 `pg_restore` 退出码判定成功**。
 
-### 6.2 能否在独立临时库执行？—— 能，但有两条路径、各自有门槛
+### 6.2 正式恢复环境
 
-**路径 A：development 模式（在 5432 同一集群内建临时库）**
-- 硬约束：`XIAOK_MIGRATION_RESTORE_URL` 必须指向 `127.0.0.1:5432`（ tunnnel 端口），角色须为 SUPERUSER 或 BYPASSRLS（→ 只能是 `sfp_owner`），目标库名须匹配 `^xiaok_migration_restore_[a-z0-9_]{1,40}$` 且 ≠ 源库。
-- 可行性：`sfp_owner` 具备 CREATEDB，工具会 `DROP ... WITH (FORCE)` 后 `CREATE`，结束时默认删除。**不修改 `smart_floor_planner`**。
-- 代价：会在远端生产前集群上短暂创建/删除一个库；需 251 MB 备份 + 约等量恢复空间。
-- 阻塞：缺 `sfp_owner` 凭据。
+真实开发归档使用 `--mode isolated`。连接目标为带 `xiaok-i749-isolated-test` 标记的独立 PG17 维护库 `postgres`，且该集群的库目录中没有源库。使用 `sfp_restore`，目标名称形如 `xiaok_migration_restore_*`，预检会拒绝已存在的目标。归档保留 owner/ACL。恢复工具以 OID、owner 和本次唯一标记确认清理对象并报告清理结果。
 
-**路径 B：isolated 模式（推荐）**
-- 硬约束：端口 ≥ 49152 且不得为 5432/55432；集群 `postgres` 库注释必须为 `xiaok-i749-isolated-test`；数据库名须匹配 `^xiaok_i749_[a-z0-9_]{1,40}$`。
-- 现有可用候选：`C:\i794`（端口 **55436**）与 `C:\i798`（端口 **55437**），均为 PG17.10、**当前已停止**（`postmaster.pid` 不存在，日志显示 2026-11-15 21:24 干净 fast shutdown），数据目录保留。
-- 可行性：**可满足**，但需要启动集群（属本轮禁止动作），并复验集群注释标记。
-- 阻塞：`XIAOK_ISOLATED_DATABASE_URL` 未配置；集群未启动。
-
-### 6.3 恢复校验的一个已知限制（来自 I7.4.9.8）
-
-`btree_gist`/`plpgsql`/`vector` 三个扩展的 owner 是 `sfp_owner`（超级用户）。若恢复集群没有预创建这些扩展、或没有对应超管 owner，`permissions_verified` 可能为 false，从而 `full_restore_passed=false`。路径 A 复用同一集群，扩展天然存在，风险最低；路径 B 需预先按 I7.4.9.8 说明预置扩展与 owner。
+DBA 需预置归档涉及的角色及匹配扩展版本，处理扩展 owner/COMMENT 权限。审批和恢复证据见 [执行单](./xiaok-i7512-v1-database-migration-runbook.md) 与 [I7.4.9.8 角色验证](./xiaok-i798-restore-maintenance-role.md)。
 
 ---
 
@@ -293,98 +295,17 @@
 
 ---
 
-## 9. 缺失的权限与配置（按阻断强度排序）
+## 9. 当前待批准事项
 
-| # | 缺口 | 影响 | 修复方式（需审批） |
-| --- | --- | --- | --- |
-| 1 | 真实库**无迁移级备份**（从未执行） | 无法回滚到迁移前状态 → 迁移本身不具备安全前提 | 批准后在写入静默窗口执行 `db:migration-backup` |
-| 2 | `XIAOK_MIGRATION_BACKUP_URL` / `XIAOK_MIGRATION_RESTORE_URL` **均未配置**；`sfp_owner` 密码本机不可得 | 备份与恢复校验都无法启动 | 由负责人提供受控凭据（只注入环境变量，不写入仓库/`.env`） |
-| 3 | `sfp_backup` 角色不存在 | 只能走 `sfp_owner` 超权限兼容路径 | 审批并执行 `scripts/sql/xiaok-create-backup-role.sql` + 交互式设密 |
-| 4 | 备份目录不安全且默认目录在仓库内 | 工具 fail closed，无法落盘 | 运行 `prepare-xiaok-backup-directory.ps1 -Directory C:\sfp-backups\i756-20261116`，备份时 `--output-dir` 指向该路径 |
-| 5 | `XIAOK_ISOLATED_DATABASE_URL` 未配置；`C:\i794`/`C:\i798` 已停止 | `isolated-pg17` 全级 `not_run`，无独立验收环境 | 明确选择：启动 55436/55437 之一并配置 URL，或新建可丢弃 PG17 |
-| 6 | Assistant Worker 停运、心跳 stale 约 24.3 h | 迁移后无法立即验证提醒/周报链路；试点就绪仍 blocked | 迁移完成后按发布流程单独启动，不在迁移窗口内启动 |
-| 7 | `sfp_restore` 角色不存在 | 恢复只能复用 `sfp_owner`（超权限） | 按 I7.4.9.8 方案单独审批创建 |
-| 8 | 维护窗口与"写入静默"未确认 | 0131 锁冲突会导致整批回滚；备份与导出快照可能不一致 | 由负责人确定窗口并确认停写 |
+1. 由 DBA 批准真实开发库的全量导出，提供最小权限 `sfp_backup` 和进程级 `XIAOK_MIGRATION_BACKUP_URL`，指定带受限 ACL 的仓库外归档目录。
+2. 由 DBA 批准独立 PG17 的恢复、建库和清理作用域，准备角色、扩展与维护库标记，提供进程级 `XIAOK_MIGRATION_RESTORE_URL`。
+3. 完成真实备份和独立恢复取证后，由负责人批准停写维护窗口、候选 SHA、一次性迁移与必要时回滚的责任人。
 
-补充提示（非本任务范围，但影响后续）：
-- `.env.production` 的 `DATABASE_URL` 指向 `localhost/smart_floor_planner`，属模板式配置；体检把 `production` 判为 `limited`。上线前必须由部署负责人替换，本轮未修改。
-- Docker Desktop 处于停止状态且**不应自动拉起**（远端服务已迁移）。
+正式执行条件、命令、结构预期和故障分流统一见 [I7.5.12 第一版迁移执行单](./xiaok-i7512-v1-database-migration-runbook.md)。
 
 ---
 
-## 10. 正式迁移前的推荐执行顺序
-
-> 以下为**待审批的操作清单**，本任务未执行任何一步。
-
-**阶段 0：前置确认（只读）**
-1. `cd admin; npm run check:migration-preflight -- --enterprise-id 1454` → 期望 `ledger.count=119`、`pending=9`、`historicalHashes` 两项 exact。
-2. `cd admin; npm run xiaok:env:check` → 记录 `development`/`isolated-pg17` 分级基线。
-
-**阶段 1：准备安全备份目录与凭据**
-3. `powershell -NoProfile -ExecutionPolicy Bypass -File admin\scripts\prepare-xiaok-backup-directory.ps1 -Directory C:\sfp-backups\i756-20261116 -MinFreeGB 10`
-4. 在**进程环境**（不写 `.env`）注入：`XIAOK_MIGRATION_BACKUP_URL`、`XIAOK_MIGRATION_RESTORE_URL`、`PG_BIN=C:\pg17bin\pgsql\bin`。
-5. （若批准）创建 `sfp_backup` 并复核：`psql -f admin/scripts/sql/xiaok-create-backup-role.sql` → `npm run check:backup-role`。
-
-**阶段 2：备份与独立恢复验证（迁移的硬前提）**
-6. `cd admin; npm run db:migration-backup -- --mode development --output-dir C:\sfp-backups\i756-20261116 --pg-bin C:\pg17bin\pgsql\bin`
-   - 期望：`status=passed`；`migrationLedgerCount=119`；`migrationLedgerDigest=1d156566…77b381`；`backupBytes≈251 MB`；目录内含 `database.dump`、`database.dump.sha256`、`migration-backup-manifest.json`。
-7. `cd admin; npm run db:migration-restore-verify -- --manifest <上一步目录>\migration-backup-manifest.json --target-database xiaok_migration_restore_i756 --mode development --pg-bin C:\pg17bin\pgsql\bin`
-   - 期望：`full_restore_passed=true`（`schema/data/ledger/rls/permissions` 全 true），且目标库默认被删除。
-   - 若走 isolated 路径：改 `--mode isolated`，目标库名须为 `xiaok_i749_*`，集群注释须为 `xiaok-i749-isolated-test`。
-
-**阶段 3：维护窗口内执行迁移（单批次原子）**
-8. 确认写入静默：无 Worker、无 3006/3016、无应用长事务（`pg_stat_activity` 其他会话 0）。
-9. `cd admin; npm run db:migrate`（`DATABASE_MIGRATION_URL` 已就绪，`sfp_migrator`）
-   - 期望：`success=true`；单事务提交；账本 `119 → 128`。
-
-**阶段 4：迁移后复验（只读）**
-10. `npm run check:migration-preflight -- --enterprise-id 1454` → 期望 `pending=[]`、`status=passed`、`notification.status=passed`、账本 128。
-11. `npm run xiaok:env:check` → `development.database.migrations=passed`。
-12. 结构抽查（与 I7.4.9.4 §4 对齐）：`construction_stage_reminders`、`xiaok_pilot_project_scopes`、`native_workflow_delegations`、`assistant_managed_knowledge_libraries` 存在且 FORCE RLS；`platform_configs.notification_config` 的 NULL 行为 0、`is_nullable=NO`、`column_default='{}'::jsonb`；`default` 行配置文本与 8 个模板 ID 逐字未变。
-
-**失败处理**：任何一步失败 → 事务已自动回滚（账本仍 119、无半成品）→ 不做手工账本修补、不重跑损坏归档；保留 `manifest`/`sha256`/`stdout` 证据后重新走阶段 2。
-
----
-
-## 11. 维护窗口要求（建议写入执行单）
-
-| 项 | 要求 |
-| --- | --- |
-| 时长 | 建议预留 30 分钟（备份/恢复验证约 5–15 分钟；迁移事务预计数秒至十余秒） |
-| 写入静默 | Worker 停止、3006/3016 无监听、无批量导入、无长事务 |
-| 锁预期 | 0130 之前：知识表 + `construction_camera_sd_windows` 的 `ACCESS EXCLUSIVE`（毫秒级）；0126/0127：outbox/projects/plans 的 `SHARE ROW EXCLUSIVE`；0131：`platform_configs` 强锁 + **5 秒** `lock_timeout` |
-| 回滚点 | 阶段 2 产出的 `xiaok-mig-*` 备份目录（含 SHA 与 Manifest），**不是** `.postgres-backups` 里的旧 dump |
-| 观察指标 | 账本 128、pending 0、FORCE RLS 153→新增表、policy 208→新增、outbox 无异常堆积 |
-| 禁止 | 手工写 `app.__drizzle_migrations`、重跑 0021、改模板 ID、为通过验收而删除数据/任务 |
-
----
-
-## 12. 需要人工审批的事项
-
-| # | 事项 | 原因 | 建议决策 |
-| --- | --- | --- | --- |
-| A | 对真实开发库执行 `pg_dump`（迁移级备份） | 首次触碰真实库导出；涉及数据外带与目录写入 | 批准，且限定在写入静默窗口 |
-| B | 创建 `sfp_backup`（**BYPASSRLS**）并设密 | BYPASSRLS 属高敏权限 | 批准最小权限角色；或临时批准 `sfp_owner` + `--allow-legacy-owner` |
-| C | 提供 `XIAOK_MIGRATION_BACKUP_URL` / `XIAOK_MIGRATION_RESTORE_URL` 凭据 | 本机无可得凭据 | 由负责人以进程环境注入，禁止提交 |
-| D | 选择恢复校验目标：同集群临时库（路径 A）或启动隔离集群 55436/55437（路径 B） | 前者在同集群建/删库，后者需启停服务 | 建议 B；若批准 A 需确认允许在 15432 集群建临时库 |
-| E | 维护窗口与写入静默确认 | 0131 强锁 + 单事务原子性 | 批准具体时间窗与停写责任 |
-| F | 执行 `npm run db:migrate`（9 条一次性应用） | 生产前最后一步不可逆变更（虽可回滚） | 在阶段 2 通过后签字 |
-| G | 迁移后是否启动 Worker / 发送通知 | 涉及真实消息投递 | 单独审批，不与迁移窗口合并 |
-| H | 创建 `sfp_restore` 独立恢复角色 | 降低超管依赖 | 可选，建议与 A/B 同批 |
-
----
-
-## 13. 结论速览
-
-- **技术侧已就绪**：9 条迁移的 SQL、依赖、约束名、复合唯一键、数据形状全部核验通过；8 条预检 `passed`，0131 因缺少专用检查器为 `limited`（其数据条件已单独核验：8 行 NULL、default 行非空）。
-- **文件侧已冻结**：9 个 SHA-256 与 I7.4.9.4 全链路演练完全一致，演练结论可复用。
-- **执行侧被阻断**：无真实备份、无备份/恢复凭据、无隔离库 URL、备份目录不安全、Worker 停运、维护窗口未批——共 6 项。
-- **风险可控**：单事务原子性 + 0131 5 秒锁超时 + 事务回滚，使"最坏结果"退化为"窗口白跑一次"，不会留下半迁移状态。
-- **下一步**：按 §10 阶段 0→4 推进，先补齐 §9 的 1–5 项，再申请 §12 的 A/B/C/E/F 四项签字。
-
----
-
-## 附录 A：本次使用的只读命令
+## 附录 A：I7.5.6 使用的只读命令
 
 ```text
 git status --short --branch / git log / git fetch origin codex/xiaok-integration
@@ -397,7 +318,7 @@ Get-Content C:\i794\pg.log / C:\i798\pg.log（确认已停止）
 Get-Acl / Get-PSDrive（备份目录 ACL 与磁盘余量）
 ```
 
-## 附录 B：关键证据值
+## 附录 B：I7.5.6 关键证据值
 
 | 证据 | 值 |
 | --- | --- |

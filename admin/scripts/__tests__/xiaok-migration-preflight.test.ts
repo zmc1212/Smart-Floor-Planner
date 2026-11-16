@@ -160,6 +160,22 @@ test('receipt checks expose delivered rows before adding a required message refe
   assert.match(statements[0], /status='delivered'$/);
 });
 
+test('0131 requires a jsonb column and one existing non-null default configuration', async () => {
+  const tag = '0131_platform_notification_config_not_null';
+  const inventory = catalog(['platform_configs']);
+  inventory.columns.set('platform_configs.key', 'text');
+  inventory.columns.set('platform_configs.notification_config', 'jsonb');
+  const ready = fakeClient(() => [{ count: '0' }]);
+  assert.equal((await auditPendingMigration(ready.client, inventory, tag, [tag])).status, 'passed');
+  assert.match(ready.statements[0], /count\(notification_config\)=1/);
+  const missing = fakeClient(() => [{ count: '1' }]);
+  const result = await auditPendingMigration(missing.client, inventory, tag, [tag]);
+  assert.equal(result.status, 'failed');
+  assert.deepEqual(result.data?.defaultConfig, { status: 'failed', count: 1 });
+  inventory.columns.set('platform_configs.notification_config', 'text');
+  assert.equal((await auditPendingMigration(ready.client, inventory, tag, [tag])).status, 'failed');
+});
+
 test('pilot constraints do not mistake an absent table for checked historical data', async () => {
   const ready = catalog(['enterprises', 'construction_projects', 'leads']);
   for (const table of ['enterprises', 'construction_projects']) {

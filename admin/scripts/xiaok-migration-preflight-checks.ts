@@ -121,6 +121,7 @@ const pauses = 'construction_stage_reminder_pauses', pilot = 'xiaok_pilot_projec
 const deliveries = 'domain_event_deliveries', outbox = 'domain_event_outbox';
 const delegations = 'native_workflow_delegations', events = 'native_workflow_delegation_events';
 const memories = 'assistant_long_term_memories';
+const platform = 'platform_configs';
 const enterpriseKey = 'enterprises.id', projectKey = 'construction_projects.enterprise_id,id';
 const messageKey = 'assistant_messages.enterprise_id,id', messageSource = 'assistant_messages.enterprise_id,conversation_id,id';
 
@@ -192,6 +193,9 @@ const migrationRisks: Record<string, Risk> = {
     newRelations: [pilot], newFunctions: ['xiaok_validate_pilot_projects/0'],
     newTriggers: [pilot + '.xiaok_pilot_projects_available'],
   },
+  '0131_platform_notification_config_not_null': {
+    requires: [platform], owners: [platform], columns: [platform + '.key', platform + '.notification_config'],
+  },
 };
 
 const findPending = (pending: string[], prefix: string) => pending.some(tag => tag.startsWith(prefix + '_'));
@@ -224,6 +228,15 @@ async function foreignKeyCheck(client: AuditClient, catalog: Catalog, fk: Constr
 }
 
 async function checkChangingData(client: AuditClient, catalog: Catalog, tag: string): Promise<Record<string, DataCheck>> {
+  if (tag.startsWith('0131_')) {
+    if (catalog.columns.get(platform + '.notification_config') !== 'jsonb') {
+      return { notificationType: { status: 'failed', reason: 'notification_config_must_be_jsonb' } };
+    }
+    return { defaultConfig: await countViolations(client, catalog, [platform], `
+      SELECT CASE WHEN count(*)=1 AND count(notification_config)=1 THEN 0 ELSE 1 END AS count
+      FROM app.platform_configs WHERE key='default'
+    `) };
+  }
   if (tag.startsWith('0120_') && catalog.columns.has(camera + '.identity_version')) {
     return { identityVersion: await countViolations(client, catalog, [camera], `
       SELECT count(*) FROM app.construction_camera_sd_windows
@@ -391,8 +404,9 @@ export async function auditNotificationConfig(client: AuditClient, migrationFile
   const { rows: [totals] } = await client.query<{ null_rows: string }>(
     'SELECT count(*) FILTER (WHERE notification_config IS NULL) AS null_rows FROM app.platform_configs',
   );
-  const { rows } = await client.query<{ notification_config: unknown }>(
-    'SELECT notification_config FROM app.platform_configs WHERE key=$1', ['default'],
+  const { rows } = await client.query<{ notification_config: unknown; digest: string | null }>(
+    "SELECT notification_config, encode(sha256(convert_to(notification_config::text,'UTF8')),'hex') AS digest FROM app.platform_configs WHERE key=$1",
+    ['default'],
   );
   const emptyObjectDefault = "'{}'::jsonb";
   const schema = platformConfigs.notificationConfig;
@@ -404,6 +418,7 @@ export async function auditNotificationConfig(client: AuditClient, migrationFile
     status: matchesSchema ? 'passed' : 'failed', is_nullable: column.is_nullable,
     column_default: column.column_default === null || column.column_default === emptyObjectDefault ? column.column_default : 'other_redacted',
     nullRows: Number(totals.null_rows), defaultRowCount: rows.length, defaultRowExists: rows.length === 1,
+    defaultRowDigest: rows[0]?.digest ?? null,
     schemaNotNull: schema.notNull, schemaHasDefault: schema.hasDefault, matchesSchema, ...comparison,
   };
 }

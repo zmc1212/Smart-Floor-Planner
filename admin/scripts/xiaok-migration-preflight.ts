@@ -35,15 +35,15 @@ type Identity = {
   rolsuper: boolean; rolbypassrls: boolean;
 };
 
-export function resolveApprovedTarget(value: string | undefined, nodeEnv?: string) {
+export function resolveApprovedTarget(value: string | undefined, nodeEnv?: string, role: 'sfp_app' | 'sfp_migrator' = username) {
   if (nodeEnv === 'production' || !value) return null;
   try {
     const url = new URL(value);
     if (!['postgres:', 'postgresql:'].includes(url.protocol) || !['localhost', '127.0.0.1'].includes(url.hostname)
       || (url.port && url.port !== String(connectionPort)) || url.pathname !== '/' + database
-      || url.username !== username || !url.password || url.search || url.hash) return null;
+      || url.username !== role || !url.password || url.search || url.hash) return null;
     return {
-      target: { hostname: url.hostname, connectionAddress: '127.0.0.1', port: connectionPort, database, user: username },
+      target: { hostname: url.hostname, connectionAddress: '127.0.0.1', port: connectionPort, database, user: role },
       password: decodeURIComponent(url.password),
     };
   } catch {
@@ -74,7 +74,8 @@ export function inspectLedger(rows: readonly LedgerRow[], inputs: MigrationInput
       && rows.some(row => row.id === entry.ledgerId && Number(row.created_at) === entry.when && row.hash === entry.hash),
   }));
   const facts = {
-    count: rows.length, lastId: rows.at(-1)?.id ?? null, duplicateTimestamps, historicalHashes,
+    count: rows.length, lastId: rows.at(-1)?.id ?? null,
+    lastTimestamp: rows.length ? Number(rows.at(-1)?.created_at) : null, duplicateTimestamps, historicalHashes,
     digest: createHash('sha256').update(JSON.stringify(rows)).digest('hex'),
   };
   try {
@@ -144,15 +145,18 @@ export async function readMigrationPreflight(client: AuditClient, inputs: Migrat
     const { rows: [space] } = await client.query<{ bytes: string }>('SELECT pg_database_size(current_database())::text AS bytes');
     const { rows: [migrationRole] } = await client.query<{
       rolsuper: boolean; rolbypassrls: boolean; rolcanlogin: boolean; appSchemaCreate: boolean; ledgerWrite: boolean;
+      ledgerSequenceUsage: boolean;
     }>(`
       SELECT rolsuper,rolbypassrls,rolcanlogin,
         has_schema_privilege(oid,'app','CREATE') AS "appSchemaCreate",
         has_table_privilege(oid,'app.__drizzle_migrations','SELECT')
-          AND has_table_privilege(oid,'app.__drizzle_migrations','INSERT') AS "ledgerWrite"
+          AND has_table_privilege(oid,'app.__drizzle_migrations','INSERT') AS "ledgerWrite",
+        coalesce(has_sequence_privilege(oid, pg_get_serial_sequence('app.__drizzle_migrations','id'), 'USAGE'),false)
+          AS "ledgerSequenceUsage"
       FROM pg_catalog.pg_roles WHERE rolname='sfp_migrator'
     `);
     const roleReady = migrationRole?.rolcanlogin === true && !migrationRole.rolsuper && !migrationRole.rolbypassrls
-      && migrationRole.appSchemaCreate && migrationRole.ledgerWrite;
+      && migrationRole.appSchemaCreate && migrationRole.ledgerWrite && migrationRole.ledgerSequenceUsage;
     const { rows: [backupRole] } = await client.query<{ rolcanlogin: boolean; rolbypassrls: boolean; rolsuper: boolean }>(
       "SELECT rolcanlogin,rolbypassrls,rolsuper FROM pg_catalog.pg_roles WHERE rolname='sfp_owner'",
     );
@@ -187,8 +191,9 @@ export async function readMigrationPreflight(client: AuditClient, inputs: Migrat
   }
 }
 
-async function windowsRuntime() {
-  if (process.platform !== 'win32') return { status: 'limited', verifiedForward: false } as const;
+export async function windowsRuntime() {
+  const unavailable = { status: 'limited', verifiedForward: false, workerCount: null, listeningPorts: null } as const;
+  if (process.platform !== 'win32') return unavailable;
   const script = `
     $ErrorActionPreference = 'Stop'
     $ProgressPreference = 'SilentlyContinue'
@@ -208,7 +213,7 @@ async function windowsRuntime() {
       Buffer.from(script, 'utf16le').toString('base64')], { timeout: 12000, windowsHide: true });
     return JSON.parse(stdout) as { status: string; verifiedForward: boolean; workerCount: number; listeningPorts: number[] };
   } catch {
-    return { status: 'limited', verifiedForward: false } as const;
+    return unavailable;
   }
 }
 

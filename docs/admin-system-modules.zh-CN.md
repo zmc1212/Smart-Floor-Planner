@@ -897,6 +897,10 @@ version-4 合同，详见 [Phase 7 完成记录](./surveying-module/legacy-kerne
 
 量房师-设计师获客合同已下线，仅作为 [`measurer-designer-acquisition.md`](./measurer-designer-acquisition.md) 留档。推荐网络签单提成以本清单与开发计划为准。转化快照对 `referrer_network` 生成三条应付行，对 `staff_activity` 与 `manual_entry` 生成两条（设计师 + 测量员；同一受益人可同时持有两行）。后台 `POST /api/lead-commissions/mark-paid` 与小程序镜像统一接收一至多条 `{ commissionId, paidAmount }`；同一租户事务锁定全部待支付行，最终金额发生变化时写入既有调整审计，并记录付款人、付款时间后标记已支付。最终金额必须大于 0 且最多两位小数；已付与已作废不可直接调整。撤销签约把完整作废行快照写入生命周期事件元数据；重新签约会按新合同、当前规则和当前受益人刷新并恢复待支付。后台与小程序的待支付行操作均不区分角色，包含推荐人行；当前界面只保留「确认打款」，弹窗预填当前金额并允许修正，一次提交完成金额审计与付款。后台批量确认会逐条显示可编辑金额。旧 `PATCH /api/lead-commissions/[id]`、小程序金额 PATCH 与零金额快捷接口仅作为兼容 API 保留，不再提供当前界面入口。独立后台工作台已按其批准的第 7 阶段设计源实现，并可按线索来源筛选。
 
+## 小K 第一版数据库迁移就绪（Implemented / Limited）
+
+从 `admin` 运行 `npm run xiaok:migration`，核验已批准的开发 PG17 目标、9 条迁移的 SQL 与 journal 指纹、备份目录和角色以及独立恢复证据。命令读取元数据和文件，输出五项就绪状态。`db:migration-backup` 使用 `sfp_backup` 导出开发库，归档和 Manifest 共用快照。`db:migration-restore-verify` 要求全新目标名，开发归档由独立集群的非超级用户 `sfp_restore` 演练。真实开发库的备份与恢复证据待补，执行窗口和任何切换需单独审批。[第一版执行单](./xiaok-i7512-v1-database-migration-runbook.md)
+
 ## 维护
 
 当路由、API、模型、权限、状态或限制变化时，更新受影响行及其英文镜像。每个模块只保留一条当前描述；不要在本文件记录修改序列或粘贴测试全文。

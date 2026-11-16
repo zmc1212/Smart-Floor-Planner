@@ -1078,6 +1078,10 @@ shortcut remain compatibility APIs without a current UI entry. The separate Admi
 workbench is implemented from its approved Phase-7 design source and can filter by
 lead source.
 
+## XiaoK V1 database migration readiness (Implemented / Limited)
+
+Run `npm run xiaok:migration` from `admin` to check the approved development PostgreSQL 17 target, SQL and journal fingerprints for the nine-migration batch, backup storage and roles, and evidence from an independent restore. The command reads metadata and files and reports five readiness statuses. `db:migration-backup` uses `sfp_backup` for development archives and shares a snapshot between the dump and the manifest. `db:migration-restore-verify` requires a fresh target name and uses non-superuser `sfp_restore` on a separate cluster for development archives. Live development backup and restore evidence are pending. The execution window and any cutover require separate approval. [V1 runbook](./xiaok-i7512-v1-database-migration-runbook.md)
+
 ## Maintenance
 
 When a route, API, model, permission, status, or limitation changes, update the
