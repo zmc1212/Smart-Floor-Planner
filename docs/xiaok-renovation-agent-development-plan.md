@@ -22,15 +22,15 @@ I6.16 防水 Agent V1.1 候选，复用 I6.15 原咨询委托。V1 冻结值与�
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | I7.5.22 V1.0 最终交付评审与发布准备，`codex/xiaok-integration`。方法约束：先验证真实构建与配置，禁止用删除测试或降低门槛掩盖基线。 |
-| 用户入口与结果 | 复用 I7.5.21 四端运行验收：C01、阶段提醒、简报待介入、点位入口、施工记录、经理待办、四端周报和已读回执。 |
-| 已证缺口 | Admin 生产构建、TypeScript、小程序 DevTools 编译通过；全量 ESLint 8 个既有 error、小程序 1 个既有基线测试失败。正式库无知识映射/文档/引用；129 账本迁移后备份/恢复未执行。 |
-| 已完成 | 修复生产 standalone 打包泄漏（uploads/keys/env/测试脚本），`deploy.sh` 拒绝占位密钥。只读核对 PG17.10、129 账本、135、0132、167 FORCE RLS、222 策略、171 复合外键和 1454 零业务行。 |
-| 下一动作 | 替换占位密钥、补 129 账本备份/恢复、配置生产 AI 与知识映射、确认模型/Worker 试点后另行发布审批。 |
-| 必要验收 | 生产 `.env.production` 显式配置；Bailian/Embedding 生产可用；Worker 门禁成对一致；干净检出重建；真机或书面 limited 豁免。 |
-| 失败与调用边界 | 本轮不合并 `main`、不部署生产、不启动生产 Worker、不发真实通知、不再次迁移、不写 1454。 |
-| 环境与资源 | 正式开发库只读连接 `127.0.0.1:5432`；备份归档 `C:\sfp-backups\i7512-20261116`；Admin 构建 117 页、standalone 308.1 MB；小程序 Stable 390×844。 |
-| 证据与后继 | [V1.0 最终评审](xiaok-v1-final-release-review.md) · [构建回执](../tmp/xiaok-i7522/admin-build-3.log) · [小程序编译](../tmp/xiaok-i7522/mini-compile/mini-compile.json) · [I7.5.21 最终验收](xiaok-i7521-final-runtime-acceptance.md)。 |
+| 交付与负责人 | I7.5.23 V1.0 生产安全加固与发布阻塞清理，`codex/xiaok-integration`。方法约束：生产缺失密钥失败关闭，禁止固定默认密钥和弱初始密码。 |
+| 用户入口与结果 | 四端业务不变；JWT、AI 凭据加密、管理员一次性密码、Docker 数据库凭据、生产环境门禁和 Worker 共享健康文件已加固。 |
+| 已证缺口 | 代码级安全阻塞已关闭；当前 `.env.production` 仍为占位/开发值，统一门禁退出 1；生产 Bailian/Embedding、Docker 镜像和实际凭据轮换未执行。 |
+| 已完成 | 生产 JWT 缺失/默认拒绝；AI 密钥独立且旧 JWT 密文可读；员工/企业账号一次性随机密码；Compose 数据库口令可覆盖；Worker 健康文件同卷；干净检出构建 117 页、standalone 308 MB 无 env/keys/uploads/tests。 |
+| 下一动作 | 填入经审批的生产密钥、Bailian/Embedding 和共享健康路径，重跑 `check:production-env`；在可用 Docker 环境构建并抽查镜像。 |
+| 必要验收 | `check:production-env` 退出 0；旧凭据轮换；生产知识映射/文档/引用；Worker 试点白名单；真机或书面 limited 豁免。 |
+| 失败与调用边界 | 本轮不合并 `main`、不部署生产、不启动生产 Worker、不发真实通知、不执行迁移、不写 1454、不提交密钥。 |
+| 环境与资源 | 干净检出临时目录 `tmp/xiaok-i7523-clean2`；Admin standalone 11,458 文件/308 MB；Docker daemon 不可用；当前 `.env.production` 门禁 10 项拒绝。 |
+| 证据与后继 | [I7.5.23 安全加固](xiaok-i7523-production-security-hardening.md) · [干净构建](../tmp/xiaok-i7523-clean-build3.log) · [安全测试](../tmp/xiaok-i7523-script-tests.log) · [V1.0 最终评审](xiaok-v1-final-release-review.md)。 |
 
 ## 3. 复用哪些成果
 
