@@ -81,15 +81,15 @@
 
 ## 7. C01 阶段知识接入（I7.2）
 
-`stage-chat-service.ts` 只处理业主普通阶段问题。解析顺序：
+`stage-chat-service.ts` 处理业主普通阶段问题及需要澄清的阶段追问。解析顺序：
 
 1. 原会话 `construction_links` 中唯一获权项目。
 2. 业主 customer followup binding 的项目。
 3. 业主唯一可访问的进行中项目。
 
-多项目、无项目或阶段未知时返回 `null`，继续走现有模型/专业 Agent 路由，不猜测。深入防水/水电问题由 `stage-router` 判定 `specialist_handoff`，同样不拦截。
+用获权项目的当前阶段解释准备、检查和工序。「提前」「接下来」「需要准备」本身不代表进度查询；询问实际进度、日期、待办等仍走现有事实/模型路径。只有「接下来呢」等未说明对象的追问会先问清是通用准备还是实际安排。多项目、无项目或阶段未知也先澄清。深入防水/水电问题仍使用 `specialist_handoff`；现有专业路由能识别的追问不被澄清分支截断。项目 `stage-answer` 接口不读取实际进度或待办，收到此类问题只指向项目事实入口。
 
-回答由 `answerStageQuestion` 确定性生成，经 `completeStageKnowledge` 写入原会话（`purpose='construction.stage_knowledge'`），保留原消息顺序和连续追问。回答末尾明确“不替代企业书面标准、正式图纸和现场验收”；企业知识未接入时明确“本次未核实企业施工标准”。
+阶段回答与澄清经 `completeStageKnowledge` 写入原会话（`purpose='construction.stage_knowledge'`），保留原消息顺序和连续追问。知识回答末尾明确“不替代企业书面标准、正式图纸和现场验收”；企业知识未接入时明确“本次未核实企业施工标准”。[I7.5.19 C01 回归](./xiaok-i7519-business-defect-fix-acceptance.md)。
 
 ## 8. 测试
 

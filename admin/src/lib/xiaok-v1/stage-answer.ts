@@ -1,6 +1,5 @@
-import { stageAgentRegistry } from './stage-agent-registry';
 import { stageKnowledgeRegistry, type StageKnowledgeFaq, type StageKnowledgePack } from './stage-knowledge';
-import { classifyStageIntent, routeStageQuestion, type StageRoute } from './stage-router';
+import { routeStageQuestion, type StageRoute } from './stage-router';
 import { stageForConstructionKey } from './stages';
 
 export const stageAnswerProtocol = 'xiaok-stage-answer-v1';
@@ -15,7 +14,7 @@ export type StageAnswer = {
   intent: string;
   answer: string;
   matchedFaqId: string | null;
-  basis: 'stage_knowledge' | 'enterprise_knowledge' | 'no_stage';
+  basis: 'stage_knowledge' | 'enterprise_knowledge' | 'no_stage' | 'clarification';
   enterpriseKnowledgeStatus: 'not_configured' | 'available' | 'unavailable';
   citations: Array<{ sourceId: string; title: string; quote: string }>;
   boundaries: string[];
@@ -123,10 +122,10 @@ export function answerStageQuestion(input: {
 }): StageAnswer {
   const route = input.route ?? routeStageQuestion({ constructionStageKey: input.constructionStageKey, message: input.question });
   const stage = stageForConstructionKey(input.constructionStageKey);
-  if (!stage) return noStageAnswer();
-  const agent = route.kind === 'no_stage' ? stageAgentRegistry.active(stage.stageId) : route.kind === 'specialist' ? route.stageAgent : route.agent;
+  if (!stage || route.kind === 'no_stage') return noStageAnswer();
+  const agent = route.kind === 'specialist' ? route.stageAgent : route.agent;
   const pack = stageKnowledgeRegistry.get(stage.stageId);
-  if (!agent || !pack) return noStageAnswer();
+  if (!pack) return noStageAnswer();
   if (route.kind === 'specialist') {
     return {
       protocol: stageAnswerProtocol, agentId: route.agentId, stageId: stage.stageId, stageName: stage.name,
@@ -137,11 +136,18 @@ export function answerStageQuestion(input: {
       citations: [], boundaries: pack.boundaries, handoff: { agentId: route.agentId, domain: route.domain },
     };
   }
+  if (route.intent !== 'stage_knowledge') {
+    const answer = route.intent === 'clarification'
+      ? '你是想了解这个阶段一般要准备什么，还是想查你家下一步的实际安排？'
+      : '这个问题要看项目的实际记录。请到对应项目查看进度、待办、提醒或周报。';
+    return { protocol: stageAnswerProtocol, agentId: agent.agentId, stageId: stage.stageId, stageName: stage.name,
+      intent: route.intent, answer, matchedFaqId: null, basis: 'clarification', enterpriseKnowledgeStatus: 'not_configured',
+      citations: [], boundaries: [], handoff: null };
+  }
   const audience = input.audience ?? 'owner';
   const enterprise = (input.enterpriseKnowledge ?? []).filter(item => item.title.trim() && item.quote.trim());
   const enterpriseStatus = input.enterpriseKnowledgeStatus ?? (enterprise.length ? 'available' : 'not_configured');
   const faq = selectStageFaq(pack, input.question, audience);
-  const intent = route.kind === 'stage_agent' ? route.intent : classifyStageIntent(input.question);
   let answer = composeAnswer(pack, faq, audience, enterprise);
   if (enterpriseStatus !== 'available') {
     answer = '本次未核实企业施工标准，以下为通用装修常识，不代表公司规定。\n\n' + answer;
@@ -154,7 +160,7 @@ export function answerStageQuestion(input: {
   }
   return {
     protocol: stageAnswerProtocol, agentId: agent.agentId, stageId: stage.stageId, stageName: stage.name,
-    intent, answer, matchedFaqId: faq?.id ?? null, basis: enterprise.length ? 'enterprise_knowledge' : 'stage_knowledge',
+    intent: route.intent, answer, matchedFaqId: faq?.id ?? null, basis: enterprise.length ? 'enterprise_knowledge' : 'stage_knowledge',
     enterpriseKnowledgeStatus: enterpriseStatus,
     citations: enterprise.map(item => ({ ...item })), boundaries: pack.boundaries, handoff: null,
   };

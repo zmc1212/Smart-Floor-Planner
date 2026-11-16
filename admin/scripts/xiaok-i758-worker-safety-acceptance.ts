@@ -262,11 +262,11 @@ async function main() {
       },
       advanceConfiguredStageReminders: async () => {
         counts.reminders += 1; return { mode: 'enterprise' as const, pilotId: null, scopeVersion: null,
-          scopeStatus: null, scannedProjects: null, skippedProjects: null, created: 0, errors: [] };
+          scopeStatus: null, scannedProjects: null, skippedProjects: null, candidates: 0, created: 0, errors: [] };
       },
       deliverConfiguredStageReminders: async () => {
         counts.reminderDeliveries += 1; return { mode: 'enterprise' as const, pilotId: null, scopeVersion: null,
-          scopeStatus: null, scannedProjects: null, skippedProjects: null, delivered: 0, paused: 0,
+          scopeStatus: null, scannedProjects: null, skippedProjects: null, delivered: 0, no_inbox: 0, paused: 0,
           cancelled: 0, failed: 0, errors: [] };
       },
     };

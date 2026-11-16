@@ -2,7 +2,7 @@
 
 **I7.4.4 试点项目配置和预检（Implemented）。** 有施工管理权限的企业管理员在选定企业下使用 `GET` 或 `PUT /api/construction/pilot-scopes/{pilotId}`。迁移 `0130` 在强制租户 RLS 下保存项目清单、操作人、状态和不可变版本。只读 `check:pilot-readiness` 输出企业安全项、所选项目缺项及范围外提醒和周报影响。实际投递沿用现有 Worker 规则和报告计划。验证使用独立 PG17。[范围合同](xiaok-pilot-project-scope.md)、[首家试点预检](xiaok-first-pilot-enterprise-readiness.md)。
 
-**I7.3 提醒跳转与经理工作台（Implemented）。** `GET /api/miniprogram/xiaok/reminders` 按当天项目成员/业主身份重新过滤，返回 `relatedIssueId`、`relatedTaskId`、`roomId`、`channel` 和独立 `history`；撤权后不再返回提醒正文。计划节点 `actionUrl` 携带真实 `roomId`，待办提醒携带真实事项 ID。项目经理没有私人会话时显示为工作台待办（`failed/no_inbox`），不再显示为发送失败。`construction_staff` 路由白名单包含 `xiaok/reminders` 与 `xiaok/stage-answer`。[验收](xiaok-i73-pilot-acceptance.md)。
+**I7.3 提醒跳转与经理工作台（Implemented）。** `GET /api/miniprogram/xiaok/reminders` 按当天项目成员/业主身份重新过滤，返回 `relatedIssueId`、`relatedTaskId`、`roomId`、`channel` 和独立 `history`；撤权后不再返回提醒正文。计划节点 `actionUrl` 携带真实 `roomId`，待办提醒携带真实事项 ID。只有当前项目经理可读取或取消自己的经理提醒；指定事项只给实际负责人。项目经理没有私人会话时仍在现有工作台查看待办，`failed/no_inbox` 只表示没有私聊送达。`construction_staff` 路由白名单包含 `xiaok/reminders` 与 `xiaok/stage-answer`。[验收](xiaok-i73-pilot-acceptance.md)。
 
 **I6.16 防水清单候选（Limited）。** 隔离发布的 Workflow revision 4 显式选用 `waterproof-specialist@2`。检查项保存项目、房间、Agent、Workflow revision/digest、所选来源版本和复核状态。官网原页通过核对后可用于待核对清单，目录现行性及托管检索故障单独保留。被拒终稿记录失败 Run，登记回执由原服务事件核验。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。
 
@@ -954,9 +954,9 @@ AI 工作台参考图展示：`/ai-studio/scenarios` 在每轮生成结果旁渲
 
 ### 轻量阶段 Agent、真实主动提醒与四端角色周报（I7.2，已实现 / 有限）
 
-`admin/src/lib/xiaok-v1/` 继续为十个阶段提供同一运行时。`stage-chat-service.ts` 从原 C01 会话、业主 customer binding 或唯一可访问项目中解析当前项目，再通过 `completeStageKnowledge` 在原会话回答普通阶段问题；多项目或阶段未知时不猜测，继续走现有模型/专业 Agent。防水、水电深入问题仍转交未改动的专业 Agent。
+`admin/src/lib/xiaok-v1/` 继续为十个阶段提供同一运行时。`stage-chat-service.ts` 从原 C01 会话、业主 customer binding 或唯一可访问项目中解析当前项目，再通过 `completeStageKnowledge` 在原会话回答普通阶段问题；准备、核对类问法按获权项目的当前阶段回答；明确询问实际进度或排期时保留原事实/模型路径。只问「接下来呢」或不能确认项目/阶段时在原会话澄清。防水、水电深入问题及已有专业追问继续走原路由。
 
-`reminder-service.ts` 将提醒保存到 `app.construction_stage_reminders`，暂停偏好保存到 `app.construction_stage_reminder_pauses`（`0128`），`0129` 增加 `conversation_id`、`message_id` 回执列。只有写入接收人现有会话后才标记 `delivered`；没有会话保留 `failed/no_inbox`。阶段重入使用真实阶段事件 ID，不复用旧阶段已过期提醒。暂停同时覆盖待发和失败，恢复按当前事实重算，收件人可按 `reminderId` 取消。老板收件人来自 `app.construction_actor_access(...)='owner'`，只接收真实计划/期限例外，同一主题 24 小时内跨项目去重；普通角色待办不推送给老板。Worker tick 继续隔离调用 `advanceStageReminders` / `deliverStageReminders`；配置的 `enterprise` / `pilot` 模式同时作用于生成和投递，试点投递只查询并发送最新范围中的到期提醒，不回退全企业。Worker Route 在四项提醒/周报入口前统一校验两套配置；pilot 必须企业 ID 和试点 ID 完全一致，enterprise 模式也必须使用相同的显式企业范围，否则四项均跳过，其他 Assistant Job 继续。微信订阅消息仍为 `not_run`；没有真实约定期限不生成超期提醒。
+`reminder-service.ts` 将提醒保存到 `app.construction_stage_reminders`，暂停偏好保存到 `app.construction_stage_reminder_pauses`（`0128`），`0129` 增加 `conversation_id`、`message_id` 回执列。Tick 分别统计候选 `candidates` 与提交的新增 `created`。投递计数互斥：有已提交消息回执才计 `delivered`，无私人收件箱计 `no_inbox`，发送失败计 `failed`；项目事务错误单列，重跑保留提醒和消息 ID。阶段重入使用真实阶段事件 ID，不复用旧阶段已过期提醒。暂停同时覆盖待发和失败，恢复按当前事实重算，收件人可按 `reminderId` 取消。老板收件人来自 `app.construction_actor_access(...)='owner'`，只接收真实计划/期限例外，同一主题 24 小时内跨项目去重；普通角色待办不推送给老板。Worker tick 继续隔离调用 `advanceStageReminders` / `deliverStageReminders`；配置的 `enterprise` / `pilot` 模式同时作用于生成和投递，试点投递只查询并发送最新范围中的到期提醒，不回退全企业。Worker Route 在四项提醒/周报入口前统一校验两套配置；pilot 必须企业 ID 和试点 ID 完全一致，enterprise 模式也必须使用相同的显式企业范围，否则四项均跳过，其他 Assistant Job 继续。微信订阅消息仍为 `not_run`；没有真实约定期限不生成超期提醒。[I7.5.19 回归](./xiaok-i7519-business-defect-fix-acceptance.md)。
 
 周报复用 `construction_reports`、版本和投递管线。隔离 PostgreSQL 17 真实运行生成业主、设计师、老板、施工人员事实、`weekSchedule`、来源引用、站内投递消息，并验证退出重进、历史周报、revision 2 保留 revision 1、撤权遮蔽。未配置模型时正文保持 `facts_only`，角色章节和统计来自同一不可变事实快照。周报生成与投递已按独立的企业/试点模式运行：试点生成只取试点范围与企业 `project_ids` 的交集；试点投递在发送前重新核验每条 pending/held 报告的 facts 快照，范围外回执直接撤销，不修改报告版本、facts hash、历史消息或 Outbox；两条路径都不回退企业全量。没有新增第二套周报运行时、事实库或通知系统。详见[I7.2 验收](./xiaok-i72-live-acceptance.md)、[发布就绪](./xiaok-v1-release-readiness.md)、[阶段架构](./xiaok-stage-agent-architecture.md)、[提醒引擎](./xiaok-stage-reminder-engine.md)、[周报合同](./xiaok-weekly-report-contract.md)与[知识包](./xiaok-stage-knowledge-packs.md)。
 

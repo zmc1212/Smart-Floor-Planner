@@ -7,6 +7,8 @@ import { KnowledgeSearchUnavailable, retrieveKnowledge } from '../knowledge/retr
 import { answerMessages, insufficientAnswer, parseSelection } from '../knowledge/answer';
 import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, heartbeat, markProviderStarted, runContext, type Lease } from './job-queue';
 import { isStageChatQuestion, stageChatForConversation } from '@/lib/xiaok-v1/stage-chat-service';
+import { classifyStageIntent } from '@/lib/xiaok-v1/stage-router';
+import { specialistProtocol } from '../specialists/registry';
 import { configuredGuidance, conversationGuidance, guidanceProgress } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
 import { textGateway } from './model-gateway';
@@ -43,11 +45,23 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
       const userId = lease.actor.principal.userId;
       const question = await withTenantTransaction(lease.enterpriseId, async tx => {
         await runContext(tx, lease);
-        const message = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
+        const message = await one(tx, sql`select content,seq from app.assistant_messages where enterprise_id=${lease.enterpriseId}
           and conversation_id=${String(context.run.conversation_id)} and id=${String(context.run.trigger_message_id)}`);
-        return message ? Array.from(safeText(message.content as Parameters<typeof safeText>[0])).join('') : '';
+        if (!message) return null;
+        const text = safeText(message.content as Parameters<typeof safeText>[0]);
+        if (!isStageChatQuestion(text)) return null;
+        if (classifyStageIntent(text) === 'clarification') {
+          if ((context.conversation.entry_snapshot as Row).activePublicSite) return null;
+          if (policy.specialist === specialistProtocol) {
+            const previous = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
+              and conversation_id=${String(context.run.conversation_id)} and seq<${String(message.seq)}
+              and author_kind='user' and user_id=${userId} order by seq desc limit 1`);
+            if (previous && !isStageChatQuestion(text, [safeText(previous.content as Parameters<typeof safeText>[0])])) return null;
+          }
+        }
+        return text;
       });
-      if (isStageChatQuestion(question)) {
+      if (question) {
         const reply = await withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);
           return stageChatForConversation({ tx, enterpriseId: lease.enterpriseId,

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { answerStageQuestion, selectStageFaq, stageAnswerViolations, unresolvedProjectAnswer } from '../stage-answer';
 import { stageKnowledgeRegistry } from '../stage-knowledge';
-import { isStageKnowledgeQuestion, routeStageQuestion } from '../stage-router';
+import { classifyStageIntent, isStageKnowledgeQuestion, routeStageQuestion } from '../stage-router';
+import { isStageChatQuestion } from '../stage-chat-service';
 import { constructionKeysForStage, stageDefinitions } from '../stages';
 
 const utilities = stageKnowledgeRegistry.get('utilities')!;
@@ -109,6 +110,27 @@ test('only ordinary stage knowledge turns use the deterministic pack', () => {
     assert.equal(isStageKnowledgeQuestion(question), false, question);
   assert.equal(isStageKnowledgeQuestion('闭水试验要怎么做？'), false);
   assert.equal(isStageKnowledgeQuestion('配电箱回路和线径怎么核对？'), false);
+});
+
+test('preparation wording uses the known stage; actual status and an ambiguous next step stay separate', () => {
+  const constructionStageKey = 'design';
+  for (const question of ['做设计这一阶段要提前核对哪些事项？', '现在做设计，接下来需要准备什么？', '这阶段要做哪些准备？']) {
+    assert.equal(isStageKnowledgeQuestion(question), true, question);
+    const answer = answerStageQuestion({ constructionStageKey, question });
+    assert.equal(answer.stageId, 'design', question);
+    assert.match(answer.answer, /图纸|方案/u, question);
+  }
+  for (const question of ['我们现在到哪个阶段了？', '做设计这一步提前了几天？', '施工计划排出来了吗？']) {
+    assert.equal(classifyStageIntent(question), 'progress', question);
+    assert.equal(isStageKnowledgeQuestion(question), false, question);
+    assert.equal(answerStageQuestion({ constructionStageKey, question }).matchedFaqId, null, question);
+  }
+  const answer = answerStageQuestion({ constructionStageKey, question: '那接下来呢？' });
+  assert.equal(answer.intent, 'clarification');
+  assert.equal(answer.matchedFaqId, null);
+  assert.match(answer.answer, /一般要准备什么.*还是.*实际安排/u);
+  assert.equal(isStageChatQuestion('那接下来呢？', ['做设计这一阶段要提前核对哪些事项？']), true);
+  assert.equal(isStageChatQuestion('那接下来呢？', ['卫生间管根的防水要怎么做？']), false);
 });
 
 test('deep professional questions never borrow pack answers', () => {

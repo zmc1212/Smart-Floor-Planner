@@ -50,7 +50,8 @@ function fake(dependencies: {
       calls.synced.push(projectId);
       const failure = dependencies.syncFailed?.[projectId];
       if (failure) throw failure;
-      return dependencies.createdByProject?.[projectId] ?? 1;
+      const created = dependencies.createdByProject?.[projectId] ?? 1;
+      return { candidates: created + 1, created };
     },
   };
   return { runtime, calls };
@@ -64,7 +65,7 @@ test('without pilotId the enterprise worker keeps its previous behavior', async 
 
   const result = await advanceStageReminders(now, '1454', undefined, runtime);
 
-  assert.deepEqual(result, { created: 2,
+  assert.deepEqual(result, { candidates: 3, created: 2,
     errors: [{ enterpriseId: '1454', projectId: '306', code: 'construction_not_found' }] });
   assert.deepEqual(calls.requested, [null]);
   assert.deepEqual(calls.resolutions, []);
@@ -81,7 +82,7 @@ test('a pilot run only processes the saved scope projects', async () => {
 
   const result = await advanceStageReminders(now, '1454', 'first-pilot', runtime);
 
-  assert.deepEqual(result, { created: 3, errors: [], pilotId: 'first-pilot', scopeVersion: 1,
+  assert.deepEqual(result, { candidates: 5, created: 3, errors: [], pilotId: 'first-pilot', scopeVersion: 1,
     scopeStatus: 'active', scannedProjects: 2, skippedProjects: 0 });
   assert.deepEqual(calls.requested, [['101', '205']]);
   assert.deepEqual(calls.synced, ['101', '205']);
@@ -107,7 +108,7 @@ test('a missing pilot processes no project', async () => {
 
   const result = await advanceStageReminders(now, '1454', 'missing-pilot', runtime);
 
-  assert.deepEqual(result, { created: 0, errors: [], pilotId: 'missing-pilot', scopeVersion: null,
+  assert.deepEqual(result, { candidates: 0, created: 0, errors: [], pilotId: 'missing-pilot', scopeVersion: null,
     scopeStatus: 'not_found', scannedProjects: 0, skippedProjects: 0 });
   assert.deepEqual(calls.requested, []);
   assert.deepEqual(calls.synced, []);
@@ -122,7 +123,7 @@ test('an inactive pilot processes no project', async () => {
 
   const result = await advanceStageReminders(now, '1454', 'first-pilot', runtime);
 
-  assert.deepEqual(result, { created: 0, errors: [], pilotId: 'first-pilot', scopeVersion: 4,
+  assert.deepEqual(result, { candidates: 0, created: 0, errors: [], pilotId: 'first-pilot', scopeVersion: 4,
     scopeStatus: 'inactive', scannedProjects: 0, skippedProjects: 0 });
   assert.deepEqual(calls.requested, []);
   assert.deepEqual(calls.synced, []);
@@ -137,7 +138,7 @@ test('an empty pilot scope processes no project', async () => {
 
   const result = await advanceStageReminders(now, '1454', 'first-pilot', runtime);
 
-  assert.deepEqual(result, { created: 0, errors: [], pilotId: 'first-pilot', scopeVersion: 1,
+  assert.deepEqual(result, { candidates: 0, created: 0, errors: [], pilotId: 'first-pilot', scopeVersion: 1,
     scopeStatus: 'empty', scannedProjects: 0, skippedProjects: 0 });
   assert.deepEqual(calls.requested, []);
   assert.deepEqual(calls.synced, []);
@@ -186,7 +187,7 @@ test('a resolver failure fails closed instead of scanning the enterprise', async
 
   const result = await advanceStageReminders(now, '1454', 'first-pilot', runtime);
 
-  assert.deepEqual(result, { created: 0, errors: [{ enterpriseId: '1454', projectId: '',
+  assert.deepEqual(result, { candidates: 0, created: 0, errors: [{ enterpriseId: '1454', projectId: '',
     code: 'pilot_scope_unavailable' }], pilotId: 'first-pilot', scopeVersion: null,
     scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0 });
   assert.deepEqual(calls.requested, []);
@@ -213,6 +214,7 @@ function deliveryFake(dependencies: {
   reminders?: DeliveryReminder[];
   scopeFailed?: Error;
   targetFailed?: Error;
+  failedProjects?: string[];
   permissionRevoked?: string[];
 } = {}) {
   const reminders = (dependencies.reminders ?? []).map(item => ({ ...item }));
@@ -233,7 +235,8 @@ function deliveryFake(dependencies: {
       return [...keys].map(key => ({ enterpriseId: key.split(':')[0], projectId: key.split(':')[1] }));
     },
     deliverProject: async (eid, pid, at) => {
-      const counts = { delivered: 0, paused: 0, cancelled: 0, failed: 0 };
+      if (dependencies.failedProjects?.includes(pid)) throw Object.assign(new Error('transaction rolled back'), { code: '40001' });
+      const counts = { delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0 };
       const pending = reminders.filter(item => item.enterpriseId === eid && item.projectId === pid
         && dueAt(item, at));
       if (dependencies.permissionRevoked?.includes(pid)) {
@@ -249,6 +252,18 @@ function deliveryFake(dependencies: {
   return { runtime, calls, reminders };
 }
 
+test('a rolled-back project contributes no deliveries and does not hide a committed project', async () => {
+  for (const pilotId of [undefined, 'first-pilot']) {
+    const { runtime, reminders } = deliveryFake({
+      scopes: { 'first-pilot': scope() }, reminders: [reminder('101'), reminder('205')], failedProjects: ['205'],
+    });
+    const result = await deliverStageReminders(now, enterpriseId, pilotId, runtime);
+    assert.equal(result.delivered, 1);
+    assert.deepEqual(result.errors, [{ enterpriseId, projectId: '205', code: '40001' }]);
+    assert.equal(reminders[1].status, 'pending');
+  }
+});
+
 // A. 企业模式保持原投递行为：查询不带项目范围，已 delivered 的历史不重复。
 test('A. without pilotId the enterprise delivery keeps its previous behavior', async () => {
   const { runtime, calls, reminders } = deliveryFake({
@@ -257,7 +272,7 @@ test('A. without pilotId the enterprise delivery keeps its previous behavior', a
 
   const result = await deliverStageReminders(now, '1454', undefined, runtime);
 
-  assert.deepEqual(result, { delivered: 2, paused: 0, cancelled: 0, failed: 0 });
+  assert.deepEqual(result, { delivered: 2, no_inbox: 0, paused: 0, cancelled: 0, failed: 0, errors: [] });
   assert.deepEqual(calls.requested, [{ enterpriseId: '1454', projectIds: null }]);
   assert.deepEqual(calls.resolutions, []);
   assert.deepEqual(calls.delivered, ['101', '306']);
@@ -273,7 +288,7 @@ test('B. a pilot run only delivers the saved scope projects', async () => {
 
   const result = await deliverStageReminders(now, '1454', 'first-pilot', runtime);
 
-  assert.deepEqual(result, { delivered: 2, paused: 0, cancelled: 0, failed: 0, errors: [],
+  assert.deepEqual(result, { delivered: 2, no_inbox: 0, paused: 0, cancelled: 0, failed: 0, errors: [],
     pilotId: 'first-pilot', scopeVersion: 1, scopeStatus: 'active',
     scannedProjects: 2, skippedProjects: 0 });
   assert.deepEqual(calls.requested, [{ enterpriseId: '1454', projectIds: ['101', '205'] }]);
@@ -317,7 +332,7 @@ test('E. a missing pilot delivers nothing', async () => {
 
   const result = await deliverStageReminders(now, '1454', 'missing-pilot', runtime);
 
-  assert.deepEqual(result, { delivered: 0, paused: 0, cancelled: 0, failed: 0, errors: [],
+  assert.deepEqual(result, { delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0, errors: [],
     pilotId: 'missing-pilot', scopeVersion: null, scopeStatus: 'not_found',
     scannedProjects: 0, skippedProjects: 0 });
   assert.deepEqual(calls.requested, []);
@@ -333,7 +348,7 @@ test('F. an inactive pilot delivers nothing', async () => {
 
   const result = await deliverStageReminders(now, '1454', 'first-pilot', runtime);
 
-  assert.deepEqual(result, { delivered: 0, paused: 0, cancelled: 0, failed: 0, errors: [],
+  assert.deepEqual(result, { delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0, errors: [],
     pilotId: 'first-pilot', scopeVersion: 4, scopeStatus: 'inactive',
     scannedProjects: 0, skippedProjects: 0 });
   assert.deepEqual(calls.requested, []);
@@ -347,7 +362,7 @@ test('G. a resolver failure delivers nothing instead of scanning the enterprise'
 
   const result = await deliverStageReminders(now, '1454', 'first-pilot', runtime);
 
-  assert.deepEqual(result, { delivered: 0, paused: 0, cancelled: 0, failed: 0,
+  assert.deepEqual(result, { delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0,
     errors: [{ enterpriseId: '1454', projectId: '', code: 'pilot_scope_unavailable' }],
     pilotId: 'first-pilot', scopeVersion: null, scopeStatus: 'unavailable',
     scannedProjects: 0, skippedProjects: 0 });
@@ -427,7 +442,7 @@ test('K. an empty pilot scope delivers nothing', async () => {
 
   const result = await deliverStageReminders(now, '1454', 'first-pilot', runtime);
 
-  assert.deepEqual(result, { delivered: 0, paused: 0, cancelled: 0, failed: 0, errors: [],
+  assert.deepEqual(result, { delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0, errors: [],
     pilotId: 'first-pilot', scopeVersion: 1, scopeStatus: 'empty',
     scannedProjects: 0, skippedProjects: 0 });
   assert.deepEqual(calls.requested, []);
@@ -443,7 +458,7 @@ test('L. a failed scope project query delivers nothing', async () => {
 
   const result = await deliverStageReminders(now, '1454', 'first-pilot', runtime);
 
-  assert.deepEqual(result, { delivered: 0, paused: 0, cancelled: 0, failed: 0,
+  assert.deepEqual(result, { delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0,
     errors: [{ enterpriseId: '1454', projectId: '', code: 'pilot_scope_unavailable' }],
     pilotId: 'first-pilot', scopeVersion: 1, scopeStatus: 'active',
     scannedProjects: 0, skippedProjects: 2 });

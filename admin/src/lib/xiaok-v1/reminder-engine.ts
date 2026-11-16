@@ -33,7 +33,7 @@ export type ReminderProjectFacts = {
   schedule: { available: boolean; version: number | null; nodes: ReminderPlanNode[] };
   pending: {
     ownerConfirmations: PendingItem[]; designerReviews: PendingItem[];
-    workerMissingMaterials: PendingItem[]; managerTodos: PendingItem[];
+    workerMissingMaterials: PendingItem[]; managerTodos: Array<PendingItem & { assigneeId: string }>;
   };
   issues: ReminderIssue[];
   lastRecordAt: string | null;
@@ -247,7 +247,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
   }
 
   // D-G. Role-specific pending items come from formal business services.
-  const pendingGroups: Array<{ items: PendingItem[]; trigger: ReminderTriggerType; role: ReminderRole; detail: string }> = [
+  const pendingGroups: Array<{ items: Array<PendingItem & { assigneeId?: string }>; trigger: ReminderTriggerType; role: ReminderRole; detail: string }> = [
     { items: facts.pending.ownerConfirmations, trigger: 'owner_confirmation', role: 'owner', detail: '有事项等待你确认，请查看当前版本后再决定。' },
     { items: facts.pending.designerReviews, trigger: 'designer_review', role: 'designer', detail: '有需求或图纸等待你核对，请按当前版本处理。' },
     { items: facts.pending.workerMissingMaterials, trigger: 'worker_missing_material', role: 'worker', detail: '现场资料需要补充，请拍照或文字说明后提交。' },
@@ -255,13 +255,17 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
   ];
   for (const group of pendingGroups) {
     if (!policy.roles.includes(group.role)) continue;
+    const recipientIds = recipientsFor(facts, group.role);
     for (const item of group.items) {
-      const recipientIds = recipientsFor(facts, group.role);
-      if (!recipientIds.length) continue;
-      for (const userId of recipientIds) drafts.push(draft({ facts, policy, now, triggerType: group.trigger, targetRole: group.role,
-        targetUserId: userId, relatedTaskId: item.id, relatedIssueId: item.id,
-        evidence: { kind: 'pending_item', refId: item.id, version: null, at: item.createdAt },
-        itemId: item.id, subject: item.title, dedupeSubject: item.dedupeSubject ?? item.id, detail: group.detail }));
+      for (const userId of recipientIds) {
+        // Project managers share project visibility, but a named assignee's
+        // todo must not appear as personal work for every manager.
+        if (item.assigneeId && item.assigneeId !== userId) continue;
+        drafts.push(draft({ facts, policy, now, triggerType: group.trigger, targetRole: group.role,
+          targetUserId: userId, relatedTaskId: item.id, relatedIssueId: item.id,
+          evidence: { kind: 'pending_item', refId: item.id, version: null, at: item.createdAt },
+          itemId: item.id, subject: item.title, dedupeSubject: item.dedupeSubject ?? item.id, detail: group.detail }));
+      }
     }
   }
 

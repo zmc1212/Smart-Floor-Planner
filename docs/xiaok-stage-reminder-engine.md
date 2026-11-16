@@ -48,6 +48,7 @@ enterpriseId:projectId:triggerType:stageId:targetRole:targetUserId:subject
 - 待办/确认/问题按业务对象 ID 去重。
 - 资料未更新按阶段 + 周边界去重。
 - 同一 tick 重复执行不会重复生成。
+- Tick 的 `candidates` 是去重并应用当前暂停、老板例外规则后的候选数；`created` 是本轮实际提交的新行数。相同事实重跑仍可有候选，已存在的提醒不再计新增。
 
 重评规则：
 
@@ -72,6 +73,8 @@ enterpriseId:projectId:triggerType:stageId:targetRole:targetUserId:subject
 
 普通阶段进入、角色待办、记录更新提醒不推送给老板。同一例外主题在 24 小时内跨项目去重。老板身份不自动获得设计审批、工程验收或项目成员权限。
 
+项目经理是施工端中的项目成员角色，负责本项目阶段交接、计划节点临近/结束/逾期、已有记录滞后及本人负责的待整改、整改中或待复核事项。真实期限超期也可触发；当前事项投影不提供真实期限，因此不推断 `issue_overdue`。普通协作可在「我的待办」处理；不转给老板，也不要求逐条审核。移除或改任其他项目角色后，经理提醒的当前项、历史和取消权限同时撤销。
+
 ## 6. 发送
 
 第一版优先站内提醒和待办。微信订阅消息仅在以下条件同时满足时标记已发送：
@@ -81,6 +84,8 @@ enterpriseId:projectId:triggerType:stageId:targetRole:targetUserId:subject
 3. 发送结果有可验证回执。
 
 模型失败不影响提醒记录：提醒由确定性事实计算生成，模型只可参与自然语言表达。
+
+Tick 只在会话消息和提醒回执一起提交后计 `delivered`。`no_inbox` 和 `failed` 分别记录本轮没有私聊收件箱和实际发送失败的尝试；失败回滚当次 Outbox 和消息写入，项目级事务错误另在 `errors` 报告。成功重播不增加 `delivered`，未解决的 `no_inbox` 在重试上限内仍会单独计数。
 
 ## 7. 安静时段
 
@@ -106,5 +111,7 @@ enterpriseId:projectId:triggerType:stageId:targetRole:targetUserId:subject
 - `GET /api/miniprogram/xiaok/reminders` 返回 `relatedIssueId`、`relatedTaskId`、`roomId`、`channel`、`history`，并按当天成员/业主身份重新过滤；撤权用户不再获得历史提醒正文。
 - `channel`：`conversation` 表示已有站内消息回执；`workbench` 表示项目经理通过现有工地工作台收件；`failed` 表示其他发送失败。`delivered` 明确保持未读，不显示为已读。
 - 当前待办只含 `pending/delivered/failed/paused`；`cancelled/expired` 进入历史并标记“已取消/已过期”。
-- 业主端提醒卡使用 C01 签发 entry 读取提醒；点击提醒进入对应项目的私人周报。项目经理没有私人会话时，提醒保留 `failed/no_inbox` 事实，但页面展示为“工作台待办”，不借用老板或施工人员会话。
+- 业主端提醒卡使用 C01 签发 entry 读取提醒；点击提醒进入对应项目的私人周报。项目经理在工地「我的待办」读取同一提醒记录并打开真实事项/房间。无私聊时保留 `failed/no_inbox` 和空消息回执；`channel=workbench` 表示可见待办，不表示私聊送达或已读。事项关闭后下一次评估移入历史；具体事项只向本人负责人生成。
 - `construction_staff` 的路由白名单包含 `xiaok/reminders` 与 `xiaok/stage-answer`，与工地工作台权限一致。
+
+[I7.5.19 合成库回归与回执](./xiaok-i7519-business-defect-fix-acceptance.md)。

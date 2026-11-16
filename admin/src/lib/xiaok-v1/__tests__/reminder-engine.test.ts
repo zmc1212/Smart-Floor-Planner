@@ -50,17 +50,18 @@ test('no record means unknown, not stalled', () => {
 });
 
 test('pending items are role addressed and never claim they are read or promised', () => {
-  const drafts = buildReminderDrafts(facts({ pending: {
+  const drafts = buildReminderDrafts(facts({ recipients: { ...facts().recipients, manager: ['5', '6'] }, pending: {
     ownerConfirmations: [{ id: 'c1', title: '确认客厅点位', createdAt: '2026-11-14T08:00:00+08:00' }],
     designerReviews: [{ id: 'd1', title: '核对厨房图纸', createdAt: '2026-11-14T08:00:00+08:00' }],
     workerMissingMaterials: [{ id: 'w1', title: '补拍卫生间管线照片', createdAt: '2026-11-14T08:00:00+08:00' }],
-    managerTodos: [{ id: 'm1', title: '安排隐蔽前核对', createdAt: '2026-11-14T08:00:00+08:00' }],
+    managerTodos: [{ id: 'm1', title: '安排隐蔽前核对', assigneeId: '5', createdAt: '2026-11-14T08:00:00+08:00' }],
   } }), policy, now);
   const byRole = Object.fromEntries(drafts.filter(item => item.triggerType !== 'stage_entered').map(item => [item.targetRole, item]));
   assert.equal(byRole.owner.relatedTaskId, 'c1');
   assert.equal(byRole.designer.relatedTaskId, 'd1');
   assert.equal(byRole.worker.relatedTaskId, 'w1');
   assert.equal(byRole.manager.relatedTaskId, 'm1');
+  assert.deepEqual(drafts.filter(item => item.triggerType === 'assignee_todo').map(item => item.targetUserId), ['5']);
   for (const item of Object.values(byRole)) assert.match(item.body, /不代表对方已读、已承诺或已完成/u);
 });
 

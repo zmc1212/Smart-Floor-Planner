@@ -66,16 +66,13 @@ async function reminderFacts(tx: PostgresTransaction, eid: string, project: Row,
   const recipients = await recipientsFor(tx, eid, project);
   const issueItems = issues.map(issue => ({ id: issue.issueId, title: issue.text, status: issue.classification,
     updatedAt: now.toISOString(), dueAt: null as string | null }));
-  const pendingFor = (role: ReminderRole) => {
-    const assigned = issues.filter(issue => issue.ownerId && recipients[role]?.includes(String(issue.ownerId)));
-    if (role === 'owner') return [];
-    if (role === 'designer') return assigned.filter(issue => ['awaiting_verification', 'awaiting_rectification'].includes(issue.classification))
-      .map(issue => ({ id: issue.issueId, title: issue.text, createdAt: now.toISOString(), dedupeSubject: issue.issueId + ':' + issue.revision }));
-    if (role === 'worker') return assigned.filter(issue => !['closed', 'dismissed', 'cancelled', 'invalidated'].includes(issue.classification))
-      .map(issue => ({ id: issue.issueId, title: issue.text, createdAt: now.toISOString(), dedupeSubject: issue.issueId + ':' + issue.revision }));
-    return assigned.filter(issue => ['awaiting_rectification', 'rectifying', 'awaiting_review'].includes(issue.classification))
-      .map(issue => ({ id: issue.issueId, title: issue.text, createdAt: now.toISOString(), dedupeSubject: issue.issueId + ':' + issue.revision }));
-  };
+  const pendingItem = (issue: typeof issues[number]) => ({ id: issue.issueId, title: issue.text,
+    createdAt: now.toISOString(), dedupeSubject: issue.issueId + ':' + issue.revision });
+  const designerReviews = issues.filter(issue => issue.ownerId && recipients.designer.includes(issue.ownerId)
+    && ['awaiting_verification', 'awaiting_rectification'].includes(issue.classification)).map(pendingItem);
+  const managerTodos = issues.flatMap(issue => issue.ownerId && recipients.manager.includes(issue.ownerId)
+    && ['awaiting_rectification', 'rectifying', 'awaiting_review'].includes(issue.classification)
+    ? [{ ...pendingItem(issue), assigneeId: issue.ownerId }] : []);
   // An invalidated source must be re-verified by the team before asking the
   // owner to confirm or the worker to supplement anything.
   const ownerConfirmations = issues.filter(issue => issue.classification !== 'invalidated'
@@ -99,8 +96,7 @@ async function reminderFacts(tx: PostgresTransaction, eid: string, project: Row,
       })),
     },
     pending: {
-      ownerConfirmations, designerReviews: pendingFor('designer'),
-      workerMissingMaterials: workerMissing, managerTodos: pendingFor('manager'),
+      ownerConfirmations, designerReviews, workerMissingMaterials: workerMissing, managerTodos,
     },
     issues: issueItems, lastRecordAt: latest?.last_at ? new Date(String(latest.last_at)).toISOString() : null,
     recipients,
@@ -126,10 +122,10 @@ export async function syncProjectReminders(tx: PostgresTransaction, eid: string,
   if (!stage) {
     await tx.execute(sql`update app.construction_stage_reminders set status='expired',last_error='construction_stage_unavailable',updated_at=now()
       where enterprise_id=${eid} and project_id=${projectId} and status in ('pending','paused','failed')`);
-    return { created: 0, cancelled: 0, expired: 0, skipped: true };
+    return { candidates: 0, created: 0, cancelled: 0, expired: 0, skipped: true };
   }
   const policy = reminderPolicyForStage(stage.stageId as StageId);
-  if (!policy) return { created: 0, cancelled: 0, expired: 0, skipped: true };
+  if (!policy) return { candidates: 0, created: 0, cancelled: 0, expired: 0, skipped: true };
   const facts = await reminderFacts(tx, eid, project, now);
   const pauses = await projectPauses(tx, eid, projectId);
   let drafts = buildReminderDrafts(facts, policy, now).filter(draft => !pausedBy(draft, pauses));
@@ -159,24 +155,26 @@ export async function syncProjectReminders(tx: PostgresTransaction, eid: string,
     await tx.execute(sql`update app.construction_stage_reminders set status=${change.status},last_error=${change.reason},updated_at=now()
       where enterprise_id=${eid} and reminder_id=${change.reminderId} and status in ('pending','paused','failed')`);
   }
+  let created = 0;
   for (const draft of drafts) {
-    await tx.execute(sql`insert into app.construction_stage_reminders
+    const inserted = await one(tx, sql`insert into app.construction_stage_reminders
       (reminder_id,enterprise_id,project_id,stage_id,construction_stage_key,target_role,target_principal_kind,target_principal_id,
        related_task_id,related_issue_id,trigger_type,trigger_evidence,scheduled_at,status,dedupe_key,action_url,title,body)
       values(${draft.reminderId},${eid},${projectId},${draft.stageId},${draft.constructionStageKey},${draft.targetRole},
        ${principalKind(draft.targetRole)},${draft.targetUserId},${draft.relatedTaskId},${draft.relatedIssueId},
        ${draft.triggerType},${JSON.stringify(draft.triggerEvidence)}::jsonb,${draft.scheduledAt},'pending',${draft.dedupeKey},
        ${draft.actionUrl},${draft.title},${draft.body})
-      on conflict (enterprise_id,dedupe_key) do nothing`);
+      on conflict (enterprise_id,dedupe_key) do nothing returning reminder_id`);
+    if (inserted) created++;
   }
-  return { created: drafts.length, cancelled: changes.filter(item => item.status === 'cancelled').length,
+  return { candidates: drafts.length, created, cancelled: changes.filter(item => item.status === 'cancelled').length,
     expired: changes.filter(item => item.status === 'expired').length, skipped: false };
 }
 
 type ReminderAdvanceError = { enterpriseId: string; projectId: string; code: string };
 export type ReminderPilotScopeStatus = PilotScopeResolutionStatus | 'unavailable';
-export type StageReminderAdvance = {
-  created: number;
+type ReminderAdvanceCounts = { candidates: number; created: number };
+export type StageReminderAdvance = ReminderAdvanceCounts & {
   errors: ReminderAdvanceError[];
   /** Present only for a pilot-scoped run. */
   pilotId?: string;
@@ -196,7 +194,7 @@ type ReminderProjectTarget = { enterpriseId: string; projectId: string };
 export type ReminderAdvanceRuntime = {
   resolveScope: (enterpriseId: string, pilotId: string, now: Date) => Promise<PilotScopeResolution>;
   listProjects: (enterpriseId: string | undefined, projectIds: readonly string[] | null) => Promise<ReminderProjectTarget[]>;
-  syncProject: (enterpriseId: string, projectId: string, now: Date) => Promise<number>;
+  syncProject: (enterpriseId: string, projectId: string, now: Date) => Promise<ReminderAdvanceCounts>;
 };
 
 const reminderAdvanceRuntime: ReminderAdvanceRuntime = {
@@ -211,8 +209,8 @@ const reminderAdvanceRuntime: ReminderAdvanceRuntime = {
     order by p.id limit 100`)).map(row => ({
     enterpriseId: String(row.enterprise_id), projectId: String(row.id),
   }))),
-  syncProject: async (enterpriseId, projectId, now) =>
-    (await withTenantTransaction(enterpriseId, tx => syncProjectReminders(tx, enterpriseId, projectId, now))).created,
+  syncProject: (enterpriseId, projectId, now) =>
+    withTenantTransaction(enterpriseId, tx => syncProjectReminders(tx, enterpriseId, projectId, now)),
 };
 
 function reminderErrorCode(error: unknown, fallback: string) {
@@ -228,18 +226,20 @@ function reminderErrorCode(error: unknown, fallback: string) {
  * scope processes nothing instead of falling back to the whole enterprise. */
 export async function advanceStageReminders(now = new Date(), onlyEnterprise?: string, pilotId?: string,
   runtime: ReminderAdvanceRuntime = reminderAdvanceRuntime): Promise<StageReminderAdvance> {
+  const total = { candidates: 0, created: 0, errors: [] as ReminderAdvanceError[] };
+  async function sync(enterpriseId: string, projectId: string) {
+    try {
+      const counts = await runtime.syncProject(enterpriseId, projectId, now);
+      total.candidates += counts.candidates;
+      total.created += counts.created;
+    } catch (error) {
+      total.errors.push({ enterpriseId, projectId, code: reminderErrorCode(error, 'stage_reminder_unavailable') });
+    }
+  }
   if (!pilotId) {
     const projects = await runtime.listProjects(onlyEnterprise, null);
-    let created = 0; const errors: ReminderAdvanceError[] = [];
-    for (const project of projects) {
-      try {
-        created += await runtime.syncProject(project.enterpriseId, project.projectId, now);
-      } catch (error) {
-        errors.push({ enterpriseId: project.enterpriseId, projectId: project.projectId,
-          code: reminderErrorCode(error, 'stage_reminder_unavailable') });
-      }
-    }
-    return { created, errors };
+    for (const project of projects) await sync(project.enterpriseId, project.projectId);
+    return total;
   }
   // A pilot run cannot invent its enterprise from the scope record.
   if (!onlyEnterprise) throw new Error('pilot_scope_enterprise_required');
@@ -248,12 +248,12 @@ export async function advanceStageReminders(now = new Date(), onlyEnterprise?: s
   try {
     scope = await runtime.resolveScope(enterpriseId, pilotId, now);
   } catch (error) {
-    return { created: 0, errors: [{ enterpriseId, projectId: '',
+    return { ...total, errors: [{ enterpriseId, projectId: '',
       code: reminderErrorCode(error, 'pilot_scope_unavailable') }], pilotId, scopeVersion: null,
       scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0 };
   }
   if (scope.status !== 'active') {
-    return { created: 0, errors: [], pilotId, scopeVersion: scope.scopeVersion, scopeStatus: scope.status,
+    return { ...total, pilotId, scopeVersion: scope.scopeVersion, scopeStatus: scope.status,
       scannedProjects: 0, skippedProjects: 0 };
   }
   const allowed = new Set(scope.projectIds);
@@ -261,23 +261,18 @@ export async function advanceStageReminders(now = new Date(), onlyEnterprise?: s
   try {
     targets = await runtime.listProjects(enterpriseId, scope.projectIds);
   } catch (error) {
-    return { created: 0, errors: [{ enterpriseId, projectId: '',
+    return { ...total, errors: [{ enterpriseId, projectId: '',
       code: reminderErrorCode(error, 'pilot_scope_unavailable') }], pilotId, scopeVersion: scope.scopeVersion,
       scopeStatus: 'active', scannedProjects: 0, skippedProjects: allowed.size };
   }
-  let created = 0; const errors: ReminderAdvanceError[] = []; const scanned = new Set<string>();
+  const scanned = new Set<string>();
   for (const target of targets) {
     // Only the resolved enterprise and its saved scope may create reminders.
     if (target.enterpriseId !== enterpriseId || !allowed.has(target.projectId) || scanned.has(target.projectId)) continue;
     scanned.add(target.projectId);
-    try {
-      created += await runtime.syncProject(enterpriseId, target.projectId, now);
-    } catch (error) {
-      errors.push({ enterpriseId, projectId: target.projectId,
-        code: reminderErrorCode(error, 'stage_reminder_unavailable') });
-    }
+    await sync(enterpriseId, target.projectId);
   }
-  return { created, errors, pilotId, scopeVersion: scope.scopeVersion, scopeStatus: 'active',
+  return { ...total, pilotId, scopeVersion: scope.scopeVersion, scopeStatus: 'active',
     scannedProjects: scanned.size, skippedProjects: allowed.size - scanned.size };
 }
 
@@ -344,10 +339,11 @@ async function deliverOne(tx: PostgresTransaction, eid: string, pid: string, rem
   const reminderId = String(reminder.reminder_id);
   const conversationId = await inboxFor(tx, eid, pid, reminder);
   if (!conversationId) {
-    await tx.execute(sql`update app.construction_stage_reminders set status='failed',last_error='no_inbox',
+    const updated = await one(tx, sql`update app.construction_stage_reminders set status='failed',last_error='no_inbox',
       delivery_attempts=delivery_attempts+1,updated_at=now()
-      where enterprise_id=${eid} and reminder_id=${reminderId} and status in ('pending','failed')`);
-    return 'failed' as const;
+      where enterprise_id=${eid} and reminder_id=${reminderId} and status in ('pending','failed') returning reminder_id`);
+    if (!updated) fail('context_changed');
+    return 'no_inbox' as const;
   }
   const event = await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
     values(${eid},'construction.stage_reminder.delivered.v1','construction_stage_reminder',${reminderId},1,'{"kind":"system"}',${reminderId},
@@ -361,19 +357,21 @@ async function deliverOne(tx: PostgresTransaction, eid: string, pid: string, rem
     author: 'system', eventId: String(event!.id), purpose: 'construction.stage_reminder',
     content: { version: 1, blocks: [{ type: 'text', text: String(reminder.title) + '\n' + String(reminder.body) }] },
   });
-  await tx.execute(sql`update app.construction_stage_reminders set status='delivered',delivered_at=${now},
+  const receipt = await one(tx, sql`update app.construction_stage_reminders set status='delivered',delivered_at=${now},
     conversation_id=${conversationId},message_id=${String(message.id)},delivery_attempts=delivery_attempts+1,last_error=null,updated_at=now()
-    where enterprise_id=${eid} and reminder_id=${reminderId} and status in ('pending','failed')`);
+    where enterprise_id=${eid} and reminder_id=${reminderId} and status in ('pending','failed') returning reminder_id`);
+  if (!receipt) fail('context_changed');
   return 'delivered' as const;
 }
 
-export type ReminderDeliveryCounts = { delivered: number; paused: number; cancelled: number; failed: number };
+export type ReminderDeliveryCounts = { delivered: number; no_inbox: number; paused: number; cancelled: number; failed: number };
+const emptyDeliveryCounts = (): ReminderDeliveryCounts => ({ delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0 });
 type ReminderDeliveryTarget = { enterpriseId: string; projectId: string };
 export type ReminderDeliveryError = { enterpriseId: string; projectId: string; code: string };
 export type ReminderDeliveryScopeStatus = PilotScopeResolutionStatus | 'unavailable';
 
 export type StageReminderDelivery = ReminderDeliveryCounts & {
-  errors?: ReminderDeliveryError[];
+  errors: ReminderDeliveryError[];
   /** Present only for a pilot-scoped run. */
   pilotId?: string;
   scopeVersion?: number | null;
@@ -399,7 +397,7 @@ export type ReminderDeliveryRuntime = {
  * existing idempotency. Pilot scope only decides which projects get here. */
 async function deliverProjectReminders(tx: PostgresTransaction, eid: string, pid: string,
   now: Date): Promise<ReminderDeliveryCounts> {
-  const counts: ReminderDeliveryCounts = { delivered: 0, paused: 0, cancelled: 0, failed: 0 };
+  const counts = emptyDeliveryCounts();
   const project = await one(tx, sql`select p.*,l.customer_user_id from app.construction_projects p
     join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid} and p.id=${pid} and l.archived_at is null for share of p,l`);
@@ -436,10 +434,12 @@ async function deliverProjectReminders(tx: PostgresTransaction, eid: string, pid
     }
     await tx.execute(sql`savepoint stage_reminder_delivery`);
     try {
-      if (await deliverOne(tx, eid, pid, reminder, now) === 'delivered') counts.delivered++; else counts.failed++;
+      const outcome = await deliverOne(tx, eid, pid, reminder, now);
       await tx.execute(sql`release savepoint stage_reminder_delivery`);
+      counts[outcome]++;
     } catch {
       await tx.execute(sql`rollback to savepoint stage_reminder_delivery`);
+      await tx.execute(sql`release savepoint stage_reminder_delivery`);
       await tx.execute(sql`update app.construction_stage_reminders set status='failed',last_error='delivery_failed',
         delivery_attempts=delivery_attempts+1,updated_at=now()
         where enterprise_id=${eid} and reminder_id=${String(reminder.reminder_id)} and status in ('pending','failed')`);
@@ -474,14 +474,19 @@ const reminderDeliveryRuntime: ReminderDeliveryRuntime = {
  * to the whole enterprise. */
 export async function deliverStageReminders(now = new Date(), onlyEnterprise?: string, pilotId?: string,
   runtime: ReminderDeliveryRuntime = reminderDeliveryRuntime): Promise<StageReminderDelivery> {
+  const total = { ...emptyDeliveryCounts(), errors: [] as ReminderDeliveryError[] };
+  async function deliver(enterpriseId: string, projectId: string) {
+    try {
+      const counts = await runtime.deliverProject(enterpriseId, projectId, now);
+      total.delivered += counts.delivered; total.no_inbox += counts.no_inbox;
+      total.paused += counts.paused; total.cancelled += counts.cancelled; total.failed += counts.failed;
+    } catch (error) {
+      total.errors.push({ enterpriseId, projectId, code: reminderErrorCode(error, 'stage_reminder_delivery_unavailable') });
+    }
+  }
   if (!pilotId) {
     const targets = await runtime.listTargets(onlyEnterprise, null, now);
-    const total: ReminderDeliveryCounts = { delivered: 0, paused: 0, cancelled: 0, failed: 0 };
-    for (const target of targets) {
-      const counts = await runtime.deliverProject(target.enterpriseId, target.projectId, now);
-      total.delivered += counts.delivered; total.paused += counts.paused;
-      total.cancelled += counts.cancelled; total.failed += counts.failed;
-    }
+    for (const target of targets) await deliver(target.enterpriseId, target.projectId);
     return total;
   }
   // A pilot run cannot invent its enterprise from the scope record.
@@ -491,12 +496,12 @@ export async function deliverStageReminders(now = new Date(), onlyEnterprise?: s
   try {
     scope = await runtime.resolveScope(enterpriseId, pilotId, now);
   } catch (error) {
-    return { delivered: 0, paused: 0, cancelled: 0, failed: 0,
+    return { ...total,
       errors: [{ enterpriseId, projectId: '', code: reminderErrorCode(error, 'pilot_scope_unavailable') }],
       pilotId, scopeVersion: null, scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0 };
   }
   if (scope.status !== 'active') {
-    return { delivered: 0, paused: 0, cancelled: 0, failed: 0, errors: [],
+    return { ...total,
       pilotId, scopeVersion: scope.scopeVersion, scopeStatus: scope.status,
       scannedProjects: 0, skippedProjects: 0 };
   }
@@ -505,24 +510,27 @@ export async function deliverStageReminders(now = new Date(), onlyEnterprise?: s
   try {
     targets = await runtime.listTargets(enterpriseId, scope.projectIds, now);
   } catch (error) {
-    return { delivered: 0, paused: 0, cancelled: 0, failed: 0,
+    return { ...total,
       errors: [{ enterpriseId, projectId: '', code: reminderErrorCode(error, 'pilot_scope_unavailable') }],
       pilotId, scopeVersion: scope.scopeVersion, scopeStatus: 'active',
       scannedProjects: 0, skippedProjects: allowed.size };
   }
-  const total: ReminderDeliveryCounts = { delivered: 0, paused: 0, cancelled: 0, failed: 0 };
   const scanned = new Set<string>();
   for (const target of targets) {
     // Only the resolved enterprise and its saved scope may be delivered.
     if (target.enterpriseId !== enterpriseId || !allowed.has(target.projectId) || scanned.has(target.projectId)) continue;
     scanned.add(target.projectId);
-    const counts = await runtime.deliverProject(enterpriseId, target.projectId, now);
-    total.delivered += counts.delivered; total.paused += counts.paused;
-    total.cancelled += counts.cancelled; total.failed += counts.failed;
+    await deliver(enterpriseId, target.projectId);
   }
-  return { ...total, errors: [], pilotId, scopeVersion: scope.scopeVersion, scopeStatus: 'active',
+  return { ...total, pilotId, scopeVersion: scope.scopeVersion, scopeStatus: 'active',
     scannedProjects: scanned.size, skippedProjects: allowed.size - scanned.size };
 }
+
+// Both reminder listing and cancellation use the project's live manager role.
+const activeManagerRecipient = sql`exists (select 1 from app.construction_members m
+  join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id and a.status='active'
+  where m.enterprise_id=r.enterprise_id and m.project_id=r.project_id
+  and m.admin_id=r.target_principal_id and m.active and m.role='manager')`;
 
 /** Read the recipient's current reminder inbox. Project access is rechecked
  * against today's membership/ownership so a revoked user cannot keep reading
@@ -544,20 +552,20 @@ export async function listStageReminders(actor: ActorContext, projectId?: string
     const pauses = await rows(tx, sql`select trigger_type from app.construction_stage_reminder_pauses
       where enterprise_id=${eid} and principal_kind=${kind} and principal_id=${principalId}
       ${projectId ? sql`and project_id=${projectId}` : sql``} order by trigger_type`);
-    const found = await rows(tx, sql`select r.*,p.name as project_name,
-        case when ${kind}='user' then (p.customer_access and l.customer_user_id=${principalId})
-          else (exists (select 1 from app.construction_members m where m.enterprise_id=r.enterprise_id
-                 and m.project_id=r.project_id and m.admin_id=${principalId} and m.active)
-               or app.construction_actor_access(${principalId}::bigint,r.enterprise_id)='owner')
-        end as accessible
+    const found = await rows(tx, sql`select r.*,p.name as project_name
       from app.construction_stage_reminders r
       join app.construction_projects p on p.enterprise_id=r.enterprise_id and p.id=r.project_id
       join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
       where r.enterprise_id=${eid} and r.target_principal_kind=${kind} and r.target_principal_id=${principalId}
       and r.status in ('pending','delivered','failed','paused','cancelled','expired') and l.archived_at is null
       ${projectId ? sql`and r.project_id=${projectId}` : sql``}
+      and ${kind === 'user' ? sql`p.customer_access and l.customer_user_id=${principalId}` : sql`case
+        when r.target_role='manager' then ${activeManagerRecipient}
+        else exists (select 1 from app.construction_members m where m.enterprise_id=r.enterprise_id
+          and m.project_id=r.project_id and m.admin_id=${principalId} and m.active)
+          or app.construction_actor_access(${principalId}::bigint,r.enterprise_id)='owner' end`}
       order by r.scheduled_at desc limit 100`);
-    const visible = found.filter(row => row.accessible === true).map(row => {
+    const visible = found.map(row => {
       let roomId: string | null = null;
       try { roomId = new URL(String(row.action_url), 'https://xiaok.local').searchParams.get('roomId'); } catch { /* Stored URL is server-built. */ }
       const status = String(row.status), lastError = row.last_error ? String(row.last_error) : null;
@@ -612,9 +620,10 @@ export async function cancelStageReminder(actor: ActorContext, input: { reminder
   if (!reminderId) fail('invalid_construction', 422);
   const kind = actor.principal.kind, principalId = kind === 'user' ? actor.principal.userId : actor.principal.adminId;
   return withTenantTransaction(actor.enterpriseId, async tx => {
-    const reminder = await one(tx, sql`select reminder_id,project_id,status from app.construction_stage_reminders
+    const reminder = await one(tx, sql`select reminder_id,project_id,status from app.construction_stage_reminders r
       where enterprise_id=${actor.enterpriseId} and reminder_id=${reminderId}
-      and target_principal_kind=${kind} and target_principal_id=${principalId} for update`);
+      and target_principal_kind=${kind} and target_principal_id=${principalId}
+      and (target_role<>'manager' or ${activeManagerRecipient}) for update`);
     if (!reminder) fail('construction_not_found', 404);
     if (!['pending', 'paused', 'failed'].includes(String(reminder.status))) fail('context_changed', 409);
     await tx.execute(sql`update app.construction_stage_reminders set status='cancelled',last_error='user_cancelled',updated_at=now()

@@ -4,14 +4,15 @@ import { rows, one } from '@/db/repositories/assistant-repository';
 import { retrieveKnowledge } from '@/lib/assistant/knowledge/retrieval';
 import { enterpriseKnowledgeEnabled } from '@/lib/assistant/knowledge-policy';
 import type { ActorContext } from '@/lib/assistant/contracts';
+import { routedConsultationSpecialist } from '@/lib/assistant/specialists/consultation';
 import { answerStageQuestion, unresolvedProjectAnswer, type EnterpriseKnowledgeItem, type StageAnswer } from './stage-answer';
-import { isStageKnowledgeQuestion } from './stage-router';
+import { classifyStageIntent, isStageKnowledgeQuestion, routeStageQuestion } from './stage-router';
 
-/** Retained for existing callers/tests. Only an ordinary stage knowledge turn
- * may use the deterministic pack; status/progress/reminder/todo turns keep
- * their existing fact/model route. */
-export function isStageChatQuestion(question: string) {
-  return isStageKnowledgeQuestion(question);
+/** Ordinary stage knowledge or a short clarification stays in this dialogue.
+ * Explicit project facts and specialist turns keep their existing route. */
+export function isStageChatQuestion(question: string, precedingQuestions: string[] = []) {
+  return isStageKnowledgeQuestion(question) || (classifyStageIntent(question) === 'clarification'
+    && (!precedingQuestions.length || !routedConsultationSpecialist(question, precedingQuestions)));
 }
 
 type ProjectRow = { id: string; name: string; current_stage_key: string | null; customer_user_id: string };
@@ -66,6 +67,7 @@ export async function stageProjectForConversation(tx: PostgresTransaction, eid: 
 }
 
 export function composeStageChatAnswer(answer: StageAnswer) {
+  if (answer.basis === 'clarification' || answer.basis === 'no_stage') return answer.answer;
   const lines = [answer.answer];
   if (answer.citations.length) {
     lines.push('', '参考：');
@@ -117,12 +119,17 @@ export async function stageChatForConversation(input: {
       resolution.status === 'ambiguous' ? resolution.projects.map(project => String(project.name)) : []));
   }
   const project = resolution.project;
+  const constructionStageKey = project.current_stage_key;
+  const route = routeStageQuestion({ constructionStageKey, message: input.question });
+  if (route.kind === 'specialist') return null;
+  if (route.kind === 'no_stage' || route.intent === 'clarification')
+    return composeStageChatAnswer(answerStageQuestion({ constructionStageKey, question: input.question, route }));
   const enterprise = input.enterpriseKnowledge
     ? await input.enterpriseKnowledge({ question: input.question })
     : await configuredEnterpriseKnowledge({ tx: input.tx, actor: input.actor, conversationId: input.conversationId,
       knowledgeEpoch: input.knowledgeEpoch, question: input.question });
-  const answer = answerStageQuestion({ constructionStageKey: project.current_stage_key as string | null,
-    question: input.question, audience: 'owner', enterpriseKnowledge: enterprise.items,
+  const answer = answerStageQuestion({ constructionStageKey, question: input.question, route,
+    audience: 'owner', enterpriseKnowledge: enterprise.items,
     enterpriseKnowledgeStatus: enterprise.status });
   if (answer.handoff) return null;
   return composeStageChatAnswer(answer);

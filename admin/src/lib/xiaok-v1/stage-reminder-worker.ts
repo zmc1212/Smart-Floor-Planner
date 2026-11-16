@@ -17,6 +17,7 @@ export type StageReminderChecks = {
   scopeStatus: ReminderPilotScopeStatus | null;
   scannedProjects: number | null;
   skippedProjects: number | null;
+  candidates: number;
   created: number;
   errors: StageReminderAdvance['errors'];
 };
@@ -30,20 +31,21 @@ export async function advanceConfiguredStageReminders(input: {
   const config = readStageReminderConfig(input.env);
   if (!config.ok) {
     return { mode: config.mode, pilotId: null, scopeVersion: null, scopeStatus: null,
-      scannedProjects: 0, skippedProjects: 0, created: 0,
+      scannedProjects: 0, skippedProjects: 0, candidates: 0, created: 0,
       errors: [{ enterpriseId: '', projectId: '', code: config.code }] };
   }
   const advance = input.advance ?? advanceStageReminders;
   if (config.mode === 'enterprise') {
     const result = await advance(input.now, config.enterpriseId ?? undefined);
     return { mode: 'enterprise', pilotId: null, scopeVersion: null, scopeStatus: null,
-      scannedProjects: null, skippedProjects: null, created: result.created, errors: result.errors };
+      scannedProjects: null, skippedProjects: null,
+      candidates: result.candidates, created: result.created, errors: result.errors };
   }
   const result = await advance(input.now, config.enterpriseId, config.pilotId);
   return { mode: 'pilot', pilotId: config.pilotId,
     scopeVersion: result.scopeVersion ?? null, scopeStatus: result.scopeStatus ?? null,
     scannedProjects: result.scannedProjects ?? 0, skippedProjects: result.skippedProjects ?? 0,
-    created: result.created, errors: result.errors };
+    candidates: result.candidates, created: result.created, errors: result.errors };
 }
 
 export type StageReminderDeliverFn =
@@ -60,6 +62,7 @@ export type StageReminderDeliveryChecks = {
   scannedProjects: number | null;
   skippedProjects: number | null;
   delivered: number;
+  no_inbox: number;
   paused: number;
   cancelled: number;
   failed: number;
@@ -80,20 +83,20 @@ export async function deliverConfiguredStageReminders(input: {
   const config = readStageReminderConfig(input.env);
   if (!config.ok) {
     return { mode: config.mode, pilotId: null, scopeVersion: null, scopeStatus: null,
-      scannedProjects: 0, skippedProjects: 0, delivered: 0, paused: 0, cancelled: 0, failed: 0,
+      scannedProjects: 0, skippedProjects: 0, delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0,
       errors: [{ enterpriseId: '', projectId: '', code: config.code }] };
   }
   const deliver = input.deliver ?? deliverStageReminders;
   if (config.mode === 'enterprise') {
     const result = await deliver(input.now, config.enterpriseId ?? undefined);
     return { mode: 'enterprise', pilotId: null, scopeVersion: null, scopeStatus: null,
-      scannedProjects: null, skippedProjects: null, delivered: result.delivered, paused: result.paused,
-      cancelled: result.cancelled, failed: result.failed, errors: [] };
+      scannedProjects: null, skippedProjects: null, delivered: result.delivered, no_inbox: result.no_inbox,
+      paused: result.paused, cancelled: result.cancelled, failed: result.failed, errors: result.errors };
   }
   const result = await deliver(input.now, config.enterpriseId, config.pilotId);
   return { mode: 'pilot', pilotId: config.pilotId,
     scopeVersion: result.scopeVersion ?? null, scopeStatus: result.scopeStatus ?? null,
     scannedProjects: result.scannedProjects ?? 0, skippedProjects: result.skippedProjects ?? 0,
-    delivered: result.delivered, paused: result.paused, cancelled: result.cancelled,
-    failed: result.failed, errors: result.errors ?? [] };
+    delivered: result.delivered, no_inbox: result.no_inbox, paused: result.paused,
+    cancelled: result.cancelled, failed: result.failed, errors: result.errors };
 }

@@ -62,12 +62,12 @@ function harness(env: Record<string, string | undefined>, extra: AssistantJobsTi
     advanceConfiguredStageReminders: async () => {
       counts.advanceReminders += 1;
       return { mode: 'pilot' as const, pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
-        scannedProjects: 1, skippedProjects: 0, created: 1, errors: [] };
+        scannedProjects: 1, skippedProjects: 0, candidates: 1, created: 1, errors: [] };
     },
     deliverConfiguredStageReminders: async () => {
       counts.deliverReminders += 1;
       return { mode: 'pilot' as const, pilotId: 'first-pilot', scopeVersion: 3, scopeStatus: 'active',
-        scannedProjects: 1, skippedProjects: 0, delivered: 1, paused: 0, cancelled: 0, failed: 0, errors: [] };
+        scannedProjects: 1, skippedProjects: 0, delivered: 1, no_inbox: 0, paused: 0, cancelled: 0, failed: 0, errors: [] };
     },
     runNativeWorkflowScheduleTick: async () => { counts.schedule += 1; return { enabled: true }; },
     runNativeDelegationTick: async () => { counts.delegations += 1; return { enabled: true }; },

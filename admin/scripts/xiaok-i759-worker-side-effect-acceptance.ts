@@ -312,9 +312,9 @@ async function main() {
       deliverConfiguredConstructionReports: async () => ({ mode: 'enterprise' as const, pilotId: null, scopeVersion: null,
         scopeStatus: null, scopedProjects: null, delivered: 0, errors: [] }),
       advanceConfiguredStageReminders: async () => ({ mode: 'enterprise' as const, pilotId: null, scopeVersion: null,
-        scopeStatus: null, scannedProjects: null, skippedProjects: null, created: 0, errors: [] }),
+        scopeStatus: null, scannedProjects: null, skippedProjects: null, candidates: 0, created: 0, errors: [] }),
       deliverConfiguredStageReminders: async () => ({ mode: 'enterprise' as const, pilotId: null, scopeVersion: null,
-        scopeStatus: null, scannedProjects: null, skippedProjects: null, delivered: 0, paused: 0, cancelled: 0, failed: 0, errors: [] }),
+        scopeStatus: null, scannedProjects: null, skippedProjects: null, delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0, errors: [] }),
     });
     check('gate.closed_tick_zero_calls', blockedTick.workerExecution.businessTasksEnabled === false
       && Object.values(counters).every(value => value === 0)

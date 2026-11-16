@@ -18,12 +18,12 @@ test('A. an unset mode runs the enterprise worker', async () => {
   const checks = await advanceConfiguredStageReminders({ now, env: {},
     advance: async (at, enterpriseId, pilotId) => {
       calls.push([at, enterpriseId, pilotId]);
-      return { created: 2, errors: [] };
+      return { candidates: 5, created: 2, errors: [] };
     } });
 
   assert.deepEqual(calls, [[now, undefined, undefined]]);
   assert.deepEqual(checks, { mode: 'enterprise', pilotId: null, scopeVersion: null, scopeStatus: null,
-    scannedProjects: null, skippedProjects: null, created: 2, errors: [] });
+    scannedProjects: null, skippedProjects: null, candidates: 5, created: 2, errors: [] });
 });
 
 // B. 显式 enterprise 模式按配置的企业范围运行，不切换为试点。
@@ -36,13 +36,13 @@ test('B. an explicit enterprise mode runs the enterprise worker', async () => {
       XIAOK_STAGE_REMINDER_PILOT_ID: 'first-pilot' },
     advance: async (at, enterpriseId, pilotId) => {
       calls.push([at, enterpriseId, pilotId]);
-      return { created: 1, errors: [] };
+      return { candidates: 1, created: 1, errors: [] };
     },
   });
 
   assert.deepEqual(calls, [[now, '1454', undefined]]);
   assert.deepEqual(checks, { mode: 'enterprise', pilotId: null, scopeVersion: null, scopeStatus: null,
-    scannedProjects: null, skippedProjects: null, created: 1, errors: [] });
+    scannedProjects: null, skippedProjects: null, candidates: 1, created: 1, errors: [] });
 });
 
 // C. pilot 模式把明确的企业 ID 和试点 ID 传入提醒服务，并回传范围结果。
@@ -51,13 +51,13 @@ test('C. a pilot mode passes both ids and records the scope result', async () =>
   const checks = await advanceConfiguredStageReminders({ now, env: pilotEnv,
     advance: async (at, enterpriseId, pilotId) => {
       calls.push([at, enterpriseId, pilotId]);
-      return { created: 3, errors: [], pilotId: 'first-pilot', scopeVersion: 2,
+      return { candidates: 4, created: 3, errors: [], pilotId: 'first-pilot', scopeVersion: 2,
         scopeStatus: 'active', scannedProjects: 2, skippedProjects: 0 };
     } });
 
   assert.deepEqual(calls, [[now, '1454', 'first-pilot']]);
   assert.deepEqual(checks, { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: 2,
-    scopeStatus: 'active', scannedProjects: 2, skippedProjects: 0, created: 3, errors: [] });
+    scopeStatus: 'active', scannedProjects: 2, skippedProjects: 0, candidates: 4, created: 3, errors: [] });
 });
 
 // D. pilot 配置错误时不调用提醒服务，也不回退 enterprise。
@@ -66,12 +66,12 @@ test('D. an invalid pilot configuration never calls the reminder service', async
   const checks = await advanceConfiguredStageReminders({
     now,
     env: { XIAOK_STAGE_REMINDER_MODE: 'pilot', XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454' },
-    advance: async () => { calls += 1; return { created: 99, errors: [] }; },
+    advance: async () => { calls += 1; return { candidates: 99, created: 99, errors: [] }; },
   });
 
   assert.equal(calls, 0);
   assert.deepEqual(checks, { mode: 'pilot', pilotId: null, scopeVersion: null, scopeStatus: null,
-    scannedProjects: 0, skippedProjects: 0, created: 0,
+    scannedProjects: 0, skippedProjects: 0, candidates: 0, created: 0,
     errors: [{ enterpriseId: '', projectId: '', code: 'stage_reminder_pilot_required' }] });
 });
 
@@ -81,7 +81,7 @@ test('E. an unavailable resolver never falls back to the enterprise scan', async
   const checks = await advanceConfiguredStageReminders({ now, env: pilotEnv,
     advance: async (at, enterpriseId, pilotId) => {
       calls.push([at, enterpriseId, pilotId]);
-      return { created: 0, errors: [{ enterpriseId: '1454', projectId: '',
+      return { candidates: 0, created: 0, errors: [{ enterpriseId: '1454', projectId: '',
         code: 'pilot_scope_unavailable' }], pilotId: 'first-pilot', scopeVersion: null,
         scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0 };
     } });
@@ -89,7 +89,7 @@ test('E. an unavailable resolver never falls back to the enterprise scan', async
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0], [now, '1454', 'first-pilot']);
   assert.deepEqual(checks, { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: null,
-    scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0, created: 0,
+    scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0, candidates: 0, created: 0,
     errors: [{ enterpriseId: '1454', projectId: '', code: 'pilot_scope_unavailable' }] });
 });
 
@@ -139,12 +139,12 @@ test('H. an unset mode delivers with the enterprise worker', async () => {
   const checks = await deliverConfiguredStageReminders({ now, env: {},
     deliver: async (at, enterpriseId, pilotId) => {
       calls.push([at, enterpriseId, pilotId]);
-      return { delivered: 2, paused: 1, cancelled: 0, failed: 0 };
+      return { delivered: 2, no_inbox: 3, paused: 1, cancelled: 0, failed: 0, errors: [] };
     } });
 
   assert.deepEqual(calls, [[now, undefined, undefined]]);
   assert.deepEqual(checks, { mode: 'enterprise', pilotId: null, scopeVersion: null, scopeStatus: null,
-    scannedProjects: null, skippedProjects: null, delivered: 2, paused: 1, cancelled: 0, failed: 0,
+    scannedProjects: null, skippedProjects: null, delivered: 2, no_inbox: 3, paused: 1, cancelled: 0, failed: 0,
     errors: [] });
 });
 
@@ -154,14 +154,14 @@ test('I. a pilot mode delivers only the configured scope', async () => {
   const checks = await deliverConfiguredStageReminders({ now, env: pilotEnv,
     deliver: async (at, enterpriseId, pilotId) => {
       calls.push([at, enterpriseId, pilotId]);
-      return { delivered: 3, paused: 0, cancelled: 1, failed: 0, errors: [],
+      return { delivered: 3, no_inbox: 1, paused: 0, cancelled: 1, failed: 0, errors: [],
         pilotId: 'first-pilot', scopeVersion: 2, scopeStatus: 'active',
         scannedProjects: 2, skippedProjects: 0 };
     } });
 
   assert.deepEqual(calls, [[now, '1454', 'first-pilot']]);
   assert.deepEqual(checks, { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: 2,
-    scopeStatus: 'active', scannedProjects: 2, skippedProjects: 0, delivered: 3, paused: 0,
+    scopeStatus: 'active', scannedProjects: 2, skippedProjects: 0, delivered: 3, no_inbox: 1, paused: 0,
     cancelled: 1, failed: 0, errors: [] });
 });
 
@@ -171,25 +171,25 @@ test('J. an invalid pilot configuration never calls delivery', async () => {
   const checks = await deliverConfiguredStageReminders({
     now,
     env: { XIAOK_STAGE_REMINDER_MODE: 'pilot', XIAOK_STAGE_REMINDER_ENTERPRISE_ID: '1454' },
-    deliver: async () => { calls += 1; return { delivered: 99, paused: 0, cancelled: 0, failed: 0 }; },
+    deliver: async () => { calls += 1; return { delivered: 99, no_inbox: 0, paused: 0, cancelled: 0, failed: 0, errors: [] }; },
   });
 
   assert.equal(calls, 0);
   assert.deepEqual(checks, { mode: 'pilot', pilotId: null, scopeVersion: null, scopeStatus: null,
-    scannedProjects: 0, skippedProjects: 0, delivered: 0, paused: 0, cancelled: 0, failed: 0,
+    scannedProjects: 0, skippedProjects: 0, delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0,
     errors: [{ enterpriseId: '', projectId: '', code: 'stage_reminder_pilot_required' }] });
 });
 
 // K. 范围不可用时投递结果保留失败状态，不回退企业扫描。
 test('K. an unavailable scope is reported without enterprise fallback', async () => {
   const checks = await deliverConfiguredStageReminders({ now, env: pilotEnv,
-    deliver: async () => ({ delivered: 0, paused: 0, cancelled: 0, failed: 0,
+    deliver: async () => ({ delivered: 0, no_inbox: 0, paused: 0, cancelled: 0, failed: 0,
       errors: [{ enterpriseId: '1454', projectId: '', code: 'pilot_scope_unavailable' }],
       pilotId: 'first-pilot', scopeVersion: null, scopeStatus: 'unavailable',
       scannedProjects: 0, skippedProjects: 0 }) });
 
   assert.deepEqual(checks, { mode: 'pilot', pilotId: 'first-pilot', scopeVersion: null,
-    scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0, delivered: 0, paused: 0,
+    scopeStatus: 'unavailable', scannedProjects: 0, skippedProjects: 0, delivered: 0, no_inbox: 0, paused: 0,
     cancelled: 0, failed: 0,
     errors: [{ enterpriseId: '1454', projectId: '', code: 'pilot_scope_unavailable' }] });
 });
