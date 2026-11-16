@@ -3,7 +3,9 @@ import crypto from 'node:crypto';
 import { test } from 'node:test';
 import {
   CredentialEncryptionError,
+  decryptMediaStorageSecret,
   decryptText,
+  encryptMediaStorageSecret,
   encryptText,
   isCredentialEncryptionReady,
 } from '@/lib/crypto';
@@ -98,5 +100,57 @@ test('old JWT-encrypted ciphertext remains readable and failures do not leak the
     assert.match(message, /凭据解密失败/);
     assert.equal(message.includes(oldJwt), false);
     assert.equal(message.includes('n'.repeat(64)), false);
+  });
+});
+
+test('rotating JWT keeps ciphertext readable through the previous secret', () => {
+  const oldJwt = 'previous-jwt-' + 'p'.repeat(48);
+  const payload = legacyEncrypt('provider-key-before-rotation', oldJwt);
+  withEnv({
+    NODE_ENV: 'production',
+    JWT_SECRET: 'rotated-jwt-' + 'r'.repeat(48),
+    JWT_SECRET_PREVIOUS: oldJwt,
+    AI_PROVIDER_KEY_ENCRYPTION_SECRET: 'n'.repeat(64),
+  }, () => {
+    assert.equal(decryptText(payload), 'provider-key-before-rotation');
+  });
+});
+
+test('rotating the AI provider key keeps ciphertext readable through its previous value', () => {
+  const previousAi = 'previous-ai-' + 'q'.repeat(48);
+  const payload = legacyEncrypt('provider-key-before-ai-rotation', previousAi);
+  withEnv({
+    NODE_ENV: 'production',
+    JWT_SECRET: 'j'.repeat(64),
+    AI_PROVIDER_KEY_ENCRYPTION_SECRET: 'current-ai-' + 's'.repeat(48),
+    AI_PROVIDER_KEY_ENCRYPTION_SECRET_PREVIOUS: previousAi,
+  }, () => {
+    const current = encryptText('provider-key-after-rotation');
+    assert.equal(decryptText(current), 'provider-key-after-rotation');
+    assert.equal(decryptText(payload), 'provider-key-before-ai-rotation');
+  });
+});
+
+test('media credentials stay readable after introducing or rotating the media key', () => {
+  const legacyPayload = legacyEncrypt('media-secret-under-jwt', 'j'.repeat(64));
+  withEnv({
+    NODE_ENV: 'production',
+    JWT_SECRET: 'j'.repeat(64),
+    MEDIA_STORAGE_KEY_ENCRYPTION_SECRET: 'm'.repeat(64),
+  }, () => {
+    const current = encryptMediaStorageSecret('media-secret-current');
+    assert.equal(decryptMediaStorageSecret(current), 'media-secret-current');
+    assert.equal(decryptMediaStorageSecret(legacyPayload), 'media-secret-under-jwt');
+  });
+
+  const previousMedia = 'previous-media-' + 'v'.repeat(48);
+  const rotatedPayload = legacyEncrypt('media-secret-before-rotation', previousMedia);
+  withEnv({
+    NODE_ENV: 'production',
+    JWT_SECRET: 'j'.repeat(64),
+    MEDIA_STORAGE_KEY_ENCRYPTION_SECRET: 'm'.repeat(64),
+    MEDIA_STORAGE_KEY_ENCRYPTION_SECRET_PREVIOUS: previousMedia,
+  }, () => {
+    assert.equal(decryptMediaStorageSecret(rotatedPayload), 'media-secret-before-rotation');
   });
 });

@@ -46,7 +46,9 @@ function primaryCredentialSecret(env: NodeJS.ProcessEnv = process.env): string {
  */
 function legacyCredentialSecrets(env: NodeJS.ProcessEnv = process.env): string[] {
   const secrets = [
+    env.AI_PROVIDER_KEY_ENCRYPTION_SECRET_PREVIOUS?.trim(),
     env.POLLINATIONS_KEY_ENCRYPTION_SECRET?.trim(),
+    env.JWT_SECRET_PREVIOUS?.trim(),
     env.JWT_SECRET?.trim(),
   ];
   if (env.NODE_ENV !== 'production') secrets.push(LEGACY_DEFAULT_SECRET);
@@ -131,13 +133,38 @@ function getMediaStorageSecret() {
     || DEV_CREDENTIAL_SECRET;
 }
 
+/**
+ * Read-only candidates for media credentials written before the dedicated
+ * media key existed or before a rotation. Encryption always uses the primary
+ * secret; only decryption walks this list, mirroring AI provider credentials.
+ */
+function legacyMediaStorageSecrets(env: NodeJS.ProcessEnv = process.env): string[] {
+  const secrets = [
+    env.MEDIA_STORAGE_KEY_ENCRYPTION_SECRET_PREVIOUS?.trim(),
+    env.AI_PROVIDER_KEY_ENCRYPTION_SECRET?.trim(),
+    env.AI_PROVIDER_KEY_ENCRYPTION_SECRET_PREVIOUS?.trim(),
+    env.JWT_SECRET?.trim(),
+    env.JWT_SECRET_PREVIOUS?.trim(),
+  ];
+  if (env.NODE_ENV !== 'production') secrets.push(LEGACY_DEFAULT_SECRET);
+  return [...new Set(secrets.filter((value): value is string => Boolean(value)))];
+}
+
 export function encryptMediaStorageSecret(plainText: string) {
   return encryptWithSecret(plainText, getMediaStorageSecret());
 }
 
 export function decryptMediaStorageSecret(payload?: string | null) {
   if (!payload) return '';
-  return decryptWithSecret(payload, getMediaStorageSecret());
+  const candidates = [...new Set([getMediaStorageSecret(), ...legacyMediaStorageSecrets()])];
+  for (const secret of candidates) {
+    try {
+      return decryptWithSecret(payload, secret);
+    } catch {
+      // Try the next read-only compatibility secret.
+    }
+  }
+  throw new Error('媒体存储凭据解密失败');
 }
 
 export function isMediaStorageEncryptionReady() {
