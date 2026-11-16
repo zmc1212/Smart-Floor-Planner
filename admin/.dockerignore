@@ -27,9 +27,6 @@ Pollinations API.json
 keys
 *.pem
 scripts/**/*.test.mjs
-scripts/**/*acceptance*
-scripts/**/*live*
-scripts/**/*fixture*
 deploy.sh
 auto_deploy.sh
 docker-compose*.yml

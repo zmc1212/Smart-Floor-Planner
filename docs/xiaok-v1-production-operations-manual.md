@@ -1,0 +1,184 @@
+# 家客来 V1.0 生产运维手册
+
+2026-11-16（Asia/Shanghai）。适用分支 `codex/xiaok-integration`，发布候选提交见《V1.0 最终交付报告》。本手册只描述已实现并经过验证的操作；未配置或未批准的步骤明确标注。
+
+## 1. 发布物与版本
+
+| 项目 | 值 |
+| --- | --- |
+| 源码分支 | `codex/xiaok-integration` |
+| 发布候选提交 | 见《V1.0 最终交付报告》第 1 节 |
+| Admin 镜像 | `sfp-admin:i7524-final`（SHA-256 见交付报告） |
+| 数据库迁移 | 129 条账本，末条 `0132_assistant_platform_knowledge_citations`（ID 135） |
+| 小程序 | AppID `wxa7728432f59779d1`，生产预览编译 9.0 MB |
+
+发布必须从干净检出构建；不得直接使用开发工作区的 `node_modules`、`.next` 或 `.env.local`。
+
+## 2. 生产环境变量
+
+统一门禁：`admin/scripts/production-env-check.mjs`。`deploy.sh` 在触碰 PostgreSQL 之前执行；任一必填项缺失、占位或弱值即失败退出，这是预期的失败关闭。
+
+### 2.1 必需（生产必须显式设置）
+
+| 变量 | 要求 |
+| --- | --- |
+| `JWT_SECRET` | ≥32 字符，非占位，生产缺失即失败 |
+| `INTERNAL_SECRET` | ≥32 字符，独立随机 |
+| `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET` | ≥32 字符，独立随机 |
+| `AI_PROVIDER_KEY_ENCRYPTION_SECRET` | ≥32 字符，必须不等于 `JWT_SECRET` |
+| `CRON_SECRET` | ≥32 字符，preflight 与 tick 共用 |
+| `DATABASE_URL` | 应用账号，不得使用 `_local_only` 口令 |
+| `DATABASE_MIGRATION_URL` | 迁移账号，不得使用 `_local_only` 口令 |
+| `AUTH_COOKIE_SECURE` | HTTPS 环境必须 `true` |
+| `ALLOW_TENANT_ENTERPRISE_RESET` | 生产必须 `false` |
+| `WX_APPID` / `WX_APPSECRET` | 生产小程序凭据 |
+| `WECHAT_MINIPROGRAM_CODE_ENV` | `release` |
+| `MINIPROGRAM_API_PUBLIC_ORIGIN` | 生产 HTTPS 域名 |
+| `DEPLOY_SMOKE_USERNAME` / `DEPLOY_SMOKE_PASSWORD` | 最小权限专用账号，≥12 字符，不得与初始管理员同口令 |
+
+### 2.2 AI 知识（启用前必需）
+
+- 百炼托管 RAG：`ASSISTANT_KNOWLEDGE_PROVIDER=BAILIAN_RAG`、`ASSISTANT_BAILIAN_RAG_WORKSPACE_ID`、`ASSISTANT_BAILIAN_RAG_API_KEY`、`ASSISTANT_BAILIAN_RAG_CATEGORY_ID`（默认 `default`）、`ASSISTANT_BAILIAN_RAG_EMBEDDING_MODEL=text-embedding-v4`。
+- 本地备用：`ASSISTANT_EMBEDDING_URL`、`ASSISTANT_EMBEDDING_API_KEY`；回环地址必须显式 `SFP_ALLOW_LOOPBACK_EMBEDDING=true`，且只在同容器 sidecar 且已验证时使用。
+- 文本模型：平台 `llm_config` 或 `ASSISTANT_TEXT_MODEL` 指定。当前已批准默认是 `qwen3.7-flash`；DeepSeek Flash 只有在完成协议、工具、引用与费用验证后才可设 `ASSISTANT_RESPONSES_API=1`。
+- 未配置知识时，AI 必须降级为 Facts-only 或明确 `insufficient_evidence`/`retrieval_unavailable`，不得编造来源。
+
+### 2.3 Worker（启用前必需）
+
+- `ASSISTANT_WORKER_ENDPOINT=http://admin:3005/api/internal/assistant/jobs/run`
+- `CRON_SECRET`
+- `ASSISTANT_WORKER_HEALTH_FILE=/shared/assistant-worker-health.json`（compose 已为 `admin` 与 `assistant-worker` 挂载同一 `assistant_health` 卷）
+- 试点门禁必须成对一致：
+  - `XIAOK_STAGE_REMINDER_MODE=pilot`、`XIAOK_STAGE_REMINDER_ENTERPRISE_ID`、`XIAOK_STAGE_REMINDER_PILOT_ID`
+  - `XIAOK_WEEKLY_REPORT_MODE=pilot`、`XIAOK_WEEKLY_REPORT_ENTERPRISE_ID`、`XIAOK_WEEKLY_REPORT_PILOT_ID`
+
+任一缺失、不一致、pilot 不存在/未激活/为空或查询失败时，Worker 必须以退出码 2 停止，不得回退企业全量。
+
+### 2.4 生产密钥获取
+
+生产密钥由运维在受控密码库生成并注入运行环境；不得写入 Git、镜像、工单或日志。本轮未生成或写入任何真实生产密钥。
+
+## 3. 标准部署流程
+
+1. 从发布提交干净检出，确认 `git status` 为空。
+2. `cd admin && npm ci`；`npm run build`；确认 `.next/standalone` 生成。
+3. 构建镜像：`docker build --build-arg SFP_RELEASE_VERSION=<版本> -t <镜像>:<版本> .`；用第 6 节命令抽查镜像内容。
+4. 准备运行时 env 文件（不进入镜像），运行 `docker compose --env-file <env> config` 核对服务与卷。
+5. 执行 `deploy.sh`：先运行生产环境门禁，再创建迁移前备份，迁移器无待执行项时不重复迁移。
+6. 启动 `postgres`、`admin`、`lead-claim-worker`；等待健康检查与登录 smoke 通过。
+7. 首次启用 AI 知识前完成第 5 节映射/上传/索引/引用冒烟。
+8. `assistant-worker` 只在单独批准后按第 4 节启动；未批准时保持不启动。
+
+`deploy.sh` 不会启动 `assistant-worker`；该服务属于 compose `assistant` profile，默认不启动。
+
+## 4. Worker 启停
+
+启动前：
+1. 确认 `CRON_SECRET`、试点企业/项目、共享健康文件均已配置。
+2. `GET /api/internal/assistant/jobs/preflight`：门禁必须 `open` 且 `deliveryScope=pilot`。
+3. 单独审批启动窗口；未批准外部通知时保持通知开关关闭。
+
+启动：`docker compose --profile assistant up -d assistant-worker`。
+停止：`docker compose --profile assistant stop assistant-worker`。
+
+启动后检查：
+- 容器 healthcheck 通过；
+- `/shared/assistant-worker-health.json` 有 PID、时间、`lastSuccessAt`、`safetyGate`；
+- 门禁关闭或 preflight 不可达时进程以非零码退出，不得回退企业全量。
+
+当前生产默认：`.env.production` 未设置任何 `XIAOK_STAGE_REMINDER_*`/`XIAOK_WEEKLY_REPORT_*`，门禁关闭；外部通知 `subscriptionMessagesEnabled` 未开启（平台默认配置版本 2、8 个模板、无该键）。
+
+## 5. 知识库运营
+
+1. 在获批的北京 Workspace 创建企业索引与平台公共库；不得复用验收临时库。
+2. 通过 `/assistant-knowledge` 完成文档上传、审核、索引、发布。
+3. 核对 `assistant_managed_knowledge_libraries` 企业映射与 `assistant_platform_knowledge_library` 平台单条映射。
+4. 服务端检索冒烟：企业证据优先、平台补充、跨企业/错阶段拒绝、引用可重开、撤权后 `source_unavailable`。
+5. 引用必须来自当前接收人有权访问的真实来源；无有效引用时明确标记，不伪造。
+
+## 6. 镜像验收命令
+
+```bash
+docker run --rm --entrypoint sh <image> -c '
+  cd /app &&
+  find . -name ".env*" -type f | wc -l &&
+  find . -type f \( -name "*.pem" -o -name "*.key" \) | wc -l &&
+  find . -type d -name uploads | wc -l &&
+  ls -1 scripts'
+```
+
+预期：`.env*=0`、密钥文件 `=0`、uploads `=0`；`scripts/` 仅 8 个运行时脚本：
+`assistant-worker.mjs`、`assistant-worker-health.mjs`、`assistant-worker-healthcheck.mjs`、`lead-claim-worker.mjs`、`lead-claim-worker-healthcheck.mjs`、`postgres-integration-migrations.mjs`、`postgres-migrate.mjs`、`production-env-check.mjs`。
+
+## 7. 数据库备份
+
+- 备份账号：`sfp_backup`（LOGIN、BYPASSRLS、非超级用户）。
+- 停写核验：无其他客户端连接、无未结束事务、无应用监听、无 Worker、无活动租约。
+- 命令（停写窗口内）：
+
+```bash
+XIAOK_MIGRATION_BACKUP_URL=... node scripts/xiaok-migration-backup.mjs \
+  --mode development --output-dir <备份目录> --pg-bin <PG17 bin> --label <标签>
+```
+
+- 产出：`database.dump`、`database.dump.sha256`、`migration-backup-manifest.json`。
+- 记录：字节数、归档 SHA-256、Manifest 摘要、`pg_restore --list` 条目数。
+- 备份目录必须在本机受限 ACL 下：仅 SYSTEM、Administrators 和维护账号；禁止 Everyone/Authenticated Users。
+
+## 8. 数据库恢复与回滚
+
+等价恢复目标必须同时满足：
+- Linux PostgreSQL 17.10（推荐 `pgvector/pgvector:0.8.2-pg17`，实测 `17.10 (Debian 17.10-1.pgdg12+1)`）；
+- glibc 2.36（Debian 12）；
+- `en_US.utf8`/`en_US.utf8`、libc provider、`datcollversion=2.36`；
+- `vector 0.8.2` 与 `btree_gist 1.7`，扩展 owner 为 `sfp_migrator`；
+- 角色 `sfp_restore`（LOGIN、CREATEDB、BYPASSRLS、非超级）和 `sfp_app`、`sfp_auditor`、`sfp_backup`、`sfp_migrator`；
+- `postgres` 库带 `xiaok-i749-isolated-test` 标记，且不含源库。
+
+恢复命令：
+
+```bash
+XIAOK_MIGRATION_RESTORE_URL=... PG_BIN=<PG17 bin> \
+  node scripts/xiaok-migration-restore-verify.mjs \
+  --manifest <manifest.json> --target-database xiaok_migration_restore_<时间> --mode isolated
+```
+
+验收必须全部为 `true`：`manifest_integrity`、`backup_sha256`、`restore_list`、`target_safety_verified`、`database_version_compatible`、`schema_restore_passed`、`data_restore_passed`、`ledger_verified`、`rls_verified`、`permissions_verified`、`full_restore_passed`。
+
+不得使用 `C` 排序或 glibc 不匹配的实例冒充等价回滚目标；它只能做逻辑恢复演练。
+
+## 9. 应用回滚
+
+1. 记录当前镜像与上一可用镜像。
+2. `deploy.sh rollback` 配合 `SFP_TARGET_IMAGE=<上一镜像>`；脚本不重复备份、不回滚数据库迁移。
+3. 回滚后验证 `/api/health`、登录 smoke、项目/报告/知识只读、Worker 门禁关闭、无重复提醒/报告。
+4. 数据库回滚只在应用回滚无法恢复时执行，并使用发布前获批的 129 账本备份，恢复到等价 Linux 目标并重新验证后再切换。
+
+## 10. 监控与告警
+
+- Admin：`/api/health`、登录 smoke。
+- Worker：共享健康文件的新鲜度（fresh/stale/unknown）、`lastSuccessAt`、门禁状态、错误码。
+- 任务：`assistant_jobs` 的 queued/running/failed/indeterminate 数量；`provider_started_at` 已设置但结果未知的任务标记 `indeterminate`，不得自动重放。
+- 外部通知：`workflow_notification_logs` 与订阅消息开关；未批准时保持关闭。
+- 备份：每次发布前备份成功、SHA 校验、恢复回执保留。
+
+## 11. 故障处理
+
+| 现象 | 处理 |
+| --- | --- |
+| 部署门禁失败 | 按输出补齐/替换密钥；不得绕过门禁直接 `next start` |
+| Worker 退出码 2 | 门禁关闭：检查试点配置是否成对一致；不得临时改为企业全量 |
+| preflight 401 | 检查 `CRON_SECRET` 是否一致 |
+| preflight 503 | 检查数据库连通、租户事务、门禁查询；不得跳过 preflight 启动 |
+| 知识检索 503 `bailian_knowledge_not_configured` | 补齐百炼 Workspace/Key 或显式切换到已批准的本地提供者 |
+| 模型不可用 | 保持 Facts-only 降级；不得编造进度、天数或来源 |
+| 备份目录被拒绝 | 修复 ACL，仅保留 SYSTEM/Administrators/维护账号 |
+| 恢复校验失败 | 保留目标库和回执，按失败项排查；不得删除证据或跳过后重试 |
+
+## 12. 禁止事项
+
+- 不得在未批准时部署生产、启动生产 Worker、发送真实通知、读写企业 1454 生产业务数据。
+- 不得把开发 WorkSpace、开发 Embedding 地址或合成测试账号当作生产配置。
+- 不得把 `.env.local`、`.env.production`、测试脚本、验收脚本或临时凭据打入镜像。
+- 不得用浏览器或 DevTools 截图冒充真机微信验收。
+- 不得用 `C` 排序实例替代等价回滚验证。

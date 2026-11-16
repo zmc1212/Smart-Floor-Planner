@@ -4,8 +4,10 @@
 FROM node:24-alpine AS deps
 
 # Keep Alpine's official CDN; the previous Aliyun mirror could stall
-# indefinitely while downloading the CJK font package.
-RUN apk add --no-cache libc6-compat
+# indefinitely while downloading the CJK font package. Pin https because this
+# build network cannot reach the CDN over plain http.
+RUN sed -i 's|http://dl-cdn.alpinelinux.org|https://dl-cdn.alpinelinux.org|g' /etc/apk/repositories \
+ && apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
@@ -28,6 +30,26 @@ ARG NEXT_PUBLIC_APP_NAME="量房大师管理后台"
 
 RUN npm run build
 
+# Whole-project tracing copies every scripts/ file into the standalone output.
+# Remove that traced copy before it becomes an image layer; the runner receives
+# only the approved runtime scripts below.
+RUN rm -rf /app/.next/standalone/scripts
+
+# The TypeScript build checks scripts/, so the full source tree must stay in the
+# build context. The runtime image only receives the scripts that deploy,
+# migration and Worker healthchecks actually execute; acceptance, live and
+# fixture helpers never enter any runtime layer.
+RUN mkdir -p /app/runtime-scripts \
+ && cp -p /app/scripts/postgres-migrate.mjs \
+      /app/scripts/postgres-integration-migrations.mjs \
+      /app/scripts/production-env-check.mjs \
+      /app/scripts/lead-claim-worker.mjs \
+      /app/scripts/lead-claim-worker-healthcheck.mjs \
+      /app/scripts/assistant-worker.mjs \
+      /app/scripts/assistant-worker-healthcheck.mjs \
+      /app/scripts/assistant-worker-health.mjs \
+      /app/runtime-scripts/
+
 # ============================================
 # Stage 3: Production runner
 # ============================================
@@ -43,7 +65,8 @@ ENV NODE_ENV=production
 ENV HOSTNAME="0.0.0.0"
 ENV PORT=3005
 
-RUN apk add --no-cache font-noto-cjk libc6-compat
+RUN sed -i 's|http://dl-cdn.alpinelinux.org|https://dl-cdn.alpinelinux.org|g' /etc/apk/repositories \
+ && apk add --no-cache font-noto-cjk libc6-compat
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 RUN mkdir -p /data/ai-assets && chown -R nextjs:nodejs /data/ai-assets
@@ -56,8 +79,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # from a developer .env file that happened to be present during the build.
 RUN rm -f .env .env.local .env.production .env.development .env.test
 
-# 2. 【新增】明确拷贝 scripts 目录，这样镜像里才有 seed-admin.js
-COPY --from=builder /app/scripts ./scripts
+# Approved runtime script allowlist (see builder stage). Never copy the full
+# scripts/ tree because it contains acceptance, live and fixture helpers.
+COPY --from=builder /app/runtime-scripts ./scripts
 COPY --from=builder /app/drizzle ./drizzle
 # Runtime reads opening/workflow registries from this directory.
 COPY --from=builder /app/deployment ./deployment
