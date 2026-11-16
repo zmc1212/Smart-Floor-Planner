@@ -82,8 +82,9 @@ npm run secrets:bootstrap -- --production-plan --env-path /opt/sfp/.env.producti
 
 - 百炼北京 Workspace/Key 与 Embedding 服务（`ASSISTANT_BAILIAN_RAG_*`、`ASSISTANT_EMBEDDING_*`）。
 - 生产数据库地址、账号与口令（`DATABASE_URL`、`DATABASE_MIGRATION_URL`、`POSTGRES_PASSWORD`）。
-- 微信 AppID/AppSecret、业务域名与真机验收。
+- 微信生产归属确认与真机验收（AppID、AppSecret、`https://smartfloor.zlyun168.com` 与 `release` 已配置）。
 - 默认文本模型确认，以及 Worker 试点范围、启动窗口和外部通知授权。
+- 初始管理员与 Smoke 口令轮换（当前两者同值，上线后移除初始管理员口令）。
 
 ## 3. 标准部署流程
 
