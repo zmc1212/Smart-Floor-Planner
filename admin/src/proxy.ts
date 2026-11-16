@@ -170,6 +170,7 @@ export async function proxy(request: NextRequest) {
     pathname === '/api/internal/seed' ||
     pathname === '/api/internal/lead-claim-windows/run' ||
     pathname === '/api/internal/assistant/jobs/run' ||
+    pathname === '/api/internal/assistant/jobs/preflight' ||
     pathname.startsWith('/api/auth/') || 
     pathname.startsWith('/api/miniprogram/')
   ) {
