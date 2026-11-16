@@ -23,15 +23,23 @@ import { resolveEvidence } from '@/lib/assistant/knowledge/sources';
 import type { ActorContext, TextModelGateway } from '@/lib/assistant/contracts';
 import { mockBailianRag } from './xiaok-r4-bailian-mock';
 import { LiveBailianAcceptance } from './xiaok-i7515-bailian-live';
+import { prepareLiveLedger, readLiveApproval, readLiveCommand } from './xiaok-i7515-bailian-live-policy';
 
+const command = readLiveCommand(process.argv.slice(2));
+if (command.kind === 'prepare') {
+  prepareLiveLedger(readLiveApproval(process.env));
+  console.log('Prepared the I7.5.15 batch ledger offline');
+  process.exit(0);
+}
 const target = new URL(process.env.XIAOK_I7515_DATABASE_URL ?? 'http://missing');
 const owner = new URL(process.env.XIAOK_I7515_OWNER_URL ?? 'http://missing');
 for (const url of [target, owner]) assert.ok(url.protocol === 'postgresql:' && url.hostname === '127.0.0.1'
-  && Number(url.port) >= 49152 && /^\/xiaok_i7515_[a-z0-9_]+$/.test(url.pathname), 'Use an isolated I7.5.15 loopback database');
+  && !url.search && !url.hash && Number(url.port) >= 49152 && /^\/xiaok_i7515_[a-z0-9_]+$/.test(url.pathname),
+  'Use an isolated I7.5.15 loopback database without connection overrides');
 assert.equal(owner.port + owner.pathname, target.port + target.pathname);
 assert.equal(target.username, 'sfp_app');
 assert.equal(owner.username, 'sfp_migrator');
-assert.match(process.env.ASSISTANT_EMBEDDING_URL ?? '', /^http:\/\/127\.0\.0\.1:\d+$/);
+assert.ok(/^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.ASSISTANT_EMBEDDING_URL ?? ''), 'Use the isolated loopback embedding service');
 assert.ok(process.env.ASSISTANT_EMBEDDING_API_KEY);
 process.env.DATABASE_URL = target.href;
 process.env.ASSISTANT_KNOWLEDGE_PROVIDER = BAILIAN_RAG;
@@ -42,8 +50,7 @@ delete process.env.ASSISTANT_BAILIAN_RAG_API_KEY;
 delete process.env.ASSISTANT_BAILIAN_RAG_CATEGORY_ID;
 delete process.env.ASSISTANT_BAILIAN_RAG_EMBEDDING_MODEL;
 
-const label = process.argv[2] ?? randomUUID();
-assert.match(label, /^[a-z0-9-]{1,80}$/);
+const label = command.label ?? randomUUID();
 const out = path.resolve('../tmp/xiaok-i7515', label);
 mkdirSync(path.dirname(out), { recursive: true });
 mkdirSync(out);
@@ -54,9 +61,8 @@ const [water, waterproof] = fixture.drafts;
 const qWater = '家里现在做水电施工，这一步水路主要做什么？';
 const qWaterproof = '卫生间接下来做防水，施工和后续检查由谁安排？';
 const cloud = mockBailianRag();
-const liveCore = process.argv[3] === '--live-core';
-const live = liveCore || process.argv[3] === '--live'
-  ? new LiveBailianAcceptance(path.join(out, 'live-receipts.json')) : null;
+const liveCore = command.kind === 'live' && command.core;
+let live: LiveBailianAcceptance | null = null;
 const checks: Array<{ name: string; status: string; evidence?: unknown }> = [];
 const prefix = 'i7515-' + randomUUID().slice(0, 8);
 type Draft = { documentId: string; versionId: string; expectedVersion: number; expectedEditVersion: number };
@@ -66,12 +72,14 @@ function binding() {
   const names = execFileSync('git', ['ls-files','-c','-o','--exclude-standard','-z','--',
     'src/db','src/lib/assistant','src/lib/construction','src/lib/ai','src/lib/platform-llm-config.ts','src/lib/postgresql.ts',
     'src/lib/xiaok-v1','src/lib/native-workflow','drizzle','package-lock.json','package.json',
-    'scripts/xiaok-i7515-bailian-rag-acceptance.ts','scripts/xiaok-i7515-bailian-live.ts',
+    'scripts/xiaok-i7515-bailian-rag-acceptance.ts','scripts/xiaok-i7515-bailian-live.ts','scripts/xiaok-i7515-bailian-live-policy.ts',
+    'scripts/__tests__/xiaok-i7515-bailian-live.test.ts',
     'scripts/xiaok-r4-bailian-mock.ts','scripts/fixtures/xiaok-ppt-craft-preview.json',
     'scripts/xiaok-embedding/server.py']).toString().split('\0').filter(Boolean).sort();
   const hash = createHash('sha256');
   for (const name of names) hash.update(name).update('\0').update(readFileSync(name)).update('\0');
   const config = { provider: process.env.ASSISTANT_KNOWLEDGE_PROVIDER, liveWorkspace: live?.workspace, liveCore,
+    liveApproval: live?.budget().authorizationDigest, changePermissions: command.kind === 'live' && command.changePermissions,
     embeddingProvider: process.env.ASSISTANT_EMBEDDING_PROVIDER,
     embeddingUrl: process.env.ASSISTANT_EMBEDDING_URL, database: target.pathname, pgPort: target.port };
   return { files: names.length, sha256: hash.update(JSON.stringify(config)).digest('hex'), config };
@@ -315,8 +323,8 @@ async function main() {
     if (live) {
       const row = await withPlatformTransaction(tx => one(tx, sql`select count(*)::int as existing from app.enterprises`));
       assert.equal(row?.existing, 0, 'Live acceptance requires a business-data-free database');
-      const requestId = await live.start();
-      assert.ok(requestId);
+      const { requestId, missingModels } = await live.start();
+      if (missingModels.length) await live.enableMissingInference();
       return { safety, workspace: live.workspace, requestId };
     }
     assert.throws(bailianKnowledgeConfig,/bailian_knowledge_not_configured/);
@@ -579,15 +587,19 @@ async function main() {
   });
 }
 
-async function run() {
+async function runAcceptance() {
   const before = binding();
-  try { await main(); } catch (error) {
+  try {
+    await main();
+    assert.ok(!live?.budgetRefusals.length, 'Live acceptance had authorization or budget refusals; see the receipts');
+  } catch (error) {
     if (checks.at(-1)?.status !== 'failed') checks.push({ name:'fixture_setup', status:'failed',
       evidence:error instanceof Error ? error.stack : String(error) });
     throw error;
   } finally {
-    if (live) {
-      try { await check('live_resource_cleanup', () => live.cleanup()); }
+    const liveRun = live;
+    if (liveRun) {
+      try { await check('live_resource_cleanup', () => liveRun.cleanup()); }
       catch { process.exitCode=1; }
     }
     await closePostgresPool();
@@ -596,9 +608,15 @@ async function run() {
       mock: { cloudRequests:cloud.calls.length, textSelections:mockModelCalls },
       real:live ? { workspace: live.workspace, bailianRag:live.count('retrieve') ? 'executed' : 'incomplete',
         deepseek:live.modelResults.length ? 'executed' : 'not_run', receiptsFile:'live-receipts.json',
-        requests:live.receipts.length } : {bailianRag:'not_run',deepseek:'not_run',cloudCalls:0,costCny:0},
+        requests:live.receipts.length, budgetRefusals:live.budgetRefusals.length,
+        batchBudget:live.budget() } : {bailianRag:'not_run',deepseek:'not_run',cloudCalls:0,costCny:0},
     },(_key,value)=>typeof value==='bigint' ? String(value) : value,2));
     assert.equal(after.sha256,before.sha256,'Source or config changed during acceptance');
   }
+}
+async function run() {
+  // Acquire the authorized batch and its lock before the first PostgreSQL or HTTP call.
+  if (command.kind === 'live') live = LiveBailianAcceptance.open(path.join(out, 'live-receipts.json'), command.changePermissions);
+  try { await runAcceptance(); } finally { live?.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode=1; });

@@ -82,9 +82,29 @@ Mock 合计 72 次 HTTP 调用和 2 次合成文本选择。托管 Token 和费�
 
 ## 复跑和限制
 
-在 `admin` 中通过 `XIAOK_I7515_DATABASE_URL` 和 `XIAOK_I7515_OWNER_URL` 指向同一份已迁移、带 `xiaok-i7515-` 注释的独立 PG17 副本，使用 `sfp_app` 和 `sfp_migrator`。通过 `ASSISTANT_EMBEDDING_URL` 与 `ASSISTANT_EMBEDDING_API_KEY` 接已验收的回环 Qwen3 服务。运行 `node --import tsx scripts/xiaok-i7515-bailian-rag-acceptance.ts <新标签>` 执行 Mock。实云使用无业务数据的新副本，设置 `XIAOK_I7515_EXPECTED_WORKSPACE_ID` 校对本机文件中的专用空间 ID。追加 `--live-core` 跑两家合成企业首份资料和双阶段问答，或追加 `--live` 跑包含增量导入、公共库及版本替换的完整范围。
+数据库集成驱动从 `admin` 运行。通过 `XIAOK_I7515_DATABASE_URL` 和 `XIAOK_I7515_OWNER_URL` 指向同一份已迁移、带 `xiaok-i7515-` 注释的独立回环 PG17 副本，使用 `sfp_app` 和 `sfp_migrator`，连接串不接受查询参数覆盖。通过 `ASSISTANT_EMBEDDING_URL` 与 `ASSISTANT_EMBEDDING_API_KEY` 接回环 Qwen3 服务。`node --import tsx scripts/xiaok-i7515-bailian-rag-acceptance.ts <新标签>` 只替换百炼 HTTP，仍会连接隔离数据库和本机向量服务。完全离线的检查用下节单测命令。
 
 - 定向测试 78 项通过，完整 TypeScript、定向 ESLint、隔离快照 `npm run build -- --webpack` 均通过。Webpack 生成 117 个静态页面。既有数据库回归在当前交付和基线 `5b01295f` 上均为 9 通过、13 失败、4 跳过，失败及跳过的测试名称一致。知识库 9 项均通过。旧问答组要求显式启用企业知识，且部分用例依赖本次跳过的真实模型首答。原始日志在 `tmp/xiaok-i7515/`。
 - 迁移账本从 128 到 129 条，知识分片、托管库、托管导入和引用表继续启用强制 RLS。9 个隔离库已清理，回读剩余 0。本轮 PG 和 Qwen 监听已停止，一次性凭据已移除，源归档摘要复核一致。见 `pg-cleanup.json` 和 `resources-cleanup.json`。
 - 本轮补验覆盖真实建库协议、独立阶段问答、用量回执和引用读回。真实账单及小程序原生界面验收仍为 `limited`。
 - `failed` 历史轮次保留在原始证据中。第一次归档恢复缺少隔离角色 `sfp_auditor`。初版迁移中 PG17 拒绝生成列搭配外键 `ON DELETE SET NULL`，改为落库时绑定来源归属后迁移成功。集成 `run-01` 至 `run-04` 分别保留启动格式、SQLSTATE 断言、模拟召回阈值、复用未结算会话的失败，后续隔离副本完成对应复验。
+
+## 离线安全加固
+
+I7.5.15 验收驱动加固从 `4cf226c861969ccec48c0b9f866deb3d2270fb59` 开始。开通前的旧驱动在多轮重试中累计创建四个临时库，超过当时估算的三个。新账本对累计建库次数执行上限。本次提交包含验收驱动、授权账本、定向单测和对应文档。
+
+以后的真实验收需先有独立获批的批次。`XIAOK_I7515_LIVE_AUTHORIZATION_FILE` 指向不含凭据的 JSON，显式填写：
+
+| 字段 | 约束 |
+| --- | --- |
+| `version`、`batchId`、`workspace` | `version: 1`，固定批次 ID；Workspace 与 `XIAOK_I7515_EXPECTED_WORKSPACE_ID` 一致，使用验收专用空间。运行时 Key 从 `XIAOK_I7515_LIVE_API_KEY` 注入。 |
+| `validFrom`、`expiresAt` | UTC ISO 时间，最长 30 分钟。过期的批次停止发出请求，包括清理。 |
+| `limits` | 整数 `requests`、`indexCreates`、`uploads`、`retrievals`、`modelCalls`、`budgetMicrosCny`。累计上限最多 3 次建库、5 次上传（申请、签名 PUT、注册各自计数）、24 次检索、2 次模型请求。总 HTTP 请求数包括预检、轮询、本机向量请求、失败和清理。 |
+| `reserveMicrosCny` | 键为获批操作，值为每次预留的人民币微元（1 元 = 1,000,000 微元）。未列操作拒绝。预检需要 `list` 和 `permissions_read`。计费操作必须给出正数，按文件上限、模型输入输出和库租用等留足保守估算。 |
+| `allowModelPermissionChanges` | 普通预检保持只读。只有显式为 `true`、预算表含 `permissions_grant` 和 `permissions_restore`，且运行另加 `--allow-model-permission-changes`，才可开启预检确认缺失的固定模型推理权限，并按本批次确认回执恢复及回读。未知权限写入留待核对。 |
+
+正式重跑前，一次性通过 `node --import tsx scripts/xiaok-i7515-bailian-rag-acceptance.ts --prepare-live-ledger` 离线创建该 Workspace 的账本。CLI 不会用这个命令覆盖已有 Workspace 目录。之后沿用同一授权、同一检出和同一份 `tmp/xiaok-i7515/live-ledgers/<workspace>/ledger.json`；换运行标签或重启不补回额度。`--live-core` 和 `--live` 分别选择核心和完整场景，均在首个数据库或 HTTP 请求前验证范围、账本及独占锁。它们仍要求无业务数据的隔离副本。
+
+每次 HTTP 在文件落盘后才发出。业务拒绝、超时、未知和中断留下的预留均不退款。清理仅使用本批次验证过的索引、文件、文档及权限证据，不能按名称猜测 IDs。费用字段是**保守预留、待账单核对**，不是供应商账单或精确封顶。授权时为清理保留时间、请求和费用额度；账本损坏或缺失、锁被占用、额度耗尽、过期或资源无法归属时，保留文件及回执交由操作者核对。锁只覆盖此检出中的驱动，不能管控旧驱动和外部调用；不得复制、回滚或重建账本来续跑。Windows 上刷新文件后同目录原子替换，突然断电的目录元数据持久性未验证。
+
+本切片验证：在 `admin` 执行 `node --import tsx --test scripts/__tests__/xiaok-i7515-bailian-live.test.ts src/lib/assistant/__tests__/bailian-knowledge.test.ts`，15 项通过（9 项新增，6 项原有）。首轮 4 条断言误匹配适配器的通用错误文案，改用 `providerCode` 后保留了传输层零调用、累计和归属断言。`node node_modules/typescript/bin/tsc --noEmit --incremental false --pretty false` 和对 4 个脚本及测试文件的定向 ESLint 均通过。真实验收为 `not_run`：未读取真实 Key，未运行数据库集成驱动、真实百炼、权限修改、服务开通、真实 Worker、账单或部署；其他获批运行的证据不计入本切片。后续真实结果及账单须在各自获批记录核对。
