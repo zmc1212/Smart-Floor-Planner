@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { after, before, test } from 'node:test';
 import pg from 'pg';
 import {
-  ARCHIVE_FILE, MANIFEST_FILE, computeManifestDigest, missingTableDataEntries,
+  ARCHIVE_FILE, MANIFEST_FILE, SORTED_ACL_DIGEST_MODE, computeManifestDigest, missingTableDataEntries,
   parseSha256File, parseTocEntries, resolveApprovedDevelopmentTarget, resolveIsolatedTarget,
   sha256File, validateManifestShape,
 } from '../xiaok-migration-backup.mjs';
@@ -121,6 +121,20 @@ test('manifest validation rejects missing fields, incomplete status and secret m
   assert.ok(validateManifestShape(incomplete).errors.includes('backupStatus_not_complete'));
   const secret = { ...manifest, connectionString: 'postgresql://user:secret@host/db' };
   assert.ok(validateManifestShape(secret).errors.some(error => error.startsWith('forbidden_key:')));
+});
+
+test('manifest validation accepts legacy permissions and versions the sorted ACL digest', () => {
+  const legacy = sampleManifest();
+  legacy.manifestDigest = computeManifestDigest(legacy);
+  assert.equal(validateManifestShape(legacy).ok, true);
+
+  const sorted = { ...legacy, permissions: { ...legacy.permissions, digestMode: SORTED_ACL_DIGEST_MODE } };
+  sorted.manifestDigest = computeManifestDigest(sorted);
+  assert.equal(validateManifestShape(sorted).ok, true);
+  assert.notEqual(sorted.manifestDigest, legacy.manifestDigest);
+
+  sorted.permissions.digestMode = 'unknown';
+  assert.ok(validateManifestShape(sorted).errors.includes('permissions_digest_mode_unsupported'));
 });
 
 test('the independent SHA-256 file and TOC helpers reject malformed input', () => {
