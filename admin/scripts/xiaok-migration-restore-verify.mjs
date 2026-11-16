@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import pg from 'pg';
 import {
-  ARCHIVE_FILE, approvedDatabase, collectDatabaseFacts, computeManifestDigest,
+  ARCHIVE_FILE, SORTED_ACL_DIGEST_MODE, approvedDatabase, collectDatabaseFacts, computeManifestDigest,
   connectionFor, inspectBackupDirectory, isRestoreDatabaseName, missingTableDataEntries, parseSha256File, parseTocEntries,
   isolatedClusterMarker, isolatedSourceMarker,
   pgPasswordEnv, resolvePgBinary, resolveRestoreAdminTarget, runProcess, sha256File, toolVersion,
@@ -337,6 +337,7 @@ export async function verifyRestore({ manifestPath, targetDatabase, mode, env, k
       const inputs = loadIntegrationMigrationInputs(drizzleDir);
       const actual = await collectDatabaseFacts(verificationClient, {
         includeData: true, knownHashes: inputs.knownHashes,
+        sortAclItems: manifest.permissions.digestMode === SORTED_ACL_DIGEST_MODE,
       });
 
       const ledgerMatches = actual.ledger.count === manifest.migrationLedgerCount

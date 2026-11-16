@@ -78,7 +78,7 @@ function baselineLedger(): Ledger {
   });
 }
 
-test('the official validator recognizes both exact historical hashes and nine pending migrations', () => {
+test('the official validator recognizes both exact historical hashes and ten pending migrations', () => {
   const result = inspectLedger(baselineLedger(), inputs);
   assert.equal(result.status, 'passed');
   assert.equal(result.count, 119);
@@ -87,7 +87,8 @@ test('the official validator recognizes both exact historical hashes and nine pe
   assert.equal(result.prefixGap, false);
   assert.equal(result.mixedFork, false);
   assert.ok(result.historicalHashes.every(entry => entry.exact));
-  assert.deepEqual(result.pending?.map(tag => tag.slice(0, 4)), ['0120','0124','0125','0126','0127','0128','0129','0130','0131']);
+  assert.deepEqual(result.pending?.map(tag => tag.slice(0, 4)),
+    ['0120', '0124', '0125', '0126', '0127', '0128', '0129', '0130', '0131', '0132']);
 });
 
 test('unrecognized, duplicate or gapped ledger rows cannot produce a pending plan', () => {
@@ -128,7 +129,9 @@ test('notification audit compares the actual sources and emits fingerprints only
 type Catalog = Awaited<ReturnType<typeof readCatalog>>;
 function catalog(names: string[]): Catalog {
   return {
-    relations: new Map(names.map(name => [name, { name, kind: 'r', readable: true, migrationOwner: true, rls: false }])),
+    relations: new Map(names.map(name => [name, {
+      name, kind: 'r', readable: true, migrationOwner: true, rls: false, forcedRls: false,
+    }])),
     columns: new Map(), constraints: [], indexes: [], policies: [], triggers: new Set(), functions: new Set(), platform: true,
   };
 }
@@ -193,10 +196,69 @@ test('pilot constraints do not mistake an absent table for checked historical da
   assert.equal(absent.data?.historicalRows.status, 'not_run');
   assert.deepEqual(statements, []);
   ready.relations.set('xiaok_pilot_project_scopes', {
-    name: 'xiaok_pilot_project_scopes', kind: 'r', rls: false, readable: true, migrationOwner: true,
+    name: 'xiaok_pilot_project_scopes', kind: 'r', rls: false, forcedRls: false, readable: true, migrationOwner: true,
   });
   const drift = await auditPendingMigration(client, ready, tag, [tag]);
   assert.equal(drift.status, 'failed');
   assert.deepEqual(drift.collisions, ['xiaok_pilot_project_scopes']);
   assert.deepEqual(drift.data?.invalidScope, { status: 'failed', count: 1 });
+});
+
+test('0132 verifies citation ownership, existing foreign keys and full backfill visibility', async () => {
+  const citations = 'assistant_message_citations';
+  const versions = 'assistant_knowledge_versions';
+  const chunks = 'assistant_knowledge_chunks';
+  const tag = '0132_assistant_platform_knowledge_citations';
+  const pending = ['0124_assistant_knowledge_integration', tag];
+  const inventory = catalog(['enterprises', 'admin_users', citations, versions, chunks]);
+  const tenantPredicate = '((SELECT app.has_platform_access() AS has_platform_access) OR '
+    + 'enterprise_id = (SELECT app.current_enterprise_id() AS current_enterprise_id))';
+  for (const name of [citations, versions, chunks]) {
+    Object.assign(inventory.relations.get(name)!, { rls: true, forcedRls: true });
+    inventory.policies.push({
+      relation: name, name: name + '_tenant', command: 'ALL', roles: ['sfp_app'],
+      permissive: 'PERMISSIVE', qual: tenantPredicate, withCheck: tenantPredicate,
+    });
+  }
+  const versionColumns = ['enterprise_id', 'document_id', 'id'];
+  const chunkColumns = ['enterprise_id', 'document_version_id', 'id'];
+  for (const [relation, columns] of [['enterprises', ['id']], [versions, versionColumns], [chunks, chunkColumns]] as const) {
+    inventory.indexes.push({ relation, columns: [...columns], name: 'candidate', keyUsable: true, signature: 'candidate' });
+    for (const name of columns) inventory.columns.set(relation + '.' + name, 'bigint');
+  }
+  for (const name of ['enterprise_id', 'document_id', 'document_version_id', 'chunk_id']) {
+    inventory.columns.set(citations + '.' + name, 'bigint');
+  }
+  for (const name of ['id', 'status', 'must_change_password', 'role']) inventory.columns.set('admin_users.' + name, 'available');
+  const options = { relation: citations, type: 'f', validated: true, targetSchema: 'app', match: 's' };
+  inventory.constraints.push(
+    { ...options, name: 'source_version', target: versions, columns: ['enterprise_id', 'document_id', 'document_version_id'],
+      targetColumns: versionColumns, deleteAction: 'a', deleteSetColumns: [] },
+    { ...options, name: 'source_chunk', target: chunks, columns: ['enterprise_id', 'document_version_id', 'chunk_id'],
+      targetColumns: chunkColumns, deleteAction: 'n', deleteSetColumns: ['chunk_id'] },
+  );
+  const { client, statements } = fakeClient(() => [{ count: '0' }]);
+  const ready = await auditPendingMigration(client, inventory, tag, pending);
+  assert.equal(ready.status, 'passed');
+  assert.equal(ready.foreignKeys?.length, 2);
+  assert.deepEqual(ready.data?.backfillSourceOwner, { status: 'passed', count: 0 });
+  assert.ok(statements.every(sql => sql.startsWith('SELECT')));
+
+  const missingDependency = await auditPendingMigration(client, inventory, tag, [tag]);
+  assert.equal(missingDependency.status, 'failed');
+  assert.deepEqual(missingDependency.missingRelations, ['assistant_managed_knowledge_libraries']);
+
+  inventory.platform = false;
+  const hiddenRows = await auditPendingMigration(client, inventory, tag, pending);
+  assert.equal(hiddenRows.status, 'limited');
+  assert.equal(hiddenRows.data?.backfillSourceOwner.reason, 'full_rls_visibility_unverified');
+
+  inventory.relations.get(citations)!.forcedRls = false;
+  inventory.constraints[1].deleteSetColumns = [];
+  inventory.policies[0].withCheck = 'true';
+  const drifted = await auditPendingMigration(client, inventory, tag, pending);
+  assert.equal(drifted.status, 'failed');
+  assert.equal(drifted.data?.forcedRls.reason, 'citation_or_source_force_rls_missing');
+  assert.equal(drifted.data?.tenantPolicy.reason, 'citation_tenant_policy_drift');
+  assert.equal(drifted.data?.previousSourceKeys.reason, 'legacy_citation_source_keys_mismatch');
 });

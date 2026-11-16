@@ -23,6 +23,7 @@ const blockedIsolatedPorts = new Set([5432, 55432]);
 export const defaultMinFreeBytes = 512 * 1024 * 1024;
 
 export const MANIFEST_VERSION = 1;
+export const SORTED_ACL_DIGEST_MODE = 'aclitems-c-sort-v1';
 export const MANIFEST_FILE = 'migration-backup-manifest.json';
 export const ARCHIVE_FILE = 'database.dump';
 export const SHA256_FILE = `${ARCHIVE_FILE}.sha256`;
@@ -132,6 +133,9 @@ export function validateManifestShape(value) {
   }
   if (!isObject(value.permissions) || typeof value.permissions.digest !== 'string') {
     errors.push('permissions_invalid');
+  } else if (value.permissions.digestMode !== undefined
+    && value.permissions.digestMode !== SORTED_ACL_DIGEST_MODE) {
+    errors.push('permissions_digest_mode_unsupported');
   }
   if (!Array.isArray(value.historicalHashes)) errors.push('historicalHashes_invalid');
   errors.push(...collectForbiddenKeys(value).map(location => `forbidden_key:${location}`));
@@ -464,12 +468,23 @@ async function collectDataSummary(client, tables) {
   return summary;
 }
 
+function aclForDigest(expression, sortAclItems) {
+  if (!sortAclItems) return `coalesce(${expression}::text,'')`;
+  // pg_restore can recreate the same grant entries in a different catalog order.
+  return `CASE WHEN ${expression} IS NULL THEN '' ELSE ARRAY(
+    SELECT entry FROM unnest(${expression}) AS grants(entry)
+    ORDER BY entry::text COLLATE "C"
+  )::text END`;
+}
+
 /**
  * Reads the schema, ledger, RLS, policy, permission and data facts that a
  * backup manifest records. The session is pinned to UTC and hex bytea so the
  * same content produces the same digest on the restore target.
  */
-export async function collectDatabaseFacts(client, { includeData = true, knownHashes = [] } = {}) {
+export async function collectDatabaseFacts(client, {
+  includeData = true, knownHashes = [], sortAclItems = true,
+} = {}) {
   await client.query("SET TimeZone='UTC'");
   await client.query("SET DateStyle='ISO, MDY'");
   await client.query("SET IntervalStyle='postgres'");
@@ -501,7 +516,7 @@ export async function collectDatabaseFacts(client, { includeData = true, knownHa
   `);
   const { rows: functions } = await client.query(`
     SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS signature,
-      p.prokind::text AS kind, pg_get_userbyid(p.proowner) AS owner, coalesce(p.proacl::text,'') AS acl
+      p.prokind::text AS kind, pg_get_userbyid(p.proowner) AS owner, ${aclForDigest('p.proacl', sortAclItems)} AS acl
     FROM pg_catalog.pg_proc p
     WHERE p.pronamespace='app'::regnamespace
     ORDER BY signature
@@ -515,12 +530,12 @@ export async function collectDatabaseFacts(client, { includeData = true, knownHa
     ORDER BY 1
   `);
   const { rows: [schemaAcl] } = await client.query(`
-    SELECT pg_get_userbyid(nspowner) AS owner, coalesce(nspacl::text,'') AS acl
+    SELECT pg_get_userbyid(nspowner) AS owner, ${aclForDigest('nspacl', sortAclItems)} AS acl
     FROM pg_catalog.pg_namespace WHERE nspname='app'
   `);
   const { rows: relationAcls } = await client.query(`
     SELECT c.relname AS name, c.relkind::text AS kind, pg_get_userbyid(c.relowner) AS owner,
-      coalesce(c.relacl::text,'') AS acl
+      ${aclForDigest('c.relacl', sortAclItems)} AS acl
     FROM pg_catalog.pg_class c
     WHERE c.relnamespace='app'::regnamespace AND c.relkind IN ('r','p','S','v','m')
       AND NOT c.relispartition
@@ -574,6 +589,7 @@ export async function collectDatabaseFacts(client, { includeData = true, knownHa
     : [];
 
   const permissions = {
+    ...(sortAclItems ? { digestMode: SORTED_ACL_DIGEST_MODE } : {}),
     schemaOwner: schemaAcl?.owner ?? null,
     ownerRoles: [...new Set([
       schemaAcl?.owner, ...relationAcls.map(row => row.owner), ...functions.map(row => row.owner),
@@ -697,7 +713,8 @@ export async function inspectBackupDirectory(directory, {
   let owner = null;
   if (process.platform === 'win32') {
     const script = `$ErrorActionPreference = 'Stop'
-$acl = Get-Acl -LiteralPath '${resolved.replaceAll("'", "''")}'
+$ProgressPreference = 'SilentlyContinue'
+$acl = [System.IO.Directory]::GetAccessControl('${resolved.replaceAll("'", "''")}')
 $sid = [System.Security.Principal.SecurityIdentifier]
 $allowed = @($acl.GetAccessRules($true, $true, $sid) | Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value })
 [pscustomobject]@{ Owner = $acl.GetOwner($sid).Value; Allowed = $allowed } | ConvertTo-Json -Compress`;

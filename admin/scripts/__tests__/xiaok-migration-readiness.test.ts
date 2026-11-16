@@ -135,44 +135,57 @@ test('a restore receipt must prove every check for the same manifest, archive an
   assert.equal((await inspectRestoreEvidence(receiptPath, manifest, 55436)).status, 'failed');
 });
 
-test('the reviewed journal and all nine migrations match and SQL drift is rejected', async t => {
+test('the reviewed journal and all ten migrations match and SQL or journal drift is rejected', async t => {
   assert.equal((await inspectMigrationFiles()).status, 'passed');
   const directory = await fixtureDirectory(t);
   await mkdir(path.join(directory, 'meta'));
   const journal = await readFile(path.join(pathToDrizzle, 'meta/_journal.json'), 'utf8');
-  await writeFile(path.join(directory, 'meta/_journal.json'), journal);
-  const tags: string[] = JSON.parse(journal).entries.slice(-9).map((entry: { tag: string }) => entry.tag);
+  const journalPath = path.join(directory, 'meta/_journal.json');
+  await writeFile(journalPath, journal.replace(/\r\n/g, '\n'));
+  const tags: string[] = JSON.parse(journal).entries.slice(119).map((entry: { tag: string }) => entry.tag);
+  assert.equal(tags.length, 10);
+  assert.equal(tags.at(-1), '0132_assistant_platform_knowledge_citations');
   await Promise.all(tags.map(async tag => {
     const name = tag + '.sql';
     await writeFile(path.join(directory, name), await readFile(path.join(pathToDrizzle, name)));
   }));
   assert.equal((await inspectMigrationFiles(directory)).status, 'passed');
-  const alteredPath = path.join(directory, tags[8] + '.sql');
+  const driftedJournal = JSON.parse(journal);
+  driftedJournal.entries[0].tag += '_drifted';
+  await writeFile(journalPath, JSON.stringify(driftedJournal, null, 2) + '\n');
+  assert.equal((await inspectMigrationFiles(directory)).status, 'failed');
+  await writeFile(journalPath, journal);
+  const alteredPath = path.join(directory, tags[9] + '.sql');
   await writeFile(alteredPath, 'SELECT 1;');
   assert.equal((await inspectMigrationFiles(directory)).status, 'failed');
 });
 
-test('the official runner rolls back the batch when the last migration cannot lock platform_configs', async () => {
+test('the official runner rolls back the batch when 0131 or 0132 fails', async () => {
   const { active } = loadIntegrationMigrationInputs(pathToDrizzle);
   const journal: { when: number; hashes: Set<string> }[] = active;
-  const ledger = journal.slice(0, -9).map((entry, index) => ({
+  const ledger = journal.slice(0, 119).map((entry, index) => ({
     id: index + 1, created_at: String(entry.when), hash: [...entry.hashes][0],
   }));
-  const lockTimeout = Object.assign(new Error('fixture lock timeout'), { code: '55P03' });
-  const commands: string[] = [];
-  const client = {
-    async query(sql: string) {
-      const command = sql.trim();
-      commands.push(command);
-      if (command.startsWith('select id,hash,created_at')) return { rows: ledger };
-      if (command.startsWith('LOCK TABLE app.platform_configs')) throw lockTimeout;
-      return { rows: [] };
-    },
-  };
-  await assert.rejects(migratePostgresIntegration(client, pathToDrizzle), lockTimeout);
-  assert.equal(commands[0], 'begin');
-  assert.match(commands[1], /pg_advisory_xact_lock/);
-  assert.equal(commands.filter(sql => sql.startsWith('insert into app.__drizzle_migrations')).length, 8);
-  assert.equal(commands.at(-1), 'rollback');
-  assert.ok(!commands.includes('commit'));
+  for (const [failAt, writtenRows] of [
+    ['LOCK TABLE app.platform_configs', 8],
+    ['UPDATE app.assistant_message_citations SET source_enterprise_id', 9],
+  ] as const) {
+    const failure = new Error('fixture migration failure');
+    const commands: string[] = [];
+    const client = {
+      async query(sql: string) {
+        const command = sql.trim();
+        commands.push(command);
+        if (command.startsWith('select id,hash,created_at')) return { rows: ledger };
+        if (command.includes(failAt)) throw failure;
+        return { rows: [] };
+      },
+    };
+    await assert.rejects(migratePostgresIntegration(client, pathToDrizzle), failure);
+    assert.equal(commands[0], 'begin');
+    assert.match(commands[1], /pg_advisory_xact_lock/);
+    assert.equal(commands.filter(sql => sql.startsWith('insert into app.__drizzle_migrations')).length, writtenRows);
+    assert.equal(commands.at(-1), 'rollback');
+    assert.ok(!commands.includes('commit'));
+  }
 });

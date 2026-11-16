@@ -27,7 +27,7 @@ type Check = { status: Status; code: string; detail?: unknown };
 type Section = Record<string, Check>;
 const check = (status: Status, code: string, detail?: unknown): Check => ({ status, code, detail });
 
-// I7.4.9.4 rehearsal fingerprints. Compare bytes first and report any checkout EOL variant.
+// I7.4.9.4 and I7.5.16 review fingerprints. Report the execution checkout's bytes.
 const expectedBatch = [
   ['0120_construction_camera_sd_identity_version', 1794988800000, '4bf4f4f9a0ce596a9377a04091dc7ca520ff910500c6e163bd75110292e005f2'],
   ['0124_assistant_knowledge_integration', 1795334400000, 'e17d50b8b85aa77277dce9a5d9043ea3d51a641e2647c3bb2046dc86d6e77788'],
@@ -38,9 +38,12 @@ const expectedBatch = [
   ['0129_xiaok_v1_stage_reminder_receipts', 1795766400000, '966e93d18077b77773a5fb215ba3863f7fbbadddc51807176d09e44aa6263618'],
   ['0130_xiaok_pilot_project_scopes', 1795852800000, '49ede82f820ccd9c66b3911419c8784f1e43c6396c21ea7f40ea36b9a21501ee'],
   ['0131_platform_notification_config_not_null', 1796457600000, 'a7fd555fa43a149ddffc74067e6263cbf91446cf67d581706491756a86386291'],
+  ['0132_assistant_platform_knowledge_citations', 1796544000000, 'bb0cdebdd3e28b7fae20964f2973b5afafb1e9f4da904c366ead2f4c1e3e769e'],
 ] as const;
 const expectedTags = expectedBatch.map(([tag]) => tag);
 const preMigration = { count: 119, lastTimestamp: 1794902400000, tag: '0119_platform_portfolio_templates' };
+const postMigrationCount = preMigration.count + expectedBatch.length;
+const expectedJournalSha256Lf = 'bdb796add1c0faf5deeca7dfdf323022ff70d04c4c3097112e3df145605dd754';
 const reviewedRunners = {
   'postgres-migrate.mjs': '1f72de27bd9ad19423437d29fa9724b680ac9fea9ca11c035271b8b9d61e72b0',
   'postgres-integration-migrations.mjs': 'ef67fe1646a167221def82d3b20b267e8cfead1c300688057f1645c319f9ca96',
@@ -53,10 +56,13 @@ export function summarizeReadiness(checks: readonly Status[]): Status {
 }
 
 export async function inspectMigrationFiles(folder = drizzle) {
-  const journal = JSON.parse(await readFile(path.join(folder, 'meta/_journal.json'), 'utf8'));
+  const journalRaw = await readFile(path.join(folder, 'meta/_journal.json'));
+  const journalText = journalRaw.toString('utf8');
+  const journalSha256Lf = sha256(lf(journalText));
+  const journal = JSON.parse(journalText);
   const entries: { idx: number; when: number; tag: string; breakpoints: boolean }[] = journal.entries;
   const lastApplied = entries[preMigration.count - 1];
-  const journalMatches = entries.length === preMigration.count + expectedBatch.length
+  const journalMatches = journalSha256Lf === expectedJournalSha256Lf && entries.length === postMigrationCount
     && entries.every((entry, index) => entry.idx === index && Number.isSafeInteger(entry.when)
       && (index === 0 || entry.when > entries[index - 1].when))
     && new Set(entries.map(entry => entry.tag)).size === entries.length
@@ -75,7 +81,8 @@ export async function inspectMigrationFiles(folder = drizzle) {
   }));
   const passed = journalMatches && migrations.every(migration => migration.passed);
   return check(passed ? 'passed' : 'failed', passed ? 'v1_sql_and_journal_match' : 'v1_sql_or_journal_drift',
-    { journalCount: entries.length, journalMatches, migrations });
+    { journalCount: entries.length, journalMatches, journalSha256: sha256(journalRaw),
+      journalSha256Lf, expectedJournalSha256Lf, migrations });
 }
 
 async function inspectAtomicity() {
@@ -333,10 +340,11 @@ export async function runMigrationReadiness(argv = process.argv.slice(2), proces
     atomicity,
     inputs: check(inputs ? 'passed' : 'failed', inputs ? 'migration_inputs_loaded' : 'migration_inputs_invalid'),
     ledger: ledger ? check(preMigrationLedger ? 'passed' : 'failed',
-      preMigrationLedger ? 'expected_119_to_128_batch_pending' : 'unexpected_pre_migration_ledger', ledger)
+      preMigrationLedger ? `expected_${preMigration.count}_to_${postMigrationCount}_batch_pending` : 'unexpected_pre_migration_ledger', ledger)
       : check('not_run', 'source_ledger_unavailable'),
     dependencies: preflight?.migrations
-      ? check(preflight.migrations.length === 9 && preflight.migrations.every(item => item.status === 'passed')
+      ? check(preflight.migrations.length === expectedTags.length
+        && preflight.migrations.every((item, index) => item.tag === expectedTags[index] && item.status === 'passed')
         && preflight.delegation?.status === 'passed' && notificationEvidenceAvailable ? 'passed' : 'failed',
       'read_only_migration_preconditions', { migrations: preflight.migrations, notification })
       : check('not_run', 'migration_preconditions_unavailable'),

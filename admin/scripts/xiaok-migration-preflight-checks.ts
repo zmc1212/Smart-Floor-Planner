@@ -9,18 +9,22 @@ import {
 
 export type AuditClient = Pick<Client, 'query'>;
 
-type Relation = { name: string; kind: string; rls: boolean; readable: boolean; migrationOwner: boolean };
+type Relation = { name: string; kind: string; rls: boolean; forcedRls: boolean; readable: boolean; migrationOwner: boolean };
 type Column = { relation: string; name: string; type: string };
 type Constraint = {
   relation: string; name: string; type: string; validated: boolean; match: string;
   columns: string[]; targetSchema: string | null; target: string | null; targetColumns: string[];
+  deleteAction: string; deleteSetColumns: string[];
 };
 type Index = { relation: string; columns: string[]; keyUsable: boolean; name: string; signature: string };
-type Policy = { relation: string; permissive: string; qual: string | null };
+type Policy = {
+  relation: string; name: string; command: string; roles: string[];
+  permissive: string; qual: string | null; withCheck: string | null;
+};
 
 export async function readCatalog(client: AuditClient) {
   const { rows: relations } = await client.query<Relation>(`
-    SELECT c.relname AS name, c.relkind AS kind, c.relrowsecurity AS rls,
+    SELECT c.relname AS name, c.relkind AS kind, c.relrowsecurity AS rls, c.relforcerowsecurity AS "forcedRls",
       CASE WHEN c.relkind IN ('r','p') THEN has_table_privilege(c.oid,'SELECT') ELSE false END AS readable,
       pg_has_role('sfp_migrator',c.relowner,'USAGE') AS "migrationOwner"
     FROM pg_catalog.pg_class c WHERE c.relnamespace='app'::regnamespace ORDER BY c.relname
@@ -32,11 +36,13 @@ export async function readCatalog(client: AuditClient) {
   `);
   const { rows: constraints } = await client.query<Constraint>(`
     SELECT c.relname AS relation, con.conname AS name, con.contype AS type, con.convalidated AS validated,
-      con.confmatchtype AS match, t.relname AS target, ns.nspname AS "targetSchema",
+      con.confmatchtype AS match, con.confdeltype AS "deleteAction", t.relname AS target, ns.nspname AS "targetSchema",
       ARRAY(SELECT a.attname::text FROM unnest(con.conkey) WITH ORDINALITY AS k(attnum,n)
         JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum=k.attnum ORDER BY k.n) AS columns,
       ARRAY(SELECT a.attname::text FROM unnest(con.confkey) WITH ORDINALITY AS k(attnum,n)
-        JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.attnum ORDER BY k.n) AS "targetColumns"
+        JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.attnum ORDER BY k.n) AS "targetColumns",
+      ARRAY(SELECT a.attname::text FROM unnest(con.confdelsetcols) AS k(attnum)
+        JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum=k.attnum) AS "deleteSetColumns"
     FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class c ON c.oid=con.conrelid
     LEFT JOIN pg_catalog.pg_class t ON t.oid=con.confrelid
     LEFT JOIN pg_catalog.pg_namespace ns ON ns.oid=t.relnamespace
@@ -65,8 +71,9 @@ export async function readCatalog(client: AuditClient) {
     JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid WHERE c.relnamespace='app'::regnamespace AND NOT t.tgisinternal
   `);
   const { rows: policies } = await client.query<Policy>(`
-    SELECT p.tablename AS relation,p.permissive,p.qual FROM pg_catalog.pg_policies p
-    WHERE p.schemaname='app' AND p.cmd IN ('SELECT','ALL') AND EXISTS (
+    SELECT p.tablename AS relation,p.policyname AS name,p.cmd AS command,p.roles::text[] AS roles,
+      p.permissive,p.qual,p.with_check AS "withCheck" FROM pg_catalog.pg_policies p
+    WHERE p.schemaname='app' AND EXISTS (
       SELECT 1 FROM unnest(p.roles) AS r(name)
       WHERE CASE WHEN r.name='public' THEN true ELSE pg_has_role(r.name,'USAGE') END
     )
@@ -85,20 +92,23 @@ type Catalog = Awaited<ReturnType<typeof readCatalog>>;
 
 // These are the repository's global reads under the existing platform RLS scope.
 // An unfamiliar or restrictive SELECT policy leaves data coverage unverified.
+const citationTenantPredicate = 'selectapp.has_platform_accessashas_platform_accessorenterprise_id=selectapp.current_enterprise_idascurrent_enterprise_id';
 const platformReadPolicies = new Set([
   'true', 'app.has_platform_access',
   'app.has_platform_accessorenterprise_id=app.current_enterprise_id',
   'enterprise_id=app.current_enterprise_idorapp.has_platform_access',
-  'selectapp.has_platform_accessashas_platform_accessorenterprise_id=selectapp.current_enterprise_idascurrent_enterprise_id',
+  citationTenantPredicate,
 ]);
+const normalizePolicy = (predicate: string | null) => predicate?.replace(/[\s()]/g, '').toLowerCase() ?? '';
 
 function readableAcrossTenants(catalog: Catalog, name: string) {
   const relation = catalog.relations.get(name);
   if (!relation?.readable) return false;
   if (!relation.rls) return true;
-  const policies = catalog.policies.filter(policy => policy.relation === name);
+  const policies = catalog.policies.filter(policy => policy.relation === name
+    && (policy.command === 'SELECT' || policy.command === 'ALL'));
   return catalog.platform && policies.every(policy => policy.permissive === 'PERMISSIVE')
-    && policies.some(policy => platformReadPolicies.has(policy.qual?.replace(/[\s()]/g, '').toLowerCase() ?? ''));
+    && policies.some(policy => platformReadPolicies.has(normalizePolicy(policy.qual)));
 }
 
 const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"';
@@ -115,6 +125,8 @@ async function countViolations(client: AuditClient, catalog: Catalog, tables: st
 
 const docs = 'assistant_knowledge_documents', assets = 'assistant_knowledge_assets';
 const versions = 'assistant_knowledge_versions', chunks = 'assistant_knowledge_chunks', attempts = 'assistant_knowledge_attempts';
+const citations = 'assistant_message_citations', managedLibraries = 'assistant_managed_knowledge_libraries';
+const platformLibrary = 'assistant_platform_knowledge_library';
 const projects = 'construction_projects', leads = 'leads', plans = 'construction_plans';
 const camera = 'construction_camera_sd_windows', reminders = 'construction_stage_reminders';
 const pauses = 'construction_stage_reminder_pauses', pilot = 'xiaok_pilot_project_scopes';
@@ -144,7 +156,7 @@ const migrationRisks: Record<string, Risk> = {
       'assistant_knowledge_versions.enterprise_id,id'],
     oldConstraints: [assets + '.assistant_knowledge_assets_format_check', versions + '.assistant_source_file_shape',
       attempts + '.assistant_knowledge_attempts_operation_check'],
-    newRelations: ['assistant_knowledge_project_documents', 'assistant_managed_knowledge_libraries',
+    newRelations: ['assistant_knowledge_project_documents', managedLibraries,
       'assistant_managed_knowledge_imports', 'assistant_managed_version', 'assistant_managed_cleanup'],
     newColumns: [docs + '.scope', docs + '.project_id', attempts + '.provider_request_id'],
     newConstraints: [docs + '.assistant_knowledge_document_scope', docs + '.assistant_knowledge_document_project_fk'],
@@ -195,6 +207,20 @@ const migrationRisks: Record<string, Risk> = {
   },
   '0131_platform_notification_config_not_null': {
     requires: [platform], owners: [platform], columns: [platform + '.key', platform + '.notification_config'],
+  },
+  '0132_assistant_platform_knowledge_citations': {
+    requires: ['enterprises', 'admin_users', citations, versions, chunks], owners: [citations],
+    columns: [
+      ...['enterprise_id', 'document_id', 'document_version_id', 'chunk_id'].map(name => citations + '.' + name),
+      ...['id', 'status', 'must_change_password', 'role'].map(name => 'admin_users.' + name),
+    ],
+    keys: [enterpriseKey, versions + '.enterprise_id,document_id,id', chunks + '.enterprise_id,document_version_id,id'],
+    newRelations: [platformLibrary],
+    newColumns: [citations + '.platform_knowledge_enterprise_id', citations + '.source_enterprise_id'],
+    newConstraints: ['owner', 'version_fk', 'chunk_fk'].map(name => citations + '.assistant_citation_source_' + name),
+    newFunctions: ['assistant_citation_bind_source_owner/0', 'assistant_platform_knowledge_admin_is_current/1',
+      'assistant_managed_knowledge_mapping_immutable/0'],
+    newTriggers: [citations + '.assistant_citation_bind_source_owner', managedLibraries + '.assistant_managed_knowledge_mapping_immutable'],
   },
 };
 
@@ -297,6 +323,36 @@ async function checkChangingData(client: AuditClient, catalog: Catalog, tag: str
         ) duplicates`),
     };
   }
+  if (tag.startsWith('0132_')) {
+    const forcedRls = [citations, versions, chunks].every(name => {
+      const relation = catalog.relations.get(name);
+      return relation?.rls && relation.forcedRls;
+    });
+    const citationPolicies = catalog.policies.filter(policy => policy.relation === citations);
+    const [policy] = citationPolicies;
+    const tenantPolicy = citationPolicies.length === 1 && policy.name === 'assistant_message_citations_tenant'
+      && policy.command === 'ALL' && policy.permissive === 'PERMISSIVE' && policy.roles.join(',') === 'sfp_app'
+      && normalizePolicy(policy.qual) === citationTenantPredicate && normalizePolicy(policy.withCheck) === citationTenantPredicate;
+    const sourceKeys = catalog.constraints.filter(fk => fk.relation === citations && fk.type === 'f'
+      && (fk.target === versions || fk.target === chunks));
+    const versionKey = sourceKeys.find(fk => fk.target === versions);
+    const chunkKey = sourceKeys.find(fk => fk.target === chunks);
+    const previousSourceKeys = sourceKeys.length === 2
+      && sourceKeys.every(fk => fk.targetSchema === 'app' && fk.validated && fk.match === 's')
+      && versionKey?.columns.join(',') === 'enterprise_id,document_id,document_version_id'
+      && versionKey.targetColumns.join(',') === 'enterprise_id,document_id,id' && versionKey.deleteAction === 'a'
+      && chunkKey?.columns.join(',') === 'enterprise_id,document_version_id,chunk_id'
+      && chunkKey.targetColumns.join(',') === 'enterprise_id,document_version_id,id'
+      && chunkKey.deleteAction === 'n' && chunkKey.deleteSetColumns.join(',') === 'chunk_id';
+    return {
+      forcedRls: forcedRls ? { status: 'passed' } : { status: 'failed', reason: 'citation_or_source_force_rls_missing' },
+      tenantPolicy: tenantPolicy ? { status: 'passed' } : { status: 'failed', reason: 'citation_tenant_policy_drift' },
+      previousSourceKeys: previousSourceKeys ? { status: 'passed' }
+        : { status: 'failed', reason: 'legacy_citation_source_keys_mismatch' },
+      backfillSourceOwner: await countViolations(client, catalog, [citations],
+        'SELECT count(*) FROM app.assistant_message_citations WHERE enterprise_id IS NULL'),
+    };
+  }
   return { historicalRows: { status: 'not_run', reason: 'no_existing_rows_require_the_new_constraint' } };
 }
 
@@ -310,6 +366,9 @@ export async function auditPendingMigration(client: AuditClient, catalog: Catalo
   }
   if (tag.startsWith('0129_') && !findPending(pending, '0128')) {
     tables.add(reminders); owners.push(reminders);
+  }
+  if (tag.startsWith('0132_') && !findPending(pending, '0124')) {
+    tables.add(managedLibraries); owners.push(managedLibraries);
   }
   if (tag.startsWith('0130_') && catalog.relations.has(pilot)) tables.add(pilot);
   const missingRelations = [...tables].filter(name => !['r','p'].includes(catalog.relations.get(name)?.kind ?? ''));
