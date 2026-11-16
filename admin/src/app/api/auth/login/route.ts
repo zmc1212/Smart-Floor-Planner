@@ -8,6 +8,7 @@ import {
   isEnterpriseOperationallyActive,
 } from '@/lib/enterprise-status';
 import { getEffectivePermissions } from '@/lib/staff-access';
+import { JwtSecretUnavailableError } from '@/lib/jwt-secret';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,6 +98,12 @@ export async function POST(request: Request) {
     });
     return setAdminSessionCookie(response, token);
   } catch (error: unknown) {
+    if (error instanceof JwtSecretUnavailableError) {
+      return NextResponse.json(
+        { success: false, error: '认证服务未配置' },
+        { status: 503 }
+      );
+    }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { success: false, error: `服务器内部错误: ${message}` },

@@ -12,7 +12,7 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Alert, Avatar, Button, Card, Drawer, Flex, Form, Select, Space, Switch, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
+import { Alert, Avatar, Button, Card, Drawer, Flex, Form, Modal, Select, Space, Switch, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
 import { Award, FolderPlus, KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { ImageUploadField } from '@/components/admin/image-upload-field';
@@ -370,7 +370,16 @@ export default function StaffPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '保存员工失败');
-      notify.success(isEdit ? '员工信息已更新' : '员工账号已创建，初始密码为 123456');
+      const initialPassword = typeof result.data?.initialPassword === 'string' ? result.data.initialPassword : '';
+      if (initialPassword) {
+        Modal.info({
+          title: '一次性初始密码',
+          content: `员工“${result.data?.displayName || result.data?.username || ''}”的初始密码：${initialPassword}。仅显示这一次，请安全转交；该员工首次登录必须修改密码。`,
+          okText: '我已保存',
+        });
+      } else {
+        notify.success(isEdit ? '员工信息已更新' : '员工账号已创建');
+      }
       setStaffFormOpen(false);
       setEditingStaff(null);
       setWechatQrAssetId(null);
@@ -400,7 +409,7 @@ export default function StaffPage() {
   const resetStaffPassword = async (member: StaffMember) => {
     const confirmed = await confirmAction({
       title: '重置员工登录密码',
-      description: `将“${member.displayName || member.username}”的登录密码重置为 123456。该员工下次使用密码登录时必须先设置新密码。`,
+      description: `将为“${member.displayName || member.username}”生成一次性随机密码。该员工下次使用密码登录时必须先设置新密码。`,
       confirmText: '确认重置',
       destructive: true,
     });
@@ -413,7 +422,16 @@ export default function StaffPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || '重置员工密码失败');
       }
-      notify.success('密码已重置为 123456，员工下次登录须先修改密码');
+      const tempPassword = typeof result.data?.tempPassword === 'string' ? result.data.tempPassword : '';
+      if (tempPassword) {
+        Modal.info({
+          title: '一次性重置密码',
+          content: `员工“${member.displayName || member.username}”的新密码：${tempPassword}。仅显示这一次，请安全转交；该员工下次登录必须修改密码。`,
+          okText: '我已保存',
+        });
+      } else {
+        notify.success('密码已重置，员工下次登录须先修改密码');
+      }
       await actionRef.current?.reload();
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '重置员工密码失败');
@@ -839,7 +857,7 @@ export default function StaffPage() {
           showIcon
           type="info"
           className="mb-5"
-          message={editingStaff ? '手机号是员工的主要登录账号' : '新员工初始密码为 123456'}
+          message={editingStaff ? '手机号是员工的主要登录账号' : '保存后生成一次性随机初始密码，仅显示一次'}
           description={editingStaff
             ? '内部账号用于手机号关联多个企业账号时的备用登录；修改密码请使用员工列表中的“重置密码”。'
             : '系统会自动生成内部备用账号。员工首次使用手机号和初始密码登录后，必须立即设置新密码。'}

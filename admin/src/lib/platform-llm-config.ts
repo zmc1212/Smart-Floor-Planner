@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { AiProviderConfigRepository, PlatformConfigRepository } from '@/db/repositories';
 import { withPlatformTransaction, type PostgresTransaction } from '@/db/transaction';
-import { decryptText, encryptText, maskSecret } from '@/lib/crypto';
+import { decryptText, encryptText, isCredentialEncryptionReady, maskSecret } from '@/lib/crypto';
 import { thinkingBody } from '@/lib/ai/providers/thinking';
 import { getZhipuModelFree, isZhipuOfficialBaseUrl } from '@/lib/ai/providers/zhipu';
 import { getQiniuModelFree, isQiniuConatusModel } from '@/lib/ai/providers/qiniu';
@@ -114,11 +114,7 @@ export function normalizeLlmBaseUrl(value: unknown) {
 }
 
 export function isLlmCredentialEncryptionReady() {
-  if (process.env.NODE_ENV !== 'production') return true;
-  return Boolean(
-    process.env.AI_PROVIDER_KEY_ENCRYPTION_SECRET?.trim()
-      || process.env.JWT_SECRET?.trim()
-  );
+  return isCredentialEncryptionReady();
 }
 
 export function normalizeStoredConfig(input?: StoredPlatformLlmConfig | null, purpose: PlatformModelPurpose = 'chat') {
@@ -396,7 +392,7 @@ export async function savePlatformLlmConfig(input: PlatformLlmConfigInput, actor
   if (!reuseLlmCredentials && !/^[a-z0-9_-]{2,40}$/i.test(submittedProviderKey)) throw new Error('服务预设无效');
   const submittedKey = reuseLlmCredentials ? '' : asText(input.apiKey);
   if (submittedKey && !isLlmCredentialEncryptionReady()) {
-    throw new Error('生产环境必须配置 AI_PROVIDER_KEY_ENCRYPTION_SECRET 或 JWT_SECRET 后才能保存大模型凭据');
+    throw new Error('生产环境必须独立配置 AI_PROVIDER_KEY_ENCRYPTION_SECRET 后才能保存大模型凭据，不能与 JWT_SECRET 共用');
   }
 
   try {

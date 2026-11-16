@@ -8,6 +8,7 @@ import {
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
 import { isEnterpriseOperationallyActive } from '@/lib/enterprise-status';
+import { getJwtSecret } from '@/lib/jwt-secret';
 
 export interface SessionUser {
   id: string;
@@ -34,10 +35,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     const globalTenantId = cookieStore.get('global_tenant_id')?.value;
     if (!token) return null;
 
-    const secret = new TextEncoder().encode(
-      process.env.JWT_SECRET || 'fallback_secret_random_123'
-    );
-    const { payload } = await jose.jwtVerify(token, secret);
+    const { payload } = await jose.jwtVerify(token, getJwtSecret());
     const result = await withPlatformTransaction(async (transaction) => {
       const admin = await new AdminUserRepository(transaction).findById(
         parsePostgresId(payload.id, 'session user id')

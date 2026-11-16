@@ -22,7 +22,7 @@ import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-
 import { tradesInput } from '@/lib/construction/contracts';
 import {
   buildStaffUsername,
-  hashStaffInitialPassword,
+  createInitialPasswordCredential,
 } from '@/lib/enterprise-admin-provision';
 
 interface StaffCreateBody {
@@ -276,9 +276,10 @@ export async function POST(request: Request) {
         const resolvedUsername =
           username?.trim() ||
           buildStaffUsername(normalizedPhone, BigInt(targetEnterpriseId));
-        const passwordHash = password
-          ? await bcrypt.hash(password, 10)
-          : await hashStaffInitialPassword();
+        const initialCredential = password
+          ? { password: '', passwordHash: await bcrypt.hash(password, 10) }
+          : await createInitialPasswordCredential();
+        const passwordHash = initialCredential.passwordHash;
         const staff = await withTenantTransaction(
           targetEnterpriseId,
           async (transaction) => {
@@ -378,7 +379,17 @@ export async function POST(request: Request) {
         }
 
         return NextResponse.json(
-          { success: true, data: staff ? adminUserToDto(staff) : null },
+          {
+            success: true,
+            data: staff
+              ? {
+                  ...adminUserToDto(staff),
+                  ...(initialCredential.password
+                    ? { initialPassword: initialCredential.password }
+                    : {}),
+                }
+              : null,
+          },
           { status: 201 }
         );
       }

@@ -1,11 +1,23 @@
+import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import type { AdminUserRepository } from '@/db/repositories';
 import type { MiniProgramIdentityRepository } from '@/db/repositories';
 import type { EnterpriseRecord } from '@/db/repositories';
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
 
-export const ENTERPRISE_ADMIN_INITIAL_PASSWORD = '123456';
-export const STAFF_INITIAL_PASSWORD = ENTERPRISE_ADMIN_INITIAL_PASSWORD;
+/** One-time credentials are generated per account and never stored in plaintext. */
+export function generateInitialPassword() {
+  return randomBytes(18).toString('base64url');
+}
+
+export async function hashInitialPassword(password: string) {
+  return bcrypt.hash(password, 10);
+}
+
+export async function createInitialPasswordCredential() {
+  const password = generateInitialPassword();
+  return { password, passwordHash: await hashInitialPassword(password) };
+}
 
 /**
  * Login still matches by phone across owner rows. Username stays globally unique:
@@ -24,12 +36,14 @@ export function buildEnterpriseAdminUsername(
   return trimmed;
 }
 
-export function hashEnterpriseAdminInitialPassword() {
-  return bcrypt.hash(ENTERPRISE_ADMIN_INITIAL_PASSWORD, 10);
+/** Compatibility helper for callers that only need a hash. */
+export async function hashEnterpriseAdminInitialPassword() {
+  return (await createInitialPasswordCredential()).passwordHash;
 }
 
-export function hashStaffInitialPassword() {
-  return bcrypt.hash(STAFF_INITIAL_PASSWORD, 10);
+/** Compatibility helper for callers that only need a hash. */
+export async function hashStaffInitialPassword() {
+  return (await createInitialPasswordCredential()).passwordHash;
 }
 
 export function buildStaffUsername(phone: string, enterpriseId: bigint) {
@@ -43,7 +57,7 @@ export async function ensureEnterpriseAdminForActiveEnterprise(
 ) {
   const contact = enterprise.contactPerson;
   const phone = typeof contact.phone === 'string' ? contact.phone.trim() : '';
-  if (!phone) return;
+  if (!phone) return { initialPassword: null };
 
   const existingUser = await adminUsers.findByUsernameOrPhone(phone);
   if (existingUser && existingUser.enterpriseId !== enterprise.id) {
@@ -52,19 +66,24 @@ export async function ensureEnterpriseAdminForActiveEnterprise(
     });
   }
 
-  const staff =
-    existingUser ||
-    (await adminUsers.create({
-      username: buildEnterpriseAdminUsername(phone, enterprise.id),
-      passwordHash: await hashEnterpriseAdminInitialPassword(),
-      mustChangePassword: true,
-      displayName: typeof contact.name === 'string' ? contact.name : '',
-      role: 'enterprise_admin',
-      enterpriseId: enterprise.id,
-      phone,
-      menuPermissions: DEFAULT_PERMISSIONS.enterprise_admin,
-      status: 'active',
-    }));
+  if (existingUser) {
+    await identities.ensureStaffUser(existingUser);
+    return { initialPassword: null };
+  }
+
+  const credential = await createInitialPasswordCredential();
+  const staff = await adminUsers.create({
+    username: buildEnterpriseAdminUsername(phone, enterprise.id),
+    passwordHash: credential.passwordHash,
+    mustChangePassword: true,
+    displayName: typeof contact.name === 'string' ? contact.name : '',
+    role: 'enterprise_admin',
+    enterpriseId: enterprise.id,
+    phone,
+    menuPermissions: DEFAULT_PERMISSIONS.enterprise_admin,
+    status: 'active',
+  });
 
   await identities.ensureStaffUser(staff);
+  return { initialPassword: credential.password };
 }

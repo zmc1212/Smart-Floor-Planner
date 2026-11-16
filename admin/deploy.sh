@@ -84,29 +84,7 @@ fi
 docker run --rm --entrypoint sh "$IMAGE_NAME" -c 'test -f /app/scripts/postgres-migrate.mjs'
 
 echo 'Validating production runtime safety settings before touching PostgreSQL...'
-"${compose[@]}" run --rm --no-deps --entrypoint node admin -e '
-  const errors = [];
-  const requiredSecret = (name, length = 32) => {
-    const value = process.env[name]?.trim() || "";
-    if (value.length < length) errors.push(`${name} must contain at least ${length} characters`);
-    if (/replace|your_|example|change_me|placeholder/i.test(value)) errors.push(`${name} must not use a placeholder value`);
-  };
-  requiredSecret("JWT_SECRET");
-  requiredSecret("INTERNAL_SECRET");
-  requiredSecret("CRON_SECRET");
-  requiredSecret("MEDIA_STORAGE_KEY_ENCRYPTION_SECRET");
-  if (process.env.AUTH_COOKIE_SECURE !== "true") errors.push("AUTH_COOKIE_SECURE must be true");
-  if (process.env.ALLOW_TENANT_ENTERPRISE_RESET === "true") errors.push("ALLOW_TENANT_ENTERPRISE_RESET must be false");
-  if (!process.env.DEPLOY_SMOKE_USERNAME?.trim()) errors.push("DEPLOY_SMOKE_USERNAME is required");
-  if (!process.env.DEPLOY_SMOKE_PASSWORD || process.env.DEPLOY_SMOKE_PASSWORD.length < 12) {
-    errors.push("DEPLOY_SMOKE_PASSWORD must contain at least 12 characters");
-  }
-  if (errors.length) {
-    console.error(errors.join("\n"));
-    process.exit(1);
-  }
-  console.log("Production runtime safety settings passed");
-'
+"${compose[@]}" run --rm --no-deps --entrypoint node admin scripts/production-env-check.mjs
 
 previous_image=""
 if docker container inspect smart-floor-planner-admin >/dev/null 2>&1; then

@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
-import { aggregateAlertStatus, buildOperationsAlerts, readOperationsThresholds, retrievalConfiguration, ratioString } from '../operations';
+import {
+  aggregateAlertStatus,
+  buildOperationsAlerts,
+  readOperationsThresholds,
+  readWorkerHeartbeat,
+  retrievalConfiguration,
+  ratioString,
+} from '../operations';
 
 test('operations thresholds are configurable, bounded, and keep warn below critical', () => {
   const thresholds = readOperationsThresholds({
@@ -46,6 +56,29 @@ test('operations alerts classify objective thresholds and unavailable samples', 
   assert.equal(noSamples.find(alert => alert.code === 'answer_latency_p95')?.status, 'unknown');
   assert.equal(noSamples.find(alert => alert.code === 'insufficient_evidence_ratio')?.status, 'unknown');
   assert.equal(aggregateAlertStatus(noSamples), 'unknown');
+});
+
+test('API reads the same shared worker health file and reports stale/unknown safely', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'sfp-worker-health-'));
+  const file = path.join(dir, 'assistant-worker-health.json');
+  try {
+    const now = 1_800_000_000_000;
+    await writeFile(file, JSON.stringify({ lastSuccessAt: now - 5_000 }));
+    const fresh = await readWorkerHeartbeat({ ASSISTANT_WORKER_HEALTH_FILE: file }, 60, now);
+    assert.equal(fresh.freshness, 'fresh');
+    assert.equal(fresh.liveProbe, false);
+
+    await writeFile(file, JSON.stringify({ lastSuccessAt: now - 120_000 }));
+    const stale = await readWorkerHeartbeat({ ASSISTANT_WORKER_HEALTH_FILE: file }, 60, now);
+    assert.equal(stale.freshness, 'stale');
+
+    await rm(file);
+    const missing = await readWorkerHeartbeat({ ASSISTANT_WORKER_HEALTH_FILE: file }, 60, now);
+    assert.equal(missing.freshness, 'unknown');
+    assert.equal(JSON.stringify(missing).includes(file), false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('retrieval status reports configuration without exposing credentials or claiming live health', () => {

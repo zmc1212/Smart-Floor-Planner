@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { AdminUserRepository } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
-import { hashStaffInitialPassword } from '@/lib/enterprise-admin-provision';
+import { createInitialPasswordCredential } from '@/lib/enterprise-admin-provision';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 const RESETTABLE_ROLES = new Set([
@@ -48,11 +48,12 @@ export async function POST(
           ) {
             return { kind: 'forbidden' as const };
           }
+          const credential = await createInitialPasswordCredential();
           const updated = await repository.update(staffId, {
-            passwordHash: await hashStaffInitialPassword(),
+            passwordHash: credential.passwordHash,
             mustChangePassword: true,
           });
-          return { kind: 'ok' as const, updated };
+          return { kind: 'ok' as const, updated, tempPassword: credential.password };
         }
       );
 
@@ -76,7 +77,10 @@ export async function POST(
       }
       return NextResponse.json({
         success: true,
-        data: { mustChangePassword: true },
+        data: {
+          mustChangePassword: true,
+          ...(result.kind === 'ok' ? { tempPassword: result.tempPassword } : {}),
+        },
       });
     }
   );

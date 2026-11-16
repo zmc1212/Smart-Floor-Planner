@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as jose from 'jose';
 import { tenantStorage, TenantStore } from './tenant-context';
 import { constructionRouteAllowed } from './construction/route-access';
+import { getJwtSecret } from './jwt-secret';
 
 export interface TenantContext {
   userId: string;
@@ -28,8 +29,7 @@ export async function getTenantContext(request: Request | NextRequest): Promise<
 
     if (!token) return null;
 
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
-    const { payload } = await jose.jwtVerify(token, secret);
+    const { payload } = await jose.jwtVerify(token, getJwtSecret());
     // Mini Program JWTs share JWT_SECRET but use aud=miniprogram and put the
     // base users.id in `id`. Never treat them as Admin tenant sessions.
     const audience = payload.aud;

@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { PlatformConfigRepository } from '@/db/repositories/platform-config-repository';
 import { withPlatformTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one } from '@/db/repositories/assistant-repository';
-import { decryptText, encryptText, maskSecret } from '@/lib/crypto';
+import { decryptText, encryptText, isCredentialEncryptionReady, maskSecret } from '@/lib/crypto';
 import { AssistantError, fail, fingerprint } from '@/lib/assistant/contracts';
 import { providerConfig, type CommunityProviderConfig } from '@/lib/portfolio/community-provider';
 import { MAP_ERRORS, MAP_PROVIDERS, isMapProviderKey, type MapProviderKey, type MapConfigDto, type MapRights } from './contracts';
@@ -58,8 +58,7 @@ function stored(value: Record<string, unknown> | undefined | null): StoredConfig
   return { ...candidate, providers };
 }
 function encryptionReady() {
-  if (process.env.NODE_ENV === 'production' && !process.env.AI_PROVIDER_KEY_ENCRYPTION_SECRET?.trim()
-    && !process.env.POLLINATIONS_KEY_ENCRYPTION_SECRET?.trim() && !process.env.JWT_SECRET?.trim()) fail('map_encryption_unavailable', 503);
+  if (process.env.NODE_ENV === 'production' && !isCredentialEncryptionReady()) fail('map_encryption_unavailable', 503);
 }
 function decrypt(value: string) {
   try { encryptionReady(); return decryptText(value); } catch { return fail('map_key_unreadable', 503); }

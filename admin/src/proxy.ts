@@ -2,6 +2,7 @@ import { hasReferrersMenuPermission } from '@/lib/referrer-roster-access';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as jose from 'jose';
+import { getJwtSecret } from '@/lib/jwt-secret';
 import { constructionRouteAllowed } from '@/lib/construction/route-access';
 
 const ROUTE_PERMISSIONS: Record<string, string> = {
@@ -108,7 +109,15 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('auth_token')?.value;
   const authHeader = request.headers.get('Authorization');
-  const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
+  let secret: Uint8Array;
+  try {
+    secret = getJwtSecret();
+  } catch {
+    return NextResponse.json(
+      { success: false, error: '认证服务未配置' },
+      { status: 503 }
+    );
+  }
   // Enforce the construction boundary before the shared Mini Program/Bearer bypass.
   if (authHeader?.startsWith('Bearer ')) {
     try {

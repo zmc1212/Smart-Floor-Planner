@@ -7,7 +7,7 @@ import {
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
-import { hashEnterpriseAdminInitialPassword, buildEnterpriseAdminUsername } from '@/lib/enterprise-admin-provision';
+import { buildEnterpriseAdminUsername, createInitialPasswordCredential } from '@/lib/enterprise-admin-provision';
 import { isEnterpriseStatus } from '@/lib/enterprise-status';
 import { httpErrorStatus } from '@/lib/http-error';
 import {
@@ -164,6 +164,7 @@ export async function POST(request: Request) {
           const phone = contactPerson.phone
             ? String(contactPerson.phone).trim()
             : '';
+          let initialAdminPassword: string | null = null;
           if (phone) {
             if (await adminUsers.findByUsernameOrPhone(phone)) {
               throw Object.assign(
@@ -171,9 +172,10 @@ export async function POST(request: Request) {
                 { code: 'ACCOUNT_CONFLICT' }
               );
             }
+            const credential = await createInitialPasswordCredential();
             await adminUsers.create({
               username: buildEnterpriseAdminUsername(phone, enterprise.id),
-              passwordHash: await hashEnterpriseAdminInitialPassword(),
+              passwordHash: credential.passwordHash,
               mustChangePassword: true,
               displayName: contactPerson.name
                 ? String(contactPerson.name)
@@ -184,13 +186,19 @@ export async function POST(request: Request) {
               menuPermissions: DEFAULT_PERMISSIONS.enterprise_admin,
               status: 'active',
             });
+            initialAdminPassword = credential.password;
           }
-          return enterprise;
+          return { enterprise, initialAdminPassword };
         });
 
         return NextResponse.json({
           success: true,
-          data: sanitizeEnterpriseForResponse(enterpriseToDto(result)),
+          data: {
+            ...sanitizeEnterpriseForResponse(enterpriseToDto(result.enterprise)),
+            ...(result.initialAdminPassword
+              ? { initialAdminPassword: result.initialAdminPassword }
+              : {}),
+          },
         });
       }
     );

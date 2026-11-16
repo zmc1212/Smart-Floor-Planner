@@ -22,6 +22,7 @@ export type ApplyEnterpriseStatusChangeResult = {
     Awaited<ReturnType<EnterpriseRepository['applyStatusAction']>>
   >;
   statusEvents: EnterpriseStatusEventRecord[];
+  initialAdminPassword: string | null;
 };
 
 /**
@@ -100,19 +101,21 @@ export async function applyEnterpriseStatusChange(
     });
     if (!applied) return null;
 
+    let initialAdminPassword: string | null = null;
     if (applied.transition.toStatus === 'active') {
-      await ensureEnterpriseAdminForActiveEnterprise(
+      const provisioned = await ensureEnterpriseAdminForActiveEnterprise(
         new AdminUserRepository(transaction),
         applied.enterprise,
         new MiniProgramIdentityRepository(transaction)
       );
+      initialAdminPassword = provisioned.initialPassword;
     }
 
     const statusEvents = await enterprises.listStatusEvents(
       input.enterpriseId,
       input.statusEventLimit ?? 20
     );
-    return { applied, statusEvents };
+    return { applied, statusEvents, initialAdminPassword };
   });
 
   if (result) {

@@ -1,8 +1,9 @@
 import crypto from 'crypto';
 import { alignedSignedUrlDeadline } from '@/lib/media-storage/operations';
+import { getJwtSecretString } from '@/lib/jwt-secret';
 
 function secret() {
-  return process.env.JWT_SECRET || 'fallback_secret_random_123';
+  return getJwtSecretString();
 }
 
 function resolveSignedExpires(ttlSeconds: number | undefined, alignDeadline?: boolean) {

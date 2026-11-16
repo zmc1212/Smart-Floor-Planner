@@ -472,7 +472,7 @@ function LlmSettingsEditor({ purpose, onSaved }: { purpose: ModelPurpose; onSave
             showIcon
             type="warning"
             message="凭证加密密钥未就绪"
-            description="生产环境请配置 AI_PROVIDER_KEY_ENCRYPTION_SECRET 或 JWT_SECRET，否则无法安全保存新的 API Key。"
+            description="生产环境请独立配置 AI_PROVIDER_KEY_ENCRYPTION_SECRET（至少 32 字符，且不要与 JWT_SECRET 共用），否则无法安全保存新的 API Key。"
           />
         ) : null}
 

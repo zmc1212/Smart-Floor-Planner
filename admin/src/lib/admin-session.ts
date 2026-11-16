@@ -1,6 +1,7 @@
 import * as jose from 'jose';
 import { NextResponse } from 'next/server';
 import type { AdminUserRecord } from '@/db/repositories';
+import { getJwtSecret } from '@/lib/jwt-secret';
 
 const SESSION_SECONDS = 60 * 60 * 24;
 
@@ -9,9 +10,6 @@ export async function signAdminSession(input: {
   permissions: string[];
 }) {
   const { admin, permissions } = input;
-  const secret = new TextEncoder().encode(
-    process.env.JWT_SECRET || 'fallback_secret_random_123'
-  );
   return new jose.SignJWT({
     id: admin.id.toString(),
     username: admin.username,
@@ -24,7 +22,7 @@ export async function signAdminSession(input: {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('24h')
-    .sign(secret);
+    .sign(getJwtSecret());
 }
 
 export function setAdminSessionCookie(response: NextResponse, token: string) {

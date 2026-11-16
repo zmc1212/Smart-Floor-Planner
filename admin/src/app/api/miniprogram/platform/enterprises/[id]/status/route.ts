@@ -43,10 +43,15 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      data: toPlatformEnterpriseReviewDto(
-        result.applied.enterprise,
-        result.statusEvents
-      ),
+      data: {
+        ...toPlatformEnterpriseReviewDto(
+          result.applied.enterprise,
+          result.statusEvents
+        ),
+        ...(result.initialAdminPassword
+          ? { initialAdminPassword: result.initialAdminPassword }
+          : {}),
+      },
     });
   } catch (error: unknown) {
     const { status, body } = enterpriseStatusChangeErrorResponse(error);

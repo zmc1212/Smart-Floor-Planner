@@ -1,14 +1,59 @@
 import crypto from 'node:crypto';
 
-const DEFAULT_SECRET = 'smart-floor-planner-pollinations-secret';
+const DEV_CREDENTIAL_SECRET = 'local-dev-credential-encryption-only';
+const LEGACY_DEFAULT_SECRET = 'smart-floor-planner-pollinations-secret';
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
+const PLACEHOLDER = /(replace|your_|example|change_me|placeholder)/i;
 
-function getSecret() {
-  return process.env.AI_PROVIDER_KEY_ENCRYPTION_SECRET || process.env.POLLINATIONS_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET || DEFAULT_SECRET;
+export class CredentialEncryptionError extends Error {
+  constructor(readonly code: 'credential_encryption_secret_missing' | 'credential_encryption_secret_invalid' | 'credential_decryption_failed') {
+    super(
+      code === 'credential_encryption_secret_missing'
+        ? '生产环境必须配置 AI_PROVIDER_KEY_ENCRYPTION_SECRET'
+        : code === 'credential_encryption_secret_invalid'
+          ? 'AI_PROVIDER_KEY_ENCRYPTION_SECRET 不能使用占位值、默认值或短密钥'
+          : '凭据解密失败'
+    );
+    this.name = 'CredentialEncryptionError';
+  }
 }
 
-function getKey(secret = getSecret()) {
+function primaryCredentialSecret(env: NodeJS.ProcessEnv = process.env): string {
+  const dedicated = env.AI_PROVIDER_KEY_ENCRYPTION_SECRET?.trim();
+  if (dedicated) {
+    if (
+      env.NODE_ENV === 'production'
+      && (dedicated.length < 32 || PLACEHOLDER.test(dedicated)
+        || dedicated === LEGACY_DEFAULT_SECRET || dedicated === env.JWT_SECRET?.trim())
+    ) {
+      throw new CredentialEncryptionError('credential_encryption_secret_invalid');
+    }
+    return dedicated;
+  }
+  if (env.NODE_ENV === 'production') {
+    throw new CredentialEncryptionError('credential_encryption_secret_missing');
+  }
+  return env.POLLINATIONS_KEY_ENCRYPTION_SECRET?.trim()
+    || env.JWT_SECRET?.trim()
+    || DEV_CREDENTIAL_SECRET;
+}
+
+/**
+ * Read-only compatibility for ciphertext written before the dedicated
+ * AI_PROVIDER_KEY_ENCRYPTION_SECRET existed. Production may read old
+ * POLLINATIONS/JWT ciphertext, but never the old fixed default secret.
+ */
+function legacyCredentialSecrets(env: NodeJS.ProcessEnv = process.env): string[] {
+  const secrets = [
+    env.POLLINATIONS_KEY_ENCRYPTION_SECRET?.trim(),
+    env.JWT_SECRET?.trim(),
+  ];
+  if (env.NODE_ENV !== 'production') secrets.push(LEGACY_DEFAULT_SECRET);
+  return [...new Set(secrets.filter((value): value is string => Boolean(value)))];
+}
+
+function getKey(secret: string) {
   return crypto.createHash('sha256').update(secret).digest();
 }
 
@@ -25,11 +70,7 @@ function encryptWithSecret(plainText: string, secret: string) {
   return [iv.toString('base64'), tag.toString('base64'), encrypted.toString('base64')].join('.');
 }
 
-function decryptWithSecret(payload: string | null | undefined, secret: string) {
-  if (!payload) {
-    return '';
-  }
-
+function decryptWithSecret(payload: string, secret: string) {
   const [ivPart, tagPart, encryptedPart] = payload.split('.');
   if (!ivPart || !tagPart || !encryptedPart) {
     throw new Error('Invalid encrypted payload');
@@ -51,11 +92,32 @@ function decryptWithSecret(payload: string | null | undefined, secret: string) {
 }
 
 export function encryptText(plainText: string) {
-  return encryptWithSecret(plainText, getSecret());
+  return encryptWithSecret(plainText, primaryCredentialSecret());
 }
 
 export function decryptText(payload?: string | null) {
-  return decryptWithSecret(payload, getSecret());
+  if (!payload) {
+    return '';
+  }
+
+  const candidates = [...new Set([primaryCredentialSecret(), ...legacyCredentialSecrets()])];
+  for (const secret of candidates) {
+    try {
+      return decryptWithSecret(payload, secret);
+    } catch {
+      // Try the next read-only compatibility secret.
+    }
+  }
+  throw new CredentialEncryptionError('credential_decryption_failed');
+}
+
+export function isCredentialEncryptionReady(env: NodeJS.ProcessEnv = process.env) {
+  try {
+    primaryCredentialSecret(env);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getMediaStorageSecret() {
@@ -66,7 +128,7 @@ function getMediaStorageSecret() {
   return dedicatedSecret
     || process.env.AI_PROVIDER_KEY_ENCRYPTION_SECRET?.trim()
     || process.env.JWT_SECRET?.trim()
-    || DEFAULT_SECRET;
+    || DEV_CREDENTIAL_SECRET;
 }
 
 export function encryptMediaStorageSecret(plainText: string) {
@@ -74,6 +136,7 @@ export function encryptMediaStorageSecret(plainText: string) {
 }
 
 export function decryptMediaStorageSecret(payload?: string | null) {
+  if (!payload) return '';
   return decryptWithSecret(payload, getMediaStorageSecret());
 }
 

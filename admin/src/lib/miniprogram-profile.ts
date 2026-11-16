@@ -7,6 +7,7 @@ import {
   type UserRecord,
 } from '@/db/repositories';
 import type { PostgresTransaction } from '@/db/transaction';
+import { getJwtSecretString } from '@/lib/jwt-secret';
 import type { MiniProgramContext } from '@/lib/miniprogram-auth';
 
 const MANAGED_AVATAR_PREFIX = 'sfp-avatar:v1:';
@@ -33,7 +34,7 @@ export type ManagedAvatarReference = {
 };
 
 function avatarSecret() {
-  return process.env.JWT_SECRET || 'fallback_secret_random_123';
+  return getJwtSecretString();
 }
 
 function avatarSignaturePayload(userId: string, expires: number) {

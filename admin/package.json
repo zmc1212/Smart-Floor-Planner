@@ -20,6 +20,8 @@
     "test:cache": "node --test scripts/__tests__/prune-next-cache.test.mjs",
     "prebuild": "node scripts/prune-next-cache.mjs --include-webpack && node scripts/sync-survey-dimension-plan.mjs",
     "build": "next build",
+    "postbuild": "node scripts/prune-standalone-env.mjs",
+    "check:production-env": "node scripts/production-env-check.mjs",
     "start": "next start",
     "worker:lead-claims": "node scripts/lead-claim-worker.mjs",
     "worker:assistant": "node scripts/assistant-worker.mjs",

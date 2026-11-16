@@ -9,9 +9,8 @@ import type {
 } from '@/db/repositories';
 import { authenticateAdminCredential } from '@/lib/admin-credential-auth';
 import {
-  STAFF_INITIAL_PASSWORD,
   buildStaffUsername,
-  hashStaffInitialPassword,
+  createInitialPasswordCredential,
 } from '@/lib/enterprise-admin-provision';
 
 async function candidate(
@@ -35,13 +34,11 @@ function repository(rows: AdminUserRecord[]): AdminUserRepository {
   } as unknown as AdminUserRepository;
 }
 
-test('staff initial credentials use the documented password and tenant-scoped username', async () => {
-  assert.equal(STAFF_INITIAL_PASSWORD, '123456');
+test('staff initial credentials use a random one-time password and tenant-scoped username', async () => {
+  const credential = await createInitialPasswordCredential();
+  assert.notEqual(credential.password, '123456');
   assert.equal(buildStaffUsername('13800138000', BigInt(27)), 'staff_e27_13800138000');
-  assert.equal(
-    await bcrypt.compare(STAFF_INITIAL_PASSWORD, await hashStaffInitialPassword()),
-    true
-  );
+  assert.equal(await bcrypt.compare(credential.password, credential.passwordHash), true);
 });
 
 test('credential authentication selects a unique phone account by password', async () => {
@@ -88,7 +85,9 @@ test('legacy migration targets only linked wx designer and measurer accounts', a
   assert.match(migration, /"role" in \('designer', 'measurer'\)/i);
   assert.doesNotMatch(migration, /role in \([^)]*enterprise_admin/i);
   assert.ok(hash);
-  assert.equal(await bcrypt.compare(STAFF_INITIAL_PASSWORD, hash), true);
+  // Historical migration compatibility: old linked staff rows still use the
+  // legacy password and are forced to change it at first login.
+  assert.equal(await bcrypt.compare('123456', hash), true);
   assert.match(rlsBackfillMigration, /CREATE POLICY.*admin_users_migrator_initial_password_backfill/s);
   assert.match(rlsBackfillMigration, /TO sfp_migrator/);
   assert.match(rlsBackfillMigration, /DROP POLICY.*admin_users_migrator_initial_password_backfill/s);
@@ -110,7 +109,8 @@ test('staff APIs preserve the initial-password and forced-change contracts', () 
     /buildStaffUsername\(normalizedPhone, BigInt\(targetEnterpriseId\)\)/
   );
   assert.match(staffRoute, /mustChangePassword:\s*true/);
-  assert.match(resetRoute, /hashStaffInitialPassword\(\)/);
+  assert.match(resetRoute, /createInitialPasswordCredential\(\)/);
+  assert.match(resetRoute, /tempPassword/);
   assert.match(resetRoute, /staffId === actorId/);
   assert.match(resetRoute, /withTenantTransaction\(\s*context\.enterpriseId!/);
   assert.match(proxy, /password_change_required/);

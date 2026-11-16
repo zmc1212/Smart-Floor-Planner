@@ -7,6 +7,7 @@ import {
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { setAdminSessionCookie, signAdminSession } from '@/lib/admin-session';
+import { getJwtSecret } from '@/lib/jwt-secret';
 import {
   enterpriseAccessDeniedMessage,
   isEnterpriseOperationallyActive,
@@ -56,10 +57,7 @@ export async function GET(request: Request) {
     const globalTenantId = globalTenantMatch
       ? decodeURIComponent(globalTenantMatch[1])
       : null;
-    const secret = new TextEncoder().encode(
-      process.env.JWT_SECRET || 'fallback_secret_random_123'
-    );
-    const { payload } = await jose.jwtVerify(token, secret);
+    const { payload } = await jose.jwtVerify(token, getJwtSecret());
     const result = await withPlatformTransaction(async (transaction) => {
       const admin = await new AdminUserRepository(transaction).findById(
         parsePostgresId(payload.id, 'user id')

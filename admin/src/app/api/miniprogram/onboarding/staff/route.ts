@@ -6,7 +6,7 @@ import {
 import { adminUserToDto } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
 import { withMiniProgramRequestLog, type MiniProgramRequestLog } from '@/lib/miniprogram-request-log';
-import { hashEnterpriseAdminInitialPassword } from '@/lib/enterprise-admin-provision';
+import { createInitialPasswordCredential } from '@/lib/enterprise-admin-provision';
 import {
   miniProgramIdentityContextToDto,
   signMiniProgramIdentityContextToken,
@@ -52,10 +52,11 @@ async function onboardStaff(request: Request, log: MiniProgramRequestLog) {
     if (role === 'construction_staff' && !displayName) return referrerNetworkError('display_name_required');
     const constructionTrades = role === 'construction_staff' ? tradesInput(body.constructionTrades) : [];
     log.stage('staff_setup');
-    const [menuPermissions, passwordHash] = await Promise.all([
+    const [menuPermissions, initialCredential] = await Promise.all([
       getEffectivePermissions(role),
-      hashEnterpriseAdminInitialPassword(),
+      createInitialPasswordCredential(),
     ]);
+    const passwordHash = initialCredential.passwordHash;
 
     log.stage('database');
     const result = await withPlatformTransaction(async (transaction) => {
@@ -125,7 +126,10 @@ async function onboardStaff(request: Request, log: MiniProgramRequestLog) {
       token: switchedToken,
       context: miniProgramIdentityContextToDto(result.selected),
       contexts: result.contexts.map(miniProgramIdentityContextToDto),
-      data: adminUserToDto(result.onboarding.staff),
+      data: {
+        ...adminUserToDto(result.onboarding.staff),
+        initialPassword: result.onboarding.idempotent ? null : initialCredential.password,
+      },
       idempotent: result.onboarding.idempotent,
     });
   } catch (error) {

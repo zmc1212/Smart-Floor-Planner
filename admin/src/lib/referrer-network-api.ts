@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { getJwtSecretString } from '@/lib/jwt-secret';
 import { NextResponse } from 'next/server';
 import type {
   EnterpriseJoinCodeType,
@@ -163,8 +164,7 @@ export function hashRequestAddress(request: Request) {
   if (!address) return null;
   const salt =
     process.env.REFERRER_TOKEN_SECRET ||
-    process.env.JWT_SECRET ||
-    'fallback_secret_random_123';
+    getJwtSecretString();
   return crypto.createHmac('sha256', salt).update(address).digest('hex');
 }
 

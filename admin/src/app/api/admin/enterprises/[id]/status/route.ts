@@ -110,6 +110,9 @@ export async function POST(
               enterpriseToDto(result.applied.enterprise)
             ),
             statusEvents: result.statusEvents.map(enterpriseStatusEventToDto),
+            ...(result.initialAdminPassword
+              ? { initialAdminPassword: result.initialAdminPassword }
+              : {}),
           },
         });
       }

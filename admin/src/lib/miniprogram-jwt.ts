@@ -1,7 +1,5 @@
 import * as jose from 'jose';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_random_123';
-const secret = new TextEncoder().encode(JWT_SECRET);
+import { getJwtSecret } from './jwt-secret';
 
 export interface MiniProgramJWTPayload extends jose.JWTPayload {
   sub: string;           // Base user ID
@@ -28,7 +26,7 @@ export async function signMiniProgramToken(payload: MiniProgramJWTPayload): Prom
     .setIssuedAt()
     .setAudience('miniprogram')
     .setExpirationTime('21d')
-    .sign(secret);
+    .sign(getJwtSecret());
 }
 
 /**
@@ -36,7 +34,7 @@ export async function signMiniProgramToken(payload: MiniProgramJWTPayload): Prom
  */
 export async function verifyMiniProgramToken(token: string): Promise<MiniProgramJWTPayload | null> {
   try {
-    const { payload } = await jose.jwtVerify(token, secret, {
+    const { payload } = await jose.jwtVerify(token, getJwtSecret(), {
       audience: 'miniprogram',
     });
     if (

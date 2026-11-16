@@ -17,10 +17,14 @@ services:
       - AUTH_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-false}
       - MEDIA_STORAGE_PROVIDER=local
       - AI_ASSET_STORAGE_DIR=/data/ai-assets
-      - DATABASE_URL=postgresql://sfp_app:sfp_app_local_only@postgres:5432/smart_floor_planner
+      # Development fallback only. Production must provide DATABASE_URL via the
+      # runtime env file; deploy.sh rejects the local-only default password.
+      - DATABASE_URL=${DATABASE_URL:-postgresql://sfp_app:sfp_app_local_only@postgres:5432/smart_floor_planner}
+      - ASSISTANT_WORKER_HEALTH_FILE=/shared/assistant-worker-health.json
       - POSTGRES_HEALTHCHECK_REQUIRED=true
     volumes:
       - ai_assets:/data/ai-assets
+      - assistant_health:/shared
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,7 +35,8 @@ services:
     restart: "no"
     environment:
       - NODE_ENV=production
-      - DATABASE_MIGRATION_URL=postgresql://sfp_migrator:sfp_migrator_local_only@postgres:5432/smart_floor_planner
+      # Development fallback only; production must override this value.
+      - DATABASE_MIGRATION_URL=${DATABASE_MIGRATION_URL:-postgresql://sfp_migrator:sfp_migrator_local_only@postgres:5432/smart_floor_planner}
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,8 +72,11 @@ services:
     environment:
       - NODE_ENV=production
       - ASSISTANT_WORKER_ENDPOINT=http://admin:3005/api/internal/assistant/jobs/run
+      - ASSISTANT_WORKER_HEALTH_FILE=/shared/assistant-worker-health.json
     depends_on:
       - admin
+    volumes:
+      - assistant_health:/shared
     command: ["node", "scripts/assistant-worker.mjs"]
     healthcheck:
       test: ["CMD", "node", "scripts/assistant-worker-healthcheck.mjs"]
@@ -87,7 +95,9 @@ services:
       - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: sfp_owner
-      POSTGRES_PASSWORD: sfp_owner_local_only
+      # Development fallback only; production must provide POSTGRES_PASSWORD or
+      # use an external managed database.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sfp_owner_local_only}
       POSTGRES_DB: smart_floor_planner
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -100,4 +110,5 @@ services:
 
 volumes:
   ai_assets:
+  assistant_health:
   postgres_data:
