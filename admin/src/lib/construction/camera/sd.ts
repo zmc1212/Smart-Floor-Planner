@@ -82,7 +82,9 @@ export async function listSdRecordings(token: string, csrf: string | undefined, 
   const cursor = before === undefined ? to.getTime() : typeof before === 'string' ? Date.parse(before) : NaN;
   if (!Number.isFinite(cursor) || cursor <= from.getTime() || cursor > to.getTime()) fail('camera_invalid_date',422);
   const context = await withTenantTransaction(eid, async tx => {
-    const s = await cameraSession(tx,token,csrf), b = await sdBinding(tx,eid,s.pid,bid);
+    const s = await cameraSession(tx,token,csrf);
+    if(s.access.liveOnly)fail('camera_forbidden',403);
+    const b = await sdBinding(tx,eid,s.pid,bid);
     const sample=await refreshSdWindow(tx,b,reader);
     const windows = await rows(tx,sql`select * from app.construction_camera_sd_windows where enterprise_id=${eid} and binding_id=${bid}
       and business_from>=${b.sd_activated_at as Date} and serial_hash=${sample.serialHash} and source_to>source_from and source_from<${new Date(cursor)} and source_to>${from} order by source_to desc limit 1000`);
@@ -109,7 +111,7 @@ export async function listSdRecordings(token: string, csrf: string | undefined, 
     }
   }
   const items = await withTenantTransaction(eid,async tx=>{
-    const s = await cameraSession(tx,token,csrf); await sdBinding(tx,eid,s.pid,bid);
+    const s = await cameraSession(tx,token,csrf); if(s.access.liveOnly)fail('camera_forbidden',403); await sdBinding(tx,eid,s.pid,bid);
     const result:Row[] = [];
     for (const clip of segments) {
       const saved = await one(tx,sql`insert into app.construction_camera_sd_recordings(enterprise_id,project_id,binding_id,window_id,started_at,ended_at,expires_at)
@@ -136,7 +138,7 @@ async function sdRecord(tx:PostgresTransaction,eid:string,pid:string,rid:string,
 export async function startSdRecordingView(token:string,csrf:string,recordingId:string,upstream=cameraWvp(),reader:SdClockReader=readSdClock) {
   const {eid,hash}=parseCameraToken(token),rid=id(recordingId);
   const r = await withTenantTransaction(eid,async tx=>{
-    const s=await cameraSession(tx,token,csrf),initial=await sdRecord(tx,eid,s.pid,rid,true);
+    const s=await cameraSession(tx,token,csrf); if(s.access.liveOnly)fail('camera_forbidden',403); const initial=await sdRecord(tx,eid,s.pid,rid,true);
     const sample=await refreshSdWindow(tx,await sdBinding(tx,eid,s.pid,String(initial.binding_id)),reader);
     // The refresh may have rebased this window to the stable identity. Re-read
     // the record so a legacy cached index is compared with its new hash rather
@@ -151,7 +153,7 @@ export async function startSdRecordingView(token:string,csrf:string,recordingId:
   if (!actual.some(a=>a.deviceId===r.device_id&&sdTime(a.startTime).getTime()<=stamp(r.started_at)&&sdTime(a.endTime).getTime()>=stamp(r.ended_at))) fail('camera_recording_unavailable',404);
   const stream=sdPlaybackStream(String(r.device_id),String(r.channel_id),new Date(stamp(r.started_at)),new Date(stamp(r.ended_at)));
   const claim = await withTenantTransaction(eid,async tx=>{
-    const s=await cameraSession(tx,token,csrf);await sdRecord(tx,eid,s.pid,rid,true);
+    const s=await cameraSession(tx,token,csrf); if(s.access.liveOnly)fail('camera_forbidden',403); await sdRecord(tx,eid,s.pid,rid,true);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`camera-sd-stream:${stream.stream}`},0))`);
     const old=await one(tx,sql`select *,stop_after>clock_timestamp() shared_live from app.construction_camera_sd_playbacks where stream_id=${stream.stream} for update`);
     if (old && (String(old.binding_id)!==String(r.binding_id)||!['active','stopped'].includes(String(old.state)))) fail('camera_playback_busy',409);
@@ -169,7 +171,7 @@ export async function startSdRecordingView(token:string,csrf:string,recordingId:
     try {
       await upstream.startSdPlayback(String(r.device_id),String(r.channel_id),new Date(stamp(r.started_at)),new Date(stamp(r.ended_at)));
       await withTenantTransaction(eid,async tx=>{
-        const s=await cameraSession(tx,token,csrf);await sdRecord(tx,eid,s.pid,rid);
+        const s=await cameraSession(tx,token,csrf); if(s.access.liveOnly)fail('camera_forbidden',403); await sdRecord(tx,eid,s.pid,rid);
         if(Number(s.play_version)!==claim.generation||String(s.sd_playback_id)!==claim.id)fail('camera_play_superseded',409);
         const p=await one(tx,sql`update app.construction_camera_sd_playbacks set state='active' where id=${claim.id} and state='starting' returning stop_after`);
         if(!p)fail('camera_play_superseded',409);
@@ -183,6 +185,7 @@ export async function startSdRecordingView(token:string,csrf:string,recordingId:
   return {source:'sd',generation:claim.generation,flv:`/camera-media/${claim.generation}/live.flv`,hls:`/camera-media/${claim.generation}/hls.m3u8`,startedAt:r.started_at,endedAt:r.ended_at};
 }
 export async function authorizeSdMedia(tx:PostgresTransaction,s:Row) {
+  if((s.access as { liveOnly?: boolean } | undefined)?.liveOnly)fail('camera_forbidden',403);
   const p=await one(tx,sql`select * from app.construction_camera_sd_playbacks where enterprise_id=${s.eid as string} and project_id=${s.pid as string} and id=${String(s.sd_playback_id)} and state='active' and stop_after>now()`);
   if(!p||p.stream_id!==s.stream_id||p.stream_app!==s.stream_app)fail('camera_view_expired',401);
   await sdRecord(tx,String(s.eid),String(s.pid),String(p.recording_id));
@@ -208,6 +211,14 @@ export async function reconcileSdPlaybacks(upstream=cameraWvp(),playbackId?:stri
           }
         }
         if(valid)return null;
+        // A 4G device may need tens of seconds to wake its SD playback. Hold a
+        // just-started stream for a short grace period so a retry reuses it
+        // instead of paying that wake-up again. Switching to another segment
+        // starts a newer playback and releases this one immediately, because
+        // the device uplink cannot carry two SD playbacks at once.
+        if(await one(tx,sql`select 1 from app.construction_camera_sd_playbacks where id=${String(p.id)} and created_at>now()-interval '30 seconds'
+          and not exists(select 1 from app.construction_camera_sd_playbacks n where n.enterprise_id=${eid} and n.id<>${String(p.id)}
+            and n.state<>'stopped' and n.created_at>${p.created_at as Date})`))return null;
         // Commit revocation and STOP intent before the provider operation. An
         // unknown STOP must never restore a viewer or become a shareable start.
         await tx.execute(sql`update app.construction_camera_sd_playbacks set state='stopping' where id=${String(p.id)}`);

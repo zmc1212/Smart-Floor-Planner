@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
-import { verifyMiniProgramToken } from '@/lib/miniprogram-jwt';
+import { verifyFamilyInvite, verifyMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { AssistantError, fail, id, key } from '@/lib/assistant/contracts';
 import { ConstructionService } from '@/lib/construction/service';
 import { siteChatHttp } from '@/lib/construction/site-http';
-import { CustomerProjectProgress, customerProgressTenant } from '@/lib/construction/family-progress';
+import { CustomerProjectProgress, customerConstructionProjects, customerProgressTenant } from '@/lib/construction/family-progress';
 import { staffCameraHttp, customerCameraHttp } from '@/lib/construction/camera/http';
 import { ownerSiteHome, ownerSiteList } from '@/lib/construction/owner-home';
 import { ownerSiteCover } from '@/lib/construction/camera/owner-cover';
@@ -36,20 +36,45 @@ async function handle(request: NextRequest, context: Context) {
         : p.length === 2 ? await ownerSiteHome(identity, id(p[1])) : await ownerSiteCover(identity, id(p[1]));
       return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
     }
+    if (actor.mode === 'customer' && p.length === 1 && p[0] === 'customer-projects' && read) {
+      if (!actor.user.openid) fail('Unauthorized', 401);
+      const params = request.nextUrl.searchParams;
+      if ([...params.keys()].some(name => !['leadId', 'projectId'].includes(name))) fail('invalid_construction', 422);
+      const data = await customerConstructionProjects(actor.user._id, {
+        leadId: params.get('leadId') || undefined,
+        projectId: params.get('projectId') || undefined,
+      });
+      return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+    if (actor.mode === 'customer' && p[0] === 'family-invites' && p.length === 3 && p[2] === 'accept' && request.method === 'POST') {
+      if (!actor.user.openid) fail('Unauthorized', 401);
+      if (request.nextUrl.search) fail('invalid_construction', 422);
+      const invite = await verifyFamilyInvite(p[1]);
+      if (!invite) fail('construction_invite_invalid', 404);
+      const service = new CustomerProjectProgress({ enterpriseId: invite.enterpriseId,
+        principal: { kind: 'user', userId: actor.user._id }, contextVersion: token.contextVersion, capabilities: [] });
+      const data = await service.acceptInvite(invite);
+      return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     if (actor.mode === 'customer' && p[0] === 'video') {
       if (!actor.user.openid) fail('Unauthorized', 401);
       return await customerCameraHttp(request, { userId: actor.user._id, contextVersion: token.contextVersion }, p.slice(1));
     }
-    if (actor.mode === 'customer' && p[0] === 'projects' && ['progress', 'family-viewers'].includes(p[2])) {
+    if (actor.mode === 'customer' && p[0] === 'projects' && ['progress', 'family-viewers', 'family-invite'].includes(p[2])) {
       if (!actor.user.openid) fail('Unauthorized', 401);
       if (request.nextUrl.search) fail('invalid_construction', 422);
       const progress = p.length === 3 && p[2] === 'progress' && read;
       const grant = p.length === 4 && p[2] === 'family-viewers' && request.method === 'POST';
-      if (!progress && !grant) fail('construction_not_found', 404);
+      const viewers = p.length === 3 && p[2] === 'family-viewers' && read;
+      const invite = p.length === 3 && p[2] === 'family-invite' && request.method === 'POST';
+      if (!progress && !grant && !viewers && !invite) fail('construction_not_found', 404);
       const enterpriseId = await customerProgressTenant(p[1], actor.user._id);
       const service = new CustomerProjectProgress({ enterpriseId, principal: { kind: 'user', userId: actor.user._id },
         contextVersion: token.contextVersion, capabilities: [] });
-      const data = progress ? await service.read(p[1]) : await service.grant(p[1], p[3], await readBody(request), key(request.headers.get('idempotency-key')));
+      const data = progress ? await service.read(p[1])
+        : viewers ? await service.viewers(p[1])
+        : invite ? await service.invite(p[1])
+        : await service.grant(p[1], p[3], await readBody(request), key(request.headers.get('idempotency-key')));
       return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (actor.mode !== 'staff' || !actor.staff?._id || !actor.enterpriseId) fail('construction_forbidden', 403);

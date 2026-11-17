@@ -31,7 +31,7 @@ Native 咨询复用获权官网原文通道。已知托管故障返回明确回�
 <!-- cross-role-business-current -->
 **B5.9 四端项目协同（Limited）。** 员工工地详情和简报读取同一事项流和计划投影。后台和小程序在原 API 前缀下通过 `GET/POST /construction/projects/:id/schedule` 读取或发布带日期的计划，已指派的项目经理携带 `expectedVersion` 发布。原现场记录发布接口可带 `scheduleCompletion: { nodeKey, expectedVersion }`，明确核实某房间节点完成。实际施工节点、计划颜色和施工问题状态分别引用各自的证据，保留事件及记录版本。
 
-业主授权后，同一事项关联原需求及原咨询。指派设计师提交意见并发布精确图纸版本，原业主预览并决定该版。施工端接收当前已获批要求，回传绑定版本的现场记录。指派项目经理复核回传的证据。老板按组织授权范围读取同源事项清单和计数。小程序 `GET /api/miniprogram/construction/projects/:id/progress` 与 `POST .../family-viewers/:userId` 提供业主进度和可撤销的家庭代看授权。代看权限为 `family_view`，共享需求和正式决定继续检查原咨询业主身份。
+业主授权后，同一事项关联原需求及原咨询。指派设计师提交意见并发布精确图纸版本，原业主预览并决定该版。施工端接收当前已获批要求，回传绑定版本的现场记录。指派项目经理复核回传的证据。老板按组织授权范围读取同源事项清单和计数。小程序 `GET /api/miniprogram/construction/projects/:id/progress` 与 `POST .../family-viewers/:userId` 提供业主进度和可撤销的家庭代看授权。代看权限为 `family_view`，共享需求和正式决定继续检查原咨询业主身份。业主通过 `POST /api/miniprogram/construction/projects/:id/family-invite` 生成 7 天有效的一次性分享卡片，家属通过 `POST /api/miniprogram/construction/family-invites/:token/accept` 接受，业主通过 `GET .../family-viewers` 查看或撤销。家属摄像头沿用业主摄像头授权但仅可看直播，抓拍、云台和回放保持业主专属。
 
 开发启用项为 `NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS`。沿原 PostgreSQL outbox、投递与记录版本保存来源、意见、图纸和复核回执。B5.8 Worker 沿同一事件推进委托和重新打开的事项。关闭协同后，已保存的设计事项、绑定专业意见的方案和已确认整改继续核对项目分工。[版本、权限、状态及验收合同](../admin/src/lib/native-workflow/README.md#b59-cross-role-project-collaboration)。
 <!-- /cross-role-business-current -->
@@ -717,6 +717,8 @@ Assistant Worker 本地诊断 **Implemented**。Worker 原子写入请求、成�
 **I7.5.20 正式知识问答降级（Implemented）。** 文本调用在获权检索成功后失败时，同一任务可保存审核原文和引用，以 `content.answerMode=facts_only` 标记。提交复核当前项目、阶段、发布、版本、哈希及权限。依据不足时保存 `insufficient_evidence`。任务回执保留模型错误与检索步骤，已发出的未知计费调用保持 `reconciling`。托管检索遇到允许切换的可用性错误时才使用获权且兼容的本地索引。凭据拒绝或本地索引不兼容时停止检索。[I7.5.20 验收](./xiaok-i7520-facts-only-ai-acceptance.md)。
 
 1B知识回答、结构化引用/失效校验、无依据处理及本人预览后端 **Implemented**。同一ConversationService/JobQueue在授权检索后调用现有文本模型；每段回答必须引用本次证据及逐字摘录，最终提交复查权限、epoch、hash/profile和有效期。无候选/低相关或模型明确无依据时保存固定insufficient_evidence notice；检索故障、非法引用或畸形输出不会冒充有效回答。0061新增强制RLS引用表及消息/run answer_kind；引用与最终消息、终态同事务落库，reset/purge已包含引用。后续读取会隐藏已撤回/受限/过期/draft编辑失效来源及整条依赖回答，仍获授权的旧发布版本标记historical。
+
+**客户回答安全兜底（2026-11-17，代码 Implemented / 生产未部署）。** 客户会话（`customer_consultation`、`construction_followup`）中，`source_read_required` 且问题涉及企业标准/工艺/验收/闭水等，或 `unsupported_model_commitment` 且问题涉及价格/工期/下周安排/正式承诺时，Worker 不再留下空白失败轮次：保存固定 `insufficient_evidence` notice，写入 `agent_fallback` 审计步骤并保留原错误码；模型已调用的预占保持 `reconciling`，未调用则释放。`retrieval_unavailable` 等检索基础设施故障、员工预览、内部动作及已提交回答仍按原失败处理；不新增路由、权限、schema 或小程序 UI，沿用现有 notice `fallbackText` 渲染。回归覆盖 `answer-selection.test.ts` 与 `assistant-agent.test.ts` 的两个定向用例。
 
 FAQ回答整理 **Implemented**，使用`extractive-selection-v3-faq`：问题标题仅作匹配上下文，不作为答案候选；不超过400字符的短答案保留完整条件。优先选择一条直接、完整的答案，仅补充尚未覆盖的必要信息，相同正文确定性去重。展示只去除FAQ的问答外壳，引用快照仍是连续原文；最终校验不允许新增解释或删掉答案的限制条件。已保存的旧消息不回写。开发环境企业1454/客户645/线索1818复测截图中的水电开工问题，返回一段正文和一个可用引用；conversation109/run80只有一条用户消息和一条助手消息，重新读取历史内容一致。证据：`tmp/xiaok-vector/faq-answer-live.json`；回归覆盖位于`answer-selection.test.ts`和`assistant-answers.test.ts`。路由、API、权限、小程序结构/样式/素材及已批准PPT设计不变。
 

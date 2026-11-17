@@ -2,7 +2,7 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id), video = $('video');
-  let csrf = '', state = null, player = null, intent = 0, active = false, heartbeat = null, controlBusy = false, captureBusy = false, stopPending = Promise.resolve();
+  let csrf = '', state = null, player = null, intent = 0, active = false, heartbeat = null, controlBusy = false, captureBusy = false, stopPending = Promise.resolve(), recordingTicker = null;
   let viewMode='live',recordings=[],recordingQuery=0,queryBusy=false,viewChange=0,earlier=null;
   let historyQuery = 0, unavailable = false;
   const preferences = new Map();
@@ -21,7 +21,7 @@
     return json.data;
   }
   const selected = () => state?.items.find(c => String(c.binding_id) === $('camera').value);
-  function destroy() { active = false; if (player) { player.destroy(); player = null; } video.pause(); video.removeAttribute('src'); video.load(); $('stop').disabled = true; }
+  function destroy() { active = false; clearInterval(recordingTicker); recordingTicker = null; if (player) { player.destroy(); player = null; } video.pause(); video.removeAttribute('src'); video.load(); $('stop').disabled = true; }
   async function stop(quiet = false) {
     intent++; destroy();
     // Drain earlier STOPs before allowing a newer play intent to start.
@@ -41,7 +41,7 @@
   }
   const recordingKey=r=>(r.source||'cloud')+':'+r.id;
   const selectedRecording=()=>recordings.find(r=>recordingKey(r)===$('recording').value);
-  function capabilities() { const c = selected(); $('play').disabled = !c; $('capture').hidden = viewMode!=='live'||!state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = viewMode!=='live'||!state?.canControl || !c?.ptz_enabled; $('snapshots-section').hidden=viewMode!=='live'||state?.canViewSnapshots===false; $('play-recording').disabled=queryBusy||!selectedRecording();$('query-recordings').disabled=queryBusy||!state;
+  function capabilities() { const c = selected(); $('playback-tab').hidden = state?.liveOnly === true; $('play').disabled = !c; $('capture').hidden = viewMode!=='live'||!state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = viewMode!=='live'||!state?.canControl || !c?.ptz_enabled; $('snapshots-section').hidden=viewMode!=='live'||state?.canViewSnapshots===false; $('play-recording').disabled=queryBusy||!selectedRecording();$('query-recordings').disabled=queryBusy||!state;
     if ($('history-jump')) $('history-jump').hidden = viewMode!=='live'||!state||state.canViewSnapshots===false;
     if ($('ptz-toggle')) $('ptz-toggle').hidden = $('ptz').hidden;
     if ($('camera-tools')) $('camera-tools').hidden = viewMode!=='live'||!state||(!state.canCapture&&state.canViewSnapshots===false&&$('ptz').hidden);
@@ -99,6 +99,7 @@
     finally{if(g===recordingQuery){queryBusy=false;$('recording').disabled=!recordings.length;capabilities();}}
   }
   async function setView(mode){
+    if(mode==='playback'&&state?.liveOnly)return;
     if(!await stopForSelection())return;queryBusy=false;viewMode=mode;savePreference('view',mode);
     const playback=mode==='playback';$('live-actions').hidden=playback;$('live-settings').hidden=playback;$('playback-panel').hidden=!playback;
     for(const name of ['live','playback']){$(name+'-tab').classList.toggle('secondary',name!==mode);$(name+'-tab').setAttribute('aria-pressed',String(name===mode));}
@@ -107,12 +108,18 @@
     if(playback)await loadRecordings();
   }
   async function playRecording(){
-    const record=selectedRecording();if(!record)return;const generation=++intent;destroy();$('play-recording').disabled=true;status('正在读取录像…');
+    const record=selectedRecording();if(!record)return;const generation=++intent;destroy();$('play-recording').disabled=true;
+    const began=Date.now();let waiting=true;
+    const paint=()=>{if(generation!==intent||!waiting)return;const seconds=Math.round((Date.now()-began)/1000);status((active?'正在接收回放画面… ':'正在唤醒摄像头回放（4G 首次连接约 10–30 秒）… ')+'已等待 '+seconds+' 秒');};
+    const settle=()=>{waiting=false;clearInterval(recordingTicker);recordingTicker=null;};
+    const onPlaying=()=>{if(generation===intent)settle();};
+    status('正在唤醒摄像头回放（4G 首次连接约 10–30 秒）…');recordingTicker=setInterval(paint,1000);
+    video.addEventListener('playing',onPlaying,{once:true});
     try{await stopPending;if(generation!==intent)return;const result=await api('playback',{recordingId:String(record.id),source:record.source||'cloud'});if(generation!==intent)return;
       savePreference('recording',recordingKey(record),$('camera').value);if(result.source==='sd')await attachStream(result,generation,false);else{video.src=result.url;await video.play();}if(generation!==intent)return;
       active=true;status('正在接收回放画面…');
-    }catch(e){if(generation===intent){await stop(true);if(!unavailable)status(message(e),true);}}
-    finally{capabilities();}
+    }catch(e){if(generation===intent){settle();await stop(true);if(!unavailable)status(message(e),true);}}
+    finally{if(generation!==intent)settle();video.removeEventListener('playing',onPlaying);capabilities();}
   }
   async function loadHistory() {
     if (!state) return;

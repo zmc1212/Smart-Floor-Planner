@@ -17,6 +17,8 @@ Chinese mirror: [cloud-construction-video-plan.zh-CN.md](./cloud-construction-vi
 
 Wired=cloud,4G=local SD/transmit while viewed.Cloud defaults off/3days;enterprise defaults/camera overrides within node1..7days.SD follows actual capacity/indexes,no three-day deletion promise.This camera has bounded Mini SD/time evidence; stable binding identity and one-time legacy-window rebase are implemented and pass the isolated suite, so re-registration keeps the same binding's history; physical WeChat/independent route/reconnect remain pending.
 
+Family access through an owner's single-use share card is live-only: it inherits the owner's camera grant but cannot play recordings, capture snapshots or control PTZ; revoking the grant expires existing sessions on the next heartbeat.
+
 Reuse configuration/access/storage/operations.Exclude billing/rental/after-sales,public-live consent,XiaoK analysis,permanent retention/bulk export,scheduled captures,patrol,intercom,timeline/speed controls.
 
 ## 2. Current delivery

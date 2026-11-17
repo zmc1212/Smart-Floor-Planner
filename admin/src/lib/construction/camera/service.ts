@@ -152,7 +152,7 @@ export async function listCameraProject(actor: CameraActor, pid: string) {
       where b.enterprise_id=${eid} and b.project_id=${pid} and b.ended_at is null and c.enabled order by c.id`);
     const order = access.manage ? await activeOrder(tx, eid, pid) : null;
     const affected = access.owner ? await one(tx, sql`select count(*) n from app.construction_camera_recording_policies p join app.construction_camera_bindings b on b.enterprise_id=p.enterprise_id and b.id=p.binding_id where p.enterprise_id=${eid} and p.retention_override_days is null and p.recording_mode='cloud' and b.ended_at is null`) : null;
-    return { project: access.project, canManage: access.manage, canConfigure: access.owner, canCapture: access.canCapture, canControl: access.canControl,
+    return { project: access.project, liveOnly: access.liveOnly, canManage: access.manage, canConfigure: access.owner, canCapture: access.canCapture, canControl: access.canControl,
       canViewSnapshots: !isCameraCustomer(actor) || access.canCapture, maxRetentionDays: nodeRetentionDays(), items,
       customerGrant: access.owner ? await currentCameraCustomerGrant(tx, eid, pid) : null,
       retentionDefault: access.owner ? { ...defaults, affectedCount: Number(affected!.n) } : null,
@@ -228,6 +228,7 @@ export async function authorizeCameraMedia(token: string, generation: number) {
   const { eid } = parseCameraToken(token);
   return withTenantTransaction(eid, async tx => {
     const s = await cameraSession(tx, token);
+    if (s.access.liveOnly && (s.recording_id || s.sd_playback_id)) fail('camera_forbidden', 403);
     if (s.recording_id || !s.binding_id || !s.stream_id || Number(s.play_version) !== generation || new Date(String(s.view_expires_at)).getTime() <= Date.now()) fail('camera_view_expired', 401);
     if(s.sd_playback_id)return authorizeSdMedia(tx,s);
     await binding(tx, eid, s.pid, String(s.binding_id));

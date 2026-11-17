@@ -1,0 +1,113 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="state">正在读取云工地…</view>
+
+  <view wx:elif="{{error}}" class="state is-error">
+    <text>{{error}}</text>
+    <button wx:if="{{needLogin}}" class="primary" bindtap="goLogin">去登录</button>
+    <button class="secondary" bindtap="load">重新读取</button>
+  </view>
+
+  <block wx:else>
+    <view wx:if="{{!projectId}}" class="project-list">
+      <view class="eyebrow">云工地</view>
+      <view class="page-title">我的工地</view>
+      <view
+        wx:for="{{items}}"
+        wx:key="id"
+        class="project-card"
+        data-id="{{item.id}}"
+        bindtap="selectProject"
+      >
+        <view class="project-card-main">
+          <text class="project-name">{{item.name}}</text>
+          <text class="project-role">{{item.role === 'owner' ? '我是业主' : '家人查看'}}</text>
+        </view>
+        <view class="chevron"></view>
+      </view>
+    </view>
+
+    <block wx:else>
+      <view class="project-head">
+        <view class="eyebrow">云工地</view>
+        <view class="project-title-row">
+          <text class="page-title">{{projectName}}</text>
+          <text class="role-chip">{{role === 'owner' ? '业主' : '家人 · 只读'}}</text>
+        </view>
+      </view>
+
+      <view wx:if="{{progressError}}" class="notice">{{progressError}}</view>
+
+      <view wx:if="{{progress}}" class="card">
+        <view class="card-head">
+          <text class="card-title">施工进度</text>
+          <text class="overall overall-{{progress.overall.color}}">{{progress.overall.label}}</text>
+        </view>
+        <view class="stage-line">
+          当前节点：{{progress.construction.stageName || '团队尚未标记'}}
+        </view>
+        <view class="summary">{{progress.summary}}</view>
+        <view wx:for="{{progress.nodes}}" wx:key="key" class="node">
+          <view class="node-dot dot-{{item.color}}"></view>
+          <view class="node-body">
+            <view class="node-title">
+              {{item.roomName ? item.roomName + ' · ' : ''}}{{item.stageName}}
+            </view>
+            <view class="node-meta">{{item.label}}<text wx:if="{{item.plannedStart}}"> · {{item.plannedStart}} 至 {{item.plannedEnd}}</text></view>
+            <view wx:if="{{item.reason}}" class="node-reason">{{item.reason}}</view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{cameras.length}}" class="card">
+        <view class="card-head">
+          <text class="card-title">工地视频</text>
+          <text class="card-hint">只看直播</text>
+        </view>
+        <button
+          wx:for="{{cameras}}"
+          wx:key="id"
+          class="secondary camera-button"
+          data-project="{{projectId}}"
+          bindtap="openCamera"
+        >{{item.name || '工地摄像头'}}</button>
+      </view>
+      <view wx:if="{{cameraError}}" class="notice">{{cameraError}}</view>
+
+      <view wx:if="{{role === 'owner'}}" class="card">
+        <view class="card-head">
+          <text class="card-title">家人查看</text>
+          <text class="card-hint">只读</text>
+        </view>
+        <view class="helper">
+          分享卡片给家人。家人登录后可查看施工进度和工地视频，只能看直播，不能抓拍、控制摄像头，也不会收到报告和提醒。每张卡片仅供一位家人使用，可重新生成。
+        </view>
+        <button wx:if="{{inviteToken}}" class="primary" open-type="share">分享给家人</button>
+        <button wx:else class="primary" bindtap="createInvite">生成家人邀请</button>
+        <button wx:if="{{inviteToken}}" class="link" bindtap="refreshInvite">重新生成邀请</button>
+        <view wx:if="{{inviteError}}" class="notice">{{inviteError}}</view>
+
+        <view class="viewer-head">已加入的家人</view>
+        <view wx:if="{{viewerLoading}}" class="helper">正在读取…</view>
+        <view wx:elif="{{viewers.length}}" class="viewer-list">
+          <view wx:for="{{viewers}}" wx:key="viewerId" class="viewer-row">
+            <view class="viewer-copy">
+              <text class="viewer-name">{{item.nickname}}</text>
+              <text wx:if="{{item.phoneMasked}}" class="viewer-phone">{{item.phoneMasked}}</text>
+            </view>
+            <button
+              class="link is-danger"
+              data-viewer="{{item.viewerId}}"
+              data-version="{{item.version}}"
+              bindtap="revokeViewer"
+              disabled="{{busy}}"
+            >撤销</button>
+          </view>
+        </view>
+        <view wx:else class="helper">还没有家人加入。</view>
+        <view wx:if="{{viewerError}}" class="notice">{{viewerError}}</view>
+      </view>
+
+      <view class="footer-note">家属只能查看，不会收到报告、提醒，也不能修改施工记录。</view>
+    </block>
+  </block>
+</view>

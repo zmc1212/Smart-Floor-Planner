@@ -253,6 +253,10 @@ Page({
 
   loadCameraProjects() { return customerCamera.load(this); },
   openCamera(event) { return customerCamera.open(this, event); },
+  openFamilySite() {
+    if (!this.data.leadId) return;
+    wx.navigateTo({ url: '/packages/construction/family/family?leadId=' + encodeURIComponent(this.data.leadId) });
+  },
 
   async load(options) {
     const silent = Boolean(options && options.silent);

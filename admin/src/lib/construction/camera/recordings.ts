@@ -144,11 +144,12 @@ export async function reconcileRecordings(upstream=cameraWvp()) {
 export async function listCameraRecordings(token:string,day:unknown,csrf?:string,bindingId?:string,before?:unknown) {
   const {eid}=parseCameraToken(token),{from,to}=shanghaiDay(day);
   if(bindingId){
-    const mode=await withTenantTransaction(eid,async tx=>{const s=await cameraSession(tx,token,csrf);return one(tx,sql`select recording_mode from app.construction_camera_recording_policies where enterprise_id=${eid} and project_id=${s.pid} and binding_id=${id(bindingId)}`);});
+    const mode=await withTenantTransaction(eid,async tx=>{const s=await cameraSession(tx,token,csrf);if(s.access.liveOnly)fail('camera_forbidden',403);return one(tx,sql`select recording_mode from app.construction_camera_recording_policies where enterprise_id=${eid} and project_id=${s.pid} and binding_id=${id(bindingId)}`);});
     if(mode?.recording_mode==='sd')return listSdRecordings(token,csrf,day,bindingId,before);
   }
   return withTenantTransaction(eid,async tx=>{
     const s=await cameraSession(tx,token,csrf);
+    if(s.access.liveOnly)fail('camera_forbidden',403);
     const items=await rows(tx,sql`select r.id,r.binding_id,c.name,r.started_at,r.ended_at,r.bytes from app.construction_recordings r
       join app.construction_camera_recording_policies p on p.enterprise_id=r.enterprise_id and p.binding_id=r.binding_id
       join app.construction_camera_bindings b on b.enterprise_id=r.enterprise_id and b.id=r.binding_id
@@ -171,7 +172,9 @@ async function authorizedRecording(tx:PostgresTransaction,eid:string,pid:string,
 export async function startRecordingView(token:string,csrf:string,recordingId:string) {
   const {eid,hash}=parseCameraToken(token),rid=id(recordingId);
   return withTenantTransaction(eid,async tx=>{
-    const s=await cameraSession(tx,token,csrf),r=await authorizedRecording(tx,eid,s.pid,rid);
+    const s=await cameraSession(tx,token,csrf);
+    if(s.access.liveOnly)fail('camera_forbidden',403);
+    const r=await authorizedRecording(tx,eid,s.pid,rid);
     const row=await one(tx,sql`update app.construction_camera_sessions set recording_id=${rid},sd_playback_id=null,binding_id=${String(r.binding_id)},stream_id='recording',stream_app=null,view_expires_at=now()+interval '60 seconds',play_version=play_version+1 where token_hash=${hash} returning play_version`);
     return {generation:Number(row!.play_version),url:`/camera-recording/${row!.play_version}/${rid}.mp4`,startedAt:r.started_at,endedAt:r.ended_at};
   });
@@ -180,6 +183,7 @@ export async function authorizeRecordingMedia(token:string,generation:number,rec
   const {eid}=parseCameraToken(token);
   return withTenantTransaction(eid,async tx=>{
     const s=await cameraSession(tx,token);
+    if(s.access.liveOnly)fail('camera_forbidden',403);
     if(String(s.recording_id)!==recordingId||s.stream_id!=='recording'||Number(s.play_version)!==generation||new Date(String(s.view_expires_at)).getTime()<=Date.now())fail('camera_view_expired',401);
     const r=await authorizedRecording(tx,eid,s.pid,id(recordingId));return {id:String(r.id),filePath:recordingFilePath(r.file_path)};
   });
