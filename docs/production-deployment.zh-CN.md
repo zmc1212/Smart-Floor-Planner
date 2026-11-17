@@ -2,6 +2,14 @@
 
 本文是 `admin/release.bat`、`admin/auto_deploy.sh` 和 `admin/deploy.sh` 的正式运维合同。发布脚本只做应用发布、迁移前备份和应用版本回滚；它不会自动把生产数据库恢复到旧备份，也不会逆向执行迁移。
 
+## 当前装修画像发布
+
+正式 Admin、线索 Worker 和小K Worker 已更新至 `20261118-001`。发布源以实际现网 `20261117-005` 为基线，叠加检查点 `b5053f06` 的八个画像运行时文件及迁移 `0137`、`0138`，具体哈希随包保存在 `SOURCE_BINDING.json`。迁移账本为 135 条。数据库健康、两个 Worker、管理员登录冒烟及正式测试业户三条普通聊天自动生成后台画像均通过，前后运行时和试验输入哈希一致。[发布与验证](../tmp/staff-profile-release-20261118/production-verification.json)。
+
+迁移前 custom 备份已校验 SHA-256 和归档目录，成功迁移所用备份为 `/datas/smartfloor/backups/postgresql/smart_floor_planner-20261117T174307Z-pre-20261118-001.dump`。首轮迁移因旧画像表及生命周期函数归属 `sfp_owner` 而失败，事务已回滚。两对象归属对齐为现有 `sfp_migrator` 后迁移成功，强制 RLS 和 `sfp_app` 数据权限已核对。原始失败和归属调整回执保存在服务器 `deploy-state/staff-profile-20261118-001/`，PostgreSQL 数据卷身份已核对。[备份和健康记录](../tmp/staff-profile-release-20261118/production-backup-and-health.txt)。
+
+上一实际镜像为 `zmc1212/sfp-admin:20261117-005`，当时发布状态仍记为 `004`。本次保留原状态快照，并将 `previous-version` 清空，`previous-image` 指向实际 `005`，使 `auto_deploy.sh rollback` 使用现有镜像回退分支。该命令更新 Admin 和线索 Worker，小K Worker 需使用当前 Compose 的 `assistant` profile 同步切回对应镜像。全量 PostgreSQL 回归仍有失败，24 项画像服务和 89 项小程序专项已通过。小程序 `20261118.1` 已上传，正式审核和发布待公众平台操作，原生页面发送未验证。[验证范围](../tmp/staff-profile-release-20261118/scope-validation.json)、[小程序回执](../tmp/staff-profile-release-20261118/miniprogram-upload-status.json)。
+
 <!-- cloud-camera-cloud-mini-integration -->
 **私有SD时间接入：限定Implemented。** 新增sfp-wvp-sd-clock-20261106组件，复用原镜像/只读WVP日志，白名单/token私有配置位于/datas/sfp-wvp-sd-clock-20261106/；仅127.0.0.1:28083、UID10001/cap_drop/全只读挂载/无Docker socket、unless-stopped。经原WVP观察新DeviceStatus时间，原28容器、二进制/站点/配置保持。配置0400并私有备份；应用用CAMERA_SD_CLOCK_ORIGIN/TOKEN显式选择，不回退服务器时间。Mini仅列当前注册身份/时间可信窗口，缓存开播再核身份/时差。真实Mini宿主/H5 SD查询/播放/重进/故障重试/STOP通过，私有媒体/义务0；自有3417/3418/四端口转发/unit库/公钥已清理，保留副本/共享3017/D/SSH。新SQL/组件/站点备份与新SSH登录拒绝已验。[实证](../tmp/cloud-camera-mini-sd-20261106/assessment.json)。无正式业务/小程序发布，不冒称完整恢复/物理微信/PTZ/重连通过。
 <!-- /cloud-camera-cloud-mini-integration -->

@@ -4,7 +4,9 @@
 
 `POST /api/miniprogram/assistant/entry-context` 下发服务档案资格。按原方式发送首条消息时，客户端用 `staffProfileNotice` 标记已显示用途，服务器仅接受签名入口内的档案。会客室沿用 [C01 的欢迎说明](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md) 和原输入区。[C02 批准稿](../design-references/xiaok-assistant-phase1-ppt-v1/sources/slide06-needs.png) 仍承接已有「查看需求提案」。旧版的主动共享、撤回及回顾接口只投影业主明确共享的信息。[后台读取](./admin-system-modules.zh-CN.md)。
 
-真实聊天控制器和隔离 PostgreSQL 接口覆盖普通发送、后台读取及来源和档案失权。Stable DevTools 重编译后读取运行状态超时，原生发送未完成。[原生尝试记录](../tmp/xiaok-staff-renovation-profile-qa/native.json)。
+真实聊天控制器和隔离 PostgreSQL 接口覆盖普通发送、后台读取及来源和档案失权。服务专项 24 项、小程序 89 项通过。开发版 `20261118.1` 已通过官方 DevTools 上传，用途说明随正常聊天入口显示。微信公众平台的浏览器访问被站点安全策略拦截，正式审核和发布待完成。[上传回执](../tmp/staff-profile-release-20261118/miniprogram-upload-status.json)。
+
+上传版聊天控制器使用精艺智家获准测试业户连接正式 HTTPS，三句普通聊天完成真实写入和重进，未提交画像确认或共享。后台超级管理员已看到三项自动画像。首句回复偏到水电阶段的问题保留在回执中。Stable DevTools 原生发送此前超时，原生页面发送及真机仍未验证。全量 PostgreSQL 回归保留失败，部分在旧现网源码复现。[正式服务验证](../tmp/staff-profile-release-20261118/production-verification.json)、[原生尝试](../tmp/xiaok-staff-renovation-profile-qa/native.json)。
 
 **I6.16 防水清单候选（Limited）。** C01 重进读回带来源引用的清单及同一获权 Run。终稿失败后，原登记回执按当前授权显示。Construction 将正式复核回复至原消息，原件读回重验授权。Stable 已使用经 Construction 服务提交的合成现场资料验证读回和复核。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。
 
