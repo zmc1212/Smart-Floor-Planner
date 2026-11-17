@@ -38,8 +38,8 @@ Page({
       roomId: /^[1-9]\d*$/.test(String(query.roomId || '')) ? String(query.roomId) : '',
       issueId: /^[1-9]\d*$/.test(String(query.issueId || '')) ? String(query.issueId) : '',
       focus: String(query.focus || '').slice(0, 40),
-    };
       scheduleNode: /^[a-z][a-z0-9_-]{0,63}$/.test(String(query.scheduleNode || '')) ? String(query.scheduleNode) : '',
+    };
   },
   async onShow() {
     this._visible = true;
@@ -193,11 +193,6 @@ Page({
     const link = this._deepLink;
     if (!link || this._deepLinkApplied || !this.current(g) || link.projectId !== this.data.projectId || !this.data.detail) return;
     const project = this.data.detail.project;
-    if (link.issueId) { this._deepLinkApplied = true; this.reminderTarget({ relatedIssueId: link.issueId }); return; }
-    if (link.roomId) { this._deepLinkApplied = true; this.reminderTarget({ roomId: link.roomId }); return; }
-    if (!link.item && !link.focus) { this._deepLinkApplied = true; return; }
-    if (this.data.remindersLoading) return;
-    const reminder = this.data.reminders.find(item => item.reminderId === link.item
     if (link.scheduleNode) {
       this._deepLinkApplied = true;
       if (this.data.detail.progress?.nodes.some(node => node.key === link.scheduleNode)) {
@@ -207,6 +202,11 @@ Page({
       } else wx.showToast({ title: '这个计划节点已变化，请查看当前计划', icon: 'none' });
       return;
     }
+    if (link.issueId) { this._deepLinkApplied = true; this.reminderTarget({ relatedIssueId: link.issueId }); return; }
+    if (link.roomId) { this._deepLinkApplied = true; this.reminderTarget({ roomId: link.roomId }); return; }
+    if (!link.item && !link.focus) { this._deepLinkApplied = true; return; }
+    if (this.data.remindersLoading) return;
+    const reminder = this.data.reminders.find(item => item.reminderId === link.item
       || item.relatedIssueId === link.item || item.relatedTaskId === link.item);
     this._deepLinkApplied = true;
     if (reminder && this.reminderTarget(reminder)) return;
