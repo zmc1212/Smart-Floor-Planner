@@ -24,7 +24,7 @@
       <image class="site-greeting-mascot" src="../assets/chat-notebook-mascot.png" mode="aspectFit" aria-hidden="true"/>
     </view>
     <view class="pencil-underline" aria-hidden="true"></view>
-    <view class="topic-intro"><view></view><text>想先聊点什么？</text><view></view></view>
+    <view class="topic-intro"><view></view><text>猜你想问</text><view></view></view>
     <view class="notebook-topics site-topics">
       <button wx:for="{{siteTopics}}" wx:key="title" class="topic-note topic-{{index}}" data-text="{{item.text}}" bindtap="pickPrompt" disabled="{{busy || pendingSend}}">
         <text class="topic-number">0{{index + 1}}</text>

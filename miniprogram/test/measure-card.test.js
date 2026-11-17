@@ -34,7 +34,9 @@ test('the card only appears in an active AI conversation and hands off to the ex
   assert.match(wxml, /bindtap="dismissMeasure"/);
   assert.match(js, /async bookMeasure\(\)[\s\S]{0,320}openHandoff/);
   assert.match(js, /measureCardDismissed: true/);
-  assert.match(js, /measureIntent\(this\.data\.draft\)/);
+  assert.match(js, /!this\.data\.siteContext && measureIntent\(this\.data\.draft\)/);
+  assert.match(js, /this\.data\.siteContext \|\| this\.data\.measureCardDismissed/);
   assert.match(js, /maybeShowMeasureCard/);
+  assert.match(wxml, /猜你想问/);
   assert.match(less, /\.measure-card/);
 });

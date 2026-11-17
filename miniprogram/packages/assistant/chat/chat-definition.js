@@ -354,7 +354,7 @@ module.exports = () => ({
 		if (this.data.needsLogin) { this.login(); return; }
 		if (this.data.contextBusy || this.data.contextPending) return;
 		if (this.data.speechBusy || this._openingVoice) return;
-		if (!this.data.staffTab && !this.data.followupActive && measureIntent(this.data.draft)) {
+		if (!this.data.staffTab && !this.data.followupActive && !this.data.siteContext && measureIntent(this.data.draft)) {
 			this.setData({ measureCardVisible: true, measureCardDismissed: false });
 		}
 		if (!this.data.conversation?.id && this.data.draft && this.data.canSend && !this.data.busy && !this.data.pendingSend && !this.data.pendingAction && !this.data.generating && !this.data.readOnly) {
@@ -604,7 +604,7 @@ module.exports = () => ({
 	},
 	maybeShowMeasureCard(messages) {
 		if (this.data.staffTab || this.data.professionalFollowup || this.data.followupActive || this.data.readOnly
-			|| this.data.measureCardDismissed || this.data.measureCardVisible) return;
+			|| this.data.siteContext || this.data.measureCardDismissed || this.data.measureCardVisible) return;
 		if (!Array.isArray(messages) || !messages.length) return;
 		const latest = messages[messages.length - 1];
 		if (!latest || latest.authorKind !== 'assistant') return;
