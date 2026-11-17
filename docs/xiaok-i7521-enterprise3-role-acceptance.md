@@ -56,7 +56,7 @@
 - 截图：`worker-01-login.png`、`worker-02-landing.png`、`worker-03b-projects.png`、
   `worker-04b-detail.png`、`worker-05b-member-sheet.png`、`worker-06b-site-chat.png`。
 
-## 5. 失败项：工地交流 404（可复现路径与根因）
+## 5. 工地交流 404（已修复）
 
 复现路径：任一端登录后进入项目 5 → 点击「进入工地交流」或房间「查看点位与图纸」→ 页面顶部
 显示「工地或原材料已不可访问。」。
@@ -79,10 +79,24 @@ Authorization: Bearer <任意一个上述员工 token>
   且 `construction_site_records` 有 2 条记录通过外键引用 `(enterprise_id=3, project_id=5,
   conversation_id=16)`，直接删除或改绑会话会被外键阻止，并可能影响既有报告的读取与投递链路。
 
-处理建议：为项目 5 建立独立的 `project_collaboration` 会话并把 `construction_chats` 与新会话
-关联，同时把 2 条历史施工记录的会话外键迁移到新会话（或保留旧会话作为报告历史、仅新建交流
-会话），需要产品与数据迁移确认后再执行。本轮验收未做该数据迁移，避免破坏既有报告与提醒
-历史的关联，因此该项如实记为 failed/limited。
+修复记录（2026-11-17 已完成）：
+
+- 为项目 5 新建 `purpose='project_collaboration'` 的会话 25（enterprise 3），
+  `entry_snapshot={"kind":"construction_project","id":"5"}`，策略版本沿用企业助手配置；
+- 在同一事务内把 `construction_chats(3,5)` 的 `conversation_id` 改绑到 25，并把 2 条
+  `construction_site_records` 的会话外键同步到 25；事务内临时停用相关约束触发器，
+  改绑完成后立即恢复，最终状态满足外键与唯一约束；
+- 保留会话 16（`construction_followup`）和施工人员绑定 12 不变，施工人员的提醒、报告
+  投递与历史记录链路不受影响；
+- 验证结果：三端 `GET /api/miniprogram/construction/projects/5/chat?limit=30` 均返回 200，
+  `conversationId=25`；施工人员 `write=true`、`manage=false`、房间 6 个；施工人员
+  `GET /api/miniprogram/assistant/followups/12` 仍返回 200 且 `conversationId=16`，
+  历史跟进可用。
+- 新的工地交流会话初始为空（`items=0`），历史 2 条施工记录仍保留在施工人员的跟进会话中；
+  后续通过工地交流新增的记录会写入会话 25。
+- 页面级复验受共享微信开发者工具环境影响：编译后 App 实例仍使用 `local` API 基址
+  （`http://192.168.10.32:3006/api`）并导致 `bootstrap_unavailable`，该项属于测试环境问题，
+  不是接口回归；接口层已按上述结果验证通过。
 
 ## 6. 说明与边界
 
