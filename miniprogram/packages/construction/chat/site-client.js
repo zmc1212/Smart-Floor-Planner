@@ -19,15 +19,37 @@ function errorText(e) {
     site_resolution_state_conflict: '处理状态已变化，请先记录落实证据，再由管理人员分别解决和关闭。',
     site_reopen_required: '本事项已有正式处理记录，请先由管理人员说明原因并重新处理。',
     construction_staff_unavailable: '未找到唯一且有权接续的项目成员，请核对姓名和当前分工。',
-    media_limit: '本工地图片数量已达当前上限，请联系负责人。', media_invalid: '请选择4MB以内的JPEG或PNG图片。',
+    media_limit: '本工地图片数量已达当前上限，请联系负责人。', media_invalid: '照片格式不支持或压缩后仍超过4MB，请重拍或选择更小的照片。',
     speech_limit: '本项目录音数量已达当前上限，请联系负责人。原材料仍留在手机。', speech_audio_invalid: '录音格式无法读取，请保留原材料并重新录制。',
     construction_media_unavailable: '照片已不可访问，请重新读取。', idempotency_conflict: '本次操作内容不一致，请重新读取。',
   })[code] || (e && e.statusCode === 403 ? '当前身份已无此工地权限，请返回工地列表。' : e && e.statusCode === 404 ? '工地或原材料已不可访问，请返回列表。' : '暂时未能完成，请保留内容后重试。');
 }
-function upload(path, filePath, requestKey) {
+function statSize(filePath) {
+  return new Promise(resolve => {
+    try {
+      wx.getFileSystemManager().stat({ path: filePath, success: r => resolve(r.stats && r.stats.size || 0), fail: () => resolve(0) });
+    } catch { resolve(0); }
+  });
+}
+async function prepareUpload(filePath) {
+  const size = await statSize(filePath);
+  if (!size || size <= 1.5 * 1024 * 1024 || typeof wx.compressImage !== 'function') return filePath;
+  try {
+    const compressed = await Promise.race([
+      new Promise((resolve, reject) => wx.compressImage({ src: filePath, quality: 70, compressedWidth: 2000, success: resolve, fail: reject })),
+      new Promise(resolve => setTimeout(() => resolve(null), 8000)),
+    ]);
+    const temp = compressed && compressed.tempFilePath;
+    if (!temp) return filePath;
+    const compressedSize = await statSize(temp);
+    return compressedSize && compressedSize < size ? temp : filePath;
+  } catch { return filePath; }
+}
+async function upload(path, filePath, requestKey) {
+  const prepared = await prepareUpload(filePath);
   return new Promise((resolve, reject) => {
     const token = getApp().globalData.token || wx.getStorageSync('token');
-    wx.uploadFile({ url: api.getBaseUrls()[0] + path, filePath, name: 'file', timeout: 30000,
+    wx.uploadFile({ url: api.getBaseUrls()[0] + path, filePath: prepared, name: 'file', timeout: 120000,
       header: { Authorization: 'Bearer ' + token, 'Idempotency-Key': requestKey },
       success(res) { let value; try { value = JSON.parse(res.data); } catch { reject({ statusCode: res.statusCode }); return; }
         if (res.statusCode >= 200 && res.statusCode < 300 && value.success) resolve(value.data);

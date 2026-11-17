@@ -10,7 +10,7 @@ const nativeFiles = {
     await fileCall('copyFile', { srcPath: source, destPath: path });
     try {
       const info = await fileCall('stat', { path });
-      if (!info.stats.size || info.stats.size > (kind === 'voice' ? 2 : 4) * 1024 * 1024) throw Error('file_size');
+      if (!info.stats.size || info.stats.size > (kind === 'voice' ? 2 : 12) * 1024 * 1024) throw Error('file_size');
       return path;
     } catch (error) { await fileCall('unlink', { filePath: path }).catch(() => {}); throw error; }
   },

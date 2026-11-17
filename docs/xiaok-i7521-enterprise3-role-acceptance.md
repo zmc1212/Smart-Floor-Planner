@@ -98,10 +98,29 @@ Authorization: Bearer <任意一个上述员工 token>
   项目列表 → 项目详情 → 进入工地交流，页面正常打开，`conversationId=25`、无 404；
   截图 `tmp/enterprise3-accounts/screens/worker-11-chat-final.png`。
 - 若沿用热重载直接编译，App 实例会继续持有 `local` API 基址并出现
-  `bootstrap_unavailable`；这是共用开发者工具的缓存问题，不是接口回归。按第 6 节的环境
+  `bootstrap_unavailable`；这是共用开发者工具的缓存问题，不是接口回归。按第 8 节的环境
   覆盖方式关闭一次热重载后复验即可通过。
 
-## 6. 说明与边界
+## 7. 工地交流图片上传检查与加固（2026-11-17）
+
+线上接口 `POST /api/miniprogram/construction/projects/5/chat/media` 对施工人员 token 返回
+200，说明服务端上传、图片规范化、鉴权正常；页面侧用真实会话调用页面的 `addPhoto` 完成
+上传、附件回填、缩略图读取和移除，结果：`attachments=['5']`、`mediaPaths['5']` 非空、
+`error=''`，截图 `tmp/enterprise3-accounts/screens/worker-12-upload-test.png`。
+
+针对现场手机照片容易过大、弱网容易超时的问题做了以下加固（未改变服务端 4MB 上限）：
+
+- 上传前对大于 1.5MB 的图片调用 `wx.compressImage`（quality 70、最长边 2000px）压缩，
+  压缩失败或 8 秒未返回时回退原图，避免弱网大图反复失败；
+- `wx.uploadFile` 超时由 30 秒调整为 120 秒；
+- 选图上限由 4MB 调整为 12MB，压缩后再交给服务端校验；
+- `media_invalid` 提示改为说明“格式不支持或压缩后仍超过 4MB”，便于现场人员重拍。
+
+验证：`construction-site-chat.test.js` 与 `construction-site-capture.test.js` 共 30 项全部
+通过；页面内 JPEG 上传、预览、移除、清理通过。真实手机大图压缩和 HEIC 照片未在本轮验证，
+记为 `not_run`，不把开发者工具测试当作真机结论。
+
+## 8. 说明与边界
 
 - 共用微信开发者工具时，不再改源码切环境：在开发者工具控制台执行
   `wx.setStorageSync('sfp:apiEnvironmentOverride','production')` 即可让 App 级和页面级

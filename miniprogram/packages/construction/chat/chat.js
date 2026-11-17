@@ -1,5 +1,6 @@
 const { SiteClient, errorText } = require('./site-client');
 const { SiteCapture } = require('./site-capture');
+const nativePreview = require('../../../utils/native-preview');
 const { SpeechController } = require('../../../utils/speech');
 const { canAccessRoute } = require('../../../utils/identity-navigation');
 const { loadSiteFont } = require('../lib/site-font');
@@ -25,8 +26,8 @@ Page({
       captureAudio: result => this.capture.addFile(result.tempFilePath, 'voice', result.duration || 0) });
     this.projectId = /^[1-9]\d*$/.test(String(options.projectId)) ? String(options.projectId) : '';
     this._briefIssueId = /^[1-9]\d*$/.test(String(options.issueId)) ? String(options.issueId) : '';
-    this._briefMode = options.mode === 'review' ? 'review' : options.mode === 'plan' ? 'plan' : '';
     const recordId = /^[1-9]\d*$/.test(String(options.recordId)) ? String(options.recordId) : '';
+    this._briefMode = options.mode === 'review' ? 'review' : options.mode === 'plan' ? 'plan' : '';
     this._briefRoomId = /^[1-9]\d*$/.test(String(options.roomId)) ? String(options.roomId) : '';
     this._briefRoom = typeof options.room === 'string' ? options.room.slice(0, 50) : '';
     this.client = new SiteClient({ identity, emit: patch => {
@@ -50,12 +51,12 @@ Page({
       }
     } });
     this.client.issueId = this._briefIssueId;
-    this.capture = new SiteCapture({ site: this.client, emit: patch => {
     this.client.recordId = recordId;
     this._focusEntry = Boolean(recordId || this._briefIssueId);
     this.getOpenerEventChannel?.()?.on('workbenchCapture', action => {
       if (['photo', 'voice'].includes(action)) { this._captureEntry = action; this.openWorkbenchCapture(); }
     });
+    this.capture = new SiteCapture({ site: this.client, emit: patch => {
       if (!this._visible) return;
       this.setData(patch);
       if (patch.captureSubmitted) this.setData({ scrollTarget: 'capture-' + patch.captureSubmitted, textMode: false });
@@ -64,6 +65,7 @@ Page({
   },
   async onShow() {
     this._visible = true;
+    if (nativePreview.shownAfterPreview(this)) return;
     const app = getApp(); if (app.hydrateStoredSession) await app.hydrateStoredSession();
     if (!this._visible) return;
     const current = identity();
@@ -76,10 +78,10 @@ Page({
     await this.client.show(this.projectId);
     if (this._visible && !this.data.fatal) { this.capture.show(); wx.onNetworkStatusChange?.(this._networkChange); void this.capture.flush(); }
     if (this._visible && !this.data.fatal) await this.speechController.show('/miniprogram/construction/projects/' + this.projectId + '/chat/speech');
-    const planRoom = this._briefMode === 'plan' && this.client.state.rooms?.find(room => this._briefRoomId ? room.id === this._briefRoomId : room.name === this._briefRoom);
-    if (this._briefIssueId && !this.client.state.collaboration && !this.client.state.pending && this.client.state.write) {
     this._captureReady = this._visible && !this.data.loading && !this.data.fatal;
     this.openWorkbenchCapture();
+    const planRoom = this._briefMode === 'plan' && this.client.state.rooms?.find(room => this._briefRoomId ? room.id === this._briefRoomId : room.name === this._briefRoom);
+    if (this._briefIssueId && !this.client.state.collaboration && !this.client.state.pending && this.client.state.write) {
       this._conversationInput = true; this.setData({ textMode: true });
       this.client.input(this._briefMode === 'review' ? '查看事项' + this._briefIssueId + '的需求、图纸和现场记录' : '事项' + this._briefIssueId + '现在在等谁？为什么？');
       this._briefIssueId = '';
@@ -94,16 +96,14 @@ Page({
     }
     this.poll();
   },
-  onHide() { this._visible = false; wx.offNetworkStatusChange?.(this._networkChange); this.capture?.hide(); if (this.speechController) this.speechController.hide(); this._retakeMessageId = null; this._record = null; clearTimeout(this._timer); clearTimeout(this._sheetTimer); if (this.client) this.client.hide(); this.setData({ speechBusy: false, items: [], mediaPaths: {}, sheet: '', sheetOpen: false, project: null, rooms: [], draft: '', edit: {}, versions: [], withdrawalReason: '', conflict: null, attachments: [], write: false, pendingRetakeCount: 0, pendingRetakeTarget: '', captureText: '', capturePhotos: [], captureVoice: null, captureQueue: [], captureError: '', textMode: false }); },
-  onUnload() { this.onHide(); },
+  onHide(force) { if (!force && nativePreview.hiddenByPreview(this)) return; this._visible = false; wx.offNetworkStatusChange?.(this._networkChange); this.capture?.hide(); if (this.speechController) this.speechController.hide(); this._retakeMessageId = null; this._record = null; clearTimeout(this._timer); clearTimeout(this._sheetTimer); if (this.client) this.client.hide(); this.setData({ speechBusy: false, items: [], mediaPaths: {}, sheet: '', sheetOpen: false, project: null, rooms: [], draft: '', edit: {}, versions: [], withdrawalReason: '', conflict: null, attachments: [], write: false, pendingRetakeCount: 0, pendingRetakeTarget: '', captureText: '', capturePhotos: [], captureVoice: null, captureQueue: [], captureError: '', textMode: false }); },
+  onUnload() { this.onHide(true); },
   onResize() { if (!this.data.keyboardHeight) this.setData(metrics()); },
   poll() { clearTimeout(this._timer); if (!this._visible) return; this._timer = setTimeout(async () => {
     const canRefresh = !this.data.sheet || (this.data.sheet === 'source' && !this.data.citationLoading);
     if (!this.client.state.busy && canRefresh) await this.client.load(); this.poll();
   }, 4000); },
   refresh() { return this.client.load(); }, older() { return this.client.load(true); },
-  async openCitation(e) {
-    const id = String(e.currentTarget.dataset.id), epoch = this.client.epoch;
   openWorkbenchCapture() {
     if (!this._visible || !this._captureReady || !this._captureEntry) return;
     const action = this._captureEntry;
@@ -112,6 +112,8 @@ Page({
     if (action === 'photo') this.photo();
     else this.voice();
   },
+  async openCitation(e) {
+    const id = String(e.currentTarget.dataset.id), epoch = this.client.epoch;
     if (!/^[1-9]\d*$/.test(id) || this.data.busy || this.data.pending || this.data.fatal) return;
     this._citationId = id;
     this.client.set({ citation: null, citationLoading: true, citationError: '' });
@@ -138,7 +140,7 @@ Page({
    * command path; the onsite "打字" entry keeps its capture/report semantics. */
   typeChat() { if (this.data.write && !this.data.fatal && !this.data.pending) { this._conversationInput = true; this.setData({ textMode: true, inputFocus: true }); } },
   removeCapture(e) { return this.capture.removeFile(String(e.currentTarget.dataset.id)); },
-  previewCapture(e) { const path = e.currentTarget.dataset.path; if (path && this._visible) wx.previewImage({ urls: [path] }); },
+  previewCapture(e) { const path = e.currentTarget.dataset.path; if (path && this._visible) nativePreview.previewImage({ urls: [path] }, this); },
   playCapture(e) { const path = e.currentTarget.dataset.path || this.data.captureVoice?.path; if (path && this._visible) this.speechController.playLocal(path); },
   openQuickWork() {
     if (!this.data.write || this.data.fatal || this.data.busy || this.data.pending || this.data.resubmit) return;
@@ -160,7 +162,7 @@ Page({
     const epoch = this.client.epoch;
     wx.chooseMedia({ count: 1, mediaType: ['image'], sourceType: ['camera', 'album'], sizeType: ['compressed'],
       success: async r => { const f = r.tempFiles && r.tempFiles[0]; if (!this.client.current(epoch)) return;
-        if (!f || f.size > 4 * 1024 * 1024) { this.setData({ error: '请选择4MB以内的JPEG或PNG图片。' }); return; }
+        if (!f || f.size > 12 * 1024 * 1024) { this.setData({ error: '请选择12MB以内的照片，上传前会自动压缩。' }); return; }
         if (this._conversationInput || this.data.resubmit || this.data.attachments.length) await this.client.addPhoto(f.tempFilePath);
         else await this.capture.addFile(f.tempFilePath, 'photo'); },
       fail: e => { if (this.client.current(epoch) && !String(e.errMsg).includes('cancel')) this.setData({ error: '无法选择照片，请检查相机或相册权限后重试。' }); } });
@@ -169,7 +171,7 @@ Page({
   async preview(e) {
     const epoch = this.client.epoch, id = String(e.currentTarget.dataset.id);
     try { const r = await this.client.download(this.client.mediaUrl(id), { suppressUnauthorized: true });
-      if (!this.client.current(epoch)) { this.client.unlink(r.tempFilePath); return; } this.client.paths.add(r.tempFilePath); wx.previewImage({ urls: [r.tempFilePath] });
+      if (!this.client.current(epoch)) { this.client.unlink(r.tempFilePath); return; } this.client.paths.add(r.tempFilePath); nativePreview.previewImage({ urls: [r.tempFilePath] }, this);
     } catch (error) { if (this.client.current(epoch)) this.setData({ error: errorText(error) }); }
   },
   voice() { if (!this.data.write || this.data.busy || this.data.pending || this.data.fatal || this.data.resubmit || this.data.captureSaving) return;
