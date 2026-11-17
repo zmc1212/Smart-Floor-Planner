@@ -16,9 +16,9 @@ test('a today report produces the today-update greeting and three site topics', 
   assert.equal(view.siteContext.hasReport, true);
   assert.match(view.siteGreeting, /今天有新的进展/);
   assert.deepEqual(view.siteTopics.map(item => item.title), [
-    '今天工地做了什么',
-    '水电施工阶段要注意什么',
-    '下一步什么时候'
+    '今天做了什么',
+    '阶段注意什么',
+    '下一步安排'
   ]);
 });
 
@@ -34,7 +34,7 @@ test('no report and no stage stay truthful', () => {
   const view = ownerSiteContext({ ...project, stageName: '' }, null, now);
   assert.equal(view.siteContext.hasReport, false);
   assert.match(view.siteGreeting, /目前在施工中/);
-  assert.equal(view.siteTopics[1].title, '这个阶段要注意什么');
+  assert.equal(view.siteTopics[1].title, '阶段注意什么');
 });
 
 test('Shanghai day comparison handles the UTC+8 boundary', () => {

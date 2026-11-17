@@ -27,7 +27,7 @@ test('the default 小K welcome page remains unchanged when there is no site cont
   assert.match(js, /预算安排/);
   assert.match(wxml, /wx:if="\{\{!siteContext && !reportQuestion\.selected/);
   assert.match(wxml, /小K会客室/);
-  assert.match(wxml, /class="notebook-welcome site-welcome"/);
+  assert.match(wxml, /class="notebook-welcome"/);
 });
 
 test('the site strip opens the existing 工地 tab without a second navigation model', () => {
@@ -39,14 +39,13 @@ test('the site strip opens the existing 工地 tab without a second navigation m
 
 test('the site welcome keeps the notebook language and the three-step topics', () => {
   const helper = fs.readFileSync(path.join(root, 'packages', 'assistant', 'lib', 'owner-site-context.js'), 'utf8');
-  const less = fs.readFileSync(path.join(chatRoot, 'notebook.less'), 'utf8');
   const wxml = fs.readFileSync(path.join(chatRoot, 'chat.wxml'), 'utf8');
-  assert.match(less, /\.site-welcome/);
-  assert.match(less, /\.site-context-strip/);
-  assert.match(less, /\.site-greeting-paper/);
-  assert.match(helper, /今天工地做了什么/);
-  assert.match(helper, /阶段要注意什么/);
-  assert.match(helper, /下一步什么时候/);
+  assert.match(helper, /今天做了什么/);
+  assert.match(helper, /阶段注意什么/);
+  assert.match(helper, /下一步安排/);
+  assert.match(wxml, /class="notebook-welcome"/);
+  assert.match(wxml, /welcome-title/);
+  assert.match(wxml, /welcome-subtitle/);
   assert.match(wxml, /工地动态/);
   assert.match(wxml, /siteTopics/);
   assert.match(wxml, /bindtap="pickPrompt"/);

@@ -17,14 +17,14 @@ function ownerSiteContext(project, report, now = Date.now()) {
   const hasReport = !!report;
   const hasTodayReport = hasReport && shanghaiDay(report.periodStart) === todayInShanghai(now);
   const siteGreeting = hasTodayReport
-    ? `你好，我是小K。${name}的工地今天有新的进展，想先看今天的日报，还是聊聊下一步？`
+    ? '你好，我是小K。工地今天有新的进展，想先看今天的日报，还是聊聊下一步？'
     : hasReport
-      ? `你好，我是小K。${name}的工地有新的日报，想先看日报，还是聊聊下一步？`
-      : `你好，我是小K。${name}的工地目前在${stageLabel}，想了解哪方面？`;
+      ? '你好，我是小K。工地有新的日报，想先看日报，还是聊聊下一步？'
+      : `你好，我是小K。工地目前在${stageLabel}，想了解哪方面？`;
   const siteTopics = [
-    { title: '今天工地做了什么', helper: '看今日进展', icon: 'requirement-home', text: '今天工地做了什么？' },
-    { title: stageName ? stageName + '阶段要注意什么' : '这个阶段要注意什么', helper: '关键提醒', icon: 'requirement-style', text: stageName ? stageName + '阶段要注意什么？' : '这个阶段要注意什么？' },
-    { title: '下一步什么时候', helper: '看后续安排', icon: 'requirement-budget', text: '下一步什么时候？' }
+    { title: '今天做了什么', helper: '看今日进展', icon: 'requirement-home', text: '今天工地做了什么？' },
+    { title: '阶段注意什么', helper: stageName || '关键提醒', icon: 'requirement-style', text: stageName ? stageName + '阶段要注意什么？' : '这个阶段要注意什么？' },
+    { title: '下一步安排', helper: '看后续计划', icon: 'requirement-budget', text: '下一步什么时候？' }
   ];
   return {
     siteContext: { projectId: String(project.id), name, stageName, hasTodayReport, hasReport },
