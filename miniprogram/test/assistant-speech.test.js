@@ -6,7 +6,7 @@ const turn = () => new Promise(resolve => setImmediate(resolve));
 const originalDownload = api.downloadFile;
 let current;
 function setup({ available = true, cancel = false, failUpload = false } = {}) {
-  let token = 'session-a', draft = '', asset = null, stopCallback, errorCallback;
+  let token = 'session-a', draft = '', asset = null, stopCallback, errorCallback, action;
   const requests = [], events = [], storage = new Map(), manager = {
     onStop(fn) { stopCallback = fn; }, offStop(fn) { if (stopCallback === fn) stopCallback = null; },
     onError(fn) { errorCallback = fn; }, offError(fn) { if (errorCallback === fn) errorCallback = null; },
@@ -15,13 +15,19 @@ function setup({ available = true, cancel = false, failUpload = false } = {}) {
   global.getApp = () => ({ globalData:{ token } });
   global.wx = { getStorageSync:key=>storage.get(key), setStorageSync:(k,v)=>storage.set(k,v), removeStorageSync:k=>storage.delete(k),
     showToast:r=>events.push({kind:'toast',title:r.title}), authorize:r=>{events.push({kind:'authorize'});r.success({});},
-    getRecorderManager:()=>manager, showModal:r=>r.success({confirm:!cancel,cancel}), showActionSheet:r=>r.success({tapIndex:0}),
+    getRecorderManager:()=>manager, showModal:r=>r.success({confirm:!cancel,cancel}),
+    showActionSheet:r=>r.success({tapIndex:action ? r.itemList.indexOf(action) : 0}),
     getFileSystemManager:()=>({readFile:r=>r.success({data:'V0FW'}),unlink:r=>events.push({kind:'unlink',file:r.filePath})}),
     createInnerAudioContext:()=>({stop:()=>events.push({kind:'player-stop'}),destroy:()=>events.push({kind:'player-destroy'}),play:()=>events.push({kind:'play'}),onEnded(){},onError(){}}),
   };
   let failed=false;
   const request=async(url,method,body,options)=>{
     requests.push({url,method,body:JSON.parse(JSON.stringify(body)),key:options.headers?.['Idempotency-Key']});
+    if (method === 'DELETE') {
+      const id = url.split('/').pop();
+      if (asset?.id === id) asset = null;
+      return { success: true, data: { id, deleted: true } };
+    }
     if(method==='POST'){
       asset={id:'51',version:3,durationMs:1000,sourceHash:'a'.repeat(64),status:'succeeded',runId:'42',own:true,messageId:null,transcript:'希望书房有两个办公位置。'};
       if(failUpload&&!failed){failed=true;throw {errMsg:'synthetic lost response'};}
@@ -30,7 +36,7 @@ function setup({ available = true, cancel = false, failUpload = false } = {}) {
     return {success:true,data:{available,items:asset?[asset]:[]}};
   };
   const voice=new SpeechController({identity:()=>token,emit:p=>events.push({kind:'state',...p}),getDraft:()=>draft,setDraft:value=>{draft=value;},reload:async()=>events.push({kind:'reload'}),request});current=voice;
-  return {voice,events,requests,manager,get draft(){return draft;},edit:value=>{draft=value;},switchIdentity:()=>{token='session-b';},seed:value=>{asset=value;}};
+  return {voice,events,requests,manager,get draft(){return draft;},edit:value=>{draft=value;},switchIdentity:()=>{token='session-b';},seed:value=>{asset=value;},choose:value=>{action=value;}};
 }
 afterEach(()=>{current?.hide();api.downloadFile=originalDownload;delete global.wx;delete global.getApp;});
 test('unconfigured voice preserves the approved unavailable feedback without authorization, recording or upload',async()=>{
@@ -52,6 +58,69 @@ test('reentry restores a pending transcript without dispatch; original playback 
   const x=setup();await x.voice.show('/voice');await x.voice.upload('AUDIO');x.voice.hide();x.edit('');await x.voice.show('/voice');assert.match(x.draft,/书房/);
   const calls=[];api.downloadFile=async(url,options)=>{calls.push({url,options});return{statusCode:200,tempFilePath:'private-playback.wav'};};await x.voice.play('51');assert.equal(calls[0].url,'/voice/51');assert.equal(calls[0].options.suppressUnauthorized,true);
   x.switchIdentity();await x.voice.refresh();assert.equal(x.voice.visible,false);assert.equal(x.voice.binding(),undefined);assert.ok(x.events.some(e=>e.kind==='player-destroy'));assert.ok(x.events.some(e=>e.file==='private-playback.wav'));
+});
+
+test('a failed send keeps the corrected draft, and a sent recording leaves the microphone ready for another recording', async () => {
+  const x = setup();
+  await x.voice.show('/voice');
+  await x.voice.upload('FIRST_AUDIO');
+  x.edit('把双人书桌放到次卧。');
+  await x.voice.afterSend();
+  assert.equal(x.draft, '把双人书桌放到次卧。');
+  x.seed({ ...x.voice.asset, messageId: '12', status: 'sent' });
+  x.edit('');
+  await x.voice.afterSend();
+  await x.voice.microphone();
+  await turn();
+  assert.equal(x.events.filter(event => event.kind === 'start').length, 1);
+  assert.equal(x.requests.filter(request => request.method === 'POST').length, 2);
+});
+
+test('deleting historical audio preserves the current draft', async () => {
+  const x = setup();
+  x.seed({ id: '51', messageId: '12', own: true, status: 'sent' });
+  await x.voice.show('/voice');
+  x.edit('我还想问下怎么挑地砖。');
+  x.choose('删除录音及转写');
+  await x.voice.messageMenu('12');
+  assert.equal(x.draft, '我还想问下怎么挑地砖。');
+  assert.equal(x.requests.filter(request => request.method === 'DELETE').length, 1);
+});
+
+test('C01 history switches the speech scope and ignores a transcript from the previous consultation', async () => {
+  setup();
+  wx.getWindowInfo = () => ({ windowWidth: 390, windowHeight: 844, statusBarHeight: 24 });
+  const page = require('../packages/assistant/chat/chat-definition')();
+  page.setData = function (patch, done) { Object.assign(this.data, patch); done?.(); };
+  page.onLoad({});
+  page._shown = true;
+  page.closeSheet = () => {};
+  page.syncReportQuestion = () => {};
+  page.floorplans.show = async () => true;
+  page.followups.leave = () => {};
+  const old = { id: '101', status: 'open' }, selected = { id: '102', status: 'open' };
+  page.controller.conversationId = old.id;
+  page.controller.set({ conversation: old });
+  let release;
+  const waiting = new Promise(resolve => { release = resolve; });
+  page.speechController.request = async url => ({ success: true, data: {
+    available: true, items: url.endsWith('/101/speech') ? await waiting : [],
+  } });
+  page.controller.selectConversation = async id => {
+    assert.equal(id, selected.id);
+    page.controller.conversationId = id;
+    page.controller.set({ conversation: null, draft: '' });
+    page.controller.set({ conversation: selected });
+  };
+  try {
+    const stale = page.prepareSpeech();
+    await page.selectHistory({ currentTarget: { dataset: { id: selected.id } } });
+    release([{ id: '51', own: true, status: 'succeeded', transcript: '上一次聊天的内容' }]);
+    assert.equal(await stale, false);
+    assert.equal(page.data.draft, '');
+    assert.equal(page.speechPath(), '/miniprogram/assistant/conversations/102/speech');
+    assert.equal(page.speechController.matches(page.speechPath()), true);
+  } finally { page.speechController.hide(); }
 });
 
 

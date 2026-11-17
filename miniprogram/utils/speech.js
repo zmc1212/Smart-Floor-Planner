@@ -7,12 +7,13 @@ const invoke = (method, input = {}) => new Promise((resolve, reject) => wx[metho
 /** Shared recorder/playback adapter. Original C01/S04 send controllers own all business writes. */
 class SpeechController {
   constructor({ identity, emit, getDraft, setDraft, reload, captureAudio, request = api.request }) {
-    Object.assign(this, { identity, emit, getDraft, setDraft, reload, captureAudio, request }); this.epoch = 0;
+    Object.assign(this, { identity, emit, getDraft, setDraft, reload, captureAudio, request }); this.epoch = 0; this.readSequence = 0;
   }
   valid(epoch) { return this.visible && this.epoch === epoch && this.session === this.identity(); }
+  matches(base) { return this.base === base && this.valid(this.epoch); }
   setBusy(busy) { this.busy = busy; this.emit({ speechBusy: busy }); }
   async show(base) {
-    this.hide(); this.loadedAsset = null; this.visible = true; this.base = base; this.session = this.identity(); this.client = new AssistantClient(this.request, base);
+    this.hide(); this.loadedAsset = null; this.appliedDraft = null; this.visible = true; this.base = base; this.session = this.identity(); this.client = new AssistantClient(this.request, base);
     if (this.captureAudio) { this.available = true; this.emit({ speechAvailable: true }); return true; }
     return this.refresh(true);
   }
@@ -27,9 +28,11 @@ class SpeechController {
   async refresh(restore = false) {
     if (!this.visible) return;
     if (this.session !== this.identity()) { this.hide(); return; }
-    const epoch = this.epoch;
+    clearTimeout(this.timer);
+    const epoch = this.epoch, sequence = ++this.readSequence;
+    const current = () => this.valid(epoch) && this.readSequence === sequence;
     try {
-      const data = await this.client.read(''); if (!this.valid(epoch)) return;
+      const data = await this.client.read(''); if (!current()) return;
       this.available = data.available === true; this.items = data.items || [];
       this.emit({ speechAvailable: this.available });
       this.asset = this.items.find(a => a.own && !a.messageId) || null;
@@ -39,13 +42,16 @@ class SpeechController {
       if (this.asset?.status === 'succeeded' && this.asset.transcript && this.loadedAsset !== this.asset.id) {
         this.loadedAsset = this.asset.id;
         const draft = this.getDraft();
-        if (!restore || !draft) this.setDraft(draft ? draft + '\n' + this.asset.transcript : this.asset.transcript);
+        if (!restore || !draft) {
+          this.setDraft(draft ? draft + '\n' + this.asset.transcript : this.asset.transcript);
+          this.appliedDraft = { id: this.asset.id, before: draft, after: this.getDraft() };
+        }
         wx.showToast({ title: '已转成文字，请核对后发送', icon: 'none' });
       }
       if (this.busy) this.timer = setTimeout(() => this.refresh(), 1500);
       return true;
     } catch (error) {
-      if (!this.valid(epoch)) return;
+      if (!current()) return;
       this.setBusy(false);
       this.available = false; this.emit({ speechAvailable: false });
       if ([401, 403, 404].includes(error.statusCode)) { this.asset = null; this.items = []; this.stopPlayback(); }
@@ -54,7 +60,7 @@ class SpeechController {
     }
   }
   binding() { return this.asset?.status === 'succeeded' ? { id: this.asset.id, version: this.asset.version } : undefined; }
-  async afterSend() { this.loadedAsset = null; return this.refresh(); }
+  afterSend() { return this.refresh(); }
   async microphone() {
     if (this.captureAudio) { this.available = true; this.asset = null; return this.record(); }
     const epoch = this.epoch; if (!await this.refresh() || !this.valid(epoch)) return;
@@ -72,9 +78,8 @@ class SpeechController {
       catch (_) { if (this.valid(epoch)) this.message('转写结果待核对，可再从麦克风处理同一次操作。'); }
       return;
     }
-    if (!this.available && !this.asset) { wx.showToast({ title: '语音暂不可用，可以打字或发图', icon: 'none' }); return; }
-    const recent = this.asset || this.items[0];
-    if (recent) return this.menu(recent);
+    if (this.asset) return this.menu(this.asset);
+    if (!this.available) { wx.showToast({ title: '语音暂不可用，可以打字或发图', icon: 'none' }); return; }
     return this.record();
   }
   async menu(asset) {
@@ -95,7 +100,15 @@ class SpeechController {
         const result = await invoke('showModal', { title: '删除这段录音？', content: '原音及其转写来源将失效，相关回答和现场记录需要重新核对。', confirmText: '删除' });
         if (!result.confirm || !this.valid(epoch)) return;
         await this.client.mutate('speech-remove:' + this.base + ':' + asset.id, '/' + asset.id, {}, 'DELETE');
-        this.stopPlayback(); this.asset = null; this.loadedAsset = null; this.setDraft(''); await this.reload();
+        if (!this.valid(epoch)) return;
+        this.stopPlayback();
+        if (this.asset?.id === asset.id) this.asset = null;
+        if (this.loadedAsset === asset.id) this.loadedAsset = null;
+        if (this.appliedDraft?.id === asset.id) {
+          if (this.getDraft() === this.appliedDraft.after) this.setDraft(this.appliedDraft.before);
+          this.appliedDraft = null;
+        }
+        await this.reload();
       }
       if (this.valid(epoch)) await this.refresh();
     } catch (_) { if (this.valid(epoch)) this.message(); }
@@ -109,8 +122,7 @@ class SpeechController {
     if (!this.available || this.asset || !this.valid(epoch)) return;
     if (recorderOwner) { wx.showToast({ title: '上一段录音正在结束，请稍后再试', icon: 'none' }); return; }
     try { await invoke('authorize', { scope: 'scope.record' }); } catch (_) { wx.showToast({ title: '未获得录音权限，可以继续打字', icon: 'none' }); return; }
-    if (!this.valid(epoch)) return;
-    if (recorderOwner) return;
+    if (!this.valid(epoch) || recorderOwner || !this.available || this.asset) return;
     recorderOwner = this;
     this.cancelled = false; this.recorder = wx.getRecorderManager(); const manager = this.recorder;
     let stopped = null, decided = false, consumed = false;

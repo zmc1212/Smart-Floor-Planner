@@ -48,6 +48,7 @@ RUN mkdir -p /app/runtime-scripts \
       /app/scripts/assistant-worker.mjs \
       /app/scripts/assistant-worker-healthcheck.mjs \
       /app/scripts/assistant-worker-health.mjs \
+      /app/scripts/assistant-speech-local.py \
       /app/runtime-scripts/
 
 # ============================================

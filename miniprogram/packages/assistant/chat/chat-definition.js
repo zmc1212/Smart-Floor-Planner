@@ -27,6 +27,8 @@ function sessionToken() {
 	return app.globalData.token || wx.getStorageSync('token') || '';
 }
 
+const consultationSpeechPath = id => '/miniprogram/assistant/conversations/' + id + '/speech';
+
 function ownerReportLink(options = {}) {
 	const { ownerReport, bindingId, projectId, leadId, recordId, revision } = options;
 	const validId = value => typeof value === 'string' && /^[1-9]\d{0,18}$/.test(value);
@@ -89,7 +91,10 @@ module.exports = () => ({
 					if (patch.conversation.status === 'open') chatResume.save(patch.conversation.id);
 					else chatResume.clear(patch.conversation.id);
 				}
-				if (patch.fatal || patch.needsLogin) this.speechController.hide();
+				if (patch.fatal || patch.needsLogin || patch.conversation === null
+					|| patch.conversation?.id && this.speechController.visible && this.speechController.base !== consultationSpeechPath(patch.conversation.id)) {
+					this.speechController.hide();
+				}
 				const previous = this.data.messages;
 				this.setData(appendPatch(patch, previous.length), () => {
 					if (patch.fatal || patch.needsLogin) {
@@ -202,8 +207,7 @@ module.exports = () => ({
 			if ((!selectedMode || selectedMode === 'customer') && !this._options.publicSiteId) this.startOwnerReminderRefresh();
 			await this.controller.show(this._options);
 			if (this._alive && this._shown && !this.data.fatal) await this.floorplans.show(this.controller.conversationId);
-			if (this._alive && this._shown && !this.data.fatal && this.controller.conversationId)
-				await this.speechController.show('/miniprogram/assistant/conversations/' + this.controller.conversationId + '/speech');
+			await this.prepareSpeech();
 			if (this._alive && this._shown && !this.data.fatal && !this.data.generating && !this.data.readOnly) await this.syncLocation();
 			if (this._alive && this._shown && !this.data.fatal && this._options.publicSiteId) {
 				const cid = this.controller.conversationId || await this.controller.handoffConversation();
@@ -277,7 +281,7 @@ module.exports = () => ({
 		if (this.data.needsLogin) return this.send();
 		if (!this.data.canSend || this.data.loading || this.data.busy || this.data.pendingSend || this.data.pendingAction
 			|| this.data.generating || this.data.uncertainRun || this.data.readOnly || this.data.fatal
-			|| this.data.contextBusy || this.data.contextPending || this.data.speechBusy) return;
+			|| this.data.contextBusy || this.data.contextPending || this.data.speechBusy || this._openingVoice) return;
 		this._promptSending = true;
 		try {
 			this.controller.input(event.currentTarget.dataset.text);
@@ -289,15 +293,22 @@ module.exports = () => ({
 	async send() {
 		if (this.data.needsLogin) { this.login(); return; }
 		if (this.data.contextBusy || this.data.contextPending) return;
-		if (this.data.speechBusy) return;
-		this.controller.speechInput = this.speechController?.binding();
+		if (this.data.speechBusy || this._openingVoice) return;
 		if (!this.data.conversation?.id && this.data.draft && this.data.canSend && !this.data.busy && !this.data.pendingSend && !this.data.pendingAction && !this.data.generating && !this.data.readOnly) {
 			if (!await this.controller.handoffConversation()) return;
 		}
 		if (this.controller.conversationId && !await this.floorplans.show(this.controller.conversationId)) return;
 		const location = await this.syncLocation();
 		if (location.blocked) { this.setData({ portfolioNotice: location.notice }); return; }
-		if (this._alive && this._shown) { const result = await this.controller.send(); if (!this.data.pendingSend && this.speechController?.visible) await this.speechController.afterSend(); return result; }
+		if (!this._alive || !this._shown || this._openingVoice || this.data.speechBusy) return;
+		const speech = this.speechController;
+		const path = speech ? this.speechPath() : '';
+		this.controller.speechInput = path && speech.matches(path) ? speech.binding() : undefined;
+		try { return await this.controller.send(); }
+		finally {
+			this.controller.speechInput = null;
+			if (path && path === this.speechPath() && speech.matches(path) && !this.data.pendingSend) await speech.afterSend();
+		}
 	},
 	async planDecision(e) {
 		const { id, action } = e.currentTarget.dataset;
@@ -559,19 +570,41 @@ module.exports = () => ({
 				else this._holdAutoScroll = false;
 			} });
 	},
-	async voiceInput() {
-		if (this.data.fatal || this.data.readOnly || this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.generating) return;
-		const cid = this.controller.conversationId || await this.controller.handoffConversation(); if (!cid || !this._alive || !this._shown) return;
-		const base = '/miniprogram/assistant/conversations/' + cid + '/speech';
-		if (!this.speechController.visible || this.speechController.base !== base) await this.speechController.show(base);
-		return this.speechController.microphone();
+	speechPath() {
+		const id = this.data.conversation?.id;
+		return this._alive && this._shown && !this.data.fatal && !this.data.followupActive && id && id === this.controller.conversationId
+			? consultationSpeechPath(id) : '';
 	},
-	voiceMessage(event) { return this.speechController?.messageMenu(event.currentTarget.dataset.message); },
+	async prepareSpeech() {
+		const path = this.speechPath();
+		if (!path) return false;
+		const speech = this.speechController;
+		if (!speech.matches(path)) await speech.show(path);
+		return path === this.speechPath() && speech.matches(path);
+	},
+	async voiceInput() {
+		if (!this._alive || !this._shown || this.data.followupActive) return;
+		if (this.data.needsLogin) { this.login(); return; }
+		if (this._openingVoice || !this.data.canSend || this.data.loading || this.data.fatal || this.data.readOnly || this.data.busy
+			|| this.data.pendingSend || this.data.pendingAction || this.data.generating || this.data.uncertainRun || this.data.speechBusy) return;
+		this._openingVoice = true;
+		try {
+			const id = this.controller.conversationId || await this.controller.handoffConversation();
+			if (id && id === this.controller.conversationId && await this.prepareSpeech()) await this.speechController.microphone();
+		} finally { this._openingVoice = false; }
+	},
+	async voiceMessage(event) {
+		const messageId = event.currentTarget.dataset.message;
+		if (await this.prepareSpeech()) return this.speechController.messageMenu(messageId);
+	},
 	moreHistory() { return this.controller.loadHistory(true); },
-	selectHistory(event) {
+	async selectHistory(event) {
 		if (this.data.mediaBusy || this.data.mediaPending) return;
 		if (this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
-		this.followups.leave(); this.controller.visible = true; this.closeSheet(); return this.controller.selectConversation(event.currentTarget.dataset.id);
+		const id = event.currentTarget.dataset.id;
+		this.followups.leave(); this.controller.visible = true; this.closeSheet();
+		await this.controller.selectConversation(id);
+		if (id === this.controller.conversationId) await this.prepareSpeech();
 	},
 	newConversation() {
 		if (this.data.mediaBusy || this.data.mediaPending) return;

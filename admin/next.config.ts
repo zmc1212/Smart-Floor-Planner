@@ -101,6 +101,7 @@ const nextConfig: NextConfig = {
       './node_modules/yauzl/**/*', './node_modules/pend/**/*', './node_modules/saxes/**/*', './node_modules/xmlchars/**/*',
     ],
     '*': [
+      './scripts/assistant-speech-local.py',
       './node_modules/drizzle-orm/**/*',
       './node_modules/@napi-rs/canvas/**/*',
       './node_modules/@napi-rs/canvas-linux-x64-musl/**/*',
