@@ -11,10 +11,14 @@ import { projectSiteIssues } from './site-issues';
 import { issueDelivery } from './site-results';
 import { readSchedule } from './site-schedule';
 
-export async function customerProjects(tx: PostgresTransaction, eid: string, uid: string, leadId = '', lock = false) {
+const planWeekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'short', timeZone: 'Asia/Shanghai' });
+const publishedPlanDate = (date: string) => `${date}（${planWeekday.format(new Date(date + 'T00:00:00Z'))}）`;
+
+export async function customerProjects(tx: PostgresTransaction, eid: string, uid: string, leadId = '', lock = false, projectId?: string) {
   return rows(tx, sql`select p.* from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid} and p.customer_access and l.customer_user_id=${uid} and l.archived_at is null
-    ${leadId ? sql`and l.id=${id(leadId)}` : sql``} order by p.id limit 30 ${lock ? sql`for share of p,l` : sql``}`);
+    ${leadId ? sql`and l.id=${id(leadId)}` : sql``} ${projectId ? sql`and p.id=${id(projectId)}` : sql``}
+    order by p.id limit 30 ${lock ? sql`for share of p,l` : sql``}`);
 }
 /** Owner projection for quality matters whose original record was published to this household. */
 export async function ownerProjectIssueStatus(tx: PostgresTransaction, eid: string, uid: string, projectId: string) {
@@ -27,8 +31,8 @@ export async function ownerProjectIssueStatus(tx: PostgresTransaction, eid: stri
   }
   return result;
 }
-export async function constructionRead(tx: PostgresTransaction, eid: string, uid: string, leadId: string, currentProject?: { room: string; recordLimit?: number }) {
-  const available = await customerProjects(tx, eid, uid, leadId);
+export async function constructionRead(tx: PostgresTransaction, eid: string, uid: string, leadId: string, currentProject?: { room: string; recordLimit?: number }, onlyProjectId?: string) {
+  const available = await customerProjects(tx, eid, uid, leadId, false, onlyProjectId);
   const projects = currentProject ? available.filter(p => p.status === 'active') : available;
   const data: Row[] = [], lines: string[] = [];
   if (currentProject && projects.length !== 1) return { data, lines: [projects.length
@@ -72,11 +76,28 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
     }
     if (collaborationEnabled(eid) && p.status === 'active') {
       const schedule = await readSchedule(tx, eid, p, settings.stages, { customerId: uid });
-      const issues = await ownerProjectIssueStatus(tx, eid, uid, String(p.id));
       project.schedule = schedule;
-      project.issues = issues;
-      if (schedule.available) lines.push(schedule.text);
-      for (const issue of issues) lines.push(`${issue.roomName}事项${issue.issueId} · ${issue.classificationLabel}。`);
+      if (onlyProjectId) {
+        // Plan dates stand on their own. Overview colours describe recorded
+        // execution, so they are not evidence about a published plan's date.
+        for (const node of schedule.nodes) {
+          if (schedule.gaps.some(gap => gap.nodeKey === node.key && ['stage_unavailable', 'room_unavailable'].includes(gap.kind))) continue;
+          const location = node.roomName ? `${node.roomName} · ` : '';
+          const start = publishedPlanDate(node.plannedStart);
+          const range = node.plannedEnd === node.plannedStart ? start : `${start} 至 ${publishedPlanDate(node.plannedEnd)}`;
+          lines.push(`已发布施工计划：${location}${node.stageName}，计划时间 ${range}。`);
+        }
+      } else {
+        if (schedule.available) lines.push(schedule.text);
+        const issues = await ownerProjectIssueStatus(tx, eid, uid, String(p.id));
+        project.issues = issues;
+        for (const issue of issues) lines.push(`${issue.roomName}事项${issue.issueId} · ${issue.classificationLabel}。`);
+      }
+    }
+    if (onlyProjectId) {
+      if (p.status !== 'active') lines.push(`项目当前状态：${p.status === 'paused' ? '已暂停' : '已归档'}。`);
+      lines.push(stage ? `团队当前标记的施工阶段：${stage.name}。${String(p.progress_note || '')}` : '团队尚未标记实际施工节点。');
+      continue;
     }
     lines.push(`「${String(p.name)}」：${p.status === 'active' ? '进行中' : p.status === 'paused' ? '已暂停' : '已归档'}。`);
     if (!stage) { lines.push('团队尚未标记实际施工节点，暂时无法确定当前阶段的施工联系人。'); continue; }

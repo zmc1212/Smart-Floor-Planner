@@ -372,6 +372,17 @@ export function businessSynthesisSources(resultKey: string, snapshot: BusinessSn
   return businessSourceList(resultKey,snapshot).map(citableSource);
 }
 function businessSourceList(resultKey: string, snapshot: BusinessSnapshot): SynthesisSource[] {
+  const reminder = 'reportReference' in snapshot ? snapshot.reportReference?.reminder : undefined;
+  if (reminder) {
+    const title = '所选阶段提醒';
+    return [
+      { ...businessSynthesisSource(resultKey, snapshot), title, summaryTitle: title },
+      ...reminder.workmanship.map((item, index): SynthesisSource => ({
+        sourceId: `B${resultKey}:workmanship:${index}`, kind: 'project', title: '提醒中的工艺依据 · ' + item.title,
+        text: item.quote, summaryTitle: title, resultKey, citationQuotes: synthesisQuoteHints(item.quote),
+      })),
+    ];
+  }
   const reportSources = scopedReportSynthesisSources(resultKey, snapshot);
   if (reportSources) return reportSources;
   const aggregate = businessSynthesisSource(resultKey, snapshot);

@@ -34,6 +34,7 @@ export function compileModelRequest(input: {
   naturalKnowledge?:boolean;
   minimalDialogue?:boolean;
   difyDialogue?:boolean;
+  preserveDialogue?: boolean;
   requiredKnowledge?:boolean;
   reportPlan?: SourceQuestionCoverage | null;
   homeSourceView?: HomeSourceView;
@@ -57,7 +58,7 @@ export function compileModelRequest(input: {
   let focused = messageScoped ? currentMessageView(messages, triggerId, question)
     : adviceScoped ? independentAdviceView(messages, triggerId, question)
     : (turn > 0 || input.profile || difyDialogue || reviewedStandard || specialist) && purpose === 'answer'
-      ? focusedSynthesisMessages(homeView, triggerId, input.reportPlan, minimalDialogue, false, specialist) : homeView;
+      ? focusedSynthesisMessages(homeView, triggerId, input.reportPlan, minimalDialogue || input.preserveDialogue, false, specialist) : homeView;
   let dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' || purpose === 'grounding' ? tools
     : input.toolsForTurn(question, focused, tools, triggerId);
   // Keep natural history, but use the existing current-question tail for a

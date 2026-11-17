@@ -6,6 +6,7 @@ import { reportAnswerSynthesis, reportQuestionCoverage } from '../agent/report-f
 import { toolSchemaIssue } from '../agent/tool-protocol';
 import { constructionReadOnlyTools, finalToolForMessages, reportRequiredReadsComplete } from '../agent/worker';
 import { focusedSynthesisMessages, type SynthesisSource } from '../agent/synthesis';
+import { modelCitationCatalog } from '../agent/citation-catalog';
 import { assertReportAnswerReview, prepareReportAnswerReview, reportCitationCountFailure, reportInlineCitationFailure, reportSemanticRepair } from '../agent/report-answer-review';
 import { acceptKnowledgeExplanation } from '../agent/knowledge-explanation';
 import { reportAnswerGroundingProtocol } from '../agent/report-source-scope';
@@ -128,6 +129,22 @@ test('the paired report read, focused input and final schema use the same planne
   assert.equal(constructionReadOnlyTools('construction_followup', true)?.[0], reportFollowupTool);
   assert.deepEqual(constructionReadOnlyTools('construction_followup', true, true)?.[0].parameters.required, ['questions']);
   assert.deepEqual(constructionReadOnlyTools('project_collaboration', true, true), constructionReadOnlyTools('project_collaboration', true));
+});
+
+test('a selected stage reminder can answer directly and exposes only role-scoped reads', async () => {
+  const source: SynthesisSource = { sourceId: 'Bstage', kind: 'project', title: '所选阶段提醒', text: '团队发送提醒时标记为水电阶段。', fullTextCitable: true };
+  const question = '这份报告里，下周需要我关注什么？';
+  const final = finalToolForMessages([], question, false, false, false, false, undefined, false, [source]);
+  assert.equal(await toolSchemaIssue(final, JSON.stringify({ kind: 'synthesis', segments: [
+    { basis: 'advice', text: '如果下周还在做水电，封槽前和工长核对用水点位。', citations: [] },
+    { basis: 'evidence', text: '这条提醒对应水电阶段。', citations: [{ citationId: modelCitationCatalog(source)[0].citationId }] },
+  ] })), null);
+  assert.ok(await toolSchemaIssue(final, JSON.stringify({ kind: 'report_answer', answers: {} })));
+  const owner = constructionReadOnlyTools('construction_followup', true, false, false, false, 'owner')!;
+  const staff = constructionReadOnlyTools('construction_followup', true, false, false, false, 'staff')!;
+  assert.deepEqual(owner.map(tool => tool.name), ['query_business', 'search_knowledge']);
+  assert.deepEqual(staff.map(tool => tool.name), ['search_knowledge']);
+  assert.ok(await toolSchemaIssue(owner[0], JSON.stringify({ domain: 'construction', leadId: '99' })));
 });
 
 test('the reviewer sees the full original independently of the plan and still rejects incomplete or mis-scoped advice', () => {

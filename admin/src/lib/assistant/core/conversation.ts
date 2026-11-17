@@ -41,6 +41,7 @@ import type { SpecialistRunBinding } from '../specialists/registry';
 import { ownerArchiveReadProtocol, ownerProjectStatusReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
 import { ownerCitationCarrierProtocol } from '../agent/final-output';
 import { reportBodyFinalPolicy, reportNativeAdmission, reportNativeFinalProtocol, reportFinalFunctionCarrier, reportStructuralFinalSchema } from '../agent/report-native-final';
+import { stageReminderFollowupProtocol } from '../agent/report-context';
 import { reportFinalOutputTokenLimit } from '../contracts/model';
 import { imageContextBudgetPolicy } from '../agent/context-budget';
 import { conversationImageProtocol } from '../agent/image-context';
@@ -174,8 +175,11 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const staffPreview = actor.principal.kind === 'admin' && c.purpose === 'knowledge_preview'
     && actor.capabilities.includes('assistant.preview.self') && !!fastGPTPreviewConfiguration(actor.enterpriseId);
   const agent = !speech && (report || actor.principal.kind === 'user' || privateFollowup || staffPreview || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
-  const reportNativeFinal = reportNativeAdmission(agent, { conversationPurpose: c.purpose, purpose, triggerKind: trigger.kind,
-    privateFollowup, selected: !!reportContext(c.entry_snapshot).selection });
+  const reference = reportContext(c.entry_snapshot);
+  const stageReminderFollowup = !!agent && privateFollowup && purpose === 'reply' && trigger.kind === 'user_message'
+    && reference.selection?.kind === 'stage';
+  const reportNativeFinal = !stageReminderFollowup && reportNativeAdmission(agent, { conversationPurpose: c.purpose, purpose, triggerKind: trigger.kind,
+    privateFollowup, selected: !!reference.selection });
   if (report && !agent) fail('assistant_capability_forbidden', 403);
   const entry = c.entry_snapshot as Row;
   const rag = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
@@ -259,7 +263,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         && !agentRuntime && !enterpriseKnowledgeEnabled(settings.agent_config) && !reviewRuntime && !agent.consultation && !agent.structuredFinal
         && !agent.imageContext && !agent.knowledgeExplanation && !reportContext(c.entry_snapshot).selection
         ? { dialogueContext: minimalDialogueProtocol } : {}),
-      ...(!report && reportContext(c.entry_snapshot).selection ? { reportContextVersion: reportContext(c.entry_snapshot).revision } : {}),
+      ...(!report && reference.selection ? { reportContextVersion: reference.revision } : {}),
+      ...(stageReminderFollowup ? { stageReminderFollowup: stageReminderFollowupProtocol, reportHistoryScope: reportHistoryScopeProtocol } : {}),
       ...(report ? { reportComposition } : {}),
       ...(report ? reportBodyFinalPolicy(agent) : {}),
       ...(reportNativeFinal ? { reportNativeFinal: reportNativeFinalProtocol, reportFinalOutputTokens: reportFinalOutputTokenLimit,

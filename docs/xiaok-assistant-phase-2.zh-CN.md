@@ -475,6 +475,10 @@ V1-03 当前阶段提醒（Limited）。新正文只按本次触发事件、工�
 <!-- /v1-02-report-source -->
 
 <!-- v1-02-stage-reminder -->
+**阶段提醒问答。** 新的私人阶段提醒追问在准入时绑定报告、项目和版本。Agent 沿提醒卡的同一工艺投影载入可读提醒，已保存的通用建议供理解上下文，获权工艺原文沿提醒权限与来源复核。模型复用现有段落与引用协议直接回答，按需查询获权知识或业主当前对客计划。逐问拆解、无施工记录覆盖和单独语义复核保留在日报、周报及原已准入运行。复用 LangGraph 的[模型选择工具](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents)和[工具调用回执配对](https://github.com/langchain-ai/langgraph/blob/main/libs/prebuilt/tests/test_tool_node.py)。[DashScope 流式问题记录](https://github.com/langchain-ai/langchain/issues/35436)属于供应商协议，本次沿现有适配器、任务、未知结果处理及计量。派发、提交、重进沿原服务核对工艺来源和项目权限。
+
+[隔离服务批](../tmp/qa-stage-reminder-followup-20261117/service-182554/verification.json)使用开发配置的 `qwen3.7-flash`，8 次调用保存 4 个自然回答。夹具含已保存的通用提醒和仅有阶段标记的提醒，两者均无已发布施工进度。实测连续追问、发送同键去重、所选工地计划及星期、跨租户和项目撤权。[首稿记录](../tmp/qa-stage-reminder-followup-20261117/service-181858/verification.json)留存星期误判及源文件漂移。对客计划直接给出日期及星期，与施工进度状态各有依据。[Stable](../tmp/qa-stage-reminder-followup-20261117/native-183442/verification.json)已核对 390×844、业主合成身份和跟进列表读取。操作超时及控制器占用，页面发送与重进仍为 Limited。线上结合企业知识的路径尚未实测。
+
 **批准02阶段提醒与工艺依据直达：限定Implemented，V1-02整体仍Limited。** 源为原手账README及02-follow-up-chat-v002.png/共用03/04，853×1844→390×844。已就绪阶段卡使用报告冻结的 stageKey 及获权 standards 的短提示。保留纸张、布签、21px 标题和 16px 正文。完整原文从原 13px/44px 工艺来源动作打开。没有工艺正文时沿真实生成标签/重试，不造示例施工、来源或本阶段建议；接待沿批准11。无新素材/字体/主包helper/API/schema/Agent/权限变化。
 
 assistant控制器把直开绑定到当前binding、精确report/revision/project和当前实际引用目录，复用原来源API、原生单选、来源纸页与认证原件下载，不挂完整详情、不写整份报告已读。列表轮询重验直接来源；同范围不取消下载，版本/目录变化、关闭/隐藏/身份/绑定变化及项目撤权阻断晚到响应。来源错误保留到明确重试。三个相同详情正文提取为report-sections.wxml，业主嵌套include显式导入；原chat缩进精简及LF属性守原2MB硬限，无截图切片。

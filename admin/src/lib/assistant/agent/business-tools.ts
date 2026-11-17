@@ -44,7 +44,7 @@ export function parseDesignerQuery(raw: unknown): DesignerQuery {
     || typeof value.query !== 'string' || value.query.length > 100 || /[\u0000-\u001f\u007f]/.test(value.query)) fail('invalid_message', 422);
   return { query: value.query.trim() };
 }
-export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string; currentProject?: { room: string; recordLimit?: number } };
+export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string; currentProject?: { room: string; recordLimit?: number }; projectId?: string };
 export type BusinessSnapshot = { query: BusinessQuery; customerId?: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference; reportAnswerGrounding?: 'report-answer-grounding-v1'; reportSourceProjection?: 'report-parent-context-v1' } | MaterialSnapshot | NeedIssueSnapshot | SharedSiteProgressSnapshot;
 export function parseBusinessQuery(raw: unknown, currentProject = false): BusinessQuery {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('invalid_message', 422);
@@ -83,7 +83,7 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
   for (const lead of leads) {
     const label = String(lead.community_name || '服务档案');
     if (query.domain === 'construction') {
-      const result = await constructionRead(tx, actor.enterpriseId, customerId, String(lead.id), query.currentProject);
+      const result = await constructionRead(tx, actor.enterpriseId, customerId, String(lead.id), query.currentProject, query.projectId);
       data.push(...result.data); lines.push(...result.lines);
     } else if (query.domain === 'appointments') {
       const appointments = await new AppointmentRepository(tx).listByLead(BigInt(actor.enterpriseId), BigInt(String(lead.id)));

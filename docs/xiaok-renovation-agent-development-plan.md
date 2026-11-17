@@ -22,15 +22,15 @@ I6.16 防水 Agent V1.1 候选，复用 I6.15 原咨询委托。V1 冻结值与�
 
 | 字段 | 当前记录 |
 | --- | --- |
-| 交付与负责人 | I7.5.23 V1.0 生产安全加固与发布阻塞清理，`codex/xiaok-integration`。方法约束：生产缺失密钥失败关闭，禁止固定默认密钥和弱初始密码。 |
-| 用户入口与结果 | 四端业务不变；JWT、AI 凭据加密、管理员一次性密码、Docker 数据库凭据、生产环境门禁和 Worker 共享健康文件已加固。 |
-| 已证缺口 | 代码级安全阻塞已关闭；当前 `.env.production` 仍为占位/开发值，统一门禁退出 1；生产 Bailian/Embedding、Docker 镜像和实际凭据轮换未执行。 |
-| 已完成 | 生产 JWT 缺失/默认拒绝；AI 密钥独立且旧 JWT 密文可读；员工/企业账号一次性随机密码；Compose 数据库口令可覆盖；Worker 健康文件同卷；干净检出构建 117 页、standalone 308 MB 无 env/keys/uploads/tests。 |
-| 下一动作 | 填入经审批的生产密钥、Bailian/Embedding 和共享健康路径，重跑 `check:production-env`；在可用 Docker 环境构建并抽查镜像。 |
-| 必要验收 | `check:production-env` 退出 0；旧凭据轮换；生产知识映射/文档/引用；Worker 试点白名单；真机或书面 limited 豁免。 |
-| 失败与调用边界 | 本轮不合并 `main`、不部署生产、不启动生产 Worker、不发真实通知、不执行迁移、不写 1454、不提交密钥。 |
-| 环境与资源 | 干净检出临时目录 `tmp/xiaok-i7523-clean2`；Admin standalone 11,458 文件/308 MB；Docker daemon 不可用；当前 `.env.production` 门禁 10 项拒绝。 |
-| 证据与后继 | [I7.5.23 安全加固](xiaok-i7523-production-security-hardening.md) · [干净构建](../tmp/xiaok-i7523-clean-build3.log) · [安全测试](../tmp/xiaok-i7523-script-tests.log) · [V1.0 最终评审](xiaok-v1-final-release-review.md)。 |
+| 交付与负责人 | V1-02 阶段提醒追问修复，`codex/xiaok-integration`。方法约束：先验证真实回答，禁止补丁循环。 |
+| 用户入口与结果 | 装修跟进 → 简报记录 → 阶段提醒 → 问这份报告。没有施工流水也能问当前阶段该留意什么，有公开计划时可问实际排期。 |
+| 已证缺口 | 阶段提醒有独立工艺内容，追问却沿日报/周报拆问及缺项覆盖。日期检索还需区分各阶段计划和实际进展。 |
+| 已完成 | 新准入读取原提醒的获权工艺，复用 LangGraph 自然追问和引用复核。隔离 `qwen3.7-flash` 4/4 问保存成功，8 次模型调用，确认同档案两工地仅取得所选计划，跨租户及撤权拒绝。 |
+| 下一动作 | Stable 自动化恢复后只复验页面发送和重进。已连目标窗口与合成账号，实际发送未执行。 |
+| 必要验收 | 有工艺、仅阶段两组；核对计划日期和星期、无记录仍给可做的建议、同键去重、跨户权限与撤权、退出重进。 |
+| 失败与调用边界 | 首批星期误判与来源漂移保留。Stable 操作超时及控制器占用，验收 Limited。沿原任务和计量，生产尚未部署。 |
+| 环境与资源 | 本机隔离数据库合成项目，绑定开发配置模型 `qwen3.7-flash`，Stable 串行核验。 |
+| 证据与后继 | [固定问答与验证](../tmp/qa-stage-reminder-followup-20261117/service-182554/verification.json) · [现行合同](xiaok-assistant-phase-2.zh-CN.md)。生产边界见 [I7.5.23 安全加固](xiaok-i7523-production-security-hardening.md)。 |
 
 ## 3. 复用哪些成果
 

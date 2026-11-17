@@ -1,23 +1,26 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { one, type Row } from '@/db/repositories/assistant-repository';
+import { AssistantRepository, one, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, safeText, type ActorContext } from '../contracts';
 import { reportContext, resolveReportReference, selectedReport, type ReportReference } from '@/lib/construction/report-reference';
 import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
 import type { ReportProject } from '@/lib/construction/report-scope';
+import type { ReminderGuidance } from '@/lib/construction/report-body-view';
 import type { BusinessSnapshot } from './business-tools';
 import type { ModelTool } from '../contracts/model';
 import { reportLocalTime } from './report-time';
 import { boundReportAnswerGrounding, boundReportSourceProjection, reportAnswerGroundingProtocol, reportSourceProjectionProtocol } from './report-source-scope';
 import { reportNativeFinalProtocol } from './report-native-final';
 import { boundReportQuestionPlanning, createReportQuestionPlan, readReportQuestionPlan, type ReportQuestionPlanScope } from './report-question-plan';
+import { runKnowledgeEnabled } from '../knowledge-policy';
 
 export const reportFollowupTool: ModelTool = {
   name: 'query_followups', description: '只读当前明确选定报告的原项目、原版本、统计周期和截止时刻的已发布现场事实、待核对内容与已有安排。返回的是报告冻结的原记录，不是生成正文或当前最新施工状态；截止后的变化、未记录的负责人或期限仍未知。不查询其他咨询、其他项目或内部会话，不保存需求、不确认或修改施工事项。',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
 };
 
-export type ReportBusinessReference = { selection: ReportReference } & ({ userId: string } | { principal: ActorContext['principal'] });
+export const stageReminderFollowupProtocol = 'stage-reminder-followup-v1';
+export type ReportBusinessReference = { selection: ReportReference; reminder?: ReminderGuidance } & ({ userId: string } | { principal: ActorContext['principal'] });
 export const reportContextStep = 740;
 
 /** A frozen report can answer a site question only when it actually retained
@@ -73,7 +76,14 @@ export function reportFactText(selection: ReportReference, project: ReportProjec
 }
 export async function reportBusinessAvailable(tx: PostgresTransaction, enterpriseId: string, ref: ReportBusinessReference) {
   const principal = 'principal' in ref ? ref.principal : { kind: 'user' as const, userId: ref.userId };
-  return !!await resolveReportReference(tx, { enterpriseId, principal, contextVersion: 0, capabilities: [] }, ref.selection, ref.selection);
+  const actor: ActorContext = { enterpriseId, principal, contextVersion: 0, capabilities: ['assistant.followup.self'] };
+  const resolved = await resolveReportReference(tx, actor, ref.selection, ref.selection);
+  if (!resolved) return false;
+  if (!ref.reminder?.advice.length && !ref.reminder?.workmanship.length) return true;
+  const conversation = await new AssistantRepository(tx, actor).conversation(ref.selection.conversationId, 'share');
+  const { reminderGuidance } = await import('@/lib/construction/report-body-view');
+  const current = await reminderGuidance(tx, actor, conversation, ref.selection, resolved.project, !!ref.reminder.workmanship.length);
+  return fingerprint(current) === fingerprint(ref.reminder);
 }
 /** Use the original durable business snapshot/catalog. No report prose is a
  * fact source and no additional model, retriever or citation store is created. */
@@ -88,6 +98,17 @@ export async function boundReportContext(tx: PostgresTransaction, actor: ActorCo
     and id=${runId} and conversation_id=${String(conversation.id)}`);
   if (!run) fail('context_changed');
   const policy = run.policy_snapshot as Row;
+  if (policy.stageReminderFollowup !== undefined && (policy.stageReminderFollowup !== stageReminderFollowupProtocol
+    || resolved.selection.kind !== 'stage' || conversation.purpose !== 'construction_followup')) fail('context_changed');
+  const saved = previous?.private_checkpoint as { resultKey: string; snapshot: BusinessSnapshot } | undefined;
+  // A resumed run keeps the sources it actually saw, even if the same
+  // reminder acquired a body while this reply was waiting on the provider.
+  const savedReference = saved && 'reportReference' in saved.snapshot ? saved.snapshot.reportReference : undefined;
+  const reminder = policy.stageReminderFollowup === stageReminderFollowupProtocol
+    ? savedReference?.reminder ?? await (await import('@/lib/construction/report-body-view'))
+      .reminderGuidance(tx, actor, conversation, resolved.selection, resolved.project, runKnowledgeEnabled(policy))
+    : undefined;
+  if (savedReference?.reminder && !await reportBusinessAvailable(tx, actor.enterpriseId, savedReference)) fail('context_changed');
   const grounding = boundReportAnswerGrounding(policy.reportAnswerGrounding, policy.reportNativeFinal === reportNativeFinalProtocol);
   const sourceProjection = boundReportSourceProjection(policy.reportSourceProjection, grounding);
   const questionPlanning = boundReportQuestionPlanning(policy.reportQuestionPlanning, grounding && sourceProjection);
@@ -98,17 +119,18 @@ export async function boundReportContext(tx: PostgresTransaction, actor: ActorCo
   const snapshot: BusinessSnapshot = { query: { domain: 'construction', leadId: resolved.leadId },
     ...(actor.principal.kind === 'user' ? { customerId: actor.principal.userId } : {}),
     leadIds: [resolved.leadId], version: resolved.selection.factsHash, queriedAt: resolved.selection.cutoffAt,
-    reportReference: { selection: resolved.selection, principal: actor.principal },
+    reportReference: { selection: resolved.selection, principal: actor.principal, ...(reminder ? { reminder } : {}) },
     ...(grounding ? { reportAnswerGrounding: reportAnswerGroundingProtocol } : {}),
     ...(sourceProjection ? { reportSourceProjection: reportSourceProjectionProtocol } : {}),
     data: [{ ...displayedProject, projectId: displayedProject.id, leadId: resolved.leadId }],
-    displayText: reportFactText(resolved.selection, displayedProject) };
-  const saved = previous?.private_checkpoint as { resultKey: string; snapshot: BusinessSnapshot } | undefined;
+    displayText: reminder
+      ? `项目：${displayedProject.name}。本条提醒对应的团队阶段标记：${resolved.project.reminderStageName || displayedProject.stageName || displayedProject.stageKey || '尚未标记'}。提醒发送依据的阶段事件时间：${reportLocalTime(resolved.selection.periodStart)}。`
+      : reportFactText(resolved.selection, displayedProject) };
   if (saved && fingerprint(saved) !== fingerprint({ resultKey, snapshot })) fail('context_changed');
   if (!saved) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
     values(${actor.enterpriseId},${runId},${reportContextStep},'agent_source','synthesis.bound_construction.v1',1,'succeeded',
       ${JSON.stringify({ resultKey, snapshot })}::jsonb,'{"scope":"explicit_report_originals","protocol":"explicit-report-context-v1"}'::jsonb)`);
-  return { resultKey, snapshot, selection: resolved.selection, questionPlanning, messageId: String(run.trigger_message_id) };
+  return { resultKey, snapshot, selection: resolved.selection, questionPlanning, reminder, messageId: String(run.trigger_message_id) };
 }
 
 export async function latestReportFollowup(tx: PostgresTransaction, enterpriseId: string, runId: string) {

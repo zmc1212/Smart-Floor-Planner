@@ -1,14 +1,15 @@
+import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import type { Row } from '@/db/repositories/assistant-repository';
+import { one, type Row } from '@/db/repositories/assistant-repository';
 import type { ActorContext, Evidence } from '@/lib/assistant/contracts';
 import { synthesisContextAvailable } from '@/lib/assistant/agent/synthesis-sources';
-import { reportContextProtocol } from './report-reference';
+import { reportContextProtocol, type ReportReference } from './report-reference';
 import { reportCompositionProtocol, reportSectionKinds, type ReportBody } from './report-composition';
 import { attachReportProjectCitations, noVerifiedCitationText, rejectedCitationText, serverSectionText, verifyReportCitation } from './report-citations';
-import type { ReportFacts } from './report-scope';
+import type { ReportFacts, ReportProject } from './report-scope';
 import { citationProjection } from '@/lib/assistant/knowledge/sources';
 import { evidenceOriginal } from '@/lib/assistant/knowledge/file-service';
-import { fail } from '@/lib/assistant/contracts';
+import { fail, fingerprint } from '@/lib/assistant/contracts';
 import { generalReportAdviceProtocol } from './report-general-advice';
 
 type ReportOriginal = { sourceId: string; title: string; quote: string; location: Evidence['file'] | null };
@@ -19,7 +20,7 @@ function projectConversation(conversation: Row, selection: ReportBody['projects'
 
 /** Revalidate all consulted originals per project, not just cited snippets.
  * Return a display projection; private Evidence/contexts never go to the client. */
-export async function reportBodyView(tx: PostgresTransaction, actor: ActorContext, conversation: Row, facts: ReportFacts, body: ReportBody | null) {
+export async function reportBodyView(tx: PostgresTransaction, actor: ActorContext, conversation: Row, facts: Pick<ReportFacts, 'projects'>, body: ReportBody | null) {
   if (body?.protocol !== reportCompositionProtocol || !Array.isArray(body.projects)) return [];
   const result = [];
   for (const p of body.projects) {
@@ -81,6 +82,29 @@ export async function reportBodyView(tx: PostgresTransaction, actor: ActorContex
     result.push({ projectId: p.projectId, ...sections, standards, knowledgeSources, guidance });
   }
   return result;
+}
+
+export type ReminderGuidance = { advice: string[]; workmanship: { sourceId: string; title: string; quote: string }[] };
+
+/** The reply uses the same currently readable workmanship as the card. */
+export async function reminderGuidance(tx: PostgresTransaction, actor: ActorContext, conversation: Row,
+  selection: ReportReference, project: ReportProject, knowledgeEnabled: boolean): Promise<ReminderGuidance> {
+  const guidance: ReminderGuidance = { advice: [], workmanship: [] };
+  const row = await one(tx, sql`select body from app.construction_report_versions where enterprise_id=${actor.enterpriseId}
+    and report_id=${selection.reportId} and revision=${selection.revision} for share`);
+  const body = row?.body as ReportBody | null;
+  if (body?.protocol !== reportCompositionProtocol || !Array.isArray(body.projects)
+    || !knowledgeEnabled && body.generalAdvice !== generalReportAdviceProtocol) return guidance;
+  const saved = body.projects.find(item => item.projectId === selection.projectId && fingerprint(item.selection) === fingerprint(selection));
+  if (!saved) return guidance;
+  const [view] = await reportBodyView(tx, actor, conversation, { projects: [project] }, { ...body, projects: [saved] });
+  for (const standard of view?.standards ?? []) {
+    if (standard.basis === 'advice') guidance.advice.push(standard.text);
+    else if (knowledgeEnabled) for (const { sourceId, title, quote } of standard.citations) {
+      guidance.workmanship.push({ sourceId, title, quote });
+    }
+  }
+  return guidance;
 }
 
 /** Only a cited entry in this saved project catalog can resolve to an original.
