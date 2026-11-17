@@ -1,0 +1,268 @@
+.acquisition-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f4f6f1;
+  color: #1f2a24;
+}
+
+.acquisition-nav {
+  flex: none;
+  padding-left: 24rpx;
+  background: #ffffff;
+  border-bottom: 1rpx solid rgba(31, 42, 36, 0.06);
+}
+
+.nav-lane {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.nav-back {
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.back-chevron {
+  width: 20rpx;
+  height: 20rpx;
+  border-left: 4rpx solid #1f2a24;
+  border-bottom: 4rpx solid #1f2a24;
+  transform: rotate(45deg);
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-width: 0;
+}
+
+.brand-logo {
+  width: 40rpx;
+  height: 40rpx;
+}
+
+.brand-name {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1f2a24;
+}
+
+.nav-divider {
+  width: 1rpx;
+  height: 24rpx;
+  background: rgba(31, 42, 36, 0.16);
+}
+
+.nav-title {
+  font-size: 24rpx;
+  color: #66756c;
+}
+
+.acquisition-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.acquisition-content {
+  padding: 28rpx 32rpx calc(48rpx + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.hero-card,
+.state-card,
+.action-card {
+  background: #ffffff;
+  border-radius: 32rpx;
+  padding: 36rpx 32rpx;
+  box-shadow: 0 16rpx 48rpx rgba(31, 42, 36, 0.06);
+}
+
+.hero-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.hero-glow {
+  position: absolute;
+  right: -80rpx;
+  top: -80rpx;
+  width: 280rpx;
+  height: 280rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.16), rgba(34, 197, 94, 0));
+}
+
+.hero-mascot {
+  position: absolute;
+  right: 16rpx;
+  bottom: 8rpx;
+  width: 168rpx;
+  height: 168rpx;
+  opacity: 0.9;
+}
+
+.hero-kicker {
+  font-size: 22rpx;
+  color: #2f8f5b;
+  letter-spacing: 1rpx;
+  max-width: 420rpx;
+}
+
+.hero-title {
+  font-size: 46rpx;
+  line-height: 1.25;
+  font-weight: 700;
+  color: #18251f;
+  max-width: 430rpx;
+}
+
+.hero-opening {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: #526159;
+  max-width: 440rpx;
+}
+
+.hero-brand {
+  margin-top: 8rpx;
+}
+
+.hero-brand image {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 20rpx;
+}
+
+.prompt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+}
+
+.section-label {
+  font-size: 24rpx;
+  color: #7b8a81;
+  padding-left: 8rpx;
+}
+
+.prompt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.prompt-card {
+  background: #ffffff;
+  border: 1rpx solid rgba(31, 42, 36, 0.08);
+  border-radius: 24rpx;
+  padding: 24rpx 26rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.prompt-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2a24;
+}
+
+.prompt-text {
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #66756c;
+}
+
+.action-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.primary-action {
+  width: 100%;
+  height: 96rpx;
+  line-height: 96rpx;
+  border-radius: 48rpx;
+  background: #22a85f;
+  color: #ffffff;
+  font-size: 30rpx;
+  font-weight: 600;
+  border: none;
+}
+
+.primary-action[disabled] {
+  background: #a8c9b6;
+  color: #ffffff;
+}
+
+.secondary-action {
+  width: 100%;
+  height: 84rpx;
+  line-height: 84rpx;
+  border-radius: 42rpx;
+  background: #f1f6f3;
+  color: #2f6b4c;
+  font-size: 28rpx;
+  border: 1rpx solid rgba(34, 168, 95, 0.16);
+}
+
+.privacy-copy {
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #8a978f;
+  text-align: center;
+}
+
+.state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14rpx;
+  padding: 72rpx 32rpx;
+  text-align: center;
+}
+
+.state-dot {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  background: #22a85f;
+  box-shadow: 0 0 0 12rpx rgba(34, 168, 95, 0.14);
+}
+
+.state-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1f2a24;
+}
+
+.state-copy {
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: #66756c;
+}
+
+.state-action {
+  margin-top: 12rpx;
+  min-width: 220rpx;
+  height: 76rpx;
+  line-height: 76rpx;
+  border-radius: 38rpx;
+  background: #22a85f;
+  color: #ffffff;
+  font-size: 28rpx;
+}

@@ -12,6 +12,7 @@ import type { Audience, KnowledgeDocument } from '@/components/assistant/contrac
 const KnowledgeEditor = lazy(() => import('@/components/assistant/knowledge-editor').then(module => ({ default: module.KnowledgeEditor })));
 const PreviewPanel = lazy(() => import('@/components/assistant/preview-panel').then(module => ({ default: module.PreviewPanel })));
 const GuidanceEditor = lazy(() => import('@/components/assistant/guidance-editor').then(module => ({ default: module.GuidanceEditor })));
+const AcquisitionEditor = lazy(() => import('@/components/assistant/acquisition-editor').then(module => ({ default: module.AcquisitionEditor })));
 const KnowledgeSettings = lazy(() => import('@/components/assistant/knowledge-settings').then(module => ({ default: module.KnowledgeSettings })));
 const HandoffPanel = lazy(() => import('@/components/assistant/handoff-panel').then(module => ({ default: module.HandoffPanel })));
 const KnowledgeOperationsPanel = lazy(() => import('@/components/assistant/knowledge-operations').then(module => ({ default: module.KnowledgeOperationsPanel })));
@@ -57,6 +58,7 @@ function KnowledgeWorkbench({ canHandoff, canUsage }: { canHandoff: boolean; can
       { key: 'preview', label: '管理员试问', children: <Suspense fallback={<Skeleton active />}><PreviewPanel key={previewKey} seed={seed} /></Suspense> },
       { key: 'operations', label: '问题集与健康', children: <Suspense fallback={<Skeleton active />}><KnowledgeOperationsPanel canUsage={canUsage}/></Suspense> },
       { key: 'guidance', label: '需求引导话术', children: <Suspense fallback={<Skeleton active />}><GuidanceEditor /></Suspense> },
+      { key: 'acquisition', label: '扫码获客', children: <Suspense fallback={<Skeleton active />}><AcquisitionEditor /></Suspense> },
       ...(canHandoff ? [{ key: 'handoffs', label: '真人接续', children: <Suspense fallback={<Skeleton active />}><HandoffPanel /></Suspense> }] : []),
     ]} />
     {editor && <Suspense fallback={<Drawer open width={720} title={editor === 'new' ? '新建知识' : '知识详情'} onClose={() => setEditor(null)}><Space direction="vertical" size={20} style={{ width: '100%' }}><Skeleton active /></Space></Drawer>}>

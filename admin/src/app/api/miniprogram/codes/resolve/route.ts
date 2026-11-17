@@ -21,6 +21,8 @@ import {
   sealPendingReferralSource,
   sealPendingStaffActivitySource,
 } from '@/lib/referral-attribution';
+import { acquisitionEntryView } from '@/lib/assistant/acquisition/config';
+import { readAcquisitionSettings } from '@/lib/assistant/acquisition/settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -144,6 +146,13 @@ async function resolveCode(request: Request, log: MiniProgramRequestLog) {
           deviceSummary: sanitizeDeviceSummary(body.deviceSummary),
         });
         if (promotionCode.code) {
+          const enterprise = await new EnterpriseRepository(transaction).findById(
+            promotionCode.code.enterpriseId
+          );
+          const acquisition = await readAcquisitionSettings(
+            transaction,
+            String(promotionCode.code.enterpriseId)
+          );
           return withExistingProject({
             kind: 'referral' as const,
             codeType: null,
@@ -158,7 +167,15 @@ async function resolveCode(request: Request, log: MiniProgramRequestLog) {
                     version: promotionCode.code.version,
                   })
                 : null,
-            enterpriseName: null,
+            enterpriseName:
+              acquisition.config.brandMode === 'branded'
+                ? enterprise?.name ?? null
+                : null,
+            acquisition: acquisitionEntryView(
+              acquisition.config,
+              enterprise,
+              acquisition.version
+            ),
           });
         }
         const activityCode = await repository.resolveStaffActivityToken({
@@ -171,6 +188,13 @@ async function resolveCode(request: Request, log: MiniProgramRequestLog) {
           deviceSummary: sanitizeDeviceSummary(body.deviceSummary),
         });
         if (activityCode.code) {
+          const enterprise = await new EnterpriseRepository(transaction).findById(
+            activityCode.code.enterpriseId
+          );
+          const acquisition = await readAcquisitionSettings(
+            transaction,
+            String(activityCode.code.enterpriseId)
+          );
           return withExistingProject({
             kind: 'staff_activity' as const,
             codeType: null,
@@ -184,7 +208,15 @@ async function resolveCode(request: Request, log: MiniProgramRequestLog) {
                     version: activityCode.code.version,
                   })
                 : null,
-            enterpriseName: activityCode.enterpriseName,
+            enterpriseName:
+              acquisition.config.brandMode === 'branded'
+                ? activityCode.enterpriseName
+                : null,
+            acquisition: acquisitionEntryView(
+              acquisition.config,
+              enterprise,
+              acquisition.version
+            ),
           });
         }
       }
@@ -223,6 +255,9 @@ async function resolveCode(request: Request, log: MiniProgramRequestLog) {
           ? {
               pendingSource: result.pendingSource,
               expiresIn: pendingReferralSourceTtlSeconds,
+              ...('acquisition' in result && result.acquisition
+                ? { acquisition: result.acquisition }
+                : {}),
               ...('existingAttribution' in result && result.existingAttribution
                 ? {
                     existingAttribution: true,

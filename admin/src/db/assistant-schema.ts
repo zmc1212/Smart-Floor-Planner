@@ -45,6 +45,7 @@ export const assistantEnterpriseSettings = app.table('assistant_enterprise_setti
   maxMessageChars: integer('max_message_chars').notNull(),
   retentionDays: integer('retention_days').notNull(),
   guidanceConfig: jsonb('guidance_config'),
+  acquisitionConfig: jsonb('acquisition_config'),
   agentConfig: jsonb('agent_config'),
 });
 

@@ -169,9 +169,20 @@ class ChatController {
     if (!this.valid(epoch)) return null;
     this.entry = entry;
     this.entryExpiry = Date.now() + Math.max(0, Number(entry.expiresIn || 900) - 30) * 1000;
-    this.set({ enterpriseId: entry.enterprise.id, enterpriseName: entry.enterprise.name, canSend: entry.canSend !== false,
+    const acquisitionTopics = entry.acquisition && Array.isArray(entry.acquisition.prompts)
+      ? entry.acquisition.prompts.slice(0, 3).filter(item => item && item.title && item.text).map((item, index) => ({
+          title: String(item.title).slice(0, 12),
+          helper: '',
+          icon: ['requirement-home', 'requirement-style', 'requirement-budget'][index] || 'requirement-home',
+          text: String(item.text).slice(0, 80)
+        }))
+      : [];
+    this.set({ enterpriseId: entry.enterprise.id,
+      enterpriseName: entry.acquisition && entry.acquisition.brandMode === 'anonymous' ? '本地服务商' : entry.enterprise.name,
+      canSend: entry.canSend !== false,
       maxChars: Math.min(4000, Number(entry.maxMessageChars) || 4000), shareReferenceEntry: entry.referenceEntry || '',
-      staffProfileCapture: entry.staffProfileCapture === true });
+      staffProfileCapture: entry.staffProfileCapture === true,
+      ...(acquisitionTopics.length ? { topics: acquisitionTopics } : {}) });
     if (!this.state.conversation) this.set({ welcomeText: entry.guidanceOpening || WELCOME, guidanceEnabled: !!entry.guidanceEnabled, guidance: entry.guidance || null });
     return entry;
   }

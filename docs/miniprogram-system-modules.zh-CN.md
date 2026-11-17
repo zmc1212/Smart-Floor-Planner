@@ -1086,6 +1086,13 @@ Repository 现在会校验活动推广码/员工活动码的 active 记录哈希
 推导出的令牌一致。若旧记录由其他密钥生成，读取路径在持有锁的事务中换成可解析的新版本；
 正常一致的记录继续复用，打开页面不会让有效码失效。该修复不改变扫码归因、身份、权限、路由或持久化
 结构。需要部署新 Admin 镜像并重新编译小程序；已经分发的二维码图片无法远程修改。
+
+## 小K扫码获客入口（Implemented，390×844 视觉手测待补）
+
+新增 `packages/business/acquisition-chat/acquisition-chat`，承接推广人服务码和员工活动码的小K获客二维码。页面从 `entryCode`、`token` 或 `scene` 还原码令牌，调用既有 `POST /api/miniprogram/codes/resolve` 校验并读取 `acquisition`：匿名模式只展示“本地合作装企”，不出现企业名/Logo；品牌模式展示企业身份。开场白和最多 3 个可点击话题来自后台「扫码获客」设置，未配置时使用匿名默认话术。
+
+客户点击“手机号授权，安排免费量房”后，页面复用既有 `POST /api/miniprogram/referrals/authorize-and-create-lead`、原幂等键、归属锁、自动派单和通知；成功后刷新客户会话并跳转 `packages/assistant/chat/chat?entryCode=...`，由入口快照绑定该企业唯一的有效线索，让小K继续基于真实线索服务。已登录客户可使用“先和小K聊聊”跳转 `chat?entryCode=...`，不建立线索。`promotion-service-code` 增加“免费服务码 / 小K获客码”切换，后者通过 `GET /api/miniprogram/referrer-memberships/:id/promotion-code/image?target=xiaok` 生成指向本页面的小程序码；分享路径同步切换。没有新增线索、归属、派单或提成旁路，也未修改既有 `free-design-service` 领取页。
+
 ## 平台企业开户 API
 
 当前开户页的联系人手机号输入框支持手动填写，但提交前仍必须完成微信手机号授权并通过一致性校验；主按钮明确为「授权手机号并提交」，授权成功后自动提交，号码不一致时停留在表单并提示修改。该交互与本节 API 的 Bearer JWT 手机号一致性约束保持一致。

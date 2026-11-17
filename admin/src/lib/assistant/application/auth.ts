@@ -9,6 +9,8 @@ import { fail, id, type ActorContext } from '../contracts';
 import { configuredGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { readContentEntry, contentEntrySource, contentChannel, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { readPortfolioEntry, portfolioEntrySource, type PortfolioEntry } from '@/lib/portfolio/entry';
+import { acquisitionEntryView } from '../acquisition/config';
+import { readAcquisitionSettings } from '../acquisition/settings';
 import { fastGPTAgentV2Presentation } from '../fastgpt/agent-v2/config';
 import { developmentReviewEnabled } from '../agent/review-runtime';
 import { getJwtSecret } from '@/lib/jwt-secret';
@@ -71,16 +73,27 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
       for (const candidate of candidates) {
         if (candidate.startsWith('rp_')) {
           const result = await repository.resolvePromotionToken({ token: candidate });
-          if (result.result === 'ok' && result.code) return { enterpriseId: String(result.code.enterpriseId), kind: 'promotion_code', id: String(result.code.id) };
+          if (result.result === 'ok' && result.code && result.membership) return {
+            enterpriseId: String(result.code.enterpriseId), kind: 'promotion_code', id: String(result.code.id),
+            promotionCodeId: String(result.code.id), membershipId: String(result.membership.id), codeVersion: result.code.version
+          };
         } else {
           const result = await repository.resolveStaffActivityToken({ token: candidate });
-          if (result.result === 'ok' && result.code) return { enterpriseId: String(result.code.enterpriseId), kind: 'staff_activity_code', id: String(result.code.id) };
+          if (result.result === 'ok' && result.code && result.staff) return {
+            enterpriseId: String(result.code.enterpriseId), kind: 'staff_activity_code', id: String(result.code.id),
+            staffActivityCodeId: String(result.code.id), staffId: String(result.staff.id), codeVersion: result.code.version
+          };
         }
       }
       return null;
     });
     if (!resolved) fail('entry_context_invalid', 422);
-    enterpriseId = resolved.enterpriseId; basis = { kind: resolved.kind, id: resolved.id };
+    enterpriseId = resolved.enterpriseId; basis = { kind: resolved.kind, id: resolved.id,
+      promotionCodeId: 'promotionCodeId' in resolved ? resolved.promotionCodeId : undefined,
+      membershipId: 'membershipId' in resolved ? resolved.membershipId : undefined,
+      staffActivityCodeId: 'staffActivityCodeId' in resolved ? resolved.staffActivityCodeId : undefined,
+      staffId: 'staffId' in resolved ? resolved.staffId : undefined,
+      codeVersion: resolved.codeVersion };
   }
   // The default XiaoK Tab has no lead query. Bind only an unambiguous live
   // customer lead that owns exactly one active, customer-visible project, so
@@ -115,9 +128,26 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
   }
   if (!enterpriseId) fail('entry_context_invalid', 422);
   const actor = actorFor(identity, enterpriseId, basis);
-  const { enterprise, settings, reference, resumeConversationId, staffProfileLeadId } = await withTenantTransaction(enterpriseId, async tx => {
+  const { enterprise, settings, reference, resumeConversationId, staffProfileLeadId, acquisition } = await withTenantTransaction(enterpriseId, async tx => {
     const settings = await new AssistantRepository(tx, actor).settings();
     const enterprise = await one(tx, sql`select id,name,logo from app.enterprises where id=${enterpriseId!}`);
+    const acquisitionEntry = ['promotion_code', 'staff_activity_code'].includes(String(basis.kind))
+      ? await readAcquisitionSettings(tx, enterpriseId!)
+      : null;
+    const acquisition = acquisitionEntry
+      ? acquisitionEntryView(acquisitionEntry.config, enterprise ?? null, acquisitionEntry.version)
+      : null;
+    if (acquisition) {
+      basis.acquisition = acquisition;
+      basis.acquisitionVersion = acquisitionEntry!.version;
+      // The QR claim creates the lead before chat entry. Bind the single live
+      // lead in this enterprise so requirement/profile work continues on the
+      // real project; multiple live leads stay unbound instead of guessing.
+      const activeLeads = await rows<{ id: string }>(tx, sql`select id::text from app.leads
+        where enterprise_id=${enterpriseId!} and customer_user_id=${identity.userId}
+          and archived_at is null and status<>'closed' order by id limit 2`);
+      if (activeLeads.length === 1) basis.renovationLeadId = activeLeads[0].id;
+    }
     if (portfolioEntry && !await portfolioEntrySource(tx, portfolioEntry)) fail('portfolio_not_found', 404);
     const reference=contentEntry?await contentEntrySource(tx,contentEntry):null;
     if(contentEntry&&!reference)basis={kind:'reference_unavailable',enterpriseId};
@@ -142,7 +172,7 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
       : [];
     const staffProfileLeadId = eligibleLeads.length === 1 &&
       (basis.kind !== 'lead' || eligibleLeads[0].id === basis.id) ? eligibleLeads[0].id : null;
-    return { enterprise, settings, reference, resumeConversationId: ids.length === 1 ? ids[0].id : null, staffProfileLeadId };
+    return { enterprise, settings, reference, resumeConversationId: ids.length === 1 ? ids[0].id : null, staffProfileLeadId, acquisition };
   });
   const guidance = configuredGuidance(settings?.guidance_config);
   const guidanceVersion = Number(settings?.version || 1);
@@ -150,10 +180,14 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
   const entryToken = await new SignJWT({ enterpriseId, contextVersion: identity.contextVersion,
     basis: { ...basis, ...(staffProfileLeadId ? { staffProfileLeadId } : {}) }, guidanceVersion }).setProtectedHeader({ alg: 'HS256' })
     .setSubject(identity.userId).setAudience('assistant-entry').setIssuedAt().setExpirationTime('15m').sign(entrySecret());
-  return { entryToken, expiresIn: 900, enterprise: { id: enterpriseId, name: enterprise!.name, logo: enterprise!.logo }, capabilities: actor.capabilities, resumeConversationId,
+  return { entryToken, expiresIn: 900, enterprise: acquisition
+      ? { id: enterpriseId, name: acquisition.brandName, logo: acquisition.brandLogo }
+      : { id: enterpriseId, name: enterprise!.name, logo: enterprise!.logo },
+    capabilities: actor.capabilities, resumeConversationId,
     canSend: assistantWritesEnabled(settings), maxMessageChars: Number(settings?.max_message_chars) || 4000,
     ...(staffProfileLeadId ? { staffProfileCapture: true } : {}),
-    guidanceOpening: contentEntry ? contentGreeting(basis.kind==='reference_content'?reference:null) : guidanceOpening(guidance),
+    ...(acquisition ? { acquisition } : {}),
+    guidanceOpening: contentEntry ? contentGreeting(basis.kind==='reference_content'?reference:null) : acquisition?.opening || guidanceOpening(guidance),
     guidanceEnabled: contentEntry || portfolioEntry ? false : guidance.enabled, guidance: contentEntry || portfolioEntry ? null : guidanceView({ ...guidance, chatFirst: true }, []),
     ...(agentV2 ? { ...(agentV2.welcome ? { welcome: agentV2.welcome } : {}), presetQuestions: agentV2.presets } : {}),
     ...(portfolioEntry ? { portfolio: portfolioEntry } : {}),

@@ -36,7 +36,7 @@ function fetchServiceCodeImage({ endpoint, fileKey, isCurrent }) {
   const safeKey = String(fileKey).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80);
   return new Promise((resolve, reject) => {
     wx.request({
-      url: `${api.getBaseUrls()[0]}${endpoint}?cache=${nonce}`,
+      url: `${api.getBaseUrls()[0]}${endpoint}${endpoint.includes('?') ? '&' : '?'}cache=${nonce}`,
       method: 'GET',
       timeout: 30000,
       responseType: 'arraybuffer',

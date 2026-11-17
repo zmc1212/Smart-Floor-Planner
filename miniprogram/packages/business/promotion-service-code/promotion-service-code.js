@@ -26,6 +26,7 @@ Page({
     membershipId: '',
     promotionToken: '',
     qrImagePath: '',
+    codeMode: 'service',
     loading: true,
     errorMessage: ''
   },
@@ -83,11 +84,19 @@ Page({
   },
 
   fetchServiceCodeImage(membershipId, requestId) {
+    const target = this.data.codeMode === 'xiaok' ? '?target=xiaok' : '';
     return fetchServiceCodeImage({
-      endpoint: `/miniprogram/referrer-memberships/${encodeURIComponent(membershipId)}/promotion-code/image`,
-      fileKey: `promotion-${membershipId}`,
+      endpoint: `/miniprogram/referrer-memberships/${encodeURIComponent(membershipId)}/promotion-code/image${target}`,
+      fileKey: `promotion-${membershipId}-${this.data.codeMode}`,
       isCurrent: () => requestId === this.qrRequestId
     });
+  },
+
+  onSwitchMode(event) {
+    const mode = event.currentTarget.dataset.mode === 'xiaok' ? 'xiaok' : 'service';
+    if (mode === this.data.codeMode) return;
+    this.setData({ codeMode: mode });
+    this.loadServiceCode();
   },
 
   onRetry() {
@@ -115,11 +124,15 @@ Page({
 
   onShareAppMessage() {
     const token = this.data.promotionToken;
-    return {
-      title: '免费上门测量与家装设计顾问服务',
-      path: token
-        ? `/packages/business/free-design-service/free-design-service?token=${encodeURIComponent(token)}`
-        : '/pages/index/index'
-    };
+    if (!token) return { title: '免费上门测量与家装设计顾问服务', path: '/pages/index/index' };
+    return this.data.codeMode === 'xiaok'
+      ? {
+          title: '和小K聊聊你家的装修',
+          path: `/packages/business/acquisition-chat/acquisition-chat?entryCode=${encodeURIComponent(token)}`
+        }
+      : {
+          title: '免费上门测量与家装设计顾问服务',
+          path: `/packages/business/free-design-service/free-design-service?token=${encodeURIComponent(token)}`
+        };
   }
 });

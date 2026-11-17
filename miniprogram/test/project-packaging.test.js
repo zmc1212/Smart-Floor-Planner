@@ -262,6 +262,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'promotion-record-detail/promotion-record-detail',
         'commission-records/commission-records',
         'promotion-service-code/promotion-service-code',
+        'acquisition-chat/acquisition-chat',
         'staff-activity-code/staff-activity-code',
         'enterprise-join-codes/enterprise-join-codes',
         'free-design-service/free-design-service',

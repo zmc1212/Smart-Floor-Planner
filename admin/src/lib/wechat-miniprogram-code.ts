@@ -3,6 +3,8 @@ import type { MiniProgramCodeEnvironment } from '@/lib/mini-program-code-environ
 
 export const PROMOTION_SERVICE_PAGE =
   'packages/business/free-design-service/free-design-service';
+export const ACQUISITION_CHAT_PAGE =
+  'packages/business/acquisition-chat/acquisition-chat';
 export const ENTERPRISE_ONBOARDING_PAGE =
   'packages/business/onboarding/onboarding';
 export const ENTERPRISE_REGISTRATION_PAGE =
@@ -34,6 +36,18 @@ export function buildPromotionServicePath(token: string) {
   const path = `${PROMOTION_SERVICE_PAGE}?token=${encodeURIComponent(normalized)}`;
   if (Buffer.byteLength(path, 'utf8') > 128) {
     throw new Error('Promotion service path exceeds the WeChat code limit');
+  }
+  return path;
+}
+
+export function buildAcquisitionChatPath(token: string) {
+  const normalized = token.trim();
+  if (!/^rp_[A-Za-z0-9_-]{24,}$/.test(normalized)) {
+    throw new Error('Invalid referrer promotion token');
+  }
+  const path = `${ACQUISITION_CHAT_PAGE}?entryCode=${encodeURIComponent(normalized)}`;
+  if (Buffer.byteLength(path, 'utf8') > 128) {
+    throw new Error('Acquisition chat path exceeds the WeChat code limit');
   }
   return path;
 }
@@ -164,6 +178,13 @@ export async function createPromotionServiceCode(
   options: MiniProgramCodeOptions = {}
 ) {
   return createMiniProgramCode(buildPromotionServicePath(token), token, options);
+}
+
+export async function createPromotionAcquisitionCode(
+  token: string,
+  options: MiniProgramCodeOptions = {}
+) {
+  return createMiniProgramCode(buildAcquisitionChatPath(token), token, options);
 }
 
 export async function createStaffActivityServiceCode(

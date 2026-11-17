@@ -11,6 +11,7 @@ import {
   validateMiniProgramIdentity,
 } from '@/lib/referrer-network-api';
 import {
+  createPromotionAcquisitionCode,
   createPromotionServiceCode,
   getMiniProgramCodeContentType,
 } from '@/lib/wechat-miniprogram-code';
@@ -25,6 +26,10 @@ export async function GET(
   const payload = await readMiniProgramPayload(request);
   if (!payload) {
     return referrerNetworkError('unauthorized', { status: 401 });
+  }
+  const target = new URL(request.url).searchParams.get('target');
+  if (target && target !== 'xiaok') {
+    return referrerNetworkError('invalid_target', { status: 400 });
   }
 
   let membershipId: bigint;
@@ -62,14 +67,16 @@ export async function GET(
 
   try {
     const { environment } = await getPlatformMiniProgramCodeConfig();
-    const image = await createPromotionServiceCode(result.promotion.token, { envVersion: environment });
+    const image = target === 'xiaok'
+      ? await createPromotionAcquisitionCode(result.promotion.token, { envVersion: environment })
+      : await createPromotionServiceCode(result.promotion.token, { envVersion: environment });
     const contentType = getMiniProgramCodeContentType(image) ?? 'application/octet-stream';
     const extension = contentType === 'image/jpeg' ? 'jpg' : 'png';
     return new NextResponse(image, {
       headers: {
         'Content-Type': contentType,
         'Cache-Control': 'private, no-store, max-age=0',
-        'Content-Disposition': `inline; filename="promotion-service-code.${extension}"`,
+        'Content-Disposition': `inline; filename="${target === 'xiaok' ? 'xiaok-acquisition-code' : 'promotion-service-code'}.${extension}"`,
       },
     });
   } catch (error) {

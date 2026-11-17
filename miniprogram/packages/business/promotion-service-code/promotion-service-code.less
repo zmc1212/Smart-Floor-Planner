@@ -115,6 +115,11 @@ page { height: 100%; overflow: hidden; background: #f8faf9; }
 .share-scan { width: 34rpx; height: 34rpx; flex: none; filter: brightness(0) invert(1); }
 .share-action-pressed { opacity: 0.86; }
 
+.code-mode { display: flex; margin-top: 24rpx; padding: 6rpx; border-radius: 999rpx; background: #eef3f0; }
+.mode-option { flex: 1; min-height: 60rpx; margin: 0; padding: 0 12rpx; border: 0; border-radius: 999rpx; color: #5b6f63; background: transparent; font-size: 24rpx; font-weight: 600; line-height: 60rpx; }
+.mode-option::after { border: 0; }
+.mode-option.active { color: #0d8a4d; background: #fff; box-shadow: 0 6rpx 14rpx rgba(24, 52, 38, 0.08); }
+
 @keyframes qr-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 
 @media (max-width: 360px) {

@@ -1321,6 +1321,13 @@ so opening a page does not invalidate a working code. This repairs stale codes
 without changing scan attribution, identity, permissions, routes, or persistence
 shape. A freshly deployed Admin image and newly compiled Mini Program are
 required; previously distributed QR image files cannot be changed remotely.
+
+## XiaoK QR acquisition entry (Implemented; 390×844 visual QA pending)
+
+`packages/business/acquisition-chat/acquisition-chat` is the landing for promoter service codes and staff activity codes that should enter XiaoK. It restores the opaque token from `entryCode`, `token` or `scene` and calls the existing `POST /api/miniprogram/codes/resolve` to validate it and read the `acquisition` view. Anonymous mode renders only “本地合作装企” with no enterprise name/logo; branded mode renders the enterprise identity. The opening and up to three tappable topic prompts come from the Admin “扫码获客” setting, with an anonymous default when unset.
+
+Tapping **手机号授权，安排免费量房** reuses the existing `POST /api/miniprogram/referrals/authorize-and-create-lead` with its idempotency key, attribution lock, automatic assignment and notifications. On success the page refreshes the customer session and routes to `packages/assistant/chat/chat?entryCode=...`; entry-context binds the single live lead in that enterprise, so XiaoK continues on the real lead. A signed-in customer can use **先和小K聊聊** to open `chat?entryCode=...` without creating a lead. `promotion-service-code` adds a **免费服务码 / 小K获客码** switch; the latter loads `GET /api/miniprogram/referrer-memberships/:id/promotion-code/image?target=xiaok`, which encodes this page, and its share path switches accordingly. No lead, attribution, assignment or commission side path is added, and `free-design-service` is unchanged.
+
 ## Platform enterprise registration APIs
 
 The enterprise-register form now exposes an editable contact-phone input. Users may type the number, but submission still requires WeChat phone authorization and an exact match; the CTA reads **授权手机号并提交**, auto-submits after successful authorization, and keeps the form open with an inline correction message on mismatch.

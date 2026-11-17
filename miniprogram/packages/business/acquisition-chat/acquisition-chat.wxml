@@ -1,0 +1,66 @@
+<view class="acquisition-page">
+  <view class="acquisition-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
+    <view class="nav-lane" style="min-height: {{navigationHeight}}px;">
+      <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
+        <view class="back-chevron"></view>
+      </view>
+      <view class="brand-lockup">
+        <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+        <text class="brand-name">家客来</text>
+        <view class="nav-divider"></view>
+        <text class="nav-title">小K免费量房</text>
+      </view>
+    </view>
+  </view>
+
+  <scroll-view class="acquisition-scroll" scroll-y>
+    <view class="acquisition-content">
+      <view wx:if="{{loading}}" class="state-card">
+        <view class="state-dot"></view>
+        <text class="state-title">正在读取服务码</text>
+        <text class="state-copy">马上就好。</text>
+      </view>
+
+      <view wx:elif="{{errorMessage}}" class="state-card">
+        <text class="state-title">服务码暂不可用</text>
+        <text class="state-copy">{{errorMessage}}</text>
+        <button class="state-action" bindtap="onRetry">重新读取</button>
+      </view>
+
+      <block wx:else>
+        <view class="hero-card">
+          <view class="hero-glow" aria-hidden="true"></view>
+          <image class="hero-mascot" src="/packages/assistant/assets/chat-notebook-mascot.png" mode="aspectFit" aria-hidden="true" />
+          <text class="hero-kicker">{{brandMode === 'branded' && brandName ? brandName : '本地合作装企 · 授权后为你匹配'}}</text>
+          <text class="hero-title">免费量房 · 设计顾问服务</text>
+          <text class="hero-opening">{{opening}}</text>
+          <view wx:if="{{brandMode === 'branded' && brandLogo}}" class="hero-brand">
+            <image src="{{brandLogo}}" mode="aspectFit" />
+          </view>
+        </view>
+
+        <view wx:if="{{prompts.length}}" class="prompt-section">
+          <text class="section-label">你可以先聊</text>
+          <view class="prompt-list">
+            <view wx:for="{{prompts}}" wx:key="title" class="prompt-card">
+              <text class="prompt-title">{{item.title}}</text>
+              <text class="prompt-text">{{item.text}}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="action-card">
+          <button
+            class="primary-action"
+            open-type="getPhoneNumber"
+            bindgetphonenumber="onGetPhoneNumber"
+            loading="{{submitting}}"
+            disabled="{{submitting || !pendingSource}}"
+          >{{submitting ? '正在建立服务档案…' : '手机号授权，安排免费量房'}}</button>
+          <button class="secondary-action" bindtap="onPreviewChat" disabled="{{submitting}}">先和小K聊聊</button>
+          <text class="privacy-copy">授权后才会建立服务档案。手机号只用于本次装修服务联系，不会公开展示。</text>
+        </view>
+      </block>
+    </view>
+  </scroll-view>
+</view>

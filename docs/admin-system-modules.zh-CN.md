@@ -146,6 +146,8 @@ f3：项目自有版本化SOP目录`v1`含5个技能（`stage-reminder`/`accepta
 
 已验范围：开关开启/关闭保存刷新、固定自然对话、正式无知识报告投递/重读及业主Stable重进通过，企业检索/Embedding为0。四角色日/周周期/受众取数与成员撤权用保存建议夹具通过，0付费调用。完整自然联网对话及整版闭环仍Limited；经理/工人固定照片整理与四角色原图原生证据见下文；详见当前架构/证据，未生产部署。
 
+**扫码获客设置：Implemented（定向单测通过，未做 390×844 后台视觉验收）。** `/assistant-knowledge` 新增「扫码获客」页签，`GET/PUT /api/assistant/acquisition` 沿既有选定企业知识管理授权、CAS 版本和同值重试。配置存于 `app.assistant_enterprise_settings.acquisition_config`（迁移 `0139`）：`brandMode=anonymous|branded`、开场白（≤600 字）和最多 3 个客户可点击话题（标题≤12 字、问句≤80 字）；非法结构、重复标题或超长文本拒绝保存。默认匿名，扫码落地页不展示企业名/Logo；品牌模式才下发企业身份。该配置只影响新扫码会话的落地文案和话题，不写入模型系统提示词，也不改变价格、工期、权限或事实校验。`POST /api/miniprogram/codes/resolve` 在推广码和员工活动码响应中增量返回 `acquisition`，匿名模式继续隐藏 `enterpriseName`；扫码建线索后，入口快照会把该企业内唯一的有效线索绑定为 `renovationLeadId`，让后续需求整理继续落到真实项目。
+
 <!-- xiaok-public-web-current -->
 **Dify式普通对话v3：机制已实现，自然对话仍为Limited。** 知识关闭的客户新运行绑定`minimal-dialogue-v3`，v2保留原路径。按Dify将同119字咨询提示及原安全/动作边界置于历史/当前问题之前，在原ID预算筛选后发送普通用户文本，并保留当前获权公开回答的真实assistant原文。复用原`restoreAncestorSources`恢复同会话原文/目录/祖先哈希，仅限无业务、历史原话、企业知识快照的公开上下文。原授权在派发前后、提交和重进时校验来源，项目/业务现状仍走原服务重新读取。来源恢复使用1013，与历史摘要1008分槽；按类型读取凭证并兼容旧来源。网页解析遇U+0000在JSONB持久化前走原读取失败回执，不静默修改有效引用原文。
 
