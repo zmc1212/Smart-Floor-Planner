@@ -10,7 +10,8 @@ const liveSiteSections = ['camera', 'report', 'confirmation', 'reminders', 'fami
 const emptyReminders = { remindersOpen: false, siteReminders: [], remindersLoading: false, remindersError: '',
   reminderSelected: '', reminderDetail: null, reminderReading: false, reminderReadError: '' };
 const emptyProject = { project: null, report: null, camera: null, projectLoading: false, projectError: '', cameraLoading: false, cameraError: '',
-  liveApplication: null, liveError: '', ...emptyReminders };
+  liveApplication: null, liveError: '', xiaokReminder: null, xiaokReminderOpen: false, xiaokReminderReading: false,
+  xiaokReminderDetail: null, xiaokReminderError: '', ...emptyReminders };
 
 function session() {
   return getApp().globalData.token || wx.getStorageSync('token');
@@ -91,17 +92,62 @@ Component({
     async loadSiteReminders() {
       const projectId = this.data.project?.id, generation = this._generation, token = this._projectSession;
       if (!projectId || !this.data.remindersOpen || this.data.remindersLoading || !this.current(generation, token)) return;
+      if (this._reminderItems && this._reminderProject === projectId && this._reminderGeneration === generation) {
+        this.setData({ siteReminders: this.reminderView(this._reminderItems) });
+        return;
+      }
       const action = this._reminderAction;
       const current = () => this.current(generation, token) && this._reminderAction === action;
       this.setData({ remindersLoading: true, remindersError: '' });
       try {
         const items = await ownerReminders.list(projectId);
-        if (current()) this.setData({ siteReminders: items.map(item => ({ ...item,
-          dateLabel: item.deliveredAt ? shanghaiDate(item.deliveredAt, true) : '' })) });
+        if (current()) this.setReminderItems(projectId, generation, items);
       } catch (error) {
         if (current()) this.setData({ remindersError: error.statusCode === 404 ? '当前工地提醒不可查看。' : '提醒暂时无法读取。' });
       } finally {
         if (current()) this.setData({ remindersLoading: false });
+      }
+    },
+    reminderView(items) {
+      return items.map(item => ({ ...item,
+        dateLabel: item.deliveredAt ? shanghaiDate(item.deliveredAt, true) : '' }));
+    },
+    setReminderItems(projectId, generation, items) {
+      this._reminderItems = items;
+      this._reminderProject = projectId;
+      this._reminderGeneration = generation;
+      const view = this.reminderView(items);
+      this.setData({ siteReminders: view, xiaokReminder: view.find(item => !item.readAt) || null });
+    },
+    async readXiaokReminder(projectId, generation, token) {
+      if (!projectId || !this.current(generation, token)) return;
+      try {
+        const items = await ownerReminders.list(projectId);
+        if (this.current(generation, token)) this.setReminderItems(projectId, generation, items);
+      } catch (_) {
+        // The expanded 当前提醒 card owns the visible error; the compact strip stays hidden.
+      }
+    },
+    async openXiaokReminder() {
+      const item = this.data.xiaokReminder;
+      const generation = this._generation, token = this._projectSession;
+      if (!item || this.data.xiaokReminderReading || !this.current(generation, token)) return;
+      if (this.data.xiaokReminderOpen && !this.data.xiaokReminderError) {
+        this.setData({ xiaokReminderOpen: false });
+        return;
+      }
+      this.setData({ xiaokReminderOpen: true, xiaokReminderReading: true, xiaokReminderDetail: null, xiaokReminderError: '' });
+      try {
+        const detail = await ownerReminders.read(item);
+        if (!this.current(generation, token)) return;
+        const readAt = detail.readAt;
+        if (this._reminderItems) this._reminderItems = this._reminderItems.map(row => row.reminderId === item.reminderId ? { ...row, readAt } : row);
+        this.setData({ xiaokReminderDetail: detail, xiaokReminder: { ...item, readAt },
+          siteReminders: this.data.siteReminders.map(row => row.reminderId === item.reminderId ? { ...row, readAt } : row) });
+      } catch (error) {
+        if (this.current(generation, token)) this.setData({ xiaokReminderError: ownerReminders.readError(error) });
+      } finally {
+        if (this.current(generation, token)) this.setData({ xiaokReminderReading: false });
       }
     },
     async openSiteReminder(event) {
@@ -118,8 +164,13 @@ Component({
       this.setData({ reminderSelected: id, reminderReading: true, reminderDetail: null, reminderReadError: '' });
       try {
         const detail = await ownerReminders.read(item);
-        if (current()) this.setData({ reminderDetail: detail,
-          siteReminders: this.data.siteReminders.map(row => row.reminderId === id ? { ...row, readAt: detail.readAt } : row) });
+        if (current()) {
+          const readAt = detail.readAt;
+          if (this._reminderItems) this._reminderItems = this._reminderItems.map(row => row.reminderId === id ? { ...row, readAt } : row);
+          this.setData({ reminderDetail: detail,
+            siteReminders: this.data.siteReminders.map(row => row.reminderId === id ? { ...row, readAt } : row),
+            ...(this.data.xiaokReminder?.reminderId === id ? { xiaokReminder: { ...this.data.xiaokReminder, readAt } } : {}) });
+        }
       } catch (error) {
         if (current()) this.setData({ reminderReadError: ownerReminders.readError(error) });
       } finally {
@@ -129,6 +180,7 @@ Component({
     async readProject(selected) {
       const token = session(), generation = this._generation = (this._generation || 0) + 1;
       this._projectSession = token;
+      this._reminderItems = null; this._reminderProject = ''; this._reminderGeneration = 0;
       const projectId = this._projectId = selected.id;
       this.setData({ ...emptyProject, projectLoading: true });
       try {
@@ -140,6 +192,7 @@ Component({
         await Promise.all([
           this.readCover(projectId, generation, token),
           data.project.progressAccess && this.readLiveApplication(projectId, generation, token),
+          data.project.progressAccess && this.readXiaokReminder(projectId, generation, token),
         ]);
       } catch (error) {
         if (this.current(generation, token)) this.setData({ ...emptyProject,
@@ -203,15 +256,23 @@ Component({
       if (!this.current(this._generation, this._projectSession) || !this.data.project) return;
       this.navigate('/packages/construction/family/family?projectId=' + this.data.project.id);
     },
+    ownerReportPath(params) {
+      const query = Object.entries(params).map(([key, value]) => key + '=' + encodeURIComponent(value)).join('&');
+      return '/packages/assistant/chat/chat?' + query;
+    },
     openReport(event) {
       const { project, report } = this.data;
       if (!this.current(this._generation, this._projectSession) || !project || !report) return;
       const recordId = String(event.currentTarget.dataset.record || '');
       if (recordId && !report.pending.some(item => item.recordId === recordId)) return;
-      const params = { ownerReport: report.reportId, bindingId: report.bindingId, revision: report.revision,
-        projectId: project.id, leadId: project.leadId, ...(recordId ? { recordId } : {}) };
-      const query = Object.entries(params).map(([key, value]) => key + '=' + encodeURIComponent(value)).join('&');
-      this.navigate('/packages/assistant/chat/chat?' + query);
+      this.navigate(this.ownerReportPath({ ownerReport: report.reportId, bindingId: report.bindingId, revision: report.revision,
+        projectId: project.id, leadId: project.leadId, ...(recordId ? { recordId } : {}) }));
+    },
+    askXiaok() {
+      const { project, report } = this.data;
+      if (!this.current(this._generation, this._projectSession) || !project || !report) return;
+      this.navigate(this.ownerReportPath({ ownerReport: report.reportId, bindingId: report.bindingId, revision: report.revision,
+        projectId: project.id, leadId: project.leadId, ask: '1', prompt: '今天工地做了什么？' }));
     },
   },
 });

@@ -80,7 +80,25 @@
             <view wx:for="{{report.progress}}" wx:key="index" class="site-report-line"><view class="site-bullet" /><text>{{item}}</text></view>
           </view>
           <text wx:else class="site-meta site-report-empty">{{report ? '这份日报暂无进展摘要' : '暂无已发布的日报'}}</text>
-          <button wx:if="{{report}}" class="site-report-link text-action" bindtap="openReport"><text>查看日报</text><view class="site-chevron" /></button>
+          <view wx:if="{{report}}" class="site-report-actions">
+            <button class="site-report-ask" bindtap="askXiaok" disabled="{{!report.bindingId || !project.leadId}}"><image class="site-report-ask-icon" src="../assets/notebook/xiaok-chat.png" mode="aspectFit" aria-hidden="true" /><text>问小K</text></button>
+            <view class="site-report-divider" aria-hidden="true"></view>
+            <button class="site-report-link text-action" bindtap="openReport"><text>查看日报</text><view class="site-chevron" /></button>
+          </view>
+        </view>
+
+        <view wx:if="{{section === 'report' && project.progressAccess && xiaokReminder}}" class="site-paper site-xiaok-reminder">
+          <text class="fabric site-xiaok-label">小K提醒</text>
+          <button class="site-xiaok-reminder-row" bindtap="openXiaokReminder" aria-expanded="{{xiaokReminderOpen}}">
+            <image class="site-xiaok-mascot" src="../assets/notebook/xiaok-chat.png" mode="aspectFit" aria-hidden="true" />
+            <text class="site-xiaok-title">{{xiaokReminder.title}}</text>
+            <view class="site-chevron {{xiaokReminderOpen ? 'site-chevron-down' : ''}}" />
+          </button>
+          <block wx:if="{{xiaokReminderOpen}}">
+            <text wx:if="{{xiaokReminderReading}}" class="site-meta site-report-empty">正在读取提醒…</text>
+            <view wx:elif="{{xiaokReminderError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{xiaokReminderError}}</text><button class="text-action" bindtap="openXiaokReminder">重试</button></view>
+            <text wx:elif="{{xiaokReminderDetail}}" class="site-reminder-body site-xiaok-body" user-select>{{xiaokReminderDetail.body}}</text>
+          </block>
         </view>
 
         <block wx:if="{{section === 'confirmation'}}">

@@ -40,7 +40,18 @@
 .site-bullet { width:5px; height:5px; border-radius:50%; background:#073c30; flex:none; transform:translateY(-2px); }
 .site-report-line text, .site-pending-row text { min-width:0; overflow-wrap:anywhere; }
 .site-report-empty { display:block; padding:8px 0 12px; }
-.owner-site-page .site-report-link { display:flex; width:fit-content !important; margin-left:auto !important; gap:8px; align-self:flex-end; text-align:right; font-size:14px; }
+.site-report-actions { display:flex; align-items:center; justify-content:flex-end; gap:9px; padding:1px 2px 7px; }
+.owner-site-page .site-report-ask { display:flex; align-items:center; gap:5px; min-height:32px; padding:0 2px; color:#205a43; font-size:14px; font-weight:500; }
+.site-report-ask-icon { width:20px; height:20px; flex:none; }
+.site-report-divider { width:1px; height:14px; flex:none; background:#bfd0b9; transform:scaleX(.5); }
+.owner-site-page .site-report-actions .site-report-link { width:fit-content !important; margin-left:0 !important; gap:8px; align-self:center; text-align:right; font-size:14px; }
+.owner-site-page .site-report-link { display:flex; width:fit-content !important; margin-left:auto !important; align-self:flex-end; text-align:right; font-size:14px; }
+.site-xiaok-reminder { padding:11px 13px 8px; margin:0 0 14px; background:linear-gradient(115deg,#f2f9ec,#e4f2df); border-color:#f8fcf4; }
+.site-xiaok-label { margin-left:-3px; padding:2px 8px; font-size:14px; }
+.owner-site-page .site-xiaok-reminder-row { display:flex; align-items:center; gap:9px; width:100%; min-height:40px; padding:1px 0 2px; text-align:left; color:#073c30; }
+.site-xiaok-mascot { width:30px; height:32px; flex:none; }
+.site-xiaok-title { flex:1; min-width:0; font-size:15px; line-height:1.5; font-weight:600; overflow-wrap:anywhere; }
+.site-xiaok-body { padding:2px 0 4px 39px; }
 .site-pending { padding:9px 14px 3px; background:linear-gradient(105deg,#faf5e7,#f7efd9); }
 .site-pending-label { display:inline-block; padding:1px 6px; border-radius:4px; background:#f1d296; color:#4b391c; font-size:13px; font-weight:600; }
 .owner-site-page .site-pending-row { display:flex; align-items:center; justify-content:space-between; text-align:left; gap:10px; width:100%; min-height:44px; font-size:15px; line-height:1.45; }

@@ -194,7 +194,13 @@ module.exports = () => ({
 		const currentIdentity = app.globalData.bootstrap?.current?.context || app.globalData.userInfo || {};
 		const selectedMode = app.globalData.bootstrap?.current?.mode || currentIdentity.mode;
 		if (this._ownerReport) {
-			if (!selectedMode || selectedMode === 'customer') await this.readOwnerSiteReport();
+			if (!selectedMode || selectedMode === 'customer') {
+				await this.readOwnerSiteReport();
+				if (this._alive && this._shown && !this._ownerReportAsked && this._options.ask === '1' && this._options.prompt) {
+					this._ownerReportAsked = true;
+					await this.askOwnerReport(this._options.prompt);
+				}
+			}
 			else this.setData({ ownerSiteReport: true, loading: false, followupActive: true, followupError: '当前身份无法查看这份日报' });
 			return;
 		}
@@ -563,6 +569,23 @@ module.exports = () => ({
 		} catch (_) {
 			if (current()) this.setData({ followupLoading: false, followupError: '这份日报暂时无法打开' });
 		}
+	},
+	async askOwnerReport(prompt) {
+		if (!prompt) return;
+		const entry = this.followupChatController;
+		for (let i = 0; i < 40; i++) {
+			if (!this._alive || !this._shown) return;
+			const state = entry?.state;
+			if (entry?.visible && state && !state.loading && !state.fatal && state.conversation?.status === 'open') break;
+			await new Promise(resolve => setTimeout(resolve, 100));
+		}
+		if (!this._alive || !this._shown || !entry?.visible || !entry.state.conversation) return;
+		delete this._options.prompt; delete this._options.ask;
+		entry.input(prompt);
+		// The page-opening route loads one report detail rather than the report
+		// list, so select that exact report before sending the prefilled question.
+		const selected = await this.askFollowupReport({ currentTarget: { dataset: {} } });
+		if (selected) await this.sendFollowup();
 	},
 	refreshFollowup() { return this._ownerReport ? this.readOwnerSiteReport() : this.followups.select(this.followups.selected); },
 	readFollowupReport(event) { const d = event.currentTarget.dataset; this.setData({ followupManageOpen: false }); return this.followups.readReport(String(d.report), Number(d.revision), this.followups.selected, d.project ? String(d.project) : ''); },
