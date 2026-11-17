@@ -323,10 +323,14 @@ export async function completeStageKnowledge(lease: Lease, text: string) {
   });
 }
 
-export async function completeGuidance(lease: Lease, text: string) {
-  if (!text.trim() || text.length > 2000) fail('invalid_message', 422);
+export async function completeGuidance(lease: Lease, reply: string | ((tx: PostgresTransaction,
+  context: Awaited<ReturnType<typeof runContext>>) => Promise<string | null>)) {
   return withTenantTransaction(lease.enterpriseId, async tx => {
-    const { conversation, job } = await runContext(tx, lease);
+    const context = await runContext(tx, lease);
+    const text = typeof reply === 'string' ? reply : await reply(tx, context);
+    if (text === null) return null;
+    if (!text.trim() || text.length > 2000) fail('invalid_message', 422);
+    const { conversation, job } = context;
     if (job.provider_started_at) fail('context_changed');
     const message = await appendMessage(tx, lease.actor, String(conversation.id), {
       author: 'assistant', runId: lease.runId, purpose: 'requirements.guidance', content: { version: 1, blocks: [{ type: 'text', text }] },

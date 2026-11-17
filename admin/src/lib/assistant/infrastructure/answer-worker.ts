@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
-import { AssistantError, fail, fingerprint, safeText, type Evidence, type KnowledgeRetriever, type TextModelGateway } from '../contracts';
+import { AssistantError, fail, fingerprint, safeText, type Evidence, type KnowledgeRetriever, type MessageContent, type TextModelGateway } from '../contracts';
 import { KnowledgeSearchUnavailable, retrieveKnowledge } from '../knowledge/retrieval';
 import { answerMessages, insufficientAnswer, parseSelection } from '../knowledge/answer';
 import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, heartbeat, markProviderStarted, recoverKnowledgeAnswer, runContext, type Lease } from './job-queue';
@@ -10,7 +10,6 @@ import { isStageChatQuestion, stageChatForConversation } from '@/lib/xiaok-v1/st
 import { classifyStageIntent } from '@/lib/xiaok-v1/stage-router';
 import { specialistProtocol } from '../specialists/registry';
 import { configuredGuidance, conversationGuidance, guidanceProgress } from '../requirements/guidance';
-import { requirementCheckpoint } from '../requirements/checkpoint';
 import { textGateway } from './model-gateway';
 import { configuredEmbeddingProfile, embeddingGateway } from './embedding-gateway';
 import { chatFirstProgress, defaultGuidance } from '../requirements/guidance';
@@ -26,11 +25,69 @@ import { runKnowledgeEnabled } from '../knowledge-policy';
 import { fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { processNativeRagAnswer } from '../fastgpt/rag-worker';
 import { processAgentV2Answer } from '../fastgpt/agent-v2/worker';
-import { fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
+import { fastGPTAgentV2Protocol, nativeAgentRuntimeBinding, nativeExecutorConfigurationIssue } from '../fastgpt/agent-v2/config';
 import { publicHistoryScope } from '../agent/history';
-import { companyPracticeRequested, knowledgeOriginalRequested } from '../agent/read-tool-input';
+import { companyPracticeRequested, explicitHumanHandoffRequested, knowledgeOriginalRequested } from '../agent/read-tool-input';
+import { discoveryIntent } from '../core/discovery';
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
+const requirementRecapRequested = (text: string) => /回顾|总结.*(?:需求|想法)|(?:需求|想法).*总结|整理一下|记了哪些想法|记住了什么/.test(text);
+
+async function tryRequirementGuidance(lease: Lease, context: Awaited<ReturnType<typeof runContext>>) {
+  const { conversation, job, run } = context;
+  const entry = conversation.entry_snapshot as Row;
+  if (lease.actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation'
+    || run.purpose !== 'reply' || run.trigger_kind !== 'user_message' || job.provider_started_at
+    || entry.activePublicSite || entry.requirementReviewMode === true
+    || ['reference_content', 'reference_unavailable', 'portfolio_content', 'public_site_entry'].includes(String(entry.kind))
+    || (run.policy_snapshot as Row).reportContextVersion !== undefined) return null;
+  const guidance = conversationGuidance(entry);
+  if (!guidance) return null;
+  const userId = lease.actor.principal.userId;
+  // Read the live switch and write the reply under the same settings lock.
+  return completeGuidance(lease, async (tx, current) => {
+    if (current.job.provider_started_at) return null;
+    const policy = current.run.policy_snapshot as Row;
+    const runtime = policy.agentRuntime as Row | undefined;
+    if (runtime?.protocol === xiaokNativeExecutorProtocol) {
+      const config = agentConfig(policy.agent);
+      const bound = nativeAgentRuntimeBinding(lease.enterpriseId);
+      if (!config || !bound || bound.binding !== runtime.binding || nativeExecutorConfigurationIssue(config)) return null;
+    }
+    const settings = await one(tx, sql`select guidance_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
+    if (!configuredGuidance(settings?.guidance_config).enabled) return null;
+    const historyScope = publicHistoryScope(current.conversation, false);
+    const messages = await rows<{ id: string; content: MessageContent }>(tx, sql`select m.id::text, m.content
+      from app.assistant_messages m join app.assistant_messages trigger on trigger.enterprise_id=m.enterprise_id
+        and trigger.conversation_id=m.conversation_id
+      where m.enterprise_id=${lease.enterpriseId} and m.conversation_id=${String(conversation.id)} and m.user_id=${userId}
+        and m.author_kind='user' and trigger.id=${String(run.trigger_message_id)} and m.seq<=trigger.seq
+        and (m.id=trigger.id or ${historyScope}) order by m.seq limit 201`);
+    const trigger = messages.at(-1);
+    if (messages.length > 200 || trigger?.id !== String(run.trigger_message_id)
+      || trigger.content.blocks.some(block => block.type !== 'text')) return null;
+    const query = safeText(trigger.content);
+    const discovery = discoveryIntent(query);
+    if (requirementRecapRequested(query) || needsDesignerSuggestion(query) || explicitHumanHandoffRequested(query)
+      || discovery.sites || discovery.works
+      || companyPracticeRequested(query) || knowledgeOriginalRequested(query)) return null;
+
+    const turns = messages.map(message => ({ id: message.id, text: safeText(message.content) }));
+    const before = guidanceProgress(guidance, turns.slice(0, -1));
+    const progress = guidanceProgress(guidance, turns);
+    if (progress.interrupt) return null;
+    const changes = Object.entries(progress.fields).filter(([key, value]) => value.text
+      && value.text !== before.fields[key as keyof typeof before.fields]?.text).map(([, value]) => value.text);
+    const corrected = !!guidance.schemaVersion && changes.length > 0;
+    if (progress.paused) {
+      if (!corrected) return null;
+      const acknowledgement = '记下了：' + changes.join('；') + '。你可以继续说想法，也可以换个话题。';
+      return acknowledgement.length <= 2000 ? acknowledgement : null;
+    }
+    return progress.lastControl || (before.next && !before.paused) || corrected ? progress.reply : null;
+  });
+}
+
 export async function processAnswer(lease:Lease,deps:Dependencies={}) {
   let returned=false;
   let stage:'retrieval'|'model'='retrieval';
@@ -78,11 +135,15 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     const agentRuntime = (policy.agentRuntime as Row | undefined)?.protocol !== undefined ? policy.agentRuntime as Row : undefined;
     if (agentRuntime) {
       if (agentRuntime.protocol === fastGPTAgentV2Protocol) { await processAgentV2Answer(lease); return; }
-      if (agentRuntime.protocol === xiaokNativeExecutorProtocol) { await processNativeAgentAnswer(lease); return; }
+      if (agentRuntime.protocol === xiaokNativeExecutorProtocol) {
+        if (!await tryRequirementGuidance(lease, context)) await processNativeAgentAnswer(lease);
+        return;
+      }
       fail('assistant_capability_forbidden', 403);
     }
     if (policy.nativeRag) { await processNativeRagAnswer(lease); return; }
     const agent = agentConfig(policy.agent);
+    if ((agent || runKnowledgeEnabled(policy)) && await tryRequirementGuidance(lease, context)) return;
     const privateStaffReport = policy.reportCoordination === reportCoordinationProtocol
       && lease.actor.principal.kind === 'admin' && context.conversation.purpose === 'construction_followup'
       && context.run.purpose === 'reply' && lease.actor.capabilities.includes('assistant.followup.self');
@@ -112,7 +173,7 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     const read=(m:Row)=>safeText(m.content as Parameters<typeof safeText>[0]);
     const query=read(messages[0]);
     if (needsDesignerSuggestion(query)) { await completeGuidance(lease, designerSuggestion); return; }
-    if (/回顾|总结.*(?:需求|想法)|(?:需求|想法).*总结|整理一下|记了哪些想法|记住了什么/.test(query)) {
+    if (requirementRecapRequested(query)) {
       const turns = await withTenantTransaction(lease.enterpriseId, async tx => {
         await runContext(tx, lease);
         return rows(tx, sql`select m.id,m.content from app.assistant_messages m where m.enterprise_id=${lease.enterpriseId}
@@ -127,34 +188,6 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     }
     if (!runKnowledgeEnabled(policy)) fail('assistant_disabled', 403);
     const followup: string | undefined = undefined;
-    const guidance = conversationGuidance(context.conversation.entry_snapshot);
-    if (guidance && lease.actor.principal.kind === 'user') {
-      const inputs = await withTenantTransaction(lease.enterpriseId, async tx => {
-        await runContext(tx, lease);
-        const settings = await one(tx, sql`select guidance_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
-        if (!configuredGuidance(settings?.guidance_config).enabled) return null;
-        return rows(tx, sql`select m.id,m.content from app.assistant_messages m where m.enterprise_id=${lease.enterpriseId}
-          and m.conversation_id=${String(context.run.conversation_id)} and m.author_kind='user' and m.seq<=${String(messages[0].seq)}
-          and (m.id=${String(messages[0].id)} or ${historyScope}) order by m.seq limit 201`);
-      });
-      if (inputs && inputs.length <= 200) {
-        const turns = inputs.map(m => ({ id: String(m.id), text: read(m) }));
-        const checkpoint = await withTenantTransaction(lease.enterpriseId, async tx => {
-          await runContext(tx, lease);
-          return requirementCheckpoint(tx, lease.enterpriseId, String(context.run.conversation_id));
-        });
-        const before = guidanceProgress(guidance, turns.slice(0, -1), checkpoint), progress = guidanceProgress(guidance, turns, checkpoint);
-        const corrected = !!guidance.schemaVersion && !progress.interrupt
-          && JSON.stringify(before.fields) !== JSON.stringify(progress.fields);
-        if (corrected && progress.paused) {
-          const changed = Object.entries(progress.fields).filter(([k, v]) => v.text && v.text !== before.fields[k as keyof typeof before.fields]?.text).map(([, v]) => v.text);
-          await completeGuidance(lease, '记下了：' + changed.join('；') + '。你可以继续说想法，也可以换个话题。'); return;
-        }
-        if (progress.lastControl || (before.next && !before.paused) || corrected) {
-          if (!progress.interrupt && !progress.paused) { await completeGuidance(lease, progress.reply); return; }
-        }
-      }
-    }
     // Old generated answers are deliberately excluded. Prior user turns only resolve pronouns.
     const history=messages.slice(1).reverse().map(m=>Array.from(read(m)).slice(0,120).join(''));
     if(Buffer.byteLength(JSON.stringify(answerMessages(query,history,[])))>9000)fail('invalid_message',422);

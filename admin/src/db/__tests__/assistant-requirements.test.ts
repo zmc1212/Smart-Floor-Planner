@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows } from '@/db/repositories/assistant-repository';
@@ -376,9 +379,21 @@ test('P2S direct chat handoff, waiting supplements, private staff review and res
   assert.equal((await customer.customerRead(c)).handoff?.contactConsent, false);
 });
 
-test('P2S guidance follows topic changes and natural corrections without requiring summary approval', async () => {
+test('P2S guidance follows topic changes and natural corrections without requiring summary approval', async t => {
   const settings = new GuidanceSettingsService(actor.enterpriseId, adminId);
   const old = await settings.execute();
+  const agent = await withTenantTransaction(actor.enterpriseId, async tx => {
+    const original = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId}`);
+    await tx.execute(sql`update app.assistant_enterprise_settings set agent_config='{"enterpriseKnowledgeEnabled":true}'::jsonb
+      where enterprise_id=${actor.enterpriseId}`);
+    return original!.agent_config;
+  });
+  t.after(async () => {
+    await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_enterprise_settings
+      set agent_config=${JSON.stringify(agent)}::jsonb where enterprise_id=${actor.enterpriseId}`));
+    const current = await settings.execute();
+    await settings.execute({ expectedVersion: current.version, config: old.config });
+  });
   const config = { ...defaultGuidance, opening: '自定义企业开场白' };
   const saved = await settings.execute({ expectedVersion: old.version, config });
   assert.deepEqual(await settings.execute({ expectedVersion: old.version, config }), saved);
@@ -403,7 +418,91 @@ test('P2S guidance follows topic changes and natural corrections without requiri
   assert.match(recap, /25万元/); assert.match(recap, /90平旧房/);
   const requirements = await new RequirementService(actor).read(c);
   assert.equal(requirements.latest?.status, 'draft'); assert.equal(requirements.confirmed, null);
-  const updated = await settings.execute({ expectedVersion: saved.version, config: { ...config, enabled: false } });
+  await settings.execute({ expectedVersion: saved.version, config: { ...config, enabled: false } });
   await assert.rejects(chat.create(randomUUID()), /entry_context_invalid/);
-  await settings.execute({ expectedVersion: updated.version, config: old.config });
+});
+
+test('ordinary LangGraph replies honor the saved guidance switch before provider dispatch', async t => {
+  const settings = new GuidanceSettingsService(actor.enterpriseId, adminId);
+  const old = await settings.execute();
+  const original = await withTenantTransaction(actor.enterpriseId, tx => one(tx,
+    sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId}`));
+  const previousFile = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
+  const fetch = globalThis.fetch;
+  const directory = mkdtempSync(join(tmpdir(), 'xiaok-guidance-'));
+  const binding = join(directory, 'native.json');
+  const writeBinding = () => writeFileSync(binding, JSON.stringify({ agentV2: { protocol: 'fastgpt-agent-v2-v1',
+    enterpriseId: actor.enterpriseId, appId: 'a'.repeat(24), model: 'qwen3.7-flash', bridgeKey: randomUUID(), runtime: 'langgraph-v1' } }));
+  writeBinding();
+  let networkCalls = 0;
+  globalThis.fetch = async () => { networkCalls++; throw Error('Unexpected provider call in guidance test'); };
+  const configure = (value: unknown) => withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`
+    update app.assistant_enterprise_settings set agent_config=${JSON.stringify(value)}::jsonb where enterprise_id=${actor.enterpriseId}`));
+  try {
+    const saved = await settings.execute({ expectedVersion: old.version, config: { ...old.config, enabled: true } });
+    for (const native of [false, true]) {
+      await t.test(native ? 'native executor with enterprise knowledge off' : 'LangGraph with enterprise knowledge on', async () => {
+        if (native) process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = binding;
+        else delete process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
+        await configure({ runtime: 'langgraph-v1', model: 'qwen3.7-flash', providerKey: 'dashscope', imageInput: false,
+          tools: true, probeVersion: 'guidance-test', enterpriseKnowledgeEnabled: !native });
+        const chat = new ConversationService({ ...actor, entry: { guidanceVersion: saved.version } });
+        const cid = String((await chat.create(randomUUID())).id);
+        const text = '我家是套旧房 打算重新装修';
+        const body = { version: 1, blocks: [{ type: 'text', text }] };
+        const key = randomUUID();
+        const sent = await chat.send(cid, key, body);
+        const runId = String(sent.runId);
+        const stored = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`
+          select policy_snapshot->'agent'->>'runtime' as agent, policy_snapshot->'agentRuntime'->>'protocol' as executor
+          from app.assistant_runs where enterprise_id=${actor.enterpriseId} and id=${runId}`));
+        assert.deepEqual(stored, { agent: 'langgraph-v1', executor: native ? 'xiaok-native-executor-v1' : null });
+        const lease = await claimJob({ enterpriseId: actor.enterpriseId, runId });
+        assert.ok(lease);
+        await processAnswer(lease);
+        const run = await chat.run(runId);
+        assert.equal(run.status, 'succeeded', JSON.stringify(run));
+        const messages = (await new ConversationService(actor).messages(cid)).items;
+        assert.equal(messages[0].authorKind, 'assistant');
+        assert.match(JSON.stringify(messages[0].content), /平时有哪些人住/);
+        assert.equal((await new RequirementService(actor).read(cid)).latest?.status, 'draft');
+        assert.equal((await chat.send(cid, key, body)).runId, sent.runId);
+        assert.equal((await chat.messages(cid)).items.length, 2);
+        const accounting = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`
+          select q.status, j.provider_started_at, m.purpose from app.assistant_quota_reservations q
+          join app.assistant_jobs j on j.enterprise_id=q.enterprise_id and j.run_id=q.run_id
+          join app.assistant_messages m on m.enterprise_id=q.enterprise_id and m.id=${messages[0].id}
+          where q.enterprise_id=${actor.enterpriseId} and q.run_id=${runId}`));
+        assert.deepEqual(accounting, { status: 'released', provider_started_at: null, purpose: 'requirements.guidance' });
+        if (native) {
+          const followup = await chat.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '我们一家三口住。' }] });
+          const next = await claimJob({ enterpriseId: actor.enterpriseId, runId: String(followup.runId) });
+          assert.ok(next);
+          writeBinding();
+          await processAnswer(next);
+          const rejected = await chat.run(next.runId);
+          assert.equal(rejected.errorCode, 'context_changed');
+          assert.equal(rejected.outputMessageId, null);
+        } else {
+          const handoff = await chat.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '我和父母一起住，想转人工。' }] });
+          const next = await claimJob({ enterpriseId: actor.enterpriseId, runId: String(handoff.runId) });
+          assert.ok(next);
+          await processAnswer(next);
+          const ordinaryReply = await chat.run(next.runId);
+          assert.equal(ordinaryReply.errorCode, 'model_unavailable');
+          assert.equal(ordinaryReply.outputMessageId, null);
+        }
+      });
+    }
+    assert.equal(networkCalls, 0);
+  } finally {
+    globalThis.fetch = fetch;
+    if (previousFile === undefined) delete process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
+    else process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = previousFile;
+    unlinkSync(binding);
+    rmdirSync(directory);
+    await configure(original!.agent_config);
+    const current = await settings.execute();
+    await settings.execute({ expectedVersion: current.version, config: old.config });
+  }
 });
