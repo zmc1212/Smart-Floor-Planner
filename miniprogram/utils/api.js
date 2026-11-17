@@ -7,6 +7,19 @@ const API_BASE_URLS = Object.freeze({
 // Switch this value before building or previewing the Mini Program.
 // `local` targets the development machine and is intended for WeChat Developer Tools.
 const ACTIVE_API_ENVIRONMENT = 'local';
+// 微信开发者工具共用同一 App 实例时，App 级请求可能仍持有旧的环境模块。
+// 仅在开发者工具中允许用本地存储临时覆盖目标环境，真机与线上包始终使用上方配置。
+const API_ENV_OVERRIDE_KEY = 'sfp:apiEnvironmentOverride';
+
+function resolveActiveEnvironment() {
+  try {
+    if (typeof wx === 'undefined' || wx.getSystemInfoSync().platform !== 'devtools') return ACTIVE_API_ENVIRONMENT;
+    const override = wx.getStorageSync(API_ENV_OVERRIDE_KEY);
+    return API_BASE_URLS[override] ? override : ACTIVE_API_ENVIRONMENT;
+  } catch {
+    return ACTIVE_API_ENVIRONMENT;
+  }
+}
 
 let isShowingAuthModal = false;
 const session = require('./session.js');
@@ -44,7 +57,7 @@ function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || '').replace(/\/+$/, '');
 }
 
-function getBaseUrls(environment = ACTIVE_API_ENVIRONMENT) {
+function getBaseUrls(environment = resolveActiveEnvironment()) {
   const baseUrl = normalizeBaseUrl(API_BASE_URLS[environment]);
 
   if (!baseUrl) {

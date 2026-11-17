@@ -14,3 +14,16 @@ test('API environment selection rejects unknown environments', () => {
     /Unknown Mini Program API environment: staging/
   );
 });
+
+test('devtools storage override selects production without changing the committed default', () => {
+  const previous = global.wx;
+  global.wx = {
+    getSystemInfoSync: () => ({ platform: 'devtools' }),
+    getStorageSync: (key) => (key === 'sfp:apiEnvironmentOverride' ? 'production' : ''),
+  };
+  try {
+    assert.deepEqual(api.getBaseUrls(), ['https://smartfloor.zlyun168.com/api']);
+  } finally {
+    global.wx = previous;
+  }
+});

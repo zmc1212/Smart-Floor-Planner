@@ -100,8 +100,12 @@ Authorization: Bearer <任意一个上述员工 token>
 
 ## 6. 说明与边界
 
-- 为连接线上数据，验收期间临时把 `miniprogram/utils/api.js` 的 `ACTIVE_API_ENVIRONMENT`
-  切到 `production`，验收结束后已恢复为 `local`，未提交该文件。
+- 共用微信开发者工具时，不再改源码切环境：在开发者工具控制台执行
+  `wx.setStorageSync('sfp:apiEnvironmentOverride','production')` 即可让 App 级和页面级
+  请求都指向线上，验证后执行 `wx.removeStorageSync('sfp:apiEnvironmentOverride')` 恢复。
+  该覆盖只在 `platform === 'devtools'` 时生效，真机和线上包始终使用源码中的
+  `ACTIVE_API_ENVIRONMENT`。若开发者工具开启了热重载，App 实例可能仍持有旧模块，需要
+  关闭一次 `compileHotReLoad` 并重新编译后再验证。
 - 本轮只验证页面流程、接口结果、数据库归属和角色隔离；AI 回答质量、微信真机、真实语音和
   图片上传未验证，记为 `not_run`，不把接口或 DOM 检查视为真机通过。
 - 项目当前没有待处理问题、已发布进度计划和已审批方案，相关区块显示 0 / 未排期 / 资料缺口，
