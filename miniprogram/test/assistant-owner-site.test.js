@@ -39,13 +39,15 @@ test('the site strip opens the existing 工地 tab without a second navigation m
 
 test('the site welcome keeps the notebook language and the three-step topics', () => {
   const helper = fs.readFileSync(path.join(root, 'packages', 'assistant', 'lib', 'owner-site-context.js'), 'utf8');
+  const less = fs.readFileSync(path.join(chatRoot, 'notebook.less'), 'utf8');
   const wxml = fs.readFileSync(path.join(chatRoot, 'chat.wxml'), 'utf8');
   assert.match(helper, /今天做了什么/);
   assert.match(helper, /阶段注意什么/);
   assert.match(helper, /下一步安排/);
   assert.match(wxml, /class="notebook-welcome"/);
   assert.match(wxml, /welcome-title/);
-  assert.match(wxml, /welcome-subtitle/);
+  assert.match(wxml, /welcome-subtitle site-subtitle/);
+  assert.match(less, /\.site-subtitle \{[^}]*white-space: normal/);
   assert.match(wxml, /工地动态/);
   assert.match(wxml, /siteTopics/);
   assert.match(wxml, /bindtap="pickPrompt"/);

@@ -15,8 +15,8 @@
     <text class="fabric-label welcome-label">工地动态</text>
     <text class="welcome-title">我家的工地</text>
     <view class="pencil-underline" aria-hidden="true"></view>
-    <view class="welcome-subtitle" bindtap="openOwnerSite">{{siteContext.name}} · {{siteContext.stageName ? siteContext.stageName + '阶段' : '施工中'}}<text wx:if="{{siteContext.hasTodayReport}}"> · 今日有更新</text><text wx:elif="{{siteContext.hasReport}}"> · 有新日报</text><text> ›</text></view>
-    <view class="welcome-subtitle">{{siteGreeting}}</view>
+    <view class="welcome-subtitle site-subtitle" bindtap="openOwnerSite">{{siteContext.name}} · {{siteContext.stageName ? siteContext.stageName + '阶段' : '施工中'}}<text wx:if="{{siteContext.hasTodayReport}}"> · 今日有更新</text><text wx:elif="{{siteContext.hasReport}}"> · 有新日报</text><text> ›</text></view>
+    <view class="welcome-subtitle site-subtitle">{{siteGreeting}}</view>
     <view class="topic-intro"><view></view><text>猜你想问</text><view></view></view>
     <view class="notebook-topics">
       <button wx:for="{{siteTopics}}" wx:key="title" class="topic-note topic-{{index}}" data-text="{{item.text}}" bindtap="pickPrompt" disabled="{{busy || pendingSend}}"><text class="topic-number">0{{index + 1}}</text><image class="topic-icon" src="../assets/{{item.icon}}.png" mode="aspectFit"/><text class="topic-title">{{item.title}}</text><text class="topic-helper">{{item.helper}}</text><view class="note-fold" aria-hidden="true"></view></button>
