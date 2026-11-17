@@ -22,6 +22,7 @@ const { planPageMethods } = require('../../../utils/assistant-report-plan');
 const { FollowupChat, emptyFollowupChat, followupChatMethods } = require('../lib/followup-chat');
 const { ReportQuestionController, reportQuestionMethods, emptyReportQuestion } = require('../lib/report-context');
 const { initialOwnerReminder, ownerReminderMethods } = require('./owner-reminders');
+const { ownerSiteContext } = require('../lib/owner-site-context');
 const api = require('../../../utils/api');
 
 function sessionToken() {
@@ -62,6 +63,7 @@ module.exports = () => ({
 			{ title: '装修风格', helper: '找找灵感', icon: 'requirement-style', text: '想聊聊适合我家的装修风格' },
 			{ title: '预算安排', helper: '先聊想法', icon: 'requirement-budget', text: '想聊聊装修预算怎么安排' },
 		],
+		siteContext: null, siteTopics: [], siteGreeting: '',
 		mediaItems: [], mediaPaths: {}, mediaLoading: false, mediaBusy: false, mediaPending: false, mediaError: '', mediaKind: 0, mediaRoom: '',
 		formalPlans: [], formalRooms: [], formalIndex: 0, formalRoomIndex: 0, mediaPendingFormal: false,
 		portfolioReplyId: '', portfolioItems: [], portfolioImages: {}, portfolioError: '', portfolioNotice: '', portfolioLoading: false,
@@ -109,7 +111,7 @@ module.exports = () => ({
 						if (this.plans) this.plans.clear();
 						this.referenceImages.clear();
 						if (this.media) this.media.dispose(); this.media = null;
-						this.setData({ mediaPaths: {}, mediaItems: [], sheet: '' });
+						this.setData({ mediaPaths: {}, mediaItems: [], sheet: '', siteContext: null, siteTopics: [], siteGreeting: '' });
 					} else if (patch.messages) {
 						if (this._shown && this.liveConsent) this.liveConsent.load(this.controller.conversationId);
 						if (this._shown) this.siteRecords.load(this.controller.conversationId, patch.messages);
@@ -209,6 +211,7 @@ module.exports = () => ({
 		if (this._alive && this._shown) {
 			if ((!selectedMode || selectedMode === 'customer') && !this._options.publicSiteId) this.startOwnerReminderRefresh();
 			await this.controller.show(this._options);
+			if (this._alive && this._shown && !this.data.fatal && !this.controller.conversationId) void this.loadOwnerSiteContext();
 			if (this._alive && this._shown && !this.data.fatal) await this.floorplans.show(this.controller.conversationId);
 			await this.prepareSpeech();
 			if (this._alive && this._shown && !this.data.fatal && !this.data.generating && !this.data.readOnly) await this.syncLocation();
@@ -225,6 +228,57 @@ module.exports = () => ({
 			}
 			if (this._alive && this._shown) await this.followups.show();
 		}
+	},
+
+	async loadOwnerSiteContext() {
+		if (this.data.staffTab || this.data.professionalFollowup || this.data.followupActive || this._ownerReport) return;
+		if (this._options?.publicSiteId || this._options?.followup === '1') return;
+		if (this.controller?.conversationId || this.data.messages?.length) return;
+		const token = sessionToken();
+		if (!token || this._siteContextPending) return;
+		if (this._siteContextToken === token && this._siteContextAt && Date.now() - this._siteContextAt < 60000) return;
+		this._siteContextPending = true;
+		try {
+			const list = await api.request('/miniprogram/construction/owner-sites', 'GET', {}, { suppressUnauthorized: true });
+			const items = Array.isArray(list?.data?.items) ? list.data.items : [];
+			// Only show the site state when the customer has exactly one readable
+			// site. Multiple sites stay on the default welcome state instead of
+			// guessing which project the conversation belongs to.
+			if (items.length !== 1) {
+				if (this._alive && this._shown) this.setData({ siteContext: null, siteTopics: [], siteGreeting: '' });
+				this._siteContextToken = token; this._siteContextAt = Date.now();
+				return;
+			}
+			const home = await api.request(`/miniprogram/construction/owner-sites/${encodeURIComponent(items[0].id)}`, 'GET', {}, { suppressUnauthorized: true });
+			if (!this._alive || !this._shown) return;
+			const view = ownerSiteContext(home?.data?.project, home?.data?.report);
+			if (!view) {
+				this.setData({ siteContext: null, siteTopics: [], siteGreeting: '' });
+				this._siteContextToken = token; this._siteContextAt = Date.now();
+				return;
+			}
+			this.setData(view);
+			this._siteContextToken = token; this._siteContextAt = Date.now();
+		} catch (error) {
+			if (this._alive && this._shown) this.setData({ siteContext: null, siteTopics: [], siteGreeting: '' });
+		} finally {
+			this._siteContextPending = false;
+		}
+	},
+
+	openOwnerSite() {
+		if (!this.data.siteContext) return;
+		const app = getApp();
+		app.globalData.customerTab = 'service';
+		const pages = getCurrentPages();
+		const page = pages && pages[pages.length - 1];
+		if (page && page.route === 'pages/index/index' && typeof page.setData === 'function') {
+			page.setData({ customerTab: 'service' });
+			const tabBar = page.getTabBar && page.getTabBar();
+			if (tabBar && tabBar.syncSelected) tabBar.syncSelected();
+			return;
+		}
+		wx.switchTab({ url: '/pages/index/index' });
 	},
 
 	onHide() { if (nativePreview.hiddenByPreview(this)) return; this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
