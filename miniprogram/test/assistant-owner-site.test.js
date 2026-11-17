@@ -77,7 +77,9 @@ test('the 问小K entry reuses the owner report context and asks once', () => {
   assert.match(chat, /this\._options\.ask === '1' && this\._options\.prompt/);
   assert.match(chat, /this\._ownerReportAsked = true/);
   assert.match(chat, /async askOwnerReport\(prompt\)/);
-  assert.match(chat, /entry\.input\(prompt\);/);
+  assert.match(chat, /let text = prompt;/);
+  assert.match(chat, /text = decodeURIComponent\(prompt\)/);
+  assert.match(chat, /entry\.input\(text\);/);
   assert.match(chat, /const selected = await this\.askFollowupReport\(\{ currentTarget: \{ dataset: \{\} \} \}\)/);
   assert.match(chat, /if \(selected\) await this\.sendFollowup\(\)/);
 });

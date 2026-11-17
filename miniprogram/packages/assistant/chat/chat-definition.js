@@ -573,15 +573,21 @@ module.exports = () => ({
 	async askOwnerReport(prompt) {
 		if (!prompt) return;
 		const entry = this.followupChatController;
+		const ready = () => {
+			const state = entry?.state;
+			return entry?.visible && state && !state.loading && !state.fatal && state.conversation?.status === 'open'
+				&& this.data.followupContext && this.reportQuestions?.canChange();
+		};
 		for (let i = 0; i < 40; i++) {
 			if (!this._alive || !this._shown) return;
-			const state = entry?.state;
-			if (entry?.visible && state && !state.loading && !state.fatal && state.conversation?.status === 'open') break;
+			if (ready()) break;
 			await new Promise(resolve => setTimeout(resolve, 100));
 		}
-		if (!this._alive || !this._shown || !entry?.visible || !entry.state.conversation) return;
+		if (!this._alive || !this._shown || !ready()) return;
 		delete this._options.prompt; delete this._options.ask;
-		entry.input(prompt);
+		let text = prompt;
+		try { text = decodeURIComponent(prompt); } catch (_) { /* Keep the supplied question when it is already plain text. */ }
+		entry.input(text);
 		// The page-opening route loads one report detail rather than the report
 		// list, so select that exact report before sending the prefilled question.
 		const selected = await this.askFollowupReport({ currentTarget: { dataset: {} } });
