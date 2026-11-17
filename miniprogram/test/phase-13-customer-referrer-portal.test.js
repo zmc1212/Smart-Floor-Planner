@@ -63,7 +63,7 @@ test('customer site Tab mounts the owner construction workspace', () => {
     indexJson.usingComponents['owner-site-home'],
     '/packages/construction/owner-home/owner-home'
   );
-  assert.match(indexWxml, /<owner-site-home wx:if="\{\{customerTab === 'service'\}\}"\s*\/>/);
+  assert.match(indexWxml, /<owner-site-home id="owner-site-home" wx:if="\{\{customerTab === 'service'\}\}"\s*\/>/);
   assert.equal(indexJson.componentPlaceholder['owner-site-home'], 'view');
   assert.equal(indexJson.componentPlaceholder['xiaok-chat'], 'view');
   assert.match(indexWxml, /<xiaok-chat[^>]*active="\{\{customerTab === 'xiaok'\}\}"/);
