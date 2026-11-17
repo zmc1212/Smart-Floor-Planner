@@ -1,0 +1,62 @@
+<view class="owner-site-page">
+  <view class="book-spine" aria-hidden="true">
+    <view class="book-stitch" style="top: 84px;" />
+    <view class="book-stitch" style="top: 37%;" />
+    <view class="book-stitch" style="top: 65%;" />
+    <view class="book-stitch" style="bottom: 28px;" />
+  </view>
+  <view class="site-nav" style="padding-top: {{navTop}}px; padding-right: {{navRight}}px; min-height: {{navHeight}}px;">
+    <text class="book-nav-title">我家工地</text>
+  </view>
+  <view class="site-content">
+    <view wx:if="{{needsLogin || error || loading || projectLoading || projectError || !project}}" class="site-paper site-state">
+      <text>{{needsLogin ? '登录后查看自家工地' : (error || projectError || (loading || projectLoading ? '正在读取工地…' : '暂无关联的工地'))}}</text>
+      <button wx:if="{{needsLogin}}" class="text-action" bindtap="login">登录</button>
+      <button wx:elif="{{error || projectError}}" class="text-action" bindtap="retryProject">重新读取</button>
+    </view>
+    <block wx:else>
+      <picker wx:if="{{projects.length > 1}}" range="{{projects}}" range-key="name" value="{{selectedIndex}}" bindchange="selectProject">
+        <view class="site-project-selector"><text class="site-project-title">{{project.name}}</text><view class="site-chevron site-chevron-down" /></view>
+      </picker>
+      <text wx:else class="site-project-title">{{project.name}}</text>
+      <view class="site-stage">
+        <text class="site-stage-label">当前阶段</text>
+        <text class="site-stage-value">{{project.stageName || (project.progressAccess ? '待更新' : '暂无可查看阶段')}}</text>
+      </view>
+
+      <button wx:if="{{camera}}" class="site-paper site-camera" bindtap="openCamera" aria-label="查看监控">
+        <view class="site-camera-frame">
+          <image wx:if="{{camera.src}}" class="site-camera-image" src="{{camera.src}}" mode="aspectFill"
+            binderror="cameraImageFailed" data-date="{{camera.dateLabel}}" />
+          <text wx:else class="site-camera-placeholder">监控封面暂不可用</text>
+          <view class="site-camera-play" aria-hidden="true"><view class="site-play-triangle" /></view>
+        </view>
+        <view class="site-camera-footer">
+          <view class="site-camera-meta"><text class="site-camera-name">{{camera.name}}</text><text wx:if="{{camera.dateLabel}}" class="site-meta">{{camera.dateLabel}}</text></view>
+          <view class="site-camera-cta"><text>查看监控</text><view class="site-chevron" /></view>
+        </view>
+      </button>
+      <view wx:else class="site-paper site-state site-camera-state">
+        <text>{{cameraLoading ? '正在读取监控…' : (cameraError || '工地监控尚未开通')}}</text>
+        <button wx:if="{{cameraError}}" class="text-action" bindtap="retryCover">重新读取</button>
+      </view>
+
+      <view class="site-paper site-report">
+        <view class="site-report-heading"><text class="fabric site-report-label">最新日报</text><text class="site-meta">{{report.dateLabel}}</text></view>
+        <view wx:if="{{report.progress.length}}" class="site-report-lines">
+          <view wx:for="{{report.progress}}" wx:key="index" class="site-report-line"><view class="site-bullet" /><text>{{item}}</text></view>
+        </view>
+        <text wx:else class="site-meta site-report-empty">{{report ? '这份日报暂无进展摘要' : '暂无已发布的日报'}}</text>
+        <button wx:if="{{report}}" class="site-report-link text-action" bindtap="openReport"><text>查看日报</text><view class="site-chevron" /></button>
+      </view>
+
+      <view class="site-paper site-pending">
+        <text class="site-pending-label">待我确认</text>
+        <button wx:for="{{report.pending}}" wx:key="key" class="site-pending-row" data-record="{{item.recordId}}" bindtap="openReport">
+          <text>{{item.text}}</text><view class="site-chevron" />
+        </button>
+        <text wx:if="{{!report.pending.length}}" class="site-meta site-report-empty">暂无待确认的事项</text>
+      </view>
+    </block>
+  </view>
+</view>

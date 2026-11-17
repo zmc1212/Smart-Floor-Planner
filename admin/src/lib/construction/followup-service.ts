@@ -197,6 +197,33 @@ export class FollowupService {
       return { items, truncated: bindings.length === 30 };
     });
   }
+  latestOwnerDaily(projectId: string) {
+    id(projectId);
+    if (this.actor.principal.kind !== 'user') fail('construction_forbidden', 403);
+    const eid = this.actor.enterpriseId;
+    return this.scoped(async repo => {
+      const binding = await one(repo.tx, sql`select b.* from app.construction_followup_bindings b
+        where b.enterprise_id=${eid} and b.principal_key=${principalKey(this.actor)} and b.audience='customer'
+        and b.project_id=${projectId} and b.status<>'deleted' and not b.list_hidden`);
+      if (!binding || !await followupBindingAvailable(repo.tx, eid, binding)) return null;
+      await repo.conversation(String(binding.conversation_id));
+      const row = await one(repo.tx, sql`select r.id::text,d.revision from app.construction_reports r
+        join app.construction_report_deliveries d on d.enterprise_id=r.enterprise_id and d.report_id=r.id and d.binding_id=r.binding_id
+        join app.construction_report_versions v on v.enterprise_id=d.enterprise_id and v.report_id=d.report_id and v.revision=d.revision
+        join app.assistant_runs a on a.enterprise_id=v.enterprise_id and a.id=v.run_id and a.conversation_id=${String(binding.conversation_id)}
+        where r.enterprise_id=${eid} and r.binding_id=${String(binding.id)} and r.kind='daily' and d.state='delivered'
+        order by r.period_start desc,r.id desc,d.revision desc limit 1`);
+      if (!row) return null;
+      const view = await this.version(repo, binding, String(row.id), Number(row.revision));
+      const project = view.facts?.projects.find(p => p.id === projectId);
+      if (!view.available || !project || !('periodStart' in view)) return null;
+      return { bindingId: String(binding.id), reportId: view.reportId, revision: view.revision, periodStart: new Date(String(view.periodStart)).toISOString(),
+        progress: project.records.map(r => typeof r.data.completed === 'string' ? r.data.completed.trim() : '').filter(Boolean).slice(0, 2),
+        pending: (project.publishedRecordItems || []).flatMap(item => [item.pending, item.coordination]
+          .map((value, index) => ({ key: item.recordId + ':' + index, recordId: item.recordId, text: value.trim() }))
+          .filter(item => item.text)).slice(0, 3) };
+    });
+  }
   reports(bindingId: string, beforeId = '9223372036854775807', filters: ReportHistoryFilters = {}) {
     id(bindingId); id(beforeId);
     const filter = reportHistoryFilters(filters);

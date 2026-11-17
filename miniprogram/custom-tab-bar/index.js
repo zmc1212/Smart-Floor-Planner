@@ -7,7 +7,7 @@ const { roleForIdentity } = require('../utils/identity-navigation.js');
 const ROLE_ITEMS = {
   customer: [
     { key: 'xiaok', capability: 'customer.service', pagePath: '/pages/index/index', customerView: 'xiaok', text: '小K', tab: true },
-    { key: 'service', capability: 'customer.service', pagePath: '/pages/index/index', customerView: 'service', text: '服务', tab: true },
+    { key: 'service', capability: 'customer.service', pagePath: '/pages/index/index', customerView: 'service', text: '工地', tab: true },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true }
   ],
   referrer: [
@@ -80,7 +80,7 @@ function applyServerBadges(list, badges) {
   const counts = (!unavailable && badges && badges.status === 'ok' && badges.counts) || {};
   return {
     list: list.map((item) => {
-      const count = Number(counts[item.key] || 0);
+      const count = item.customerView === 'service' ? 0 : Number(counts[item.key] || 0);
       return {
         ...item,
         badgeText: count > 0 ? (count > 99 ? '99+' : String(count)) : ''

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { verifyMiniProgramToken } from '@/lib/miniprogram-jwt';
-import { AssistantError, fail, key } from '@/lib/assistant/contracts';
+import { AssistantError, fail, id, key } from '@/lib/assistant/contracts';
 import { ConstructionService } from '@/lib/construction/service';
 import { siteChatHttp } from '@/lib/construction/site-http';
 import { CustomerProjectProgress, customerProgressTenant } from '@/lib/construction/family-progress';
 import { staffCameraHttp, customerCameraHttp } from '@/lib/construction/camera/http';
+import { ownerSiteHome, ownerSiteList } from '@/lib/construction/owner-home';
+import { ownerSiteCover } from '@/lib/construction/camera/owner-cover';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ path?: string[] }> };
@@ -26,6 +28,14 @@ async function handle(request: NextRequest, context: Context) {
     const token = await verifyMiniProgramToken(request.headers.get('authorization')!.slice(7));
     if (!token) fail('Unauthorized', 401);
     const p = (await context.params).path || [], read = request.method === 'GET';
+    if (p[0] === 'owner-sites') {
+      if (actor.mode !== 'customer' || !actor.user.openid) fail('construction_not_found', 404);
+      if (!read || request.nextUrl.search || p.length > 3 || (p.length === 3 && p[2] !== 'cover')) fail('construction_not_found', 404);
+      const identity = { userId: actor.user._id, contextVersion: token.contextVersion };
+      const data = p.length === 1 ? await ownerSiteList(identity.userId)
+        : p.length === 2 ? await ownerSiteHome(identity, id(p[1])) : await ownerSiteCover(identity, id(p[1]));
+      return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     if (actor.mode === 'customer' && p[0] === 'video') {
       if (!actor.user.openid) fail('Unauthorized', 401);
       return await customerCameraHttp(request, { userId: actor.user._id, contextVersion: token.contextVersion }, p.slice(1));

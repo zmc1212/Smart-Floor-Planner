@@ -53,22 +53,23 @@ test('phase 13 pages use custom navigation so their capsule-safe headers are the
   }
 });
 
-test('customer Service workspace mounts stage companion instead of staff workbench list', () => {
+test('customer site Tab mounts the owner construction workspace', () => {
   const indexJs = source('pages/index/index.js');
   const indexWxml = source('pages/index/index.wxml');
   const indexJson = JSON.parse(source('pages/index/index.json'));
-  const companion = source('components/customer-service-home/customer-service-home.js');
-  assert.match(indexJs, /\['customer', 'designer', 'measurer', 'enterprise_admin'\]/);
+  const ownerSite = source('packages/construction/owner-home/owner-home.js');
+  assert.match(indexJs, /return \['customer',/);
   assert.equal(
-    indexJson.usingComponents['customer-service-home'],
-    '/components/customer-service-home/customer-service-home'
+    indexJson.usingComponents['owner-site-home'],
+    '/packages/construction/owner-home/owner-home'
   );
-  assert.match(indexWxml, /<customer-service-home wx:if="\{\{customerTab === 'service'\}\}"\s*\/>/);
+  assert.match(indexWxml, /<owner-site-home wx:if="\{\{customerTab === 'service'\}\}"\s*\/>/);
+  assert.equal(indexJson.componentPlaceholder['owner-site-home'], 'view');
   assert.equal(indexJson.componentPlaceholder['xiaok-chat'], 'view');
   assert.match(indexWxml, /<xiaok-chat[^>]*active="\{\{customerTab === 'xiaok'\}\}"/);
   assert.match(indexWxml, /<role-workbench[^>]*wx:elif="\{\{roleWorkbenchRole\}\}"[^>]*focus="overview"/);
   assert.doesNotMatch(indexJs, /customer-projects\/customer-projects/);
-  assert.match(companion, /['"`]\/miniprogram\/customer-projects['"`]/);
+  assert.match(ownerSite, /['"`]\/miniprogram\/construction\/owner-sites['"`]/);
 });
 
 test('referrer customers page packages a standalone transparent Xiao K cutout', () => {

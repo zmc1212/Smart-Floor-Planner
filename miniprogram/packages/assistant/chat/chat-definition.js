@@ -26,6 +26,14 @@ function sessionToken() {
 	return app.globalData.token || wx.getStorageSync('token') || '';
 }
 
+function ownerReportLink(options = {}) {
+	const { ownerReport, bindingId, projectId, leadId, recordId, revision } = options;
+	const validId = value => typeof value === 'string' && /^[1-9]\d{0,18}$/.test(value);
+	if (![ownerReport, bindingId, projectId, leadId, revision].every(validId) || (recordId !== undefined && !validId(recordId))
+		|| !Number.isSafeInteger(Number(revision))) return null;
+	return { reportId: ownerReport, bindingId, projectId, leadId, revision: Number(revision), recordId };
+}
+
 module.exports = () => ({
 	...enterpriseMethods,
 	...settingsPageMethods,
@@ -56,7 +64,8 @@ module.exports = () => ({
 	},
 
 	onLoad(options) {
-		const resumeConversationId = chatResume.resumeId(options);
+		this._ownerReport = ownerReportLink(options);
+		const resumeConversationId = this._ownerReport ? '' : chatResume.resumeId(options);
 		this._options = options || {};
 		if (resumeConversationId && !this._options.conversationId) this._options.conversationId = resumeConversationId;
 		this._alive = true;
@@ -118,6 +127,7 @@ module.exports = () => ({
 			emit: patch => { if (this._alive) this.setData(patch); } });
 		this.followups = new FollowupController({ client: this.controller.client, identity: sessionToken,
 			headers: async () => {
+				if (this._ownerReport) return { 'X-Assistant-Entry': this._ownerReportToken };
 				if (this._options.followup === '1') return {};
 				const entry = await this.controller.ensureEntry(); return entry ? { 'X-Assistant-Entry': entry.entryToken } : {};
 			},
@@ -167,6 +177,11 @@ module.exports = () => ({
 		if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
 		const currentIdentity = app.globalData.bootstrap?.current?.context || app.globalData.userInfo || {};
 		const selectedMode = app.globalData.bootstrap?.current?.mode || currentIdentity.mode;
+		if (this._ownerReport) {
+			if (!selectedMode || selectedMode === 'customer') await this.readOwnerSiteReport();
+			else this.setData({ ownerSiteReport: true, loading: false, followupActive: true, followupError: '当前身份无法查看这份日报' });
+			return;
+		}
 		if (selectedMode === 'staff') this._options.followup = '1';
 		else if (selectedMode === 'customer') { delete this._options.followup; this.setData({ professionalFollowup: false }); }
 		if (this._options.followup === '1') {
@@ -502,9 +517,23 @@ module.exports = () => ({
 		if (this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.mediaBusy || this.data.mediaPending) return;
 		this.setData({ followupHistoryOpen: false, followupManageOpen: false }); this.closeSheet(); this.controller.hide(); return this.followups.select(String(event.currentTarget.dataset.id));
 	},
-	refreshFollowup() { return this.followups.select(this.followups.selected); },
+	async readOwnerSiteReport() {
+		const report = this._ownerReport, session = sessionToken();
+		const ticket = this._ownerReportTicket = (this._ownerReportTicket || 0) + 1;
+		const current = () => this._alive && this._shown && this._ownerReportTicket === ticket && sessionToken() === session;
+		this.setData({ ownerSiteReport: true, loading: false, followupActive: true, followupLoading: true, followupError: '' });
+		try {
+			const entry = await this.controller.client.read('/entry-context', { leadId: report.leadId }, {}, 'POST');
+			if (!current()) return;
+			this._ownerReportToken = entry.entryToken;
+			await this.followups.show({ report });
+		} catch (_) {
+			if (current()) this.setData({ followupLoading: false, followupError: '这份日报暂时无法打开' });
+		}
+	},
+	refreshFollowup() { return this._ownerReport ? this.readOwnerSiteReport() : this.followups.select(this.followups.selected); },
 	readFollowupReport(event) { const d = event.currentTarget.dataset; this.setData({ followupManageOpen: false }); return this.followups.readReport(String(d.report), Number(d.revision), this.followups.selected, d.project ? String(d.project) : ''); },
-	closeFollowupReport() { this.followups.closeReport(); },
+	closeFollowupReport() { this.followups.closeReport(); if (this._ownerReport) this.back(); },
 	moreFollowupReports() { return this.followups.more(); },
 	recoverFollowup() { return this.followups.recover(); },
 	retryFollowupReport(event) { const d = event?.currentTarget?.dataset, r = this.followups.sourceReport(d?.report ? String(d.report) : '', Number(d?.revision)); if (r?.generationRetryable) return this.followups.retryBody(r); },

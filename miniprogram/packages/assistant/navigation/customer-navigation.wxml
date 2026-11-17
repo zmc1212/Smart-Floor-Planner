@@ -1,4 +1,4 @@
-<view wx:if="{{!keyboardHidden}}" class="customer-navigation {{floating ? 'customer-floating' : ''}}">
+<view wx:if="{{!keyboardHidden}}" class="customer-navigation {{floating ? 'customer-floating' : ''}} {{items[selected].key === 'service' ? 'site-navigation' : ''}}">
   <view class="tabbar">
     <view wx:for="{{items}}" wx:key="key" class="tab-item tab-key-{{item.key}} {{selected === index ? 'active' : ''}}" data-index="{{index}}" bindtap="switchTab" aria-role="button" aria-label="{{item.text}}">
       <view class="tab-icon"><image class="tab-image" src="../assets/notebook-tab-{{item.key === 'xiaok' ? 'chat' : item.key === 'service' ? 'home' : 'mine'}}{{selected === index ? '-active' : ''}}.png" mode="aspectFit" /><view wx:if="{{item.badgeText}}" class="tab-badge">{{item.badgeText}}</view></view>
