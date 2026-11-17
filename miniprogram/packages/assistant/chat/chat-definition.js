@@ -138,7 +138,8 @@ module.exports = () => ({
 				const wasActive = this.data.followupActive;
 				this.setData(patch, () => {
 					if (wasActive && patch.followupActive === false && this._shown && !this.data.followupEnterpriseBusy) {
-						if (this.data.professionalFollowup) { this.setData({ followupManageOpen: false, followupHistoryOpen: false }); this.back(); }
+						if (this.data.professionalFollowup && !this.data.staffTab) { this.setData({ followupManageOpen: false, followupHistoryOpen: false }); this.back(); }
+						else if (this.data.staffTab) this.setData({ followupManageOpen: false, followupHistoryOpen: false });
 						else { this.controller.visible = true; this.setData({ followupManageOpen: false, followupHistoryOpen: false }); this.controller.refresh({ forceEntry: false, background: true }); }
 					}
 					if (patch.followupReports || patch.followupActive !== undefined) this.observeFollowupCards();
@@ -190,7 +191,8 @@ module.exports = () => ({
 			this.setData({ professionalFollowup: true, loading: false });
 			this.prepareFollowupEnterprise(currentIdentity);
 			if (this.data.followupPlatform && !currentIdentity.enterpriseId) { this.followups.hide(); this.setData({ followupActive: true }); return; }
-			await this.followups.show({ autoOpen: true }); return;
+			const staffProjectId = String(this._options.staffProjectId || '');
+			await this.followups.show({ autoOpen: true, projectId: /^[1-9]\d*$/.test(staffProjectId) ? staffProjectId : '' }); return;
 		}
 		if (this.media && this.media.session !== sessionToken()) {
 			this.media.dispose(); this.media = null;
@@ -257,7 +259,7 @@ module.exports = () => ({
 	},
 	syncKeyboardTab() {
 		const page = getCurrentPages().slice(-1)[0];
-		const tab = page && page.selectComponent && page.selectComponent('#customer-nav');
+		const tab = this.data.staffTab ? page?.getTabBar?.() : page?.selectComponent?.('#customer-nav');
 		if (this.data.embedded && tab) tab.setData({ keyboardHidden: !!this.data.keyboardHeight || !!this.data.sheet });
 	},
 	keyboardChange(event) {

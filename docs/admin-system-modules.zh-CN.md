@@ -1,5 +1,9 @@
 # 后台系统当前功能清单
 
+**三端工地工作台数据（已实现／有限）。** `GET /api/miniprogram/construction/workbench` 从签名企业和实时权限生成三端投影。施工账号按当前项目成员关系进入工人或项目经理视图。员工选择的 `projectId` 必须是当前角色仍有效的工地。工人读本人任务与最近上报回执，经理读草稿与整改复查，设计师读分配给本人的设计事项。老板从共用计划和事项事实取简报，汇总口径为当次最多 20 个工地。
+
+精确记录入口在既有项目交流 GET 携带 `recordId`。仅原提交人员或有权经理可扩展读取旧记录位置，原工地权限与媒体权限继续实时核对。上报、事项回复、核对和发布沿既有版本写入及回执。 [小程序入口与设计证据](./miniprogram-system-modules.zh-CN.md#小k工地工作台)。
+
 **I7.4.4 试点项目配置和预检（Implemented）。** 有施工管理权限的企业管理员在选定企业下使用 `GET` 或 `PUT /api/construction/pilot-scopes/{pilotId}`。迁移 `0130` 在强制租户 RLS 下保存项目清单、操作人、状态和不可变版本。只读 `check:pilot-readiness` 输出企业安全项、所选项目缺项及范围外提醒和周报影响。实际投递沿用现有 Worker 规则和报告计划。验证使用独立 PG17。[范围合同](xiaok-pilot-project-scope.md)、[首家试点预检](xiaok-first-pilot-enterprise-readiness.md)。
 
 **I7.3 提醒跳转与经理工作台（Implemented）。** `GET /api/miniprogram/xiaok/reminders` 按当天项目成员/业主身份重新过滤，返回 `relatedIssueId`、`relatedTaskId`、`roomId`、`channel` 和独立 `history`；撤权后不再返回提醒正文。计划节点 `actionUrl` 携带真实 `roomId`，待办提醒携带真实事项 ID。只有当前项目经理可读取或取消自己的经理提醒；指定事项只给实际负责人。项目经理没有私人会话时仍在现有工作台查看待办，`failed/no_inbox` 只表示没有私聊送达。`construction_staff` 路由白名单包含 `xiaok/reminders` 与 `xiaok/stage-answer`。[验收](xiaok-i73-pilot-acceptance.md)。

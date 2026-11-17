@@ -23,7 +23,7 @@ export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
   designer: '/pages/index/index',
   measurer: '/pages/index/index',
-  construction_staff: '/packages/construction/projects/projects',
+  construction_staff: '/pages/index/index',
   salesperson: '/packages/business/promotion-records/promotion-records',
   enterprise_admin: '/pages/index/index',
   platform_admin: '/packages/platform/devices/devices',

@@ -135,6 +135,7 @@ Page({
     bleAutoConnecting: false,
     roleWorkbenchRole: '',
     customerTab: 'xiaok',
+    siteWorkbenchTab: 'workbench',
     redirectingSalesperson: false,
   },
 
@@ -155,7 +156,7 @@ Page({
     const bootstrap = globalData.bootstrap;
     const role = (bootstrap && bootstrap.current && bootstrap.current.role)
       || roleForIdentity(globalData.userInfo);
-    return ['customer', 'designer', 'measurer', 'enterprise_admin'].includes(role) ? role : '';
+    return ['customer', 'designer', 'measurer', 'enterprise_admin', 'construction_staff'].includes(role) ? role : '';
   },
 
   redirectAwayFromHomeIfNeeded() {
@@ -167,7 +168,6 @@ Page({
     const role = roleForIdentity(identity);
     const fallback = {
       salesperson: '/packages/business/promotion-records/promotion-records',
-      construction_staff: '/packages/construction/projects/projects',
       platform_admin: '/packages/platform/devices/devices',
     }[role];
     if (!fallback) return false;
@@ -183,7 +183,8 @@ Page({
 
   onLoad: function (options) {
     if (options && options.customerTab === 'service') getApp().globalData.customerTab = 'service';
-    this.setData({ customerTab: getApp().globalData.customerTab || 'xiaok' });
+    const global = getApp().globalData;
+    this.setData({ customerTab: global.customerTab || 'xiaok', siteWorkbenchTab: global.siteWorkbenchTab || 'workbench' });
     if (!this.isLoggedIn()) {
       this.showGuestServiceHome();
       return;
@@ -235,7 +236,8 @@ Page({
 
     const roleWorkbenchRole = this.getRoleWorkbenchRole();
     if (roleWorkbenchRole) {
-      this.setData({ roleWorkbenchRole, userInfo, isStaff: roleWorkbenchRole !== 'customer', customerTab: app.globalData.customerTab || 'xiaok' }, () => this.syncTabBar());
+      this.setData({ roleWorkbenchRole, userInfo, isStaff: roleWorkbenchRole !== 'customer', customerTab: app.globalData.customerTab || 'xiaok',
+        siteWorkbenchTab: app.globalData.siteWorkbenchTab || 'workbench' }, () => this.syncTabBar());
       return;
     }
 

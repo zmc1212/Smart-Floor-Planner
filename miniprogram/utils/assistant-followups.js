@@ -94,7 +94,7 @@ class FollowupController {
     this.visible = false; this.epoch++; this.unschedule(this.timer); this.set(initialFollowups());
   }
   leave() { this.rememberHistory(); this.historyReentry = null; this.selected = ''; this.epoch++; this.set({ ...initialHistory(), followupActive: false, followupContext: null, followupDetail: null, followupOriginal: null, followupReports: [] }); }
-  async show({ autoOpen = false, report = null } = {}) {
+  async show({ autoOpen = false, report = null, projectId = '' } = {}) {
     if (this.session && this.session !== this.identity()) { this.selected = ''; this.operation = null;
       this.settingsReentry = null;
       this.planReentry = null;
@@ -139,6 +139,19 @@ class FollowupController {
       return;
     }
     if (this.operation) { this.set({ followupPending: true, followupActive: !!this.selected }); return; }
+    if (projectId) {
+      const available = this.state.followupBindings.filter(b => b.status !== 'deleted');
+      const matched = available.find(binding => binding.projects?.some(project => project.id === projectId))
+        || (available.length === 1 ? available[0] : null);
+      if (!matched) { this.set({ followupActive: true, followupError: '这个工地暂无可查看的日周报。' }); return; }
+      await this.select(matched.bindingId, projectId);
+      if (this.current() && this.state.followupContext) {
+        this.historyOptions(this.state.followupContext);
+        this.set({ followupHistoryFilters: { ...this.state.followupHistoryFilters, projectId, kind: '' } });
+        await this.openHistory();
+      }
+      return;
+    }
     if (this.selected) return this.state.followupBindings.some(b => b.bindingId === this.selected) ? this.select(this.selected) : this.openSettings(this.selected);
     if (autoOpen) {
       const available = this.state.followupBindings.filter(b => b.status !== 'deleted');
@@ -203,7 +216,7 @@ class FollowupController {
     } catch (e) { if (this.current(epoch)) this.failure(e); }
     finally { if (this.current(epoch)) this.set({ followupListLoading: false }); }
   }
-  async select(bindingId) {
+  async select(bindingId, projectId = '') {
     if (this.state.followupBusy || this.state.followupPending || !this.visible) return;
     if (this.selected !== String(bindingId)) { this.historyReentry = null; this.historyPages = 1; this.set(initialHistory()); }
     const epoch = ++this.epoch; this.selected = String(bindingId);
@@ -213,9 +226,10 @@ class FollowupController {
     this.set({ followupActive: true, followupLoading: true, followupContext: null, followupDetail: null, followupOriginal: null, followupReports: [], followupError: '' });
     try {
       const headers = await this.headers();
-      const [context, reports] = await Promise.all([this.client.read(BASE + '/' + bindingId, {}, headers), this.client.read(BASE + '/' + bindingId + '/reports', {}, headers)]);
+      const query = projectId ? { projectId } : {};
+      const [context, reports] = await Promise.all([this.client.read(BASE + '/' + bindingId, query, headers), this.client.read(BASE + '/' + bindingId + '/reports', query, headers)]);
       if (!this.current(epoch)) return;
-      this.set({ followupContext: context, followupReports: reports.items.map(r => reportForView(r, context)), followupCursor: reports.nextCursor,
+      this.set({ followupContext: context, followupReports: reports.items.map(r => reportForView(r, context, projectId)), followupCursor: reports.nextCursor,
         followupPending: !!this.operation });
       const reentry = this.historyReentry; this.historyReentry = null;
       if (reentry?.bindingId === this.selected && !this.operation) {

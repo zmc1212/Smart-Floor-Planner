@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { fingerprint } from '@/lib/assistant/contracts';
-import { currentRecord, groupProjectIssues, projectSiteIssues, siteIssueSummary, type IssueView } from './site-issues';
+import { currentRecord, groupProjectIssues, projectSiteIssues, siteIssueSummary, siteIssueTitle, type IssueView } from './site-issues';
 import { projectPlans } from './site-plans';
 import { collaborationEnabled } from './collaboration-scope';
 import { readSchedule } from './site-schedule';
@@ -30,8 +30,8 @@ export function waitingFact(issue: IssueView, plan?: { status: string; id: strin
 }
 
 /** Caller supplies only projects selected by ConstructionService's live management scope, inside its tenant transaction. */
-export async function constructionBrief(tx: PostgresTransaction, eid: string, projects: Row[], stages: ConstructionStage[]) {
-  const items = [], collaboration = collaborationEnabled(eid);
+export async function constructionBrief(tx: PostgresTransaction, eid: string, projects: Row[], stages: ConstructionStage[], workbench = false) {
+  const items = [], collaboration = collaborationEnabled(eid), now = new Date();
   for (const p of projects.slice(0, 20)) {
     const pid = String(p.id), issues = await projectSiteIssues(tx, eid, pid, collaboration ? null : 50), plans = await projectPlans(tx, eid, pid);
     const facts = await Promise.all(issues.map(async issue => {
@@ -47,10 +47,25 @@ export async function constructionBrief(tx: PostgresTransaction, eid: string, pr
     const recent = candidate ? (await currentRecord(tx, eid, pid, String(candidate.id), true))?.row : null;
     const pending = facts.filter(f => !['cancelled', 'closed', 'dismissed'].includes(f.status));
     const title = recent ? String((recent.data as Row)?.title || '') : '';
-    const schedule = await readSchedule(tx, eid, p, stages);
+    const schedule = await readSchedule(tx, eid, p, stages, { now });
+    const late = workbench && p.status === 'active' && schedule.nodes.find(node => node.color === 'red' && node.constructionStatus !== 'completed');
+    const lead = late ? await one(tx, sql`select a.display_name from app.construction_members m
+      join app.admin_users a on a.id=m.admin_id and a.enterprise_id=m.enterprise_id and a.status='active'
+      left join app.construction_stage_assignments s on s.enterprise_id=m.enterprise_id and s.project_id=m.project_id
+        and s.admin_id=m.admin_id and s.stage_key=${late.stageKey} and s.is_primary
+      where m.enterprise_id=${eid} and m.project_id=${pid} and m.active and (s.is_primary or m.role='manager')
+      order by (s.is_primary is true) desc,m.admin_id limit 1`) : null;
+    const coordination = workbench && p.status === 'active' ? issues.filter(i => i.sourceAvailable
+      && ['awaiting_owner', 'awaiting_review', 'rectifying', 'reopened', 'implemented'].includes(i.status)) : [];
     items.push({ projectId: pid, name: String(p.name), stageName: stages.find(s => s.key === p.current_stage_key)?.name || '节点未设置',
       progress: { available: schedule.available, version: schedule.version, overall: schedule.overall, counts: schedule.counts,
         gaps: schedule.gaps.map(g => g.label).slice(0, 5), text: schedule.text },
+      ...(workbench ? { status: String(p.status),
+        late: late ? { nodeKey: late.key, title: [late.roomName, late.stageName].filter(Boolean).join(' · '), waitingFor: String(lead?.display_name || '') } : null,
+        coordinationCount: coordination.length,
+        coordination: coordination.slice(0, 3).map(issue => ({ issueId: issue.issueId,
+          title: siteIssueTitle(issue), waitingFor: facts.find(fact => fact.issueId === issue.issueId)?.waitingFor || '' })),
+      } : {}),
       progressNote: String(p.progress_note || ''), latestRecord: recent ? { id: String(recent.id), version: Number(recent.version),
         updatedAt: recent.updated_at, authorName: candidate?.display_name || '项目管理人员', title } : null,
       ...(collaboration ? { issueGroups: groupProjectIssues(issues) } : {}), issues: facts, focusIssueId: (pending[0] || facts[0])?.issueId || '', summary: pending.length ? pending.map(f => `事项${f.issueId} · ${f.label}${f.waitingFor ? ' · ' + f.waitingFor : ''}`).slice(0, 3).join('；')
@@ -59,6 +74,6 @@ export async function constructionBrief(tx: PostgresTransaction, eid: string, pr
         and type='construction.site.issue.opened.v1' and payload->>'projectId'=${pid} order by id desc offset 50 limit 1`) });
   }
   // The fingerprint excludes the request time; reentry derives fresh facts and never replays an old successful view.
-  return { items, version: fingerprint(items), asOf: new Date().toISOString(), hasMoreProjects: projects.length > 20,
+  return { items, version: fingerprint(items), asOf: now.toISOString(), hasMoreProjects: projects.length > 20,
     scope: 'management', deadlineSupport: false };
 }

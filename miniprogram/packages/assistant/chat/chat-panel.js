@@ -10,6 +10,7 @@ Component({
   properties: {
     active: { type: Boolean, value: false, observer() { this.syncVisibility(); } },
   },
+    staffTab: { type: Boolean, value: false },
   data: { ...definition.data, embedded: true },
   lifetimes: {
     attached() {

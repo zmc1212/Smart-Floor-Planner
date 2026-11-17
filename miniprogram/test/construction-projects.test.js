@@ -37,7 +37,7 @@ test('designers, construction staff and enterprise owners share the cloud-site r
     assert.equal(p.data.navRight,104); assert.equal(f.calls[0][0],'/miniprogram/construction/projects');
   }
   assert.equal(canAccessRoute(route,{ mode: 'staff', staffRole: 'measurer', enterpriseId: '1' }),false);
-  assert.equal(getRoleLanding({ mode:'staff',staffRole:'construction_staff' }),route);
+  assert.equal(getRoleLanding({ mode:'staff',staffRole:'construction_staff' }),'/pages/index/index');
   const f = fixture(), p = f.page(); await p.onShow(); p.back(); assert.equal(f.messages.at(-1), '/pages/mine/mine');
   await p.onPullDownRefresh(); assert.equal(f.messages.at(-1), 'refresh-stopped');
 });

@@ -89,23 +89,22 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['promotion', 'progress', 'earnings', 'mine']);
 
-    globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'staff.data', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'] } };
-    definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'data', 'customers', 'design', 'earnings', 'mine']);
-    assert.equal(component.data.list.some((item) => item.key === 'measure'), false);
+    for (const role of ['designer', 'construction_staff', 'enterprise_admin']) {
+      globalData.bootstrap = { current: { role, capabilities: ['construction.projects', 'account'] } };
+      definition.methods.syncSelected.call(component);
+      assert.deepEqual(component.data.list.map(item => item.text), ['小K', '工作台', '我的']);
+      assert.equal(component.data.staffNavigation, true);
+      assert.equal(component.data.selected, 2);
+    }
 
     globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'account'] } };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['mine']);
 
     globalData.bootstrap = { current: { role: 'measurer', capabilities: ['staff.schedule', 'staff.data', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'] } };
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'data', 'customers', 'earnings', 'mine']);
     assert.equal(component.data.list[0].pagePath, '/pages/index/index');
-
-    globalData.bootstrap = { current: { role: 'enterprise_admin', capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'] } };
-    definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'operations', 'customers', 'commissions', 'mine']);
 
     globalData.bootstrap = {
       current: {
@@ -127,7 +126,7 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
   }
 });
 
-test('earnings keeps its paired TabBar icon states and owner appointments stay contextual', () => {
+test('unchanged roles retain earnings icons and native tool pages stay registered', () => {
   const { ROLE_ITEMS } = require(tabBarPath);
   const assetRoot = path.resolve(__dirname, '..', 'images', 'mine-icons');
   const expectedAssets = [
@@ -143,26 +142,18 @@ test('earnings keeps its paired TabBar icon states and owner appointments stay c
     assert.ok(asset.length <= 10 * 1024, `${filename} exceeds the 10KB icon budget`);
   }
 
-  for (const role of ['referrer', 'designer', 'measurer', 'enterprise_admin']) {
-    const key = role === 'enterprise_admin' ? 'commissions' : 'earnings';
-    const earnings = ROLE_ITEMS[role].find((item) => item.key === key);
+  for (const role of ['referrer', 'measurer']) {
+    const earnings = ROLE_ITEMS[role].find((item) => item.key === 'earnings');
     assert.equal(earnings.iconPath, '/images/mine-icons/earn-g.png');
     assert.equal(earnings.selectedIconPath, '/images/mine-icons/earn-a.png');
   }
 
-  assert.equal(ROLE_ITEMS.enterprise_admin.some((item) => item.key === 'appointments'), false);
-  const operations = ROLE_ITEMS.enterprise_admin.find((item) => item.key === 'operations');
-  assert.equal(operations.pagePath, '/pages/enterprise-operations/enterprise-operations');
-  assert.equal(operations.tab, true);
-  assert.equal(ROLE_ITEMS.designer.length, 6);
   assert.equal(ROLE_ITEMS.measurer.length, 5);
-  for (const role of ['designer', 'measurer']) {
-    const data = ROLE_ITEMS[role].find((item) => item.key === 'data');
-    assert.equal(data.capability, 'staff.data');
-    assert.equal(data.text, '数据');
-    assert.equal(data.pagePath, '/pages/enterprise-operations/enterprise-operations');
-    assert.equal(data.tab, true);
-  }
+  const data = ROLE_ITEMS.measurer.find((item) => item.key === 'data');
+  assert.equal(data.capability, 'staff.data');
+  assert.equal(data.text, '数据');
+  assert.equal(data.pagePath, '/pages/enterprise-operations/enterprise-operations');
+  assert.equal(data.tab, true);
   const appConfig = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'app.json'), 'utf8'));
   assert.ok(
     appConfig.tabBar.list.some((item) => item.pagePath === 'pages/enterprise-operations/enterprise-operations'),
@@ -170,13 +161,13 @@ test('earnings keeps its paired TabBar icon states and owner appointments stay c
   );
 });
 
-test('owner operations tab uses native switchTab instead of a silent no-op', async () => {
+test('staff XiaoK and workbench switch on the shared native tab and Mine remains a separate tab', async () => {
   const globalData = {
     userInfo: { role: 'staff', mode: 'staff', staffRole: 'enterprise_admin' },
     bootstrap: {
       current: {
         role: 'enterprise_admin',
-        capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.commissions', 'account']
+        capabilities: ['construction.projects', 'account']
       }
     }
   };
@@ -196,10 +187,18 @@ test('owner operations tab uses native switchTab instead of a silent no-op', asy
       syncSelected() { definition.methods.syncSelected.call(this); }
     };
     definition.methods.syncSelected.call(component);
-    const index = component.data.list.findIndex((item) => item.key === 'operations');
+    const index = component.data.list.findIndex((item) => item.key === 'workbench');
     assert.ok(index >= 0);
     await definition.methods.switchTab.call(component, { currentTarget: { dataset: { index } } });
-    assert.deepEqual(navigations, [['switchTab', '/pages/enterprise-operations/enterprise-operations']]);
+    assert.deepEqual(navigations, [['switchTab', '/pages/index/index']]);
+    assert.equal(globalData.siteWorkbenchTab, 'workbench');
+    const page = { route: 'pages/index/index', setData(update, callback) { this.update = update; callback(); } };
+    global.getCurrentPages = () => [page];
+    await definition.methods.switchTab.call(component, { currentTarget: { dataset: { index: 0 } } });
+    assert.deepEqual(page.update, { siteWorkbenchTab: 'xiaok' });
+    assert.equal(component.data.selected, 0);
+    await definition.methods.switchTab.call(component, { currentTarget: { dataset: { index: 2 } } });
+    assert.deepEqual(navigations.at(-1), ['switchTab', '/pages/mine/mine']);
   } finally {
     restore();
   }
@@ -218,17 +217,17 @@ test('custom TabBar uses the stored signed role before bootstrap refresh complet
       setData(update) { this.data = { ...this.data, ...update }; }
     };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'data', 'customers', 'design', 'earnings', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['xiaok', 'workbench', 'mine']);
   } finally {
     restore();
   }
 });
 
-test('custom TabBar paints server badge counts and never fills local zeros', () => {
+test('new site navigation omits old lead and appointment badges', () => {
   const globalData = {
     userInfo: { role: 'staff', mode: 'staff', staffRole: 'designer' },
     bootstrap: {
-      current: { role: 'designer', capabilities: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'] },
+      current: { role: 'designer', capabilities: ['construction.projects', 'account'] },
       badges: { status: 'ok', message: null, counts: { workbench: 6 } }
     }
   };
@@ -241,9 +240,8 @@ test('custom TabBar paints server badge counts and never fills local zeros', () 
     };
     definition.methods.syncSelected.call(component);
     const workbench = component.data.list.find((item) => item.key === 'workbench');
-    const customers = component.data.list.find((item) => item.key === 'customers');
-    assert.equal(workbench.badgeText, '6');
-    assert.equal(customers.badgeText, '');
+    assert.equal(workbench.badgeText, '');
+    assert.ok(component.data.list.every(item => !item.badgeText));
     assert.equal(component.data.badgeUnavailable, false);
     assert.equal(component.data.badgeUnavailableText, '');
   } finally {

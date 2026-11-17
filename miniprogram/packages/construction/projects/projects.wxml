@@ -26,7 +26,7 @@
       <view wx:if="{{detail.progress}}" class="paper schedule-paper">
         <view class="section-heading"><text class="fabric">计划进度{{detail.progress.available ? ' · V' + detail.progress.version : ''}}</text><text class="tone-label tone-{{detail.progress.overall.color}}">{{detail.progress.overall.label}}</text></view>
         <text class="helper">提前 {{detail.progress.counts.green}} · 正常 {{detail.progress.counts.yellow}} · 落后 {{detail.progress.counts.red}} · 待核实 {{detail.progress.counts.gray}}</text>
-        <view wx:for="{{detail.progress.nodes}}" wx:key="key" class="issue-row" data-key="{{item.key}}">
+        <view wx:for="{{detail.progress.nodes}}" wx:key="key" id="schedule-{{item.key}}" class="issue-row {{focusNode === item.key ? 'is-focused' : ''}}" data-key="{{item.key}}">
           <view class="issue-head"><text class="label">{{item.title}}</text><text class="tone-label tone-{{item.color}}">{{item.label}}</text></view>
           <text class="helper">计划 {{item.dateText}}</text>
           <text class="helper">{{item.reason}}</text>

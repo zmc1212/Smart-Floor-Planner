@@ -51,6 +51,11 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         <view class="account-row-copy"><view class="account-row-label">云工地</view><view class="account-row-helper">随时查看工地分工与实际节点</view></view>
         <view class="account-chevron"></view>
       </view>
+      <view wx:if="{{activeRole === 'designer' || activeRole === 'enterprise_admin'}}" class="account-row" hover-class="account-row-pressed" bindtap="onOpenFormalSurveySelection" aria-role="button">
+        <image class="account-row-icon" src="/images/mine-icons/home.png" mode="aspectFit" />
+        <view class="account-row-copy"><view class="account-row-label">正式量房</view><view class="account-row-helper">选择已关联的项目，打开量房记录</view></view>
+        <view class="account-chevron"></view>
+      </view>
       <view wx:if="{{showRoleGuideEntry}}" class="account-row" hover-class="account-row-pressed" bindtap="onOpenRoleGuide" aria-role="button">
         <image class="account-row-icon" src="/images/mine-icons/bulb.png" mode="aspectFit" />
         <view class="account-row-copy">

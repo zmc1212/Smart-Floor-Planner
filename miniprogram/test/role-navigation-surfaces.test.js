@@ -207,7 +207,7 @@ test('referrer progress and earnings are direct role-tab destinations', () => {
   assert.match(tabBar, /key: 'earnings', capability: 'referrer\.earnings'/);
 });
 
-test('designer and measurer earnings are direct role-tab destinations', () => {
+test('earned benefit pages retain their route guard while the designer uses the site tabs', () => {
   const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'identity-navigation.js'), 'utf8');
   const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'enterprise', 'staff-earnings', 'staff-earnings.json'), 'utf8'));
@@ -229,11 +229,11 @@ test('designer and measurer earnings are direct role-tab destinations', () => {
   assert.doesNotMatch(page, /amountLabel|payableTotal/);
   assert.match(navigation, /staff-earnings\/staff-earnings': 'staff\.earnings'/);
   assert.match(tabBar, /capability: 'staff\.earnings'[\s\S]*pagePath: '\/packages\/enterprise\/staff-earnings\/staff-earnings'/);
-  assert.match(tabBar, /designer: \[[\s\S]*key: 'earnings', capability: 'staff\.earnings'/);
+  assert.match(tabBar, /designer: workbenchTabs\(\)/);
   assert.match(tabBar, /measurer: \[[\s\S]*key: 'earnings', capability: 'staff\.earnings'/);
 });
 
-test('enterprise owner commissions are a payout ledger tab with one-step payment confirmation', () => {
+test('enterprise payout ledger keeps its direct route and payment confirmation behind the site tabs', () => {
   const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'identity-navigation.js'), 'utf8');
   const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'enterprise', 'enterprise-commissions', 'enterprise-commissions.json'), 'utf8'));
@@ -259,8 +259,7 @@ test('enterprise owner commissions are a payout ledger tab with one-step payment
   assert.match(payoutActions, /payments:\s*\[\{ commissionId:/);
   assert.doesNotMatch(template, /quick-ledger-dialog|batch-action/);
   assert.match(navigation, /enterprise-commissions\/enterprise-commissions': 'enterprise\.commissions'/);
-  assert.match(tabBar, /key: 'commissions', capability: 'enterprise\.commissions'/);
-  assert.match(tabBar, /text: '提成'/);
+  assert.match(tabBar, /enterprise_admin: workbenchTabs\(\)/);
   assert.doesNotMatch(page, /commission-records/);
 });
 

@@ -26,6 +26,7 @@ Page({
     this.projectId = /^[1-9]\d*$/.test(String(options.projectId)) ? String(options.projectId) : '';
     this._briefIssueId = /^[1-9]\d*$/.test(String(options.issueId)) ? String(options.issueId) : '';
     this._briefMode = options.mode === 'review' ? 'review' : options.mode === 'plan' ? 'plan' : '';
+    const recordId = /^[1-9]\d*$/.test(String(options.recordId)) ? String(options.recordId) : '';
     this._briefRoomId = /^[1-9]\d*$/.test(String(options.roomId)) ? String(options.roomId) : '';
     this._briefRoom = typeof options.room === 'string' ? options.room.slice(0, 50) : '';
     this.client = new SiteClient({ identity, emit: patch => {
@@ -38,11 +39,23 @@ Page({
         if (this.capture?.visible) void this.capture.accepted(patch.items);
         const retake = this._retakeMessageId && patch.items.find(i => i.message.id === this._retakeMessageId && i.record.canResubmit);
         const queued = this.data.captureQueue[this.data.captureQueue.length - 1];
-        this.setData({ scrollTarget: retake ? 'source-' + retake.message.id : queued ? 'capture-' + queued.key : patch.items.length ? 'source-' + patch.items[patch.items.length - 1].message.id : '' });
+        const requested = this._focusEntry && (patch.focusedMessageId || patch.items.find(item => item.message.id === 'issue-' + this._briefIssueId)?.message.id);
+        const missing = recordId && patch.focusedMessageId === '';
+        if (requested || missing) this._focusEntry = false;
+        if (requested || missing || this._focusEntry || !this.data.focusedSource) this.setData({
+          focusedSource: this.data.focusedSource || Boolean(requested), focusedRecordUnavailable: Boolean(missing),
+          scrollTarget: requested ? 'source-' + requested : retake ? 'source-' + retake.message.id
+            : queued ? 'capture-' + queued.key : patch.items.length ? 'source-' + patch.items[patch.items.length - 1].message.id : '',
+        });
       }
     } });
     this.client.issueId = this._briefIssueId;
     this.capture = new SiteCapture({ site: this.client, emit: patch => {
+    this.client.recordId = recordId;
+    this._focusEntry = Boolean(recordId || this._briefIssueId);
+    this.getOpenerEventChannel?.()?.on('workbenchCapture', action => {
+      if (['photo', 'voice'].includes(action)) { this._captureEntry = action; this.openWorkbenchCapture(); }
+    });
       if (!this._visible) return;
       this.setData(patch);
       if (patch.captureSubmitted) this.setData({ scrollTarget: 'capture-' + patch.captureSubmitted, textMode: false });
@@ -65,6 +78,8 @@ Page({
     if (this._visible && !this.data.fatal) await this.speechController.show('/miniprogram/construction/projects/' + this.projectId + '/chat/speech');
     const planRoom = this._briefMode === 'plan' && this.client.state.rooms?.find(room => this._briefRoomId ? room.id === this._briefRoomId : room.name === this._briefRoom);
     if (this._briefIssueId && !this.client.state.collaboration && !this.client.state.pending && this.client.state.write) {
+    this._captureReady = this._visible && !this.data.loading && !this.data.fatal;
+    this.openWorkbenchCapture();
       this._conversationInput = true; this.setData({ textMode: true });
       this.client.input(this._briefMode === 'review' ? '查看事项' + this._briefIssueId + '的需求、图纸和现场记录' : '事项' + this._briefIssueId + '现在在等谁？为什么？');
       this._briefIssueId = '';
@@ -89,6 +104,14 @@ Page({
   refresh() { return this.client.load(); }, older() { return this.client.load(true); },
   async openCitation(e) {
     const id = String(e.currentTarget.dataset.id), epoch = this.client.epoch;
+  openWorkbenchCapture() {
+    if (!this._visible || !this._captureReady || !this._captureEntry) return;
+    const action = this._captureEntry;
+    this._captureEntry = '';
+    if (!this.data.write || this.data.recordWrite === false) return;
+    if (action === 'photo') this.photo();
+    else this.voice();
+  },
     if (!/^[1-9]\d*$/.test(id) || this.data.busy || this.data.pending || this.data.fatal) return;
     this._citationId = id;
     this.client.set({ citation: null, citationLoading: true, citationError: '' });

@@ -3,6 +3,14 @@ const { openSurveyingEditor } = require('../utils/surveyNavigation.js');
 const { ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG } = require('../utils/debugConfig.js');
 const { roleForIdentity } = require('../utils/identity-navigation.js');
 
+function workbenchTabs() {
+  return [
+    { key: 'xiaok', capability: 'construction.projects', pagePath: '/pages/index/index', staffView: 'xiaok', text: '小K', icon: 'chat', tab: true },
+    { key: 'workbench', capability: 'construction.projects', pagePath: '/pages/index/index', staffView: 'workbench', text: '工作台', icon: 'home', tab: true },
+    { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', icon: 'mine', tab: true },
+  ].map(item => ({ ...item, iconPath: './assets/notebook-' + item.icon + '.png', selectedIconPath: './assets/notebook-' + item.icon + '-active.png' }));
+}
+
 // Only expose destinations with an executable route and a matching server capability.
 const ROLE_ITEMS = {
   customer: [
@@ -16,14 +24,7 @@ const ROLE_ITEMS = {
     { key: 'earnings', capability: 'referrer.earnings', pagePath: '/packages/business/referrer-earnings/referrer-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
-  designer: [
-    { key: 'workbench', capability: 'staff.leads', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
-    { key: 'data', capability: 'staff.data', pagePath: '/pages/enterprise-operations/enterprise-operations', text: '数据', tab: true, iconPath: '/images/operations-dashboard/chart.png', selectedIconPath: '/images/operations-dashboard/chart.png' },
-    { key: 'customers', capability: 'staff.leads', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
-    { key: 'design', capability: 'staff.design', pagePath: '/pages/ai-design/ai-design', text: '设计', tab: true, iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
-    { key: 'earnings', capability: 'staff.earnings', pagePath: '/packages/enterprise/staff-earnings/staff-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
-    { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
-  ],
+  designer: workbenchTabs(),
   measurer: [
     { key: 'workbench', capability: 'staff.schedule', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'data', capability: 'staff.data', pagePath: '/pages/enterprise-operations/enterprise-operations', text: '数据', tab: true, iconPath: '/images/operations-dashboard/chart.png', selectedIconPath: '/images/operations-dashboard/chart.png' },
@@ -31,17 +32,8 @@ const ROLE_ITEMS = {
     { key: 'earnings', capability: 'staff.earnings', pagePath: '/packages/enterprise/staff-earnings/staff-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
-  construction_staff: [
-    { key: 'projects', capability: 'construction.projects', pagePath: '/packages/construction/projects/projects', text: '工地', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
-    { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
-  ],
-  enterprise_admin: [
-    { key: 'workbench', capability: 'enterprise.operations', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
-    { key: 'operations', capability: 'enterprise.operations', pagePath: '/pages/enterprise-operations/enterprise-operations', text: '经营', tab: true, iconPath: '/images/operations-dashboard/chart.png', selectedIconPath: '/images/operations-dashboard/chart.png' },
-    { key: 'customers', capability: 'enterprise.customers', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
-    { key: 'commissions', capability: 'enterprise.commissions', pagePath: '/packages/enterprise/enterprise-commissions/enterprise-commissions', text: '提成', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
-    { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
-  ],
+  construction_staff: workbenchTabs(),
+  enterprise_admin: workbenchTabs(),
   platform_admin: [
     { key: 'devices', capability: 'platform.devices', pagePath: '/packages/platform/devices/devices', text: '设备', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'review', capability: 'platform.review', pagePath: '/packages/platform/enterprise-review/enterprise-review', text: '审核', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
@@ -80,7 +72,7 @@ function applyServerBadges(list, badges) {
   const counts = (!unavailable && badges && badges.status === 'ok' && badges.counts) || {};
   return {
     list: list.map((item) => {
-      const count = item.customerView === 'service' ? 0 : Number(counts[item.key] || 0);
+      const count = item.customerView === 'service' || item.staffView ? 0 : Number(counts[item.key] || 0);
       return {
         ...item,
         badgeText: count > 0 ? (count > 99 ? '99+' : String(count)) : ''
@@ -95,7 +87,7 @@ Component({
   data: {
     selected: 0,
     suppressed: false,
-    customerNavigation: false, keyboardHidden: false,
+    customerNavigation: false, staffNavigation: false, keyboardHidden: false,
     compactMeasureTab: true,
     badgeUnavailable: false,
     badgeUnavailableText: '',
@@ -131,6 +123,18 @@ Component({
       }
 
       this.setData({ selected: index });
+      if (item.staffView) {
+        const global = getApp().globalData;
+        const previous = global.siteWorkbenchTab;
+        global.siteWorkbenchTab = item.staffView;
+        const pages = getCurrentPages(), page = pages[pages.length - 1];
+        if (page && '/' + page.route === item.pagePath) {
+          page.setData({ siteWorkbenchTab: item.staffView }, () => this.syncSelected());
+          return;
+        }
+        wx.switchTab({ url: item.pagePath, fail: () => { global.siteWorkbenchTab = previous; this.syncSelected(); } });
+        return;
+      }
       const navigate = item.tab === false || item.pagePath.startsWith('/packages/') ? 'reLaunch' : 'switchTab';
       wx[navigate]({ url: item.pagePath, fail: () => this.syncSelected() });
     },
@@ -178,15 +182,20 @@ Component({
       const pages = getCurrentPages();
       const current = pages && pages.length ? `/${pages[pages.length - 1].route}` : '';
       const customerNavigation = ['customer', null].includes(currentRole(globalData));
+      const staffNavigation = list.some(item => item.staffView);
       const customerView = globalData.customerTab || 'xiaok';
-      const index = list.findIndex((item) => item.pagePath === current && !item.center && (!item.customerView || item.customerView === customerView));
+      const staffView = globalData.siteWorkbenchTab || 'workbench';
+      const index = list.findIndex((item) => item.pagePath === current && !item.center
+        && (!item.customerView || item.customerView === customerView) && (!item.staffView || item.staffView === staffView));
       this.setData({
         list,
         customerNavigation,
+        staffNavigation,
         suppressed: list.length === 0 || customerNavigation,
         compactMeasureTab: list.some((item) => item.center) && list.filter((item) => item.visible).length === 4,
-        selected: index >= 0 && list[index].visible ? index : this.data.selected,
-        badgeUnavailable: decorated.badgeUnavailable,
+        selected: index >= 0 && list[index].visible ? index : staffNavigation ? -1 : this.data.selected,
+        keyboardHidden: staffNavigation && current === '/pages/index/index' && staffView === 'xiaok' && this.data.keyboardHidden,
+        badgeUnavailable: decorated.badgeUnavailable && !staffNavigation,
         badgeUnavailableText: decorated.badgeUnavailableText
       });
     }

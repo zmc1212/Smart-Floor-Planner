@@ -58,6 +58,11 @@ export function siteIssueSummary(issue: IssueView) {
     sourceKind: issue.sourceKind || 'record', recordId: issue.recordId || null, recordVersion: issue.recordVersion || null };
 }
 
+export function siteIssueTitle(issue: IssueView) {
+  if (issue.requestText?.trim()) return issue.requestText.trim().split('\n')[0].slice(0, 100);
+  return [issue.roomName, issue.sourceKind === 'need' ? '设计需求核对' : issue.classificationLabel].filter(Boolean).join(' · ');
+}
+
 /** Counts and lists come from the same set of current issue revisions. */
 export function groupProjectIssues(issues: IssueView[], viewerId?: string, includeText = false) {
   const empty = { awaitingVerification: [] as Row[], awaitingRectification: [] as Row[], rectifying: [] as Row[],

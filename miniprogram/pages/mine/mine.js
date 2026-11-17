@@ -479,6 +479,9 @@ Page({
   onOpenConstruction() {
     wx.navigateTo({ url: '/packages/construction/projects/projects' });
   },
+  onOpenFormalSurveySelection() {
+    if (['designer', 'enterprise_admin'].includes(this.data.activeRole)) ACTION_TARGETS.leads();
+  },
 
   onOpenAllTodos() {
     const role = this.data.mineData.profile.role;

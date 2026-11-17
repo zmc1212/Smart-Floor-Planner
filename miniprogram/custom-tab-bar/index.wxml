@@ -1,4 +1,4 @@
-<view wx:if="{{!suppressed}}" class="tabbar-shell">
+<view wx:if="{{!suppressed && !keyboardHidden}}" class="tabbar-shell {{staffNavigation ? 'staff-notebook-tabs' : ''}}">
   <view wx:if="{{badgeUnavailable}}" class="tabbar-badge-error">{{badgeUnavailableText}}</view>
   <view class="tabbar">
     <view
@@ -8,6 +8,8 @@
       class="tab-item tab-key-{{item.key}} {{item.center ? 'center' : ''}} {{selected === index ? 'active' : ''}}"
       data-index="{{index}}"
       bindtap="switchTab"
+      aria-role="button"
+      aria-label="{{item.text}}"
     >
       <view class="tab-icon {{item.center ? 'center-icon' : ''}} {{item.center && compactMeasureTab ? 'center-icon-compact' : ''}}">
         <image wx:if="{{item.center}}" class="tab-image center-image {{compactMeasureTab ? 'center-image-compact' : ''}}" src="/images/mine-icons/tab-measure-k.png" mode="aspectFit" />

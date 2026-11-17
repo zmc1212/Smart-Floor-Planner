@@ -39,6 +39,7 @@ Page({
       issueId: /^[1-9]\d*$/.test(String(query.issueId || '')) ? String(query.issueId) : '',
       focus: String(query.focus || '').slice(0, 40),
     };
+      scheduleNode: /^[a-z][a-z0-9_-]{0,63}$/.test(String(query.scheduleNode || '')) ? String(query.scheduleNode) : '',
   },
   async onShow() {
     this._visible = true;
@@ -197,6 +198,15 @@ Page({
     if (!link.item && !link.focus) { this._deepLinkApplied = true; return; }
     if (this.data.remindersLoading) return;
     const reminder = this.data.reminders.find(item => item.reminderId === link.item
+    if (link.scheduleNode) {
+      this._deepLinkApplied = true;
+      if (this.data.detail.progress?.nodes.some(node => node.key === link.scheduleNode)) {
+        this.setData({ focusNode: link.scheduleNode }, () => {
+          if (this.current(g)) wx.pageScrollTo({ selector: '#schedule-' + link.scheduleNode, duration: 250 });
+        });
+      } else wx.showToast({ title: '这个计划节点已变化，请查看当前计划', icon: 'none' });
+      return;
+    }
       || item.relatedIssueId === link.item || item.relatedTaskId === link.item);
     this._deepLinkApplied = true;
     if (reminder && this.reminderTarget(reminder)) return;

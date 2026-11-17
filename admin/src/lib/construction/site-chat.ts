@@ -87,9 +87,10 @@ export class SiteChatService {
     };
     return this.transaction ? execute(this.transaction) : withTenantTransaction(this.staff.enterpriseId, execute);
   }
-  read(projectId: string, beforeSeq = '9223372036854775807', limit = 30, issueId?: string) {
+  read(projectId: string, beforeSeq = '9223372036854775807', limit = 30, issueId?: string, recordId?: string) {
     id(beforeSeq);
     if (issueId) id(issueId);
+    if (recordId) id(recordId);
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) fail('invalid_construction', 422);
     return this.scope(projectId, false, async (tx, c, p, permission) => {
       const eid = this.staff.enterpriseId;
@@ -111,7 +112,14 @@ export class SiteChatService {
           where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id and child.resubmission_of_id=r.id))
           or (r.resubmission_of_id is not null and r.status in ('organizing','draft')))
         and (${permission.manage} or r.author_id=${this.staff.adminId}) order by r.updated_at desc limit 100`);
-      const messages = [...new Map([...pageMessages, ...pendingMessages, ...delegationNotices].map(m => [String(m.id), m])).values()]
+      const selected = recordId && beforeSeq === '9223372036854775807' ? await one(tx, sql`
+        select m.id,m.seq,m.client_message_id,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
+        from app.construction_site_records r join app.assistant_messages m
+          on m.enterprise_id=r.enterprise_id and m.id=r.source_message_id and m.conversation_id=r.conversation_id
+        left join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id
+        where r.enterprise_id=${eid} and r.project_id=${projectId} and r.conversation_id=${String(c.id)}
+          and r.id=${recordId} and (${permission.manage} or r.author_id=${this.staff.adminId})`) : null;
+      const messages = [...new Map([...pageMessages, ...pendingMessages, ...delegationNotices, ...(selected ? [selected] : [])].map(m => [String(m.id), m])).values()]
         .sort((a, b) => BigInt(String(a.seq)) < BigInt(String(b.seq)) ? -1 : 1);
       const items: { message: Row; record: Row | null; response?: Row; issue?: unknown }[] = [];
       for (const message of messages) {
@@ -180,6 +188,7 @@ export class SiteChatService {
         records[String(record.id)] = Number(record.version);
       }
       return siteDto({ conversationId: c.id, project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access, stageName: stage?.name || '', stageKey: p.current_stage_key },
+        ...(recordId && beforeSeq === '9223372036854775807' ? { focusedMessageId: selected ? String(selected.id) : '' } : {}),
         quickWorks: siteQuickWorks.filter(w => w.stage === (p.current_stage_key === 'masonry_carpentry' ? 'masonry_carpentry' : 'utilities')),
         ...permission, rooms, plans,
         ...(permission.collaboration ? { progress: await projectSchedule(tx, eid, p),

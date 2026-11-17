@@ -4,7 +4,7 @@ const ROLE_LANDING_PATHS = Object.freeze({
   staff: '/pages/index/index',
   designer: '/pages/index/index',
   measurer: '/pages/index/index',
-  construction_staff: '/packages/construction/projects/projects',
+  construction_staff: '/pages/index/index',
   salesperson: '/packages/business/promotion-records/promotion-records',
   enterprise_admin: '/pages/index/index',
   platform_admin: '/packages/platform/devices/devices'
@@ -30,7 +30,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/assistant/chat/chat': ['customer.service', 'construction.projects', 'enterprise.operations', 'platform.review'],
   '/packages/assistant/requirements/requirements': 'customer.service',
   '/packages/assistant/handoff/handoff': ['customer.service', 'staff.leads', 'enterprise.operations'],
-  '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations'],
+  '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations', 'construction.projects'],
   '/pages/enterprise-operations/enterprise-operations': ['staff.data', 'enterprise.operations'],
   '/pages/leads-management/leads-management': ['staff.leads', 'staff.tasks', 'enterprise.customers'],
   '/pages/ai-design/ai-design': ['staff.design', 'staff.surveying'],

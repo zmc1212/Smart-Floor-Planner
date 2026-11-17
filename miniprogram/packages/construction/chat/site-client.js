@@ -98,7 +98,9 @@ class SiteClient {
     if (!this.current(epoch) || (older && !this.state.nextCursor)) return;
     const readSeq = this.readSeq = (this.readSeq || 0) + 1, valid = () => this.current(epoch) && readSeq === this.readSeq;
     try {
-      const r = await this.request(this.base + (older ? '?beforeSeq=' + this.state.nextCursor + '&limit=30' : '?limit=' + Math.min(100, Math.max(30, this.state.items.length))) + (this.issueId ? '&issueId=' + this.issueId : ''), 'GET', {}, { suppressUnauthorized: true });
+      const query = older ? '?beforeSeq=' + this.state.nextCursor + '&limit=30' : '?limit=' + Math.min(100, Math.max(30, this.state.items.length));
+      const focus = (this.issueId ? '&issueId=' + this.issueId : '') + (!older && this.recordId ? '&recordId=' + this.recordId : '');
+      const r = await this.request(this.base + query + focus, 'GET', {}, { suppressUnauthorized: true });
       if (!valid()) return;
       const { versions, ...data } = r.data, fresh = data.items.map(decorate);
       // Previously loaded history is refreshed as well: edits/revocations cannot remain as stale cards.

@@ -11,6 +11,7 @@
     <view class="chat-content">
       <view wx:if="{{loading}}" class="state">正在读取本工地对话…</view>
       <view wx:if="{{!loading && !fatal && !write}}" class="feedback">当前只可查看工地记录，发送和核对操作暂不可用。</view>
+      <view wx:if="{{focusedRecordUnavailable && !fatal}}" class="feedback">这条原记录目前不可查看。</view>
       <view wx:if="{{error}}" class="feedback" role="alert"><text>{{error}}</text><button wx:if="{{pending}}" bindtap="reconcile" disabled="{{busy}}">核对同一次操作</button><button wx:else bindtap="refresh" disabled="{{busy}}">重新读取</button></view>
       <view wx:if="{{speechBusy || speechError}}" class="feedback" role="status"><text>{{speechBusy ? '正在录音，结束后可回听并发送。' : speechError}}</text><button wx:if="{{!speechBusy}}" bindtap="voice">处理录音</button></view>
       <view wx:if="{{success && !error}}" class="success" aria-live="polite">{{success}}</view>
