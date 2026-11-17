@@ -46,7 +46,9 @@ test('the site welcome keeps the notebook language and the three-step topics', (
   assert.match(helper, /下一步安排/);
   assert.match(wxml, /class="notebook-welcome"/);
   assert.match(wxml, /welcome-title/);
+  assert.match(wxml, /welcome-subtitle site-project-line/);
   assert.match(wxml, /welcome-subtitle site-subtitle/);
+  assert.match(less, /\.site-project-text \{[^}]*white-space: nowrap[^}]*text-overflow: ellipsis/);
   assert.match(less, /\.site-subtitle \{[^}]*white-space: normal/);
   assert.match(wxml, /工地动态/);
   assert.match(wxml, /siteTopics/);

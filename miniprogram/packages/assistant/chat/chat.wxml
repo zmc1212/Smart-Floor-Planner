@@ -15,7 +15,7 @@
     <text class="fabric-label welcome-label">工地动态</text>
     <text class="welcome-title">我家的工地</text>
     <view class="pencil-underline" aria-hidden="true"></view>
-    <view class="welcome-subtitle site-subtitle" bindtap="openOwnerSite">{{siteContext.name}} · {{siteContext.stageName ? siteContext.stageName + '阶段' : '施工中'}}<text wx:if="{{siteContext.hasTodayReport}}"> · 今日有更新</text><text wx:elif="{{siteContext.hasReport}}"> · 有新日报</text><text> ›</text></view>
+    <view class="welcome-subtitle site-project-line" bindtap="openOwnerSite"><text class="site-project-text">{{siteContext.name}} · {{siteContext.stageName ? siteContext.stageName + '阶段' : '施工中'}}<text wx:if="{{siteContext.hasTodayReport}}"> · 今日有更新</text><text wx:elif="{{siteContext.hasReport}}"> · 有新日报</text></text><text class="site-project-arrow">›</text></view>
     <view class="welcome-subtitle site-subtitle">{{siteGreeting}}</view>
     <view class="topic-intro"><view></view><text>猜你想问</text><view></view></view>
     <view class="notebook-topics">
