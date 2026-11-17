@@ -23,6 +23,7 @@ const { FollowupChat, emptyFollowupChat, followupChatMethods } = require('../lib
 const { ReportQuestionController, reportQuestionMethods, emptyReportQuestion } = require('../lib/report-context');
 const { initialOwnerReminder, ownerReminderMethods } = require('./owner-reminders');
 const { ownerSiteContext } = require('../lib/owner-site-context');
+const { measureIntent, measureInvite } = require('../lib/measure-card');
 const api = require('../../../utils/api');
 
 function sessionToken() {
@@ -64,6 +65,7 @@ module.exports = () => ({
 			{ title: '预算安排', helper: '先聊想法', icon: 'requirement-budget', text: '想聊聊装修预算怎么安排' },
 		],
 		siteContext: null, siteTopics: [], siteGreeting: '',
+		measureCardVisible: false, measureCardDismissed: false,
 		mediaItems: [], mediaPaths: {}, mediaLoading: false, mediaBusy: false, mediaPending: false, mediaError: '', mediaKind: 0, mediaRoom: '',
 		formalPlans: [], formalRooms: [], formalIndex: 0, formalRoomIndex: 0, mediaPendingFormal: false,
 		portfolioReplyId: '', portfolioItems: [], portfolioImages: {}, portfolioError: '', portfolioNotice: '', portfolioLoading: false,
@@ -119,6 +121,7 @@ module.exports = () => ({
 						if (this._shown && this.plans) this.plans.load(this.controller.conversationId, patch.messages);
 						if (this._shown) this.loadDesignerCards(patch.messages);
 						this.loadMessageImages(patch.messages);
+						this.maybeShowMeasureCard(patch.messages);
 						const replyId = this.data.portfolioReplyId;
 						if (replyId && !patch.messages.some(message => message.id === replyId && message.discovery?.works)) {
 							this.recommendations.clear(); this.setData({ portfolioReplyId: '' });
@@ -351,6 +354,9 @@ module.exports = () => ({
 		if (this.data.needsLogin) { this.login(); return; }
 		if (this.data.contextBusy || this.data.contextPending) return;
 		if (this.data.speechBusy || this._openingVoice) return;
+		if (!this.data.staffTab && !this.data.followupActive && measureIntent(this.data.draft)) {
+			this.setData({ measureCardVisible: true, measureCardDismissed: false });
+		}
 		if (!this.data.conversation?.id && this.data.draft && this.data.canSend && !this.data.busy && !this.data.pendingSend && !this.data.pendingAction && !this.data.generating && !this.data.readOnly) {
 			if (!await this.controller.handoffConversation()) return;
 		}
@@ -596,6 +602,26 @@ module.exports = () => ({
 			|| this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
 		wx.navigateTo({ url: '/packages/assistant/requirements/requirements?conversationId=' + encodeURIComponent(this.data.conversation.id) });
 	},
+	maybeShowMeasureCard(messages) {
+		if (this.data.staffTab || this.data.professionalFollowup || this.data.followupActive || this.data.readOnly
+			|| this.data.measureCardDismissed || this.data.measureCardVisible) return;
+		if (!Array.isArray(messages) || !messages.length) return;
+		const latest = messages[messages.length - 1];
+		if (!latest || latest.authorKind !== 'assistant') return;
+		const text = (latest.blocks || []).map(block => block.text || '').join('');
+		if (measureInvite(text)) this.setData({ measureCardVisible: true });
+	},
+
+	async bookMeasure() {
+		if (this.data.handoffBusy || this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
+		this.setData({ measureCardVisible: false });
+		await this.openHandoff();
+	},
+
+	dismissMeasure() {
+		this.setData({ measureCardVisible: false, measureCardDismissed: true });
+	},
+
 	async openHandoff() {
 		const conversation = this.data.conversation;
 		if (conversation && ['human', 'handoff_requested'].includes(conversation.mode)) {
@@ -669,6 +695,7 @@ module.exports = () => ({
 		if (this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
 		chatResume.clear();
 		delete this._options.conversationId;
+		this.setData({ measureCardVisible: false, measureCardDismissed: false });
 		this.followups.leave(); this.closeSheet(); const result = this.controller.newConversation();
 		return this.controller.visible ? result : this.controller.show(this._options);
 	},
