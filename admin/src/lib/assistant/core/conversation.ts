@@ -411,7 +411,10 @@ export class ConversationService {
       const after = cursor.afterSeq;
       if (after !== undefined && BigInt(after) > BigInt(latest))
         return { items: [], nextCursor: null, afterCursor: after, latestSeq: latest, hasMore: false, reset: true };
-      const purpose = c.purpose === 'construction_followup' ? sql`purpose is distinct from 'construction.report.facts'` : sql`true`;
+      let purpose = sql`true`;
+      if (c.purpose === 'construction_followup') purpose = sql`purpose is distinct from 'construction.report.facts'`;
+      if (c.purpose === 'customer_consultation' && this.actor.principal.kind === 'user')
+        purpose = sql`purpose is distinct from 'construction.stage_reminder'`;
       const result = after !== undefined
         ? await rows(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq>${after}

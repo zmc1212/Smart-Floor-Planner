@@ -1,9 +1,12 @@
 const api = require('../../../utils/api');
+const ownerReminders = require('../../../utils/owner-reminders');
 const { loadSiteFont } = require('../lib/site-font');
 
 const base = '/miniprogram/construction/owner-sites';
 const readOptions = { suppressUnauthorized: true };
-const emptyProject = { project: null, report: null, camera: null, projectLoading: false, projectError: '', cameraLoading: false, cameraError: '' };
+const emptyReminders = { remindersOpen: false, siteReminders: [], remindersLoading: false, remindersError: '',
+  reminderSelected: '', reminderDetail: null, reminderReading: false, reminderReadError: '' };
+const emptyProject = { project: null, report: null, camera: null, projectLoading: false, projectError: '', cameraLoading: false, cameraError: '', ...emptyReminders };
 
 function session() {
   return getApp().globalData.token || wx.getStorageSync('token');
@@ -53,11 +56,13 @@ Component({
       const token = session();
       if (!this.current(generation, token)) return;
       if (!token) { this.setData({ loading: false, needsLogin: true }); return; }
+      void ownerReminders.refreshSummary();
       try {
         const { data } = await api.request(base, 'GET', {}, readOptions);
         if (!this.current(generation, token)) return;
         const projects = data.items;
-        const selectedIndex = Math.max(projects.findIndex(project => project.id === this._projectId), 0);
+        const selectedProjectId = this._projectId || ownerReminders.summary()?.unreadProjectId;
+        const selectedIndex = Math.max(projects.findIndex(project => project.id === selectedProjectId), 0);
         this.setData({ projects, selectedIndex, loading: false });
         if (projects.length) await this.readProject(projects[selectedIndex]);
       } catch (error) {
@@ -72,6 +77,51 @@ Component({
       return this.readProject(selected);
     },
     retryProject() { return this.load(); },
+    toggleSiteReminders() {
+      if (!this.data.project?.progressAccess || !this.current(this._generation, this._projectSession)) return;
+      this._reminderAction = (this._reminderAction || 0) + 1;
+      const remindersOpen = !this.data.remindersOpen;
+      this.setData({ ...emptyReminders, remindersOpen });
+      if (remindersOpen) return this.loadSiteReminders();
+    },
+    async loadSiteReminders() {
+      const projectId = this.data.project?.id, generation = this._generation, token = this._projectSession;
+      if (!projectId || !this.data.remindersOpen || this.data.remindersLoading || !this.current(generation, token)) return;
+      const action = this._reminderAction;
+      const current = () => this.current(generation, token) && this._reminderAction === action;
+      this.setData({ remindersLoading: true, remindersError: '' });
+      try {
+        const items = await ownerReminders.list(projectId);
+        if (current()) this.setData({ siteReminders: items.map(item => ({ ...item,
+          dateLabel: item.deliveredAt ? shanghaiDate(item.deliveredAt, true) : '' })) });
+      } catch (error) {
+        if (current()) this.setData({ remindersError: error.statusCode === 404 ? '当前工地提醒不可查看。' : '提醒暂时无法读取。' });
+      } finally {
+        if (current()) this.setData({ remindersLoading: false });
+      }
+    },
+    async openSiteReminder(event) {
+      const id = String(event.currentTarget.dataset.id);
+      const item = this.data.siteReminders.find(reminder => reminder.reminderId === id);
+      const generation = this._generation, token = this._projectSession;
+      if (!item || this.data.reminderReading || !this.current(generation, token)) return;
+      if (this.data.reminderDetail?.reminderId === id) {
+        this.setData({ reminderSelected: '', reminderDetail: null });
+        return;
+      }
+      const action = this._reminderAction = (this._reminderAction || 0) + 1;
+      const current = () => this.current(generation, token) && this._reminderAction === action;
+      this.setData({ reminderSelected: id, reminderReading: true, reminderDetail: null, reminderReadError: '' });
+      try {
+        const detail = await ownerReminders.read(item);
+        if (current()) this.setData({ reminderDetail: detail,
+          siteReminders: this.data.siteReminders.map(row => row.reminderId === id ? { ...row, readAt: detail.readAt } : row) });
+      } catch (error) {
+        if (current()) this.setData({ reminderReadError: ownerReminders.readError(error) });
+      } finally {
+        if (current()) this.setData({ reminderReading: false });
+      }
+    },
     async readProject(selected) {
       const token = session(), generation = this._generation = (this._generation || 0) + 1;
       this._projectSession = token;

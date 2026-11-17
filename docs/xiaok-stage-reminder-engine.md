@@ -107,6 +107,8 @@ Tick 只在会话消息和提醒回执一起提交后计 `delivered`。`no_inbox
 
 ## 10. 四端跳转与工作台收件（I7.3）
 
+业主小K聊天使用 `/api/miniprogram/xiaok/reminders/owner` 的本人收件投影。`0133` 为已送达提醒保存 `chat_prompted_at` 与 `read_at`。最新新送达的提醒可原子领取一次提示，收起时仍计入「工地」未读。打开准确正文写入已读时间，重试返回同一回执。迁移为旧送达记录初始化提示时间，业主仍可通过「工地 → 当前提醒」按已获权项目回看。每次读取和写回复核当前业主身份、进度权限及本人收件人。日周报仍沿原简报记录和独立已读回执。
+
 - `actionUrl` 为 `/packages/construction/projects/projects?project=<id>&item=<id>`；计划节点额外携带真实 `roomId`。
 - `GET /api/miniprogram/xiaok/reminders` 返回 `relatedIssueId`、`relatedTaskId`、`roomId`、`channel`、`history`，并按当天成员/业主身份重新过滤；撤权用户不再获得历史提醒正文。
 - `channel`：`conversation` 表示已有站内消息回执；`workbench` 表示项目经理通过现有工地工作台收件；`failed` 表示其他发送失败。`delivered` 明确保持未读，不显示为已读。

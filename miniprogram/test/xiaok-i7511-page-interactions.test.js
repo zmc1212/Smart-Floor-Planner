@@ -32,46 +32,99 @@ function instance(definition) {
   return page;
 }
 
-test('owner reminder cards load from the signed conversation, refresh on reentry and open the saved project report', async () => {
+test('a new owner reminder prompts once, dismiss keeps the count, and viewing retries the read receipt', async t => {
   const previousRequest = api.request;
-  const calls = [], toasts = [];
-  global.wx = { getStorageSync: () => '', showToast: options => toasts.push(options.title) };
-  api.request = async (...args) => {
-    calls.push(args);
-    return { data: { items: [
-      { reminderId: 'rem_a', projectId: '9', status: 'delivered', title: '水电阶段已开始', triggerLabel: '阶段已更新' },
-      { reminderId: 'rem_b', projectId: '9', status: 'paused', title: '待确认', triggerLabel: '业主待确认' },
-      { reminderId: 'rem_c', projectId: '9', status: 'cancelled', title: '旧提醒', triggerLabel: '节点到期' },
-      { reminderId: 'rem_d', projectId: '9', status: 'pending', title: '待发送', triggerLabel: '待办' },
-    ] } };
+  global.getApp = () => ({ globalData: { token: 'owner-reminder-chat' } });
+  global.wx = { getStorageSync: () => '' };
+  const inbox = require('../utils/owner-reminders');
+  const page = instance(require('../packages/assistant/chat/chat-definition')());
+  page._alive = page._shown = true;
+  page.openSheet = sheet => page.setData({ sheet });
+  t.after(() => { page.stopOwnerReminderRefresh(); api.request = previousRequest; delete global.getApp; delete global.wx; });
+
+  const items = [{ reminderId: 'rem_a', projectId: '9', title: '水电阶段已开始' }];
+  let failed = false;
+  const writes = [];
+  api.request = async (url, method, data) => {
+    assert.equal(url, '/miniprogram/xiaok/reminders/owner');
+    const unread = items.filter(item => !item.readAt);
+    if (method === 'GET') return { data: { unreadCount: unread.length, next: unread.find(item => !item.prompted) } };
+    const item = items.find(item => item.reminderId === data.reminderId && item.projectId === data.projectId);
+    writes.push(data.action);
+    if (data.action === 'prompt') { item.prompted = true; return { data: { prompt: item } }; }
+    if (!failed) { failed = true; throw { statusCode: 503 }; }
+    item.readAt = '2026-11-17T00:00:00Z';
+    return { data: { item: { ...item, body: '核对水电阶段的施工安排。' } } };
   };
-  try {
-    const page = instance(require('../packages/assistant/chat/chat-definition')());
-    page._options = {}; page._alive = true; page._shown = true;
-    page.controller = { ensureEntry: async () => ({ entryToken: 'entry-1' }) };
-    await page.loadOwnerStageReminders();
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0][0], '/miniprogram/xiaok/reminders');
-    assert.deepEqual(calls[0][3].headers, { 'X-Assistant-Entry': 'entry-1' });
-    assert.deepEqual(page.data.ownerStageReminders.map(item => item.reminderId), ['rem_a', 'rem_b', 'rem_d']);
-    assert.equal(page.data.ownerStageReminders[0].statusLabel, '已送达 · 未读');
-    assert.equal(page.data.ownerStageReminders[1].statusLabel, '已暂停');
+  const refresh = async () => {
+    clearTimeout(page._ownerReminderTimer);
+    page._ownerReminderVisit = (page._ownerReminderVisit || 0) + 1;
+    await page.refreshOwnerReminder(page._ownerReminderVisit, 'owner-reminder-chat');
+  };
 
-    page.data.followupBindings = [{ bindingId: 'b1', hidden: false, latestReport: { reportId: 'r1' }, projects: [{ id: '9' }] }];
-    page.syncOwnerWeeklyEntry();
-    assert.equal(page.data.ownerWeeklyBindingId, 'b1');
-    let selected = '';
-    page.selectFollowup = event => { selected = event.currentTarget.dataset.id; };
-    await page.openOwnerReminder({ currentTarget: { dataset: { id: 'rem_a' } } });
-    assert.equal(selected, 'b1');
+  await refresh();
+  assert.equal(page.data.ownerReminderPrompt.reminderId, 'rem_a');
+  page.dismissOwnerReminder();
+  page.stopOwnerReminderRefresh();
+  await refresh();
+  assert.equal(page.data.ownerReminderPrompt, null);
+  assert.equal(inbox.summary().unreadCount, 1);
+  assert.deepEqual(writes, ['prompt']);
 
-    await page.loadOwnerStageReminders();
-    assert.equal(calls.length, 2, 'reentry refreshes the reminder list');
+  items.unshift({ reminderId: 'rem_b', projectId: '9', title: '请核对插座位置' });
+  page.focusInput();
+  await refresh();
+  assert.equal(page.data.ownerReminderPrompt, null);
+  assert.equal(inbox.summary().unreadCount, 2);
+  page.blurInput();
+  await refresh();
+  assert.equal(page.data.ownerReminderPrompt.reminderId, 'rem_b');
+  await page.openOwnerReminder();
+  assert.equal(page.data.ownerReminderPrompt, null);
+  assert.equal(page.data.sheet, 'ownerReminder');
+  assert.match(page.data.ownerReminderError, /重试/u);
+  assert.equal(inbox.summary().unreadCount, 2);
+  await page.readOwnerReminder();
+  assert.equal(page.data.ownerReminderDetail.body, '核对水电阶段的施工安排。');
+  assert.equal(inbox.summary().unreadCount, 1);
+  assert.deepEqual(writes, ['prompt', 'prompt', 'read', 'read']);
+});
 
-    page.data.followupBindings = [];
-    await page.openOwnerReminder({ currentTarget: { dataset: { id: 'rem_a' } } });
-    assert.equal(toasts.at(-1), '该工地的周报尚未生成');
-  } finally { api.request = previousRequest; }
+test('the owner site lists reminders for the selected project and clears the badge after a confirmed read', async t => {
+  const { definition, app } = pageFrom(path.join(root, 'packages/construction/owner-home/owner-home.js'));
+  const originalRequest = api.request;
+  global.getApp = () => app;
+  global.wx = { getStorageSync: () => '' };
+  t.after(() => { api.request = originalRequest; delete global.getApp; delete global.wx; delete global.getCurrentPages; });
+
+  app.globalData.token = 'owner-reminder-site';
+  const page = instance({ ...definition.methods, data: definition.data });
+  page._visible = true;
+  page._generation = 1;
+  page._projectSession = 'owner-reminder-site';
+  page.data.project = { id: '9', progressAccess: true };
+  const inbox = require('../utils/owner-reminders');
+  const badges = [];
+  global.getCurrentPages = () => [{ selectComponent: () => ({ syncReminderBadge: () => badges.push(inbox.summary().unreadCount) }) }];
+  const item = { reminderId: 'rem_a', projectId: '9', title: '水电阶段已开始', deliveredAt: '2026-11-17T00:00:00Z', readAt: null };
+  api.request = async (url, method, data) => {
+    if (url.endsWith('?projectId=9')) return { data: { items: [item] } };
+    if (method === 'GET') return { data: { unreadCount: item.readAt ? 0 : 1 } };
+    assert.deepEqual(data, { action: 'read', projectId: '9', reminderId: 'rem_a' });
+    item.readAt = '2026-11-17T00:05:00Z';
+    return { data: { item: { ...item, body: '请查看阶段注意事项。' } } };
+  };
+
+  await inbox.refreshSummary();
+  await page.toggleSiteReminders();
+  assert.equal(page.data.siteReminders[0].readAt, null);
+  await page.openSiteReminder({ currentTarget: { dataset: { id: 'rem_a' } } });
+  assert.equal(page.data.reminderDetail.body, '请查看阶段注意事项。');
+  assert.equal(page.data.siteReminders[0].readAt, item.readAt);
+  assert.deepEqual(badges, [1, 0]);
+  await page.toggleSiteReminders();
+  await page.toggleSiteReminders();
+  assert.equal(page.data.siteReminders[0].readAt, item.readAt);
 });
 
 function chatPage(brief = {}) {

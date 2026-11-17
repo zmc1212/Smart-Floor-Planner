@@ -6,15 +6,16 @@ const { test } = require('node:test');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('owner C01 shows stage reminders and opens the saved weekly report', () => {
+test('owner C01 mounts one dismissible prompt and opens reports from the existing followup entry', () => {
   const chat = read('packages/assistant/chat/chat.wxml');
   const definition = read('packages/assistant/chat/chat-definition.js');
-  assert.match(chat, /owner-stage-brief/u);
-  assert.match(chat, /bindtap="refreshOwnerReminders"/u);
-  assert.match(chat, /data-id="\{\{ownerWeeklyBindingId\}\}" bindtap="selectFollowup"/u);
-  assert.match(definition, /loadOwnerStageReminders/u);
-  assert.match(definition, /'\/miniprogram\/xiaok\/reminders'/u);
-  assert.match(definition, /syncOwnerWeeklyEntry/u);
+  assert.match(chat, /class="owner-reminder-prompt"/u);
+  assert.match(chat, /bindtap="dismissOwnerReminder"/u);
+  assert.match(chat, /bindtap="openOwnerReminder"/u);
+  assert.match(chat, /data-id="\{\{item.bindingId\}\}" bindtap="selectFollowup"/u);
+  assert.doesNotMatch(chat, /owner-stage-brief|ownerWeeklyBindingId/u);
+  assert.match(definition, /startOwnerReminderRefresh/u);
+  assert.match(read('packages/construction/owner-home/owner-home.wxml'), /当前提醒/u);
 });
 
 test('designer and boss workbench shows role reminders and a report entry', () => {

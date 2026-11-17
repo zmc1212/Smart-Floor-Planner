@@ -24,6 +24,28 @@
         <text class="site-stage-value">{{project.stageName || (project.progressAccess ? '待更新' : '暂无可查看阶段')}}</text>
       </view>
 
+      <view wx:if="{{project.progressAccess}}" class="site-paper site-reminders">
+        <button class="site-pending-row site-reminders-toggle" bindtap="toggleSiteReminders" aria-expanded="{{remindersOpen}}">
+          <text>当前提醒</text><view class="site-chevron {{remindersOpen ? 'site-chevron-down' : ''}}" />
+        </button>
+        <block wx:if="{{remindersOpen}}">
+          <text wx:if="{{remindersLoading}}" class="site-meta site-report-empty">正在读取提醒…</text>
+          <view wx:elif="{{remindersError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{remindersError}}</text><button class="text-action" bindtap="loadSiteReminders">重试</button></view>
+          <text wx:elif="{{!siteReminders.length}}" class="site-meta site-report-empty">暂无已送达的提醒</text>
+          <view wx:for="{{siteReminders}}" wx:key="reminderId" class="site-reminder-row">
+            <button class="site-pending-row site-reminder-item" bindtap="openSiteReminder" data-id="{{item.reminderId}}" aria-expanded="{{reminderDetail.reminderId === item.reminderId}}">
+              <view class="site-reminder-heading"><text>{{item.title}}</text><text wx:if="{{item.dateLabel}}" class="site-meta">{{item.dateLabel}}</text></view>
+              <text class="site-reminder-status {{item.readAt ? 'site-meta' : 'site-reminder-unread'}}">{{item.readAt ? '已读' : '未读'}}</text>
+            </button>
+            <block wx:if="{{reminderSelected === item.reminderId}}">
+              <text wx:if="{{reminderReading}}" class="site-meta site-report-empty">正在读取提醒…</text>
+              <view wx:elif="{{reminderReadError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{reminderReadError}}</text><button class="text-action" bindtap="openSiteReminder" data-id="{{item.reminderId}}">重试</button></view>
+              <text wx:elif="{{reminderDetail}}" class="site-reminder-body" user-select>{{reminderDetail.body}}</text>
+            </block>
+          </view>
+        </block>
+      </view>
+
       <button wx:if="{{camera}}" class="site-paper site-camera" bindtap="openCamera" aria-label="查看监控">
         <view class="site-camera-frame">
           <image wx:if="{{camera.src}}" class="site-camera-image" src="{{camera.src}}" mode="aspectFill"

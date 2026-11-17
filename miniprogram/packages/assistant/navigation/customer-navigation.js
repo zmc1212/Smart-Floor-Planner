@@ -1,11 +1,23 @@
+const ownerReminders = require('../../../utils/owner-reminders');
+
 // The customer-only navigation and its artwork stay in the asynchronously
 // loaded assistant package. The main-package professional navigation is shared.
 Component({
   properties: { items: Array, selected: Number, floating: Boolean, keyboardHidden: Boolean },
+  data: { reminderBadge: '' },
   lifetimes: { attached() { this._alive = true; this.syncSelected(); }, detached() { this._alive = false; clearTimeout(this._navigationTimer); clearTimeout(this._syncTimer); } },
-  pageLifetimes: { show() { this.syncSelected(); } },
+  pageLifetimes: { async show() {
+    this.syncSelected();
+    await getApp().globalData.sessionHydrationPromise;
+    if (this._alive) void ownerReminders.refreshSummary();
+  } },
   methods: {
+    syncReminderBadge() {
+      const count = ownerReminders.summary()?.unreadCount || 0;
+      this.setData({ reminderBadge: count > 99 ? '99+' : count ? String(count) : '' });
+    },
     syncSelected() {
+      this.syncReminderBadge();
       const page = getCurrentPages().slice(-1)[0];
       const bar = page && typeof page.getTabBar === 'function' && page.getTabBar();
       if (!bar?.data.list.length) {
