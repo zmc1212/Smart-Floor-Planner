@@ -24,61 +24,87 @@
         <text class="site-stage-value">{{project.stageName || (project.progressAccess ? '待更新' : '暂无可查看阶段')}}</text>
       </view>
 
-      <view wx:if="{{project.progressAccess}}" class="site-paper site-reminders">
-        <button class="site-pending-row site-reminders-toggle" bindtap="toggleSiteReminders" aria-expanded="{{remindersOpen}}">
-          <text>当前提醒</text><view class="site-chevron {{remindersOpen ? 'site-chevron-down' : ''}}" />
-        </button>
-        <block wx:if="{{remindersOpen}}">
-          <text wx:if="{{remindersLoading}}" class="site-meta site-report-empty">正在读取提醒…</text>
-          <view wx:elif="{{remindersError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{remindersError}}</text><button class="text-action" bindtap="loadSiteReminders">重试</button></view>
-          <text wx:elif="{{!siteReminders.length}}" class="site-meta site-report-empty">暂无已送达的提醒</text>
-          <view wx:for="{{siteReminders}}" wx:key="reminderId" class="site-reminder-row">
-            <button class="site-pending-row site-reminder-item" bindtap="openSiteReminder" data-id="{{item.reminderId}}" aria-expanded="{{reminderDetail.reminderId === item.reminderId}}">
-              <view class="site-reminder-heading"><text>{{item.title}}</text><text wx:if="{{item.dateLabel}}" class="site-meta">{{item.dateLabel}}</text></view>
-              <text class="site-reminder-status {{item.readAt ? 'site-meta' : 'site-reminder-unread'}}">{{item.readAt ? '已读' : '未读'}}</text>
-            </button>
-            <block wx:if="{{reminderSelected === item.reminderId}}">
-              <text wx:if="{{reminderReading}}" class="site-meta site-report-empty">正在读取提醒…</text>
-              <view wx:elif="{{reminderReadError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{reminderReadError}}</text><button class="text-action" bindtap="openSiteReminder" data-id="{{item.reminderId}}">重试</button></view>
-              <text wx:elif="{{reminderDetail}}" class="site-reminder-body" user-select>{{reminderDetail.body}}</text>
-            </block>
+      <block wx:for="{{liveApplication || liveError ? liveSiteSections : siteSections}}" wx:for-item="section" wx:key="*this">
+        <view wx:if="{{section === 'reminders' && project.progressAccess}}" class="site-paper site-reminders">
+          <button class="site-pending-row site-reminders-toggle" bindtap="toggleSiteReminders" aria-expanded="{{remindersOpen}}">
+            <text>当前提醒</text><view class="site-chevron {{remindersOpen ? 'site-chevron-down' : ''}}" />
+          </button>
+          <block wx:if="{{remindersOpen}}">
+            <text wx:if="{{remindersLoading}}" class="site-meta site-report-empty">正在读取提醒…</text>
+            <view wx:elif="{{remindersError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{remindersError}}</text><button class="text-action" bindtap="loadSiteReminders">重试</button></view>
+            <text wx:elif="{{!siteReminders.length}}" class="site-meta site-report-empty">暂无已送达的提醒</text>
+            <view wx:for="{{siteReminders}}" wx:key="reminderId" class="site-reminder-row">
+              <button class="site-pending-row site-reminder-item" bindtap="openSiteReminder" data-id="{{item.reminderId}}" aria-expanded="{{reminderDetail.reminderId === item.reminderId}}">
+                <view class="site-reminder-heading"><text>{{item.title}}</text><text wx:if="{{item.dateLabel}}" class="site-meta">{{item.dateLabel}}</text></view>
+                <text class="site-reminder-status {{item.readAt ? 'site-meta' : 'site-reminder-unread'}}">{{item.readAt ? '已读' : '未读'}}</text>
+              </button>
+              <block wx:if="{{reminderSelected === item.reminderId}}">
+                <text wx:if="{{reminderReading}}" class="site-meta site-report-empty">正在读取提醒…</text>
+                <view wx:elif="{{reminderReadError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{reminderReadError}}</text><button class="text-action" bindtap="openSiteReminder" data-id="{{item.reminderId}}">重试</button></view>
+                <text wx:elif="{{reminderDetail}}" class="site-reminder-body" user-select>{{reminderDetail.body}}</text>
+              </block>
+            </view>
+          </block>
+        </view>
+
+        <block wx:if="{{section === 'camera'}}">
+          <button wx:if="{{camera}}" class="site-paper site-camera" bindtap="openCamera" aria-label="查看监控">
+            <view class="site-camera-frame">
+              <image wx:if="{{camera.src}}" class="site-camera-image" src="{{camera.src}}" mode="aspectFill"
+                binderror="cameraImageFailed" data-date="{{camera.dateLabel}}" />
+              <text wx:else class="site-camera-placeholder">监控封面暂不可用</text>
+              <view class="site-camera-play" aria-hidden="true"><view class="site-play-triangle" /></view>
+            </view>
+            <view class="site-camera-footer">
+              <view class="site-camera-meta"><text class="site-camera-name">{{camera.name}}</text><text wx:if="{{camera.dateLabel}}" class="site-meta">{{camera.dateLabel}}</text></view>
+              <view class="site-camera-cta"><text>查看监控</text><view class="site-chevron" /></view>
+            </view>
+          </button>
+          <view wx:else class="site-paper site-state site-camera-state">
+            <text>{{cameraLoading ? '正在读取监控…' : (cameraError || '工地监控尚未开通')}}</text>
+            <button wx:if="{{cameraError}}" class="text-action" bindtap="retryCover">重新读取</button>
           </view>
         </block>
-      </view>
 
-      <button wx:if="{{camera}}" class="site-paper site-camera" bindtap="openCamera" aria-label="查看监控">
-        <view class="site-camera-frame">
-          <image wx:if="{{camera.src}}" class="site-camera-image" src="{{camera.src}}" mode="aspectFill"
-            binderror="cameraImageFailed" data-date="{{camera.dateLabel}}" />
-          <text wx:else class="site-camera-placeholder">监控封面暂不可用</text>
-          <view class="site-camera-play" aria-hidden="true"><view class="site-play-triangle" /></view>
-        </view>
-        <view class="site-camera-footer">
-          <view class="site-camera-meta"><text class="site-camera-name">{{camera.name}}</text><text wx:if="{{camera.dateLabel}}" class="site-meta">{{camera.dateLabel}}</text></view>
-          <view class="site-camera-cta"><text>查看监控</text><view class="site-chevron" /></view>
-        </view>
-      </button>
-      <view wx:else class="site-paper site-state site-camera-state">
-        <text>{{cameraLoading ? '正在读取监控…' : (cameraError || '工地监控尚未开通')}}</text>
-        <button wx:if="{{cameraError}}" class="text-action" bindtap="retryCover">重新读取</button>
-      </view>
-
-      <view class="site-paper site-report">
-        <view class="site-report-heading"><text class="fabric site-report-label">最新日报</text><text class="site-meta">{{report.dateLabel}}</text></view>
-        <view wx:if="{{report.progress.length}}" class="site-report-lines">
-          <view wx:for="{{report.progress}}" wx:key="index" class="site-report-line"><view class="site-bullet" /><text>{{item}}</text></view>
-        </view>
-        <text wx:else class="site-meta site-report-empty">{{report ? '这份日报暂无进展摘要' : '暂无已发布的日报'}}</text>
-        <button wx:if="{{report}}" class="site-report-link text-action" bindtap="openReport"><text>查看日报</text><view class="site-chevron" /></button>
-      </view>
-
-      <view class="site-paper site-pending">
-        <text class="site-pending-label">待我确认</text>
-        <button wx:for="{{report.pending}}" wx:key="key" class="site-pending-row" data-record="{{item.recordId}}" bindtap="openReport">
-          <text>{{item.text}}</text><view class="site-chevron" />
+        <button wx:if="{{section === 'family' && project.progressAccess}}" class="site-paper site-family" bindtap="openFamilySite" aria-label="分享给家人一起查看工地">
+          <view class="site-family-copy">
+            <text class="site-family-title">家人一起看</text>
+            <text class="site-meta">分享给家人后可查看进度和工地直播，只能看，不会收到报告和提醒。</text>
+          </view>
+          <view class="site-camera-cta"><text>分享给家人</text><view class="site-chevron" /></view>
         </button>
-        <text wx:if="{{!report.pending.length}}" class="site-meta site-report-empty">暂无待确认的事项</text>
-      </view>
+
+        <view wx:if="{{section === 'report'}}" class="site-paper site-report">
+          <view class="site-report-heading"><text class="fabric site-report-label">最新日报</text><text class="site-meta">{{report.dateLabel}}</text></view>
+          <view wx:if="{{report.progress.length}}" class="site-report-lines">
+            <view wx:for="{{report.progress}}" wx:key="index" class="site-report-line"><view class="site-bullet" /><text>{{item}}</text></view>
+          </view>
+          <text wx:else class="site-meta site-report-empty">{{report ? '这份日报暂无进展摘要' : '暂无已发布的日报'}}</text>
+          <button wx:if="{{report}}" class="site-report-link text-action" bindtap="openReport"><text>查看日报</text><view class="site-chevron" /></button>
+        </view>
+
+        <block wx:if="{{section === 'confirmation'}}">
+          <view wx:if="{{!liveApplication || liveApplication.canDecide || report.pending.length}}" class="site-paper site-pending {{liveApplication.canDecide ? 'site-live-pending' : ''}}">
+            <text class="site-pending-label">待我确认</text>
+            <button wx:if="{{liveApplication.canDecide}}" class="site-pending-row site-live-application" bindtap="openLiveApplication">
+              <text>直播公开申请 · {{liveApplication.alias}}</text><view class="site-chevron" />
+            </button>
+            <button wx:for="{{report.pending}}" wx:key="key" class="site-pending-row" data-record="{{item.recordId}}" bindtap="openReport">
+              <text>{{item.text}}</text><view class="site-chevron" />
+            </button>
+            <text wx:if="{{!report.pending.length && !liveApplication.canDecide}}" class="site-meta site-report-empty">暂无待确认的事项</text>
+          </view>
+          <view wx:if="{{liveApplication && !liveApplication.canDecide}}" class="site-paper site-pending site-live-progress">
+            <button class="site-pending-row" bindtap="openLiveApplication">
+              <view><text>直播公开进度 · {{liveApplication.alias}}</text><text class="site-meta">{{liveApplication.statusLabel}}</text></view>
+              <view class="site-chevron" />
+            </button>
+          </view>
+          <view wx:if="{{liveError}}" class="site-paper site-state">
+            <text>{{liveError}}</text><button class="text-action" bindtap="retryLiveApplication">重新读取</button>
+          </view>
+        </block>
+      </block>
     </block>
   </view>
 </view>

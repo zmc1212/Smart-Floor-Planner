@@ -8,9 +8,10 @@ import { liveAudit, liveDto, liveEvent, liveRow, liveSource } from './store';
 import { liveCover } from './cover';
 
 export class PublicLiveCustomer {
-  constructor(readonly actor: ActorContext,readonly conversationId:string) {
+  constructor(readonly actor: ActorContext,readonly conversationId:string,readonly projectId?:string) {
     requireCapability(actor,'assistant.chat.self');id(conversationId);
     if(actor.principal.kind!=='user')fail('public_live_forbidden',403);
+    if(projectId !== undefined)id(projectId);
   }
   private scope<T>(fn:(tx:PostgresTransaction,c:Row)=>Promise<T>,write=false) {
     return withTenantTransaction(this.actor.enterpriseId,async tx=>{
@@ -22,11 +23,15 @@ export class PublicLiveCustomer {
   }
   private async own(tx:PostgresTransaction,liveId:string,versionId?:string) {
     const l=await liveRow(tx,this.actor.enterpriseId,id(liveId),true);
-    const current= l && await one(tx,sql`select p.id from app.construction_projects p join app.leads lead on lead.enterprise_id=p.enterprise_id and lead.id=p.lead_id
-      where p.enterprise_id=${this.actor.enterpriseId} and p.id=${String(l.project_id)} and lead.customer_user_id=${String(l.customer_id)} and lead.archived_at is null`);
+    const current= l && await one(tx,sql`select p.id,p.name from app.construction_projects p
+      join app.leads lead on lead.enterprise_id=p.enterprise_id and lead.id=p.lead_id
+      join app.enterprises e on e.id=p.enterprise_id
+      where p.enterprise_id=${this.actor.enterpriseId} and p.id=${String(l.project_id)} and lead.customer_user_id=${String(l.customer_id)} and lead.archived_at is null
+      ${this.projectId === undefined ? sql`` : sql`and p.id=${this.projectId} and p.status='active' and p.customer_access
+        and lead.status<>'closed' and e.status='active' for share of p,lead,e`}`);
     if(!l||!current||String(l.conversation_id)!==this.conversationId||String(l.customer_id)!==(this.actor.principal.kind==='user'?this.actor.principal.userId:'')
       ||versionId&&String(l.current_version_id)!==versionId||l.status==='draft')fail('public_live_unavailable',404);
-    return l;
+    return { ...l, projectName: String(current.name) } as Row;
   }
   private async playbackReady(tx:PostgresTransaction,l:Row) {
     return !!await one(tx,sql`select 1 from app.construction_public_live_sessions s
@@ -35,9 +40,9 @@ export class PublicLiveCustomer {
       and s.actor->>'conversationId'=${this.conversationId} and s.actor->'actor'->>'contextVersion'=${String(this.actor.contextVersion)}
       and s.actor->'actor'->'principal'->>'userId'=${String(l.customer_id)} limit 1`);
   }
-  cover(liveId:string,coverId:string) {
+  cover(liveId:string,coverId:string,versionId?:string) {
     return this.scope(async(tx,c)=>{
-      const l=await this.own(tx,liveId);
+      const l=await this.own(tx,liveId,versionId);
       const source=c.status==='open'&&l.status==='pending_owner'&&await liveSource(tx,this.actor.enterpriseId,liveId);
       if(!source)fail('public_live_unavailable',404);
       const cover=await liveCover(tx,this.actor.enterpriseId,String(source.version.binding_id),String(source.version.id),true);
@@ -45,22 +50,29 @@ export class PublicLiveCustomer {
       return cover.data;
     });
   }
-  read() {
+  read(liveId?:string, versionId?:string) {
     return this.scope(async(tx,c)=>{
       const list=await rows(tx,sql`select id from app.construction_public_live where enterprise_id=${this.actor.enterpriseId} and conversation_id=${this.conversationId}
-        and customer_id=${this.actor.principal.kind==='user'?this.actor.principal.userId:''} and status<>'draft' order by updated_at desc limit 30`);
+        and customer_id=${this.actor.principal.kind==='user'?this.actor.principal.userId:''} and status<>'draft'
+        ${liveId === undefined ? sql`` : sql`and id=${id(liveId)}`} order by updated_at desc limit 30`);
       const items=[];
       for(const row of list){
-        let l:Row;try{l=await this.own(tx,String(row.id));}catch{continue;}
+        let l:Row;
+        if(liveId !== undefined)l=await this.own(tx,liveId,versionId);
+        else try{l=await this.own(tx,String(row.id));}catch{continue;}
         const v=await one(tx,sql`select * from app.construction_public_live_versions where enterprise_id=${this.actor.enterpriseId} and live_id=${String(l.id)} and id=${String(l.current_version_id)}`);
         if(!v)continue;
         const available=!!await liveSource(tx,this.actor.enterpriseId,String(l.id));
         const canDecide=available&&l.status==='pending_owner'&&c.status==='open';
         const cover=canDecide?await liveCover(tx,this.actor.enterpriseId,String(v.binding_id),String(v.id)):null;
-        items.push({...liveDto(l,v,available),messageId:String(l.message_id),canDecide,
+        const wasPublished=l.status==='published'||(this.projectId!==undefined&&l.status==='withdrawn'&&!!await one(tx,sql`
+          select 1 from app.construction_public_live_audits where enterprise_id=${this.actor.enterpriseId}
+          and live_id=${String(l.id)} and version_id=${String(v.id)} and action='publish' limit 1`));
+        items.push({...liveDto(l,v,available),projectId:String(l.project_id),projectName:String(l.projectName),messageId:String(l.message_id),canDecide,
           cover:cover?{id:String(cover.id),capturedAt:new Date(String(cover.captured_at)).toISOString()}:null,
           playbackReady:canDecide&&await this.playbackReady(tx,l),
-          canWithdraw:c.status==='open'&&['pending_owner','owner_approved','published','rejected'].includes(String(l.status))});
+          canWithdraw:c.status==='open'&&['pending_owner','owner_approved','published','rejected'].includes(String(l.status)),
+          wasPublished});
       }
       return {items};
     });

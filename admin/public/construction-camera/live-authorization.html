@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>直播公开确认</title>
+  <link rel="stylesheet" href="/construction-camera/style.css">
+  <link rel="stylesheet" href="/construction-camera/live-authorization.css">
+  <script src="/construction-camera/vendor/hls-1.6.13.js" defer></script>
+  <script src="/construction-camera/live-authorization.js" defer></script>
+</head>
+<body>
+  <div class="book-spine" aria-hidden="true"></div>
+  <main class="live-authorization">
+    <header id="application-header" hidden>
+      <h1 id="project-name"></h1>
+      <div class="application-meta"><span id="camera-alias"></span><span id="application-status"></span></div>
+    </header>
+
+    <section id="application-preview" aria-label="直播预览" hidden>
+      <div class="video-mat">
+        <div class="authorization-frame">
+          <video id="application-video" aria-label="当前机位画面" playsinline webkit-playsinline x5-playsinline muted disableremoteplayback preload="none" hidden></video>
+          <img id="application-cover" alt="当前机位抓拍" hidden>
+          <button id="play-application" type="button">播放直播</button>
+        </div>
+      </div>
+      <p id="playback-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="application-decision" class="paper authorization-decision" hidden>
+      <h2 class="fabric">观看范围</h2>
+      <div class="authorization-scope">
+        <p>本企业公开工地页的访客均可观看，含通过分享链接进入的访客。</p>
+        <p>仅限此机位，无声直播，不提供回放。</p>
+        <p>企业审核通过后才会公开。</p>
+      </div>
+      <button id="approve-application" type="button" disabled>同意公开并提交审核</button>
+      <div class="authorization-alternatives">
+        <button id="decline-application" type="button" class="text-button">暂不公开</button>
+        <button id="later-application" type="button" class="text-button">稍后再看</button>
+      </div>
+    </section>
+
+    <section id="application-progress" class="paper authorization-progress" hidden>
+      <p id="progress-status"></p>
+      <p id="progress-reason" hidden></p>
+      <button id="withdraw-application" type="button" class="text-button" hidden>撤回直播申请</button>
+      <div id="withdraw-confirmation" hidden>
+        <p>只处理这路直播，照片和记录授权不变。</p>
+        <div class="authorization-alternatives">
+          <button id="confirm-withdraw" type="button">确定</button>
+          <button id="cancel-withdraw" type="button" class="text-button">取消</button>
+        </div>
+      </div>
+    </section>
+    <p id="application-note" class="authorization-note" hidden>照片和记录的授权不变。<br>可随时停止公开直播。</p>
+    <div class="authorization-feedback">
+      <p id="application-feedback" role="status" aria-live="polite">正在读取直播公开申请…</p>
+      <button id="retry-application" type="button" class="text-button" hidden>重新读取</button>
+    </div>
+  </main>
+</body>
+</html>

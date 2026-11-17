@@ -1,12 +1,16 @@
 const api = require('../../../utils/api');
 const ownerReminders = require('../../../utils/owner-reminders');
 const { loadSiteFont } = require('../lib/site-font');
+const { ownerLiveAuthorizationPath } = require('../../../utils/owner-live-authorization');
 
 const base = '/miniprogram/construction/owner-sites';
 const readOptions = { suppressUnauthorized: true };
+const siteSections = ['reminders', 'camera', 'family', 'report', 'confirmation'];
+const liveSiteSections = ['camera', 'report', 'confirmation', 'reminders', 'family'];
 const emptyReminders = { remindersOpen: false, siteReminders: [], remindersLoading: false, remindersError: '',
   reminderSelected: '', reminderDetail: null, reminderReading: false, reminderReadError: '' };
-const emptyProject = { project: null, report: null, camera: null, projectLoading: false, projectError: '', cameraLoading: false, cameraError: '', ...emptyReminders };
+const emptyProject = { project: null, report: null, camera: null, projectLoading: false, projectError: '', cameraLoading: false, cameraError: '',
+  liveApplication: null, liveError: '', ...emptyReminders };
 
 function session() {
   return getApp().globalData.token || wx.getStorageSync('token');
@@ -20,7 +24,7 @@ function shanghaiDate(value, includeTime = false) {
 }
 
 Component({
-  data: { ...emptyProject, projects: [], selectedIndex: 0, loading: true, error: '', needsLogin: false, navTop: 32, navHeight: 32, navRight: 96 },
+  data: { ...emptyProject, siteSections, liveSiteSections, projects: [], selectedIndex: 0, loading: true, error: '', needsLogin: false, navTop: 32, navHeight: 32, navRight: 96 },
   lifetimes: {
     attached() { this.measureNav(); void loadSiteFont(); this.showSite(); },
     detached() { this._visible = false; this._generation++; },
@@ -133,11 +137,33 @@ Component({
         if (!data.project || data.project.id !== projectId) throw new Error('project mismatch');
         const report = data.report ? { ...data.report, dateLabel: shanghaiDate(data.report.periodStart) } : null;
         this.setData({ project: data.project, report, projectLoading: false, cameraLoading: true });
-        await this.readCover(projectId, generation, token);
+        await Promise.all([
+          this.readCover(projectId, generation, token),
+          data.project.progressAccess && this.readLiveApplication(projectId, generation, token),
+        ]);
       } catch (error) {
         if (this.current(generation, token)) this.setData({ ...emptyProject,
           projectError: error.statusCode === 404 ? '这个工地目前不可查看' : '工地资料暂时无法读取' });
       }
+    },
+    async readLiveApplication(projectId, generation, token) {
+      try {
+        const { data } = await api.request(`${base}/${projectId}/public-live`, 'GET', {}, readOptions);
+        if (this.current(generation, token)) this.setData({ liveApplication: data.item, liveError: '' });
+      } catch (error) {
+        if (this.current(generation, token)) this.setData({ liveApplication: null,
+          liveError: [401, 403, 404].includes(error.statusCode) ? '' : '直播申请暂时无法读取' });
+      }
+    },
+    retryLiveApplication() {
+      if (!this.data.project?.progressAccess || !this.current(this._generation, this._projectSession)) return;
+      this.setData({ liveError: '' });
+      return this.readLiveApplication(this._projectId, this._generation, this._projectSession);
+    },
+    openLiveApplication() {
+      if (!this.current(this._generation, this._projectSession)) return;
+      const path = ownerLiveAuthorizationPath(this.data.project?.id, this.data.liveApplication);
+      if (path) this.navigate(path);
     },
     async readCover(projectId, generation, token) {
       try {
@@ -172,6 +198,10 @@ Component({
     openCamera() {
       if (!this.current(this._generation, this._projectSession) || !this.data.camera || !this.data.project) return;
       this.navigate('/packages/construction/camera/camera?projectId=' + this.data.project.id);
+    },
+    openFamilySite() {
+      if (!this.current(this._generation, this._projectSession) || !this.data.project) return;
+      this.navigate('/packages/construction/family/family?projectId=' + this.data.project.id);
     },
     openReport(event) {
       const { project, report } = this.data;

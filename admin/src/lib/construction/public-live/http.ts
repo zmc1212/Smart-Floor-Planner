@@ -10,6 +10,7 @@ import { PublicLiveCustomer } from './customer';
 import { liveDecision, liveKey, liveResource } from './contract';
 import { liveMediaCorsHeaders, liveMediaPreflight } from './media-cors';
 import { openLiveSession, publicLiveDetail, publicLiveMedia, reconcileLiveProxies, recordOwnerPlayback, stopLiveProxies, type LiveViewer } from './media';
+import { ownerApplicationService, readOwnerApplication, readOwnerLiveWebTicket } from './project-owner';
 
 const headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
 export const liveJson=(data:unknown)=>NextResponse.json({success:true,data},{headers});
@@ -67,6 +68,34 @@ export async function ownerLiveHttp(request:Request,actor:ActorContext,cid:strin
   const result=await service.decide(lid,path[1],value,key(request.headers.get('Idempotency-Key')));
   if(['withdraw','decline'].includes(path[1]))return liveJson({...result,...await stopLiveProxies(actor.enterpriseId,lid)});
   return liveJson(result);
+}
+export async function ownerLiveWebHttp(request: Request, path: string[]) {
+  noQuery(request);
+  const application = await readOwnerLiveWebTicket(request);
+  if (request.method === 'GET' && path.length === 0) return liveJson(await readOwnerApplication(application));
+  const service = ownerApplicationService(application);
+  if (request.method === 'GET' && path[0] === 'cover' && path.length === 2) {
+    const cover = await service.cover(application.liveId, id(path[1]), application.versionId);
+    return new Response(new Uint8Array(cover), { headers: { ...headers, 'Content-Type': 'image/jpeg' } });
+  }
+  const action = path[0];
+  if (request.method !== 'POST' || path.length !== 1 || !['preview', 'approve', 'later', 'decline', 'withdraw'].includes(action))
+    fail('public_live_unavailable', 404);
+  const input = await body(request);
+  if (Object.keys(input).some(field => field !== 'expectedRevision')) fail('invalid_public_live', 422);
+  const value = { versionId: application.versionId, expectedRevision: input.expectedRevision };
+  const result = await service.decide(application.liveId, action, value, key(request.headers.get('Idempotency-Key')));
+  if (action === 'preview') {
+    const media = await openLiveSession(application.enterpriseId, application.liveId, application.versionId, {
+      kind: 'owner', actor: service.actor, conversationId: application.conversationId, previewRevision: Number(result.revision),
+    });
+    return liveJson({ revision: result.revision, media });
+  }
+  if (action === 'decline' || action === 'withdraw') {
+    const stopped = await stopLiveProxies(application.enterpriseId, application.liveId);
+    return liveJson({ status: result.status, revision: result.revision, ...stopped });
+  }
+  return liveJson({ status: result.status, revision: result.revision });
 }
 export async function anonymousLiveHttp(request:Request,eid:string,path:string[]) {
   noQuery(request);id(eid);

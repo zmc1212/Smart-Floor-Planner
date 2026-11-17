@@ -8,6 +8,7 @@ import { CustomerProjectProgress, customerConstructionProjects, customerProgress
 import { staffCameraHttp, customerCameraHttp } from '@/lib/construction/camera/http';
 import { ownerSiteHome, ownerSiteList } from '@/lib/construction/owner-home';
 import { ownerSiteCover } from '@/lib/construction/camera/owner-cover';
+import { issueOwnerLiveWebTicket, ownerApplicationSummary } from '@/lib/construction/public-live/project-owner';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ path?: string[] }> };
@@ -30,8 +31,21 @@ async function handle(request: NextRequest, context: Context) {
     const p = (await context.params).path || [], read = request.method === 'GET';
     if (p[0] === 'owner-sites') {
       if (actor.mode !== 'customer' || !actor.user.openid) fail('construction_not_found', 404);
-      if (!read || request.nextUrl.search || p.length > 3 || (p.length === 3 && p[2] !== 'cover')) fail('construction_not_found', 404);
       const identity = { userId: actor.user._id, contextVersion: token.contextVersion };
+      if (p[2] === 'public-live') {
+        if (request.nextUrl.search) fail('construction_not_found', 404);
+        const projectId = id(p[1]);
+        let data;
+        if (read && p.length === 3) {
+          data = await ownerApplicationSummary(identity, projectId);
+        } else if (request.method === 'POST' && p[3] === 'entry' && p.length === 4) {
+          const body = await readBody(request);
+          if (Object.keys(body).some(field => field !== 'liveId' && field !== 'versionId')) fail('invalid_construction', 422);
+          data = await issueOwnerLiveWebTicket(identity, projectId, id(body.liveId), id(body.versionId));
+        } else fail('construction_not_found', 404);
+        return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (!read || request.nextUrl.search || p.length > 3 || (p.length === 3 && p[2] !== 'cover')) fail('construction_not_found', 404);
       const data = p.length === 1 ? await ownerSiteList(identity.userId)
         : p.length === 2 ? await ownerSiteHome(identity, id(p[1])) : await ownerSiteCover(identity, id(p[1]));
       return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });

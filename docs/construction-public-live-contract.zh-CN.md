@@ -35,9 +35,9 @@ C03-05 只接受当前播放器的进度和解码错误。继续观看或续期�
 ## 入口与设计
 
 - `/construction-projects` → 项目Drawer → 原公开材料Tab → **直播公开**，沿Ant Design Form/Select/Card/Steps/Alert与共享操作反馈。摄像头管理者及所选企业管理角色可准备合法绑定、公开名称与机位别名，普通观看成员不能准备。只有`enterprise_admin`、`admin`、`super_admin`可审核当前业主的这一版同意；平台管理无需入职或成为项目成员。
-- 业主在既有私人客户咨询收到持久服务事件。`liveEvent`锁定该咨询及有效原客户参与者，再以已认证调用者ActorContext复用既有system消息写入；不关联全局用户表、不伪造接收者身份。发送目的地缺失则失败回滚；终止撤权在目的地关闭时仍有效。原生卡设计先展开完整画面、受众和范围，再明确同意/拒绝/稍后；阅读、普通回复及沉默不构成同意。同意只进入待企业审核。重进读取实际保存版本、revision和当前关系。
+- 提交仍向绑定的私人咨询写入原持久服务事件和提醒。发送目的地缺失仍失败回滚。业主可从**工地 → 待我确认**或该提醒打开同一申请。独立 `packages/construction/live-authorization/live-authorization` WebView 在同页显示具体机位、16:9 无声预览、观看范围和决定。实际播放回执有效后才能明确同意。阅读、回复及沉默不构成同意。「稍后再看」保留待办；处理后从同一项目的**直播公开进度**读当前状态，获权时可撤回或停止。同意进入待企业审核，仍由已有权限的企业审核人公开。
 - `packages/construction/public-site/public-site`及原Agent详情纸页在当前批准存在时显示独立直播入口。`packages/construction/public-live/public-live`仅一个16:9完整画面，真实连接/播放/暂停/失败反馈、别名、全屏及返回/本人咨询动作；不提供进度条、音量、PTZ、抓拍、录像下载或历史回放。
-- 批准源为`design-references/xiaok-p4b-public-sites-v1/README.md`，Agent风格C03-04/C03-05 v001及C05-02 v002，853×1844映射390×844。普通状态复用共享规则；精确16:9组件规格优先于生图的近似画框。纸页、书脊、装订、布签和控件均为原生代码，不切片整屏。复用既有独立F1头像并优化PNG编码，原件/比较保留于`tmp/public-live-package/avatar-*`。
+- 批准源见 `design-references/xiaok-p4b-public-sites-v1/README.md`。业主待办与详情沿用 `owner-authorization-task-v1/01-owner-site-pending-v001.png`、`02-owner-live-authorization-v001.png`，C03 沿用 Agent 版 C03-04/C03-05 v001。853×1844 映射 390×844，真实预览为精确 16:9 等比容纳。工地行和导航用小程序原生控件，授权纸页和控件与真实视频在同一 WebView，复用既有样式、字体与获权媒体。
 
 ## API与数据
 
@@ -45,13 +45,17 @@ C03-05 只接受当前播放器的进度和解码错误。继续观看或续期�
 | --- | --- |
 | 所选企业cookie | `/api/construction/public-live/:projectId` GET读取、POST保存；POST `submit`、`publish`、`reject`、`withdraw`、`session`、`reconcile` |
 | 原咨询业主bearer | `/api/miniprogram/assistant/public-live/:conversationId` GET；GET `:liveId/cover/:coverId`；POST `:liveId/preview`、`webview`、`approve`、`decline`、`later`、`withdraw`、`session` |
+| 本人工地业主 bearer | GET `/api/miniprogram/construction/owner-sites/:projectId/public-live` 读取当前一笔申请或空。该路径下 POST `/entry` 接收精确直播和版本 ID，签发网页票据。 |
+| 业主授权 WebView | GET `/api/construction-camera/live-authorization` 及 `/cover/:coverId`；POST `preview`、`approve`、`decline`、`later`、`withdraw` 需预期 revision 和幂等键。 |
 | 匿名 | `/api/public/construction-live/:enterpriseId/site/:publicPhotoSiteId` GET当前入口；`/:publicKey` GET安全元数据；`/:publicKey/session` POST；`/:publicKey/media/:token/:resource` GET及仅媒体OPTIONS |
 
-应用响应均no-store。公开元数据仅公开名称/别名、授权版本/revision及范围，不含摄像头/绑定/设备标识、私有源地址或私聊。照片目录ID仍重验自己的来源；直播分享入口可独立于照片公开存在。
+应用响应均 no-store。私有 WebView 从 URL 片段读取 10 分钟票据后清除片段。票据使用独立受众，绑定企业、项目、业主身份上下文、原咨询、申请和版本。每次读写继续沿原租户服务复验这些关系。媒体票据维持原播放范围，播放凭原 HLS 分片和实际观看回执。公开元数据仅含公开名称、别名、授权版本/revision 及范围。照片目录仍重验自己的来源，直播分享入口可独立于照片公开存在。
 
 `app`下五表保存当前授权、不可变的精确绑定/摄像头版本范围、自有代理尝试、仅存hash的短会话及审计。复合租户/项目外键与强制RLS沿既有租户事务，复用原咨询/outbox和幂等记录，不新增Agent、知识索引或引文管线。
 
 保存使用预期revision与幂等键，轮换公开key并生成不可变版本；活动授权或代理结果未决时不能直接替换。发送绑定当前业主及精确原私人目的地。同版完整预览登记后才能同意，管理审核仍要求同一业主/版本。每次重验租户、有效项目/对客范围、当前业主、精确活动绑定/摄像头版本、准备者权限及管理审核；历史回执不能授予新权限。
+
+Stable 在 390×844 使用已核对的原项目窗口和固定本地后台源码，验证微云 1454 标记项目、实际 640×360 无声 HLS、播放失败重试、同页同意、企业审核、两端重进及停播。错误业主、旧版本、错票据受众、提前同意、审核前访客访问均被拒。最终批访客首进曾进入播放，截图时转为连接失败，重进有可见实播；首页布局调整前的首播截图另保留。模拟器 WebView 无小程序返回桥，「稍后再看」保存待办后显示顶部返回提示。原生标题及胶囊沿微信宿主几何。绑定输入无漂移，已清理测试授权、媒体及控制器。[验收与截图](../tmp/owner-live-authorization-20261117/native-12/report.json)。
 
 ## 媒体与撤回
 

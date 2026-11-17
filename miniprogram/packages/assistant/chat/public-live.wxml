@@ -9,7 +9,7 @@
         <view wx:else class="owner-live-connecting">暂无定时抓拍</view>
       </view>
       <text wx:if="{{coverPath && card.coverTime}}" class="owner-live-cover-time">抓拍于 {{card.coverTime}}</text>
-      <button class="owner-live-primary owner-live-play" data-id="{{card.id}}" data-action="preview" bindtap="liveDecision" disabled="{{busy || pending}}">播放直播</button>
+      <button class="owner-live-primary owner-live-play" data-id="{{card.id}}" data-action="preview" bindtap="liveDecision" disabled="{{busy || pending}}">{{card.projectId ? '查看直播公开申请' : '播放直播'}}</button>
     </block>
     <block wx:if="{{card.canDecide && card.playbackReady}}">
       <text class="fabric-label owner-live-scope-label">观看范围</text>

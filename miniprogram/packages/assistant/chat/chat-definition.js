@@ -9,6 +9,7 @@ const { latestDesignerCard } = require('../lib/client');
 const { SiteRecordMedia } = require('../lib/site-records');
 const { PublicChatController, initialPublic } = require('../lib/public-sites');
 const { LiveConsentController, initialLive } = require('../lib/public-live');
+const { ownerLiveAuthorizationPath } = require('../../../utils/owner-live-authorization');
 const { PlanChatController, initialPlans } = require('../lib/plans');
 const { SpeechController } = require('../lib/speech');
 const { FloorplanContextController, initialContext } = require('../lib/floorplan-context');
@@ -752,6 +753,14 @@ module.exports = () => ({
 	async liveDecision(e) {
 		if (!this.liveConsent || this.data.readOnly) return;
 		const d = e.currentTarget.dataset;
+		if (d.action === 'preview') {
+			const card = this.liveConsent.card(String(d.id));
+			const url = card?.canDecide && ownerLiveAuthorizationPath(card.projectId, card);
+			if (url) {
+				wx.navigateTo({ url, fail: () => wx.showToast({ title: '暂时无法打开直播申请', icon: 'none' }) });
+				return;
+			}
+		}
 		if (await this.liveConsent.decide(String(d.id), d.action) && d.action !== 'preview') await this.controller.refresh();
 	},
 	stopPublicLive(e) {

@@ -1,0 +1,5 @@
+<web-view wx:if="{{src}}" src="{{src}}" binderror="onWebError" />
+<view wx:else class="live-entry-state">
+  <text>{{loading ? '正在读取直播公开申请…' : error}}</text>
+  <button wx:if="{{!loading && retryable}}" bindtap="open">重新读取</button>
+</view>

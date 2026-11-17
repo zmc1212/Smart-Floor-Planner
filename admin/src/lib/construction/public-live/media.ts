@@ -14,7 +14,7 @@ import { liveMediaDiagnostics } from './media-diagnostics';
 export type LiveViewer={kind:'public'}|{kind:'owner';actor:ActorContext;conversationId:string;previewRevision?:number}|{kind:'staff';actor:ConstructionActor;projectId:string};
 type Source=NonNullable<Awaited<ReturnType<typeof liveSource>>>;
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
-function playbackUrl(path:string){
+export function publicLiveUrl(path:string){
   const configured=process.env.PUBLIC_LIVE_PUBLIC_ORIGIN;if(!configured)return path;
   let u:URL;try{u=new URL(configured);}catch{fail('public_live_not_configured',503);}
   if(u.username||u.password||u.pathname!=='/'||u.search||u.hash||u.protocol!=='https:'&&!(process.env.NODE_ENV!=='production'&&u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))fail('public_live_not_configured',503);
@@ -104,7 +104,7 @@ export async function openLiveSession(eid:string,lid:string,vid:string,viewer:Li
       values(${hash(token)},${eid},${String(s.live.project_id)},${lid},${vid},${Number(s.live.revision)},${String(p.id)},${viewer.kind},${JSON.stringify(viewer)}::jsonb,now()+interval '2 minutes')`);
     await tx.execute(sql`update app.construction_public_live_proxies set expires_at=now()+interval '6 minutes' where enterprise_id=${eid} and id=${String(p.id)}`);
     return {key:String(s.live.public_key),versionId:vid,revision:Number(s.live.revision),expiresInSeconds:120,
-      url:playbackUrl(`/api/public/construction-live/${eid}/${String(s.live.public_key)}/media/${token}/hls.m3u8`)};
+      url:publicLiveUrl(`/api/public/construction-live/${eid}/${String(s.live.public_key)}/media/${token}/hls.m3u8`)};
   });
 }
 async function session(eid:string,key:string,token:string,update?:'segment'|'played') {

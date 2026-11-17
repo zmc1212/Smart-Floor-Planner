@@ -49,3 +49,41 @@ test('switching sites clears the earlier photo and opens only the selected camer
   assert.equal(component.data.camera, null);
   assert.equal(component.data.report, null);
 });
+
+test('the live task opens the current project and version, including after it becomes a progress item', async t => {
+  const originalRequest = api.request, opened = [];
+  const identity = { token: 'owner' };
+  global.getApp = () => ({ globalData: identity });
+  global.wx = { getStorageSync: () => '', navigateTo: ({ url, complete }) => { opened.push(url); complete(); } };
+  t.after(() => { api.request = originalRequest; delete global.getApp; delete global.wx; });
+
+  let finishOld;
+  const old = new Promise(resolve => { finishOld = resolve; });
+  const newItem = { id: '70', versionId: '81', canDecide: true, status: 'pending_owner', alias: '客厅机位' };
+  api.request = async endpoint => {
+    if (endpoint.endsWith('/1/public-live')) return old;
+    if (endpoint.endsWith('/2/public-live')) return { data: { item: newItem } };
+    if (endpoint.endsWith('/cover')) return { data: { camera: null } };
+    const id = endpoint.split('/').at(-1);
+    return { data: { project: { id, progressAccess: true }, report: null } };
+  };
+  const component = { ...definition.methods, data: { ...definition.data }, _visible: true,
+    setData(patch) { Object.assign(this.data, patch); } };
+
+  const first = component.readProject({ id: '1' });
+  await Promise.resolve();
+  await component.readProject({ id: '2' });
+  finishOld({ data: { item: { id: '71', versionId: '82', canDecide: true } } });
+  await first;
+  assert.equal(component.data.liveApplication.id, '70');
+  component.openLiveApplication();
+  newItem.canDecide = false;
+  newItem.status = 'owner_approved';
+  await component.readProject({ id: '2' });
+  assert.equal(component.data.liveApplication.status, 'owner_approved');
+  component.openLiveApplication();
+  identity.token = 'other-owner';
+  component.openLiveApplication();
+  const target = '/packages/construction/live-authorization/live-authorization?projectId=2&liveId=70&versionId=81';
+  assert.deepEqual(opened, [target, target]);
+});
