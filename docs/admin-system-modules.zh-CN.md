@@ -138,6 +138,8 @@ f3：项目自有版本化SOP目录`v1`含5个技能（`stage-reminder`/`accepta
 <!-- xiaok-enterprise-knowledge-mode -->
 **企业知识开关/无知识库首版：Limited。** 企业JSON配置`agent_config.enterpriseKnowledgeEnabled`缺省关闭；后台原`/assistant-knowledge`新增Ant Design“知识设置”表单，GET/PUT `/api/assistant/settings`沿既有选定企业知识管理授权、三管理角色、CAS和同值重试。切换递增policy_version，新运行固化模式；关闭不派发企业检索/Embedding、不把旧企业知识上下文送入模型。问答使用模型通用知识/按需联网，业务读写权限仍由原服务执行。阶段/日周报复用原事实/正文Worker/投递/阅读链，模型仅补阶段通用建议，原记录展示进展/待核对/安排，经批准“工艺关注”组件标注“通用建议（模型知识）”，不冒充企业来源或reviewed证明。显式后台知识维护/试问保留；开启模式的回答质量及整版仍Limited，固定照片范围见下文；完工/入住自动报告排除保持。Mini结构/样式/素材/路由未改。[架构合同](xiaok-assistant-phase-2.zh-CN.md#企业知识开关与无知识库首版limited)，证据`tmp/v1-knowledge-switch-20261106/`。
 
+**小K聊天识图设置：开发环境 Implemented。** `/assistant-knowledge` 的「知识设置」按企业展示「小K聊天识图」开关及当前对话模型。沿原 `GET/PUT /api/assistant/settings` 和所选企业知识管理权限。识图写入携带 `expectedEnterpriseId` 与 `expectedVersion`，支持同值重试，变更时递增 `policy_version` 隔离旧任务。原企业知识单项写入兼容。旧执行模式的企业首次开启时使用当前对话模型初始化 `langgraph-v1`，已有 Agent 字段保留。开启及图片派发都核对已验证的模型和入口，包括北京百炼 `deepseek-v4.1-flash-1017`。开关存于原 `app.assistant_enterprise_settings.agent_config`。见[百炼图像实测](./bailian-responses-adapter.md#17-i610-北京百炼图像输入)。
+
 已验范围：开关开启/关闭保存刷新、固定自然对话、正式无知识报告投递/重读及业主Stable重进通过，企业检索/Embedding为0。四角色日/周周期/受众取数与成员撤权用保存建议夹具通过，0付费调用。完整自然联网对话及整版闭环仍Limited；经理/工人固定照片整理与四角色原图原生证据见下文；详见当前架构/证据，未生产部署。
 
 <!-- xiaok-public-web-current -->

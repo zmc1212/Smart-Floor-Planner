@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { executeAgentChat, agentChatBody, agentChatRequestDiagnostic, responsesWireSelected } from './providers/agent-chat';
 import { bailianBinding, bailianExplicitCacheCapable, bailianThinkingCapable } from './providers/bailian-capabilities';
+import { supportsChatImageInput } from '@/lib/assistant/agent/image-input';
 import { isQiniuConatusModel } from './providers/qiniu';
 import { consultationProfile } from '@/lib/assistant/contracts/consultation';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
@@ -146,6 +147,11 @@ export async function executePostgresText(input: {
     if (input.agent && (input.owner.kind !== 'assistant_run' || runtime.adapterType !== 'openai_compatible'
       || input.agent.config.model !== remoteModel || input.agent.config.providerKey !== (runtime.adapterConfig?.providerPreset || runtime.key))) {
       configurationFailure('assistant_model_configuration_invalid', 'Agent provider capability probe no longer matches current configuration');
+    }
+    if (input.agent?.config.imageInputPolicy
+      && input.agent.input.messages.some(message => message.role === 'user' && message.content.some(part => part.type === 'image'))
+      && !supportsChatImageInput(input.agent.config.providerKey, runtime.baseUrl, remoteModel)) {
+      configurationFailure('assistant_model_configuration_invalid', 'Image input requires a verified model endpoint');
     }
     if (input.agent?.config.providerKey === specialistModel.providerKey && remoteModel === specialistModel.model
       && input.agent.config.imageContext === conversationImageProtocol

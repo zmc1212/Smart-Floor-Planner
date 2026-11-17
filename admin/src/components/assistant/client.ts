@@ -11,6 +11,8 @@ const messages: Record<string, string> = {
   assistant_capability_forbidden: '当前账号未获小 K 知识管理权限。',
   assistant_resource_not_found: '记录不存在或当前账号无权访问，请刷新列表。',
   version_conflict: '资料已被更新，请重新读取后再操作；你的输入仍保留。',
+  settings_enterprise_changed: '当前企业已切换，请重新读取小K设置。',
+  image_input_unavailable: '当前小K或对话模型配置无法启用识图，请核对后重新读取设置。',
   idempotency_conflict: '提交记录冲突，请刷新后核对结果。',
   knowledge_not_ready: '该版本尚未就绪，请检查索引、有效期和试问范围。',
   knowledge_case_limit: '问题集已达到100条上限，请先整理现有问题。',

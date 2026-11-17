@@ -129,8 +129,9 @@ export async function ensureEnvironmentAiProviders() {
   );
 }
 
-export async function listProviderRuntimes(capability: AiCapability, logicalModelKey: AiLogicalModelKey) {
-  await ensureEnvironmentAiProviders();
+export async function listProviderRuntimes(capability: AiCapability, logicalModelKey: AiLogicalModelKey,
+  { initializeEnvironment = true } = {}) {
+  if (initializeEnvironment) await ensureEnvironmentAiProviders();
   const configs = await withPlatformTransaction((transaction) =>
     new AiProviderConfigRepository(transaction).listEnabled({ capability })
   );

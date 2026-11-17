@@ -6,10 +6,11 @@ import {nativeFinalProtocol} from './native-final';
 import { reviewClaimProtocol } from './review-claims';
 import { reviewCompletionProtocol } from './review-completion';
 import { conversationImageProtocol } from './image-context';
+import { verifiedImageInputPolicy } from './image-input';
 import { specialistModel } from '../specialists/registry';
 export type AgentConfig = { runtime: 'langgraph-v1'; model: string; providerKey: string; imageInput: boolean; tools: boolean; probeVersion: string; consultation?: ConsultationBinding; structuredFinal?:typeof nativeFinalProtocol; requirementClaims?: typeof reviewClaimProtocol; reviewCompletion?: typeof reviewCompletionProtocol; imageContext?: typeof conversationImageProtocol;
   knowledgeExplanation?: 'reviewed-knowledge-explanation-v1' | 'natural-knowledge-answer-v1'; knowledgeQuantityScope?: 'reviewed-coating-quantity-scope-v1';
-  knowledgeAnswerValidation?: 'server-source-boundary-v1' };
+  knowledgeAnswerValidation?: 'server-source-boundary-v1'; imageInputPolicy?: typeof verifiedImageInputPolicy };
 /** Deliberately opt-in per enterprise; missing/incomplete capability evidence stays on the legacy executor. */
 export function agentConfig(value: unknown): AgentConfig | null {
   if (!value || typeof value !== 'object') return null;
@@ -27,8 +28,9 @@ export function agentConfig(value: unknown): AgentConfig | null {
   if (c.consultation !== undefined && (!consultation || c.model !== consultationProfile(consultation.profile)?.model || c.tools !== true)) fail('assistant_capability_forbidden', 403);
   const specialistImages = c.providerKey === specialistModel.providerKey && c.model === specialistModel.model
     && c.tools === true && c.structuredFinal === undefined && !consultation;
-  if (c.imageContext !== undefined && (c.imageContext !== conversationImageProtocol || c.imageInput !== true
+  if (c.imageContext !== undefined && (c.imageContext !== conversationImageProtocol
     || c.structuredFinal !== nativeFinalProtocol && !specialistImages)) fail('assistant_capability_forbidden', 403);
+  if (c.imageInputPolicy !== undefined && c.imageInputPolicy !== verifiedImageInputPolicy) fail('assistant_capability_forbidden', 403);
   if(c.structuredFinal!==undefined&&(c.structuredFinal!==nativeFinalProtocol||c.providerKey!=='dashscope'||!bailianStructuredOutput(c.model,'json_schema')||c.tools!==true||(c.imageInput!==false&&c.imageContext!==conversationImageProtocol)||consultation))fail('assistant_capability_forbidden',403);
   if (c.requirementClaims !== undefined && (c.requirementClaims !== reviewClaimProtocol || c.structuredFinal !== nativeFinalProtocol)) fail('assistant_capability_forbidden', 403);
   if (c.reviewCompletion !== undefined && (c.reviewCompletion !== reviewCompletionProtocol || c.requirementClaims !== reviewClaimProtocol)) fail('assistant_capability_forbidden', 403);
@@ -42,7 +44,8 @@ export function agentConfig(value: unknown): AgentConfig | null {
     ...(consultation ? { consultation } : {}),...(c.structuredFinal===nativeFinalProtocol?{structuredFinal:nativeFinalProtocol}:{}),
     ...(c.requirementClaims === reviewClaimProtocol ? { requirementClaims: reviewClaimProtocol } : {}),
     ...(c.reviewCompletion === reviewCompletionProtocol ? { reviewCompletion: reviewCompletionProtocol } : {}),
-    ...(c.imageContext === conversationImageProtocol ? { imageContext: conversationImageProtocol } : {}) };
+    ...(c.imageInput && c.imageContext === conversationImageProtocol ? { imageContext: conversationImageProtocol } : {}),
+    ...(c.imageInput && c.imageInputPolicy === verifiedImageInputPolicy ? { imageInputPolicy: verifiedImageInputPolicy } : {}) };
 }
 
 /** Protocol/quota rollout affects new runs. Existing runs retain their bound
