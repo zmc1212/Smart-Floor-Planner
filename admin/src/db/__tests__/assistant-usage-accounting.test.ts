@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { xiaokTestDatabase } from './xiaok-test-database';
 import { UsageService } from '@/lib/assistant/core/usage';
 import { confirmedUsageReview, observedTokenTotal, runUsageReconciled, unresolvedProviderOutcome } from '@/lib/assistant/core/usage-review';
 import type { ActorContext } from '@/lib/assistant/contracts';
@@ -16,8 +16,7 @@ const tenants: string[] = []; const admins: string[] = []; const users: string[]
 let reviewer: ActorContext; let service: UsageService; let provider: Row;
 
 before(async () => {
-  loadEnvConfig(process.cwd());
-  assert.ok(['localhost', '127.0.0.1'].includes(new URL(resolvePostgresRuntimeConfig().connectionString).hostname));
+  xiaokTestDatabase();
   await withPlatformTransaction(async tx => {
     const tenant = (await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix},${prefix},'active') returning id`))!;
     tenants.push(String(tenant.id));
@@ -29,22 +28,26 @@ before(async () => {
     admins.push(String(admin.id));
     const user = (await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!;
     users.push(String(user.id));
-    provider = (await one(tx, sql`select id::text,key,adapter_type from app.ai_provider_configs order by id limit 1`))!;
-    assert.ok(provider);
+    provider = (await one(tx, sql`insert into app.ai_provider_configs(key,name,adapter_type,base_url,api_key_encrypted,api_key_masked,enabled,capabilities)
+      values(${prefix},${prefix},'openai_compatible','http://127.0.0.1:1','synthetic-only','test-only',false,ARRAY['chat'])
+      returning id::text,key,adapter_type`))!;
   });
   reviewer = { enterpriseId: tenants[0], principal: { kind: 'admin', adminId: admins[0] }, contextVersion: 1, capabilities: [] };
   service = new UsageService(reviewer);
 });
 after(async () => {
-  await withPlatformTransaction(async tx => {
-    for (const tenant of tenants) {
-      await deleteAssistantData(tx, BigInt(tenant));
-      await tx.execute(sql`delete from app.admin_users where enterprise_id=${tenant}`);
-      await tx.execute(sql`delete from app.enterprises where id=${tenant}`);
-    }
-    for (const user of users) await tx.execute(sql`delete from app.users where id=${user}`);
-  });
-  await closePostgresPool();
+  try {
+    if (!provider) return; // The fixture transaction never committed.
+    await withPlatformTransaction(async tx => {
+      for (const tenant of tenants) {
+        await deleteAssistantData(tx, BigInt(tenant));
+        await tx.execute(sql`delete from app.admin_users where enterprise_id=${tenant}`);
+        await tx.execute(sql`delete from app.enterprises where id=${tenant}`);
+      }
+      for (const user of users) await tx.execute(sql`delete from app.users where id=${user}`);
+      await tx.execute(sql`delete from app.ai_provider_configs where id=${String(provider.id)}`);
+    });
+  } finally { await closePostgresPool(); }
 });
 
 type AttemptSeed = { key: string; status: string; accepted: boolean };

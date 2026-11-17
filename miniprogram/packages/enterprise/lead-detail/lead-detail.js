@@ -1,4 +1,5 @@
 const api = require('../../../utils/api.js');
+const nativePreview = require('../../../utils/native-preview');
 const surveyLayout = require('../../../utils/surveyLayout.js');
 const { openSurveyingEditor, clearSurveyingEditorDraft } = require('../../../utils/surveyNavigation.js');
 const { openAIDesignEntry } = require('../../../utils/aiDesignNavigation.js');
@@ -412,6 +413,7 @@ Page({
   },
 
   onShow() {
+    if (nativePreview.shownAfterPreview(this)) return;
     if (this.data.leadId) this.fetchLeadDetail();
   },
 
@@ -839,7 +841,7 @@ Page({
   onPreviewFloorPlan() {
     const { floorPlanPreviewPath } = this.data;
     if (!floorPlanPreviewPath) return;
-    wx.previewImage({ current: floorPlanPreviewPath, urls: [floorPlanPreviewPath] });
+    nativePreview.previewImage({ current: floorPlanPreviewPath, urls: [floorPlanPreviewPath] }, this);
   },
 
   navigateOnce(url) {

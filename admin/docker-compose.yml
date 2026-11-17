@@ -25,6 +25,11 @@ services:
     volumes:
       - ai_assets:/data/ai-assets
       - assistant_health:/shared
+    networks:
+      - default
+      # WVP/ZLM live on their own Compose network; camera live/snapshot/
+      # playback calls resolve them by service name from there.
+      - camera
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,7 +91,9 @@ services:
       start_period: 30s
 
   postgres:
-    image: postgres:17
+    # pgvector build is required: the schema installs the `vector` extension and
+    # dumps/migrations fail on plain postgres images without $libdir/vector.
+    image: ${SFP_POSTGRES_IMAGE:-pgvector/pgvector:0.8.2-pg17}
     container_name: smart-floor-planner-postgres
     restart: unless-stopped
     ports:
@@ -112,3 +119,10 @@ volumes:
   ai_assets:
   assistant_health:
   postgres_data:
+
+networks:
+  camera:
+    # The WVP Compose project already owns this network. Override the name when
+    # the WVP project is deployed under a different name or to another host.
+    external: true
+    name: ${SFP_CAMERA_NETWORK:-sfp-wvp-cloud_default}

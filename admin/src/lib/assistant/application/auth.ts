@@ -10,6 +10,8 @@ import { configuredGuidance, guidanceOpening, guidanceView } from '../requiremen
 import { readContentEntry, contentEntrySource, contentChannel, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { readPortfolioEntry, portfolioEntrySource, type PortfolioEntry } from '@/lib/portfolio/entry';
 import { fastGPTAgentV2Presentation } from '../fastgpt/agent-v2/config';
+import { developmentReviewEnabled } from '../agent/review-runtime';
+import { getJwtSecret } from '@/lib/jwt-secret';
 
 export async function customerIdentity(request: Request) {
   const context = await resolveMiniProgramContext(request);
@@ -24,9 +26,7 @@ export function actorFor(identity: Identity, enterpriseId: string, entry?: Recor
   return { enterpriseId, principal: { kind: 'user', userId: identity.userId }, contextVersion: identity.contextVersion, capabilities: ['assistant.chat.self'], entry };
 }
 function entrySecret() {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) fail('model_unavailable', 503);
-  return new TextEncoder().encode(secret);
+  return getJwtSecret();
 }
 /** Platform locator returns IDs only, never conversation/message/knowledge bodies. */
 export async function locate(identity: Identity, kind: 'conversation' | 'run' | 'citation', targetId: string) {
@@ -82,9 +82,27 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
     if (!resolved) fail('entry_context_invalid', 422);
     enterpriseId = resolved.enterpriseId; basis = { kind: resolved.kind, id: resolved.id };
   }
-  // The default XiaoK Tab has no lead query. Recover only an unambiguous live
-  // enterprise already belonging to this customer; never choose the latest
-  // tenant or turn a public entry into a customer/project grant.
+  // The default XiaoK Tab has no lead query. Bind only an unambiguous live
+  // customer lead that owns exactly one active, customer-visible project, so
+  // the home entry answers with that project's real stage and records. Never
+  // choose the latest lead, invent a project grant, or broaden a public entry.
+  if (!enterpriseId && !Object.keys(body).length) {
+    const live = await withPlatformTransaction(tx => rows<{ id: string; enterprise_id: string }>(tx, sql`
+      select l.id::text as id,l.enterprise_id::text as enterprise_id
+        from app.leads l
+        join app.enterprises e on e.id=l.enterprise_id and e.status='active'
+        join app.construction_projects p on p.enterprise_id=l.enterprise_id and p.lead_id=l.id
+          and p.status='active' and p.customer_access
+       where l.customer_user_id=${identity.userId} and l.archived_at is null
+       group by l.id,l.enterprise_id having count(*)=1
+       order by l.id limit 2`));
+    if (live.length === 1) {
+      enterpriseId = live[0].enterprise_id;
+      basis = { kind: 'lead', id: live[0].id };
+    }
+  }
+  // A customer without one unambiguous project still recovers only an
+  // unambiguous live enterprise; never choose the latest tenant.
   if (!enterpriseId && !Object.keys(body).length) {
     const existing = await withPlatformTransaction(tx => rows<{ enterprise_id: string }>(tx, sql`
       select distinct scope.enterprise_id::text from (
@@ -97,7 +115,7 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
   }
   if (!enterpriseId) fail('entry_context_invalid', 422);
   const actor = actorFor(identity, enterpriseId, basis);
-  const { enterprise, settings, reference, resumeConversationId } = await withTenantTransaction(enterpriseId, async tx => {
+  const { enterprise, settings, reference, resumeConversationId, staffProfileLeadId } = await withTenantTransaction(enterpriseId, async tx => {
     const settings = await new AssistantRepository(tx, actor).settings();
     const enterprise = await one(tx, sql`select id,name,logo from app.enterprises where id=${enterpriseId!}`);
     if (portfolioEntry && !await portfolioEntrySource(tx, portfolioEntry)) fail('portfolio_not_found', 404);
@@ -107,32 +125,48 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
       try{basis.channel=await contentChannel(tx,enterpriseId!,contentEntry.channelCode);}catch{basis={kind:'reference_unavailable',enterpriseId};}
     }
     // A public company entry conveys no project/customer grant. Resume only the
-    // visitor's own unambiguous open consultation; otherwise leave history choice explicit.
+    // visitor's own unambiguous open consultation; a project-bound home entry
+    // resumes only consultations created from that same lead.
     const ids = body.publicEnterpriseId || !Object.keys(body).length ? await rows<{id:string}>(tx, sql`select c.id::text from app.assistant_conversations c
       join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
       where c.enterprise_id=${enterpriseId!} and c.purpose='customer_consultation' and c.status='open'
-        and p.user_id=${identity.userId} and p.status='active' and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false) order by c.id desc limit 2`) : [];
-    return { enterprise, settings, reference, resumeConversationId: ids.length === 1 ? ids[0].id : null };
+        and p.user_id=${identity.userId} and p.status='active' and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false)
+        ${basis.kind === 'lead' ? sql`and c.entry_snapshot->>'kind'='lead' and c.entry_snapshot->>'id'=${String(basis.id)}` : sql``}
+        order by c.id desc limit 2`) : [];
+    const eligibleLeads = assistantWritesEnabled(settings) && !developmentReviewEnabled(enterpriseId!)
+      && ['lead', 'identity'].includes(String(basis.kind))
+      ? await rows<{ id: string }>(tx, sql`select id::text from app.leads
+          where enterprise_id=${enterpriseId!} and customer_user_id=${identity.userId}
+            and archived_at is null and status<>'closed'
+            ${body.leadId ? sql`and id=${String(basis.id)}` : sql``} order by id limit 2`)
+      : [];
+    const staffProfileLeadId = eligibleLeads.length === 1 &&
+      (basis.kind !== 'lead' || eligibleLeads[0].id === basis.id) ? eligibleLeads[0].id : null;
+    return { enterprise, settings, reference, resumeConversationId: ids.length === 1 ? ids[0].id : null, staffProfileLeadId };
   });
   const guidance = configuredGuidance(settings?.guidance_config);
   const guidanceVersion = Number(settings?.version || 1);
   const agentV2 = fastGPTAgentV2Presentation(enterpriseId);
-  const entryToken = await new SignJWT({ enterpriseId, contextVersion: identity.contextVersion, basis, guidanceVersion }).setProtectedHeader({ alg: 'HS256' })
+  const entryToken = await new SignJWT({ enterpriseId, contextVersion: identity.contextVersion,
+    basis: { ...basis, ...(staffProfileLeadId ? { staffProfileLeadId } : {}) }, guidanceVersion }).setProtectedHeader({ alg: 'HS256' })
     .setSubject(identity.userId).setAudience('assistant-entry').setIssuedAt().setExpirationTime('15m').sign(entrySecret());
   return { entryToken, expiresIn: 900, enterprise: { id: enterpriseId, name: enterprise!.name, logo: enterprise!.logo }, capabilities: actor.capabilities, resumeConversationId,
     canSend: assistantWritesEnabled(settings), maxMessageChars: Number(settings?.max_message_chars) || 4000,
+    ...(staffProfileLeadId ? { staffProfileCapture: true } : {}),
     guidanceOpening: contentEntry ? contentGreeting(basis.kind==='reference_content'?reference:null) : guidanceOpening(guidance),
     guidanceEnabled: contentEntry || portfolioEntry ? false : guidance.enabled, guidance: contentEntry || portfolioEntry ? null : guidanceView({ ...guidance, chatFirst: true }, []),
     ...(agentV2 ? { ...(agentV2.welcome ? { welcome: agentV2.welcome } : {}), presetQuestions: agentV2.presets } : {}),
     ...(portfolioEntry ? { portfolio: portfolioEntry } : {}),
     ...(contentEntry&&reference&&basis.kind==='reference_content'?{referenceEntry:body.referenceEntry}:{}) };
 }
-export async function fromEntry(identity: Identity, token: unknown) {
+export async function fromEntry(identity: Identity, token: unknown, staffProfileNotice = false) {
   if (typeof token !== 'string' || token.length > 4096) fail('entry_context_invalid', 422);
   try {
     const { payload } = await jwtVerify(token, entrySecret(), { audience: 'assistant-entry', algorithms: ['HS256'] });
     if (payload.sub !== identity.userId || payload.contextVersion !== identity.contextVersion) fail('entry_context_invalid', 422);
     const enterpriseId=id(payload.enterpriseId),basis={...(payload.basis as Record<string,unknown>)};
+    // A consultation started by an earlier app version keeps its private draft.
+    if (!staffProfileNotice) delete basis.staffProfileLeadId;
     if (basis.kind === 'portfolio_content' && !await withTenantTransaction(enterpriseId, tx => portfolioEntrySource(tx, basis as PortfolioEntry))) fail('entry_context_invalid', 422);
     if(basis.kind==='reference_content'){
       const available=await withTenantTransaction(enterpriseId,tx=>contentEntrySource(tx,basis as ContentEntry));

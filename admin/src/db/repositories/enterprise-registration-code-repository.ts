@@ -5,6 +5,7 @@ import {
   platformEnterpriseRegistrationCodes,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { getJwtSecretString } from '@/lib/jwt-secret';
 
 export type EnterpriseRegistrationCodeResolution =
   | 'ok'
@@ -17,17 +18,14 @@ const TOKEN_BYTES = 24;
 const LOCK_KEY = 'platform-enterprise-registration-code';
 
 function tokenSecret() {
-  const configured =
-    process.env.REFERRER_TOKEN_SECRET || process.env.JWT_SECRET;
-  if (
-    process.env.NODE_ENV === 'production' &&
-    (!configured || Buffer.byteLength(configured, 'utf8') < 16)
-  ) {
-    throw new Error(
-      'REFERRER_TOKEN_SECRET or JWT_SECRET must contain at least 128 bits'
-    );
+  const configured = process.env.REFERRER_TOKEN_SECRET?.trim();
+  if (configured) {
+    if (process.env.NODE_ENV === 'production' && Buffer.byteLength(configured, 'utf8') < 16) {
+      throw new Error('REFERRER_TOKEN_SECRET must contain at least 128 bits');
+    }
+    return configured;
   }
-  return configured || 'local_referrer_token_secret_32_bytes';
+  return getJwtSecretString();
 }
 
 export function hashEnterpriseRegistrationToken(token: string) {

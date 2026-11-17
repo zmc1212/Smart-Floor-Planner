@@ -14,6 +14,7 @@ import {
 } from '@/lib/xiaok-v1/stage-reminder-worker';
 import { checkPilotWorkerAlignment, type PilotWorkerAlignment } from '@/lib/xiaok-v1/pilot-worker-alignment';
 import { evaluateWorkerSafetyGate, type WorkerSafetyGate } from '@/lib/xiaok-v1/worker-safety-gate';
+import type { WorkerDeployment } from '@/lib/xiaok-v1/worker-runtime-config';
 import { nativeWorkflowEnabled, nativeWorkflowEnterpriseIds } from '@/lib/native-workflow/live/tenant-allowlist';
 import { delegationEnterprises } from '@/lib/native-workflow/live/delegation-config';
 import { nativeWorkflowScope, workerTaskScope, type NativeWorkflowScope } from './worker-scope';
@@ -24,6 +25,9 @@ import { nativeWorkflowScope, workerTaskScope, type NativeWorkflowScope } from '
 export type AssistantJobsTickDependencies = {
   now?: Date;
   env?: Record<string, string | undefined>;
+  /** Resolved admin switch. Production resolves the saved database version
+   * before calling the tick; direct callers keep the pure environment gate. */
+  deployment?: WorkerDeployment;
   advanceKnowledgeBatches?: typeof advanceKnowledgeBatches;
   processAssistantJob?: typeof processAssistantJob;
   processAssistantRun?: typeof processAssistantRun;
@@ -93,7 +97,7 @@ export async function runAssistantJobsTick(
   input: AssistantJobsTickDependencies = {},
 ): Promise<AssistantJobsTickData> {
   const now = input.now ?? new Date();
-  const env = input.env ?? process.env;
+  const env = input.deployment?.env ?? input.env ?? process.env;
   const knowledgeBatches = input.advanceKnowledgeBatches ?? advanceKnowledgeBatches;
   const assistantJob = input.processAssistantJob ?? processAssistantJob;
   const assistantRun = input.processAssistantRun ?? processAssistantRun;
@@ -109,7 +113,7 @@ export async function runAssistantJobsTick(
   const workflowEnabled = input.nativeWorkflowEnabled ?? nativeWorkflowEnabled;
 
   const pilotScopeAlignment = alignmentOf(env);
-  const workerSafetyGate = safetyGateOf(env);
+  const workerSafetyGate = input.deployment?.gate ?? safetyGateOf(env);
   const execution = workerTaskScope(workerSafetyGate);
   const businessTasksEnabled = execution.enabled;
   const pilotEnterpriseId = execution.enterpriseId;

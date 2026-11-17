@@ -40,7 +40,7 @@ export function HandoffPanel() {
   };
   const summary=detail?.handoff.packet?.summary;
   return <Space direction="vertical" size={16} style={{width:'100%'}}>
-    <Alert type="info" showIcon message="仅展示客户授权给企业接待团队或你的咨询" description="本企业负责人可接管并在同一会话回复。平台知识管理权限不授予客户咨询访问权。接待人、原始来源与分佣各自保留。" />
+    <Alert type="info" showIcon message="仅展示客户授权给企业接待团队或你的咨询" description="管理员在所选企业内接管咨询，接管后可查看需求并在同一会话回复。" />
     {error&&<Alert type="error" message={error} action={<Button onClick={()=>setRevision(n=>n+1)}>刷新</Button>} />}
     {pending&&<Alert type="warning" message="上次写入结果待确认" action={<Button loading={busy} onClick={()=>void act(pending.action)}>核对同一次操作</Button>} />}
     {!selected?<List dataSource={items} locale={{emptyText:'暂无授权咨询'}} renderItem={item=><List.Item actions={[<Button key="open" onClick={()=>{setSelected(item.conversationId);setDetail(undefined);}}>查看咨询</Button>]}><List.Item.Meta title={item.title} description={item.handoff.recipientName}/><Tag>{item.handoff.state==='waiting'?'待接管':'你已接管'}</Tag></List.Item>}/>:<>

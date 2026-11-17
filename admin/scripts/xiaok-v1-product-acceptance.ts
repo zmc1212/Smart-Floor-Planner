@@ -1350,7 +1350,7 @@ async function main() {
           if (!Array.isArray(view?.[kind]) || !(view?.[kind] as unknown[]).length) issues.push('empty:' + kind);
         }
         const standards = (view?.standards as Array<{ text?: string }> | undefined) ?? [];
-        if (!standards.some(segment => String(segment.text || '').startsWith('通用建议（模型知识）：'))) {
+        if (!standards.some(segment => String(segment.text || '').startsWith('小K建议：'))) {
           issues.push('no_model_advice');
         }
         if (detail.deliveryState !== 'delivered') issues.push('not_delivered');

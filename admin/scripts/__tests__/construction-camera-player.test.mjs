@@ -38,7 +38,7 @@ function snapshot(id) { return { id, state: 'ready', name: '测试抓拍' + id, 
 async function fixture(options = {}) {
   const elements = Object.fromEntries([...html.matchAll(/<([a-z-]+)[^>]*\bid="([^"]+)"/g)].map(([, tag, id]) => [id, new Element(tag)]));
   const buttons = ['up', 'left', 'stop', 'right', 'down'].map(direction => Object.assign(new Element('button'), { dataset: { direction } }));
-  const local = options.local ?? storage(), session = options.session ?? storage(), calls = [], timers = new Map();
+  const local = options.local ?? storage(), session = options.session ?? storage(), calls = [], timers = new Map(), timeouts = new Map();
   const state = { project: { id: '12', name: '测试工地' }, canCapture: true, canControl: true, canViewSnapshots: true,
     items: [{ binding_id: '9', name: '测试摄像头A', ptz_enabled: true }, { binding_id: '10', name: '测试摄像头B', ptz_enabled: true }] };
   let handler = options.handler;
@@ -50,15 +50,111 @@ async function fixture(options = {}) {
     return {};
   };
   const document = { hidden: false, getElementById: id => elements[id], createElement: tag => new Element(tag), querySelector: () => new Element(), querySelectorAll: () => buttons, addEventListener() {} };
-  const window = { addEventListener() {} };
-  vm.runInNewContext(source, { document, window, location: { hash: '#entry=test-entry', pathname: '/construction-camera' }, history: { replaceState() {} },
+  // A supported MSE browser: live auto-play then reaches real play() rather than the unsupported branch.
+  class Hls {
+    static Events = { ERROR: 'error' };
+    static isSupported() { return true; }
+    constructor() {}
+    on() {}
+    loadSource() {}
+    attachMedia() {}
+    destroy() {}
+  }
+  if (options.playError) elements.video.play = async () => { const e = new Error('blocked'); e.name = 'NotAllowedError'; throw e; };
+  const window = { addEventListener() {}, Hls: options.Hls ?? Hls };
+  vm.runInNewContext(source, { document, window, location: { hash: options.hash ?? '#entry=test-entry', pathname: '/construction-camera' }, history: { replaceState() {} },
     localStorage: local, sessionStorage: session, crypto: { randomUUID }, URLSearchParams, console,
     setInterval(fn) { const id = timers.size + 1; timers.set(id, fn); return id; }, clearInterval: id => timers.delete(id),
+    setTimeout(fn) { const id = Symbol(); timeouts.set(id, fn); return id; }, clearTimeout: id => timeouts.delete(id),
     fetch: async (url, init) => { const route = url.replace('/api/construction-camera/', ''), body = init.body ? JSON.parse(init.body) : undefined; calls.push({ route, body, headers: init.headers }); return await handler?.(route, body, init) ?? ok(defaults(route, body)); },
   });
   await flush();
-  return { elements, calls, local, session, buttons, state, setHandler: next => { handler = next; }, heartbeat: async () => { await [...timers.values()][0]?.(); await flush(); } };
+  return { elements, calls, local, session, buttons, state, timeouts, setHandler: next => { handler = next; }, heartbeat: async () => { await [...timers.values()][0]?.(); await flush(); } };
 }
+
+async function ownerPreview(options = {}) {
+  const players = [];
+  class Hls {
+    static Events = { ERROR: 'error' };
+    static isSupported() { return true; }
+    constructor() { players.push(this); }
+    on(name, handler) { this[name] = handler; }
+    loadSource(url) { this.url = url; }
+    attachMedia() {}
+    destroy() { this.destroyed = true; }
+  }
+  return { ...await fixture({ hash: '#ownerLive=1454.'+'a'.repeat(48)+'.'+'b'.repeat(43), Hls, ...options }), players };
+}
+
+test('owner preview blocks repeat starts until actual playback progress and keeps the viewing receipt', async () => {
+  const receipt = deferred();
+  const f = await ownerPreview({ handler: () => receipt.promise }), { play, video, status } = f.elements;
+  assert.equal(play.disabled, true);
+  await play.onclick();
+  assert.equal(f.players.length, 1);
+  assert.match(status.textContent, /正在连接直播/);
+
+  Object.assign(video, { videoWidth: 640, played: { length: 1, start: () => 0 }, currentTime: 0 });
+  await video.listeners.timeupdate();
+  assert.equal(play.disabled, true);
+  assert.equal(f.calls.length, 0);
+
+  video.currentTime = 0.5;
+  const reporting = video.listeners.timeupdate();
+  assert.equal(play.disabled, false);
+  assert.equal(f.calls.length, 1);
+  assert.match(f.calls[0].route, /\/played$/);
+  receipt.resolve(ok({ played: true }));
+  await reporting;
+  assert.match(status.textContent, /已观看当前机位/);
+  assert.equal(f.timeouts.size, 0);
+});
+
+test('owner preview can retry after a media failure or a connection that never produces a frame', async () => {
+  const f = await ownerPreview(), { play, status } = f.elements;
+  f.players[0].error(null, { fatal: true });
+  assert.equal(f.players[0].destroyed, true);
+  assert.equal(play.disabled, false);
+  assert.match(status.textContent, /请重试/);
+
+  await play.onclick();
+  assert.equal(play.disabled, true);
+  f.players[0].error(null, { fatal: true });
+  assert.equal(play.disabled, true);
+  assert.equal(f.players[1].destroyed, undefined);
+  [...f.timeouts.values()][0]();
+  assert.equal(f.players[1].destroyed, true);
+  assert.equal(play.disabled, false);
+  assert.match(status.textContent, /请重试/);
+});
+
+test('owner preview resumes a platform pause so live viewing stays pinned', async () => {
+  const f = await ownerPreview(), { video } = f.elements;
+  assert.equal(video.paused, false);
+  video.paused = true;
+  video.listeners.pause();
+  await flush();
+  assert.equal(video.paused, false);
+});
+
+test('fullscreen button fills the viewport when the host lacks fullscreen and can exit', async () => {
+  const f = await ownerPreview(), { 'live-fullscreen': open, 'exit-fullscreen': close } = f.elements;
+  assert.equal(open.disabled, false);
+  assert.equal(close.hidden, true);
+  open.onclick();
+  assert.equal(close.hidden, false);
+  close.onclick();
+  assert.equal(close.hidden, true);
+});
+
+test('live view has no native controls while playback keeps them', async () => {
+  assert.doesNotMatch(html, /<video id="video"[^>]*\bcontrols\b/);
+  const f = await fixture(), { video } = f.elements;
+  await f.elements['playback-tab'].onclick();
+  assert.equal(video.controls, true);
+  await f.elements['return-live'].onclick();
+  assert.equal(video.controls, false);
+});
 
 test('camera/date/selected unplayed segment survive reentry without starting playback', async () => {
   const f = await fixture(), e = f.elements;
@@ -78,7 +174,7 @@ test('visible recording rows select the original authorized segment without auto
   const f=await fixture(),e=f.elements;await e['playback-tab'].onclick();
   assert.equal(e['recording-list'].children.length,2);
   e['recording-list'].children[1].onclick();await flush();assert.equal(e.recording.value,'cloud:92');
-  assert.ok(!f.calls.some(c=>c.route==='playback'||c.route==='live'));
+  assert.ok(!f.calls.some(c=>c.route==='playback'));
   f.setHandler(route=>route==='heartbeat'?denied():undefined);await f.heartbeat();
   assert.equal(e['recording-list'].children.length,0);assert.equal(e['history-jump'].hidden,true);assert.equal(e['ptz-toggle'].hidden,true);
 });
@@ -105,10 +201,35 @@ test('expired saved camera/segment only restore selections present in authorized
 
 test('blocked preference storage leaves authorized live and playback controls usable', async () => {
   const f = await fixture({ local: storage(new Map(), true) });
-  assert.match(f.elements.status.textContent, /请选择摄像头/);
+  assert.equal(f.elements.video.paused, false);
+  assert.equal(f.elements.play.disabled, false);
   await f.elements['playback-tab'].onclick();
   assert.equal(f.elements['play-recording'].disabled, false);
   assert.equal(f.elements.recording.value, 'cloud:91');
+});
+
+test('live auto-plays muted on entry, camera switch and return from playback without taps', async () => {
+  const f = await fixture(), e = f.elements;
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 1);
+  assert.match(e.status.textContent, /正在接收现场画面/);
+  assert.equal(e.stop.disabled, false);
+
+  await e.stop.onclick();
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 1);
+  e.camera.value = '10'; await e.camera.onchange();
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 2);
+  await e['playback-tab'].onclick();
+  await e['return-live'].onclick();
+  await flush();
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 3);
+  assert.match(e.status.textContent, /正在接收现场画面/);
+});
+
+test('a blocked muted autoplay leaves the manual start enabled with a hint', async () => {
+  const f = await fixture({ playError: true });
+  assert.match(f.elements.status.textContent, /点击「开始播放」/);
+  assert.equal(f.elements.play.disabled, false);
+  assert.equal(f.elements.stop.disabled, true);
 });
 
 test('revocation immediately clears history/preview and rejects a late successful history response', async () => {

@@ -43,6 +43,13 @@ test('B. internal issue numbers and unsupported quantities are rejected instead 
   assert.throws(() => adviceBody(['客厅需要补铺约120平方米墙砖。']), /unsupported_model_commitment/u);
 });
 
+test('E. the general advice prompt forbids guarantee and receipt wording', () => {
+  const messages = generalReportMessages({}, [project()], { projectId: '38', name: '泥木' });
+  const system = messages[0].content.map(part => part.type === 'text' ? part.text : '').join('\n');
+  assert.match(system, /保证……安全/);
+  assert.match(system, /已完成付款、已验收、已批准、已联系/);
+});
+
 test('C. completion and acceptance wording still fails the existing commitment guard', () => {
   assert.throws(() => adviceBody(['卫生间墙砖铺贴已验收。']), /unsupported_model_commitment/u);
   assert.throws(() => adviceBody(['已付款结算完成。']), /unsupported_model_commitment/u);

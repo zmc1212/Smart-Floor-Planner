@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { answerExcerpts, parseAnswer, parseSelection } from '../knowledge/answer';
+import { answerExcerpts, parseAnswer, parseSelection, safeFallbackApplies, safeFallbackContent, SOURCE_UNAVAILABLE_TEXT, COMMITMENT_UNAVAILABLE_TEXT, REPORT_COMMITMENT_UNAVAILABLE_TEXT } from '../knowledge/answer';
 import type { Evidence } from '../contracts';
 const evidence:Evidence[]=[{ref:{type:'knowledge_chunk',id:'41',version:'7'},hash:'h',text:'腻子干燥打磨后按底漆和面漆工艺施工。具体项目验收须现场确认。'}];
 test('selection renders only complete authorized source sentences and server-owned citations',()=>{
@@ -12,6 +12,20 @@ test('valid citations cannot authorize extra explanations, external facts or rem
   for(const text of ['未干腻子附着力不足，会导致起皮气泡。','项目验收合格。','腻子干燥打磨后按底漆和面漆工艺施工。因为这是施工规范。']) {
     assert.throws(()=>parseAnswer(JSON.stringify({answerKind:'grounded',segments:[{text,citations:[{sourceId:'41',quote:evidence[0].text}]}]}),evidence),/invalid_model_answer/);
   }
+});
+test('safe fallback only covers enterprise-source and price/schedule customer questions',()=>{
+  assert.equal(safeFallbackApplies('source_read_required','你们公司防水施工的企业标准是什么？闭水试验要多久？'),true);
+  assert.equal(safeFallbackApplies('source_read_required','合成点位说明第二节如何区分方案同意和关闭？'),false);
+  assert.equal(safeFallbackApplies('unsupported_model_commitment','我家装修总价是多少？请给我一个具体数字。'),true);
+  assert.equal(safeFallbackApplies('unsupported_model_commitment','这份报告里，下周需要我关注什么？',true),true);
+  assert.equal(safeFallbackApplies('unsupported_model_commitment','请记下：书房书桌靠窗，书房需要收纳'),false);
+  assert.equal(safeFallbackApplies('unsupported_model_commitment','把另一间的书桌也改一下，先确认具体房间再记录'),false);
+  const source=safeFallbackContent('source_read_required');
+  assert.deepEqual(source.blocks,[{type:'notice',code:'source_unavailable',fallbackText:SOURCE_UNAVAILABLE_TEXT}]);
+  assert.deepEqual(safeFallbackContent('unsupported_model_commitment').blocks,[{type:'notice',code:'commitment_unavailable',fallbackText:COMMITMENT_UNAVAILABLE_TEXT}]);
+  assert.deepEqual(safeFallbackContent('unsupported_model_commitment',{reportScoped:true}).blocks,[{type:'notice',code:'commitment_unavailable',fallbackText:REPORT_COMMITMENT_UNAVAILABLE_TEXT}]);
+  assert.doesNotMatch(SOURCE_UNAVAILABLE_TEXT,/防水|闭水/);
+  assert.doesNotMatch(COMMITMENT_UNAVAILABLE_TEXT,/\d+|万元|元以内|天以内|周以内/);
 });
 test('forged or duplicate selections and free model prose fail closed',()=>{
   for(const raw of ['{"selections":["E999"]}','{"selections":["E1","E1"]}','{"selections":[1]}','{"selections":["E1"],"explanation":"extra"}','建议立即入住 {"selections":["E1"]}'])assert.throws(()=>parseSelection(raw,evidence),/invalid_model_/);

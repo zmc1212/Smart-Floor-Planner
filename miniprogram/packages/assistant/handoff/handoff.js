@@ -1,5 +1,6 @@
 const { HandoffController, initial } = require('../lib/handoff');
 const { MediaController } = require('../lib/media');
+const nativePreview = require('../../../utils/native-preview');
 Page({
   data: { ...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100, viewportHeight: 844, keyboardHeight: 0, staffScrollTarget: '', portalLabel: '设计师端', queueCounts: { waiting: 0, active: 0 }, mediaItems: [], mediaPaths: {}, mediaError: '', mediaLoading: false,
     tab: 'chat', queueTab: 'waiting', editor: '', fieldIndex: 0, sourceIndex: 0, editText: '', editNote: '',
@@ -30,16 +31,20 @@ Page({
   },
   async onShow() {
     if (this.redirected) return;
+    this.shown = true;
+    if (nativePreview.shownAfterPreview(this)) return;
     this.setData({ editor: '', keyboardHeight: 0 });
     this.clearMedia();
-    this.shown = true;
     const app = getApp(); if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
     const current = app.globalData.bootstrap && app.globalData.bootstrap.current;
     this.setData({ portalLabel: current && (current.role === 'enterprise_admin' || current.context && current.context.staffRole === 'enterprise_admin') ? '经营端' : '设计师端' });
     if (this.media && this.media.session !== (app.globalData.token || wx.getStorageSync('token') || '')) this.clearMedia();
     if (this.alive && this.shown) await this.controller.show(this.options);
   },
-  onHide() { this.shown = false; if (this.controller) this.controller.hide(); this.clearMedia(); },
+  onHide() {
+    if (nativePreview.hiddenByPreview(this)) return;
+    this.shown = false; if (this.controller) this.controller.hide(); this.clearMedia();
+  },
   onUnload() { this.alive = false; if (this.controller) this.controller.dispose(); if (this.media) this.media.dispose(); },
   onResize() { this.measureWindow(); },
   measureWindow() {

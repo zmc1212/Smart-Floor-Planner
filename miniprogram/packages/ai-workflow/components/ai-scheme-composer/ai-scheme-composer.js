@@ -1,3 +1,4 @@
+const nativePreview = require('../../../../utils/native-preview');
 const {
   applyRenderModeToDraft,
   buildComposerPickerOptions,
@@ -524,13 +525,13 @@ Component({
       const url = this.data.view && this.data.view.controlPreviewUrl;
       if (!url) return;
       this.holdDockExpanded();
-      wx.previewImage({ urls: [url], current: url });
+      nativePreview.previewImage({ urls: [url], current: url });
     },
 
     previewFloorPlanReference() {
       const url = String(this.properties.floorPlanPreviewUrl || '');
       if (!url) return;
-      wx.previewImage({ urls: [url], current: url });
+      nativePreview.previewImage({ urls: [url], current: url });
     },
 
     previewReferenceImage(event) {
@@ -543,7 +544,7 @@ Component({
         urls.push(String(this.properties.floorPlanPreviewUrl || ''));
       }
       references.forEach((item) => urls.push(String(item.previewUrl || '')));
-      wx.previewImage({
+      nativePreview.previewImage({
         current,
         urls: [...new Set(urls.filter(Boolean))],
       });
@@ -553,7 +554,7 @@ Component({
       const url = this.data.view && this.data.view.timelineControlUrl;
       if (url) {
         this.holdDockExpanded();
-        wx.previewImage({ urls: [url], current: url });
+        nativePreview.previewImage({ urls: [url], current: url });
         return;
       }
       this.uploadReference();
@@ -647,7 +648,7 @@ Component({
       const urls = (this.properties.templates || [])
         .map((item) => item.previewUrl)
         .filter((url) => Boolean(url));
-      wx.previewImage({
+      nativePreview.previewImage({
         current,
         urls: urls.length ? urls : [current],
       });

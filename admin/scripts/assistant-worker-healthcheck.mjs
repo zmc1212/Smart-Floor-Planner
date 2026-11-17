@@ -18,11 +18,19 @@ function healthStatus({ health, fileError }) {
   const processStatus = processStatusFor(health.workerPid);
   const ageMs = health.lastSuccessAt === null ? null : Date.now() - health.lastSuccessAt;
   const diagnostics = { processStatus, ageSeconds: ageMs === null || ageMs < 0 ? null : Math.floor(ageMs / 1000), ...health };
-  if (health.safetyGate?.status === 'closed') {
-    return { ...diagnostics, healthy: false, tickStatus: 'blocked', reason: 'safety_gate_closed' };
-  }
   if (health.lastErrorCode || health.consecutiveFailures) {
     return { ...diagnostics, healthy: false, tickStatus: 'failed', reason: health.lastErrorCode ?? 'job_execution_failed' };
+  }
+  if (processStatus === 'stopped') {
+    return { ...diagnostics, healthy: false, tickStatus: 'failed', reason: 'worker_process_stopped' };
+  }
+  if (health.safetyGate?.status === 'closed') {
+    // A super-admin-configured off switch is a healthy idle container, not a
+    // failure. Any other closed gate still needs operator attention.
+    if (health.safetyGate.reason === 'worker_disabled') {
+      return { ...diagnostics, healthy: true, tickStatus: 'idle', reason: 'worker_disabled' };
+    }
+    return { ...diagnostics, healthy: false, tickStatus: 'blocked', reason: 'safety_gate_closed' };
   }
   if (ageMs === null) {
     return { ...diagnostics, healthy: false, tickStatus: 'no_success', reason: 'no_successful_tick' };

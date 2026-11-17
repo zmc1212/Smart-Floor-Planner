@@ -10,6 +10,7 @@ const RESETTABLE_ROLES = new Set([
   'designer',
   'measurer',
   'salesperson',
+  'construction_staff',
 ]);
 
 export async function POST(
@@ -53,7 +54,8 @@ export async function POST(
             passwordHash: credential.passwordHash,
             mustChangePassword: true,
           });
-          return { kind: 'ok' as const, updated, tempPassword: credential.password };
+          if (!updated) return { kind: 'not_found' as const };
+          return { kind: 'ok' as const, tempPassword: credential.password };
         }
       );
 
@@ -75,13 +77,13 @@ export async function POST(
           { status: 400 }
         );
       }
-      return NextResponse.json({
-        success: true,
-        data: {
-          mustChangePassword: true,
-          ...(result.kind === 'ok' ? { tempPassword: result.tempPassword } : {}),
+      return NextResponse.json(
+        {
+          success: true,
+          data: { mustChangePassword: true, tempPassword: result.tempPassword },
         },
-      });
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
     }
   );
 }

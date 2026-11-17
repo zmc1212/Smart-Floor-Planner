@@ -262,7 +262,7 @@ test('a later unavailable detail read clears the loaded body, projects and open 
   f.intercept(c => c.path === '/followups/27/reports/98' ? { reportId: '98', revision: 1, available: false, facts: null } : undefined);
   await f.controller.sync();
   const { sourceContext, ...detail } = f.controller.state.followupDetail;
-  assert.equal(detail.available, false); assert.equal(detail.title, '这份简报已不可用');
+  assert.equal(detail.available, false); assert.equal(detail.title, '这份简报暂时看不了了');
   assert.equal(detail.projects, undefined); assert.equal(detail.facts, undefined); assert.equal(detail.body, undefined);
   assert.equal(f.controller.state.followupOriginal, null);
   assert.ok(!JSON.stringify(detail).includes('合成测试·我家装修'));

@@ -911,6 +911,41 @@
       "when": 1796630400000,
       "tag": "0133_owner_stage_reminder_read_state",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1796716800000,
+      "tag": "0134_assistant_worker_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1796803200000,
+      "tag": "0135_assistant_handoff_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1796889600000,
+      "tag": "0136_assistant_renovation_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1796976000000,
+      "tag": "0137_construction_camera_cover_schedule",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1797062400000,
+      "tag": "0138_assistant_staff_renovation_profiles",
+      "breakpoints": true
     }
   ]
 }

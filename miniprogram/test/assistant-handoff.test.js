@@ -123,7 +123,9 @@ test('staff media polls reuse one controller and unchanged photo; hiding cancels
   }
   vm.runInNewContext(fs.readFileSync(require.resolve('../packages/assistant/handoff/handoff'), 'utf8'), {
     Page: value => { page = value; }, getApp: () => ({ globalData: { token: 'staff' } }),
-    require: name => name.endsWith('/media') ? { MediaController: Media } : { HandoffController, initial: () => ({}) },
+    require: name => name.endsWith('/media') ? { MediaController: Media }
+      : name.endsWith('/native-preview') ? { previewImage() {}, hiddenByPreview() { return false; }, shownAfterPreview() { return false; } }
+      : { HandoffController, initial: () => ({}) },
   });
   const view = { ...page, data: { mediaItems: [], mediaPaths: {}, staff: true, tab: 'media' }, alive: true,
     controller: { id: '3', hide() {} }, setData(patch) { for (const [key, value] of Object.entries(patch)) {

@@ -5,7 +5,8 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction,withPlatformTransaction } from '@/db/transaction';
 import { one,rows,type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
-import { closePostgresPool,resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob,runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import { readOriginal } from '@/lib/assistant/knowledge/file-service';
@@ -35,10 +36,11 @@ async function run(jobId:unknown){const lease=await claimKnowledgeJob();assert.o
 async function latest(d:Row){const detail=await op('detail',{documentId:d.documentId});return(detail.versions as Row[]).find(v=>String(v.id)===d.versionId)!;}
 async function ready(d:Row){assert.equal((await run(d.jobId)).status,'succeeded');d.expectedEditVersion=2;await op('reviewFile',{...d,acknowledgeWarnings:true,excludedBlockIds:[]});d.expectedEditVersion=3;const j=await op('index',d);assert.equal((await run(j.jobId)).status,'succeeded');}
 before(async()=>{
- const url=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(url.port,'55432');assert.equal(url.pathname,'/xiaok_embedding_eval');
+ useLocalKnowledgeTestDatabase();
  await withPlatformTransaction(async tx=>{
   for(let i=0;i<2;i++)tenants.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));eid=tenants[0];
-  await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${eid},true,1000,12000000,1000000000,30)`);
+  await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
+    values(${eid},true,1000,12000000,1000000000,30,'{"enterpriseKnowledgeEnabled":true}'::jsonb)`);
   aid=String((await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password) values(${eid},${prefix},'unusable-synthetic','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!.id);
   uid=String((await one(tx,sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!.id);await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${uid},${prefix})`);
  });
@@ -90,7 +92,7 @@ test('K08 revocation during real local parse discards the late result and fences
  const attempts=await withTenantTransaction(eid,tx=>rows(tx,sql`select status,error_code from app.assistant_knowledge_attempts where enterprise_id=${eid} and job_id=${String(d.jobId)}`));assert.equal(attempts[0].status,'failed');assert.equal(attempts[0].error_code,'context_changed');
 });
 test('K08 answer and original source projection survive reentry and invalidate on withdrawal',async()=>{
- const sent=await customer.send(cid,randomUUID(),{version:1,blocks:[{type:'text',text:'TEST-A材料示例厚度与地暖前提'}]}),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
+ const sent=await customer.send(cid,randomUUID(),{version:1,blocks:[{type:'text',text:'你们的材料文件原文里，TEST-A 示例厚度是多少，地暖有什么前提？'}]}),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
  const model:TextModelGateway={capabilities:{streaming:false,toolCalling:false,usage:false},generate:async input=>{const e=JSON.parse(input.messages[1].content).evidence;const chosen=e.find((e:{text:string})=>e.text.includes('TEST-A'));assert.ok(chosen);return{text:JSON.stringify({selections:[chosen.selectionId]}),attemptId:'',usage:null,finishReason:null,providerRequestId:null};}};
  await processAnswer(lease,{model});assert.equal((await customer.run(lease.runId)).status,'succeeded');const history=await customer.messages(cid);const answer=(history.items as Row[]).find(m=>m.authorKind==='assistant')!;assert.ok(answer);messageId=String(answer.id);citationId=String((answer.citations as Row[])[0].id);
  const cite=await customer.citation(citationId);assert.equal(cite.available,true);assert.ok('sourceLocation' in cite && 'sourceFile' in cite && 'quote' in cite);assert.match(String(cite.sourceLocation),/合成材料.docx/);assert.ok(cite.sourceFile);assert.match(String(cite.quote),/TEST-A|2 mm/);
@@ -105,14 +107,18 @@ test('AG08/K06 actual parsed PDF page survives Agent validation, durable reentry
  ]),'合成页码定位.pdf'),title:'合成PDF页码定位'});
  const d={documentId:String((created.document as Row).id),versionId:String((created.draft as Row).id),expectedVersion:1,expectedEditVersion:1,jobId:created.jobId};
  await ready(d);await op('publish',d);
- await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_enterprise_settings set agent_config='{"runtime":"langgraph-v1","providerKey":"deepseek","model":"deepseek-flash","tools":true,"imageInput":false,"probeVersion":"synthetic-pdf-page-v99"}'::jsonb where enterprise_id=${eid}`));
+ await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_enterprise_settings set agent_config='{"runtime":"langgraph-v1","providerKey":"deepseek","model":"deepseek-flash","tools":true,"imageInput":false,"enterpriseKnowledgeEnabled":true,"probeVersion":"synthetic-pdf-page-v99"}'::jsonb where enterprise_id=${eid}`));
  const chat=new ConversationService(actor),agentCid=String((await chat.create(randomUUID())).id);
  const call=(name:string,args:unknown):ModelTurnOutput=>({text:'',toolCalls:[{id:randomUUID(),name,arguments:JSON.stringify(args)}],usage:{inputTokens:30,outputTokens:30},finishReason:'tool_calls',providerRequestId:null});
  const sources=(messages:ModelMessage[])=>messages.filter(m=>m.role==='tool').flatMap(m=>JSON.parse(m.content).synthesisSources||[]) as Array<{sourceId:string;text:string;file?:{page?:number};citationOptions:Array<{citationId:string}>}>;
  const send=async(quantity:boolean)=>{
-  const sent=await chat.send(agentCid,randomUUID(),{version:1,blocks:[{type:'text',text:'请解释企业合成PDF页码定位资料中的检查安排和阶段标签。'}]}),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
-  await processAgentAnswer(lease,{model:async(messages,_tools,turn,requestTools)=>{
-   if(!turn)return call('search_knowledge',{query:'合成PDF页码定位 Waterproofing checks project team stage inspection'});
+  const sent=await chat.send(agentCid,randomUUID(),{version:1,blocks:[{type:'text',text:'请解释企业合成PDF页码定位资料中的检查安排和阶段标签。'}]});
+  const lease=await claimJob({enterpriseId:eid,runId:String(sent.runId)});assert.ok(lease);assert.equal(lease.runId,sent.runId);
+  await processAgentAnswer(lease,{model:async(messages,tools,turn,requestTools)=>{
+   if(!turn){
+    assert.ok(tools.some(tool=>tool.name==='knowledge_search'));
+    return call('knowledge_search',{query:'合成PDF页码定位 Waterproofing checks project team stage inspection'});
+   }
    if(quantity&&turn>1){const base=synthesisRepairBase(messages);assert.ok(base);return call('final_response',{kind:'synthesis_repair',baseHash:base.baseHash,edits:[{segment:0,text:base.original.segments[0].text}]});}
    const selected=sources(messages).find(s=>s.file?.page===2&&s.text.includes('Waterproofing checks'));assert.ok(selected,'The page must come from real PDF parsing/indexing/retrieval');assert.doesNotMatch(selected.text,/2/);
    const final=requestTools?.find(tool=>tool.name==='final_response');assert.ok(final);assert.deepEqual((final.parameters.properties as Row).kind,{type:'string',enum:['synthesis']});assert.deepEqual(final.parameters.required,['kind','segments']);

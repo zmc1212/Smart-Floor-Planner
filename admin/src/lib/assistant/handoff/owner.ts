@@ -6,10 +6,9 @@ import { one } from '@/db/repositories/assistant-repository';
 export async function currentHandoffOwner(tx: PostgresTransaction, enterpriseId: string, conversationId: string,
   handoff?: { state?: unknown; ownerId?: unknown; requestId?: unknown }) {
   if (handoff?.state !== 'active' || !handoff.ownerId || !handoff.requestId) return null;
-  return one(tx, sql`select a.id,a.display_name,a.username from app.admin_users a
-    join app.assistant_participants p on p.enterprise_id=a.enterprise_id and p.admin_id=a.id
-    where a.enterprise_id=${enterpriseId} and a.id=${String(handoff.ownerId)} and a.status='active'
-      and a.role in ('designer','enterprise_admin') and not a.must_change_password
+  return one(tx, sql`select a.id,a.display_name,a.username from app.assistant_participants p
+    cross join lateral app.assistant_handoff_staff_identity(p.admin_id,p.enterprise_id) a
+    where p.enterprise_id=${enterpriseId} and p.admin_id=${String(handoff.ownerId)}
       and p.conversation_id=${conversationId} and p.status='active' and p.participant_role='handoff_staff'
-      and p.grant_basis->>'requestId'=${String(handoff.requestId)} for share of a,p`);
+      and p.grant_basis->>'requestId'=${String(handoff.requestId)} for share of p`);
 }

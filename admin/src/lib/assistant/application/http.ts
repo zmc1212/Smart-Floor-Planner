@@ -122,8 +122,10 @@ export async function assistantHttp(request: Request, path: string[]) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) fail('invalid_message', 422);
     if (path.join('/') === 'entry-context' && method === 'POST') data = await entryContext(identity, body);
     else if (path[0] === 'conversations' && path.length === 1 && ['GET', 'POST'].includes(method)) {
-      only(body, ['entryToken']);
-      const actor = await fromEntry(identity, method === 'GET' ? request.headers.get('X-Assistant-Entry') : body.entryToken);
+      only(body, ['entryToken', 'staffProfileNotice']);
+      if (body.staffProfileNotice !== undefined && body.staffProfileNotice !== true) fail('invalid_message', 422);
+      const actor = await fromEntry(identity, method === 'GET' ? request.headers.get('X-Assistant-Entry') : body.entryToken,
+        method === 'POST' && body.staffProfileNotice === true);
       const service = new ConversationService(actor);
       data = method === 'GET' ? await service.list(cursor('cursor'), limit) : await service.create(requestKey());
     } else if (path[0] === 'conversations' && path.length <= 3) {
@@ -135,7 +137,9 @@ export async function assistantHttp(request: Request, path: string[]) {
         data = await service.archive(target, Number(body.expectedVersion), requestKey());
       } else if (path[2] === 'long-term' && ['GET','POST','PATCH'].includes(method))
         data = await longTermHttp(actor, target, method, params, body, method === 'GET' ? undefined : requestKey());
-      else if (path[2] === 'requirements' && method === 'GET') data = await new RequirementWorkflow(actor).read(target);
+      else if (path[2] === 'requirements' && method === 'GET') data = await new RequirementWorkflow(actor).read(target, params.get('profile') === '1');
+      else if (path[2] === 'renovation-profile' && method === 'POST')
+        data = await new RequirementWorkflow(actor).requirements.withdrawProfile(target, requestKey(), body);
       else if (path[2] === 'handoff' && method === 'GET') data = await new HandoffWorkflow(actor).customerRead(target);
       else if (path[2] === 'handoff' && method === 'POST') data = await new HandoffWorkflow(actor).customerWrite(target,requestKey(),body);
       else if (path[2] === 'requirements' && method === 'POST') data = await new RequirementWorkflow(actor).write(target, requestKey(), body);

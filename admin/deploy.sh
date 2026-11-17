@@ -211,6 +211,44 @@ start_and_verify_application() {
   run_authenticated_smoke || return 1
 }
 
+camera_network_name() {
+  local network="${SFP_CAMERA_NETWORK:-}"
+  if [[ -z "$network" && -f "$ENV_FILE" ]]; then
+    network="$(sed -n 's/^[[:space:]]*SFP_CAMERA_NETWORK[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" \
+      | tail -n 1 | tr -d '\r' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+  fi
+  printf '%s\n' "${network:-sfp-wvp-cloud_default}"
+}
+
+# Non-fatal safety net for releases whose Compose file predates the external
+# camera network declaration. It never restarts the camera gateway; it only
+# attaches the already-running Admin container.
+ensure_camera_network() {
+  local container=smart-floor-planner-admin
+  local network
+  network="$(camera_network_name)"
+  if ! docker container inspect "$container" >/dev/null 2>&1; then
+    echo "[WARN] Admin container is missing; camera network was not checked." >&2
+    return 0
+  fi
+  if ! docker network inspect "$network" >/dev/null 2>&1; then
+    echo "[WARN] Camera network $network does not exist; camera access may be unavailable." >&2
+    return 0
+  fi
+  if docker container inspect "$container" \
+    --format '{{range $name, $v := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' \
+    | grep -Fxq "$network"; then
+    echo "[OK] Admin is attached to camera network $network."
+    return 0
+  fi
+  if docker network connect "$network" "$container"; then
+    echo "[OK] Attached Admin to camera network $network."
+  else
+    echo "[WARN] Could not attach Admin to camera network $network; verify camera access manually." >&2
+  fi
+  return 0
+}
+
 echo "[4/9] Starting and checking PostgreSQL..."
 "${compose[@]}" up -d postgres
 wait_for_postgres || fail "PostgreSQL did not become ready within 60 seconds"
@@ -275,6 +313,8 @@ if ! start_and_verify_application "$IMAGE_NAME"; then
   fi
   exit 1
 fi
+
+ensure_camera_network
 
 echo '[9/9] Deployment verification completed.'
 echo "Version: $VERSION"

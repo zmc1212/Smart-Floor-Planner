@@ -1,4 +1,5 @@
 const api = require('../../../utils/api.js');
+const nativePreview = require('../../../utils/native-preview');
 const { canAccessRoute } = require('../../../utils/identity-navigation.js');
 const { decorateProject, decorateDetail, errorText, roleLabels, operationKey } = require('./projects-model.js');
 const { decorate } = require('../chat/site-client');
@@ -43,6 +44,7 @@ Page({
   },
   async onShow() {
     this._visible = true;
+    if (nativePreview.shownAfterPreview(this)) return;
     this.setData({ busy: false, reminderCancelling: '', reminderFocus: '' });
     const app = getApp();
     if (app.hydrateStoredSession) await app.hydrateStoredSession();
@@ -63,8 +65,11 @@ Page({
     if (this._deepLink && !this.data.projectId) this.setData({ projectId: this._deepLink.projectId, detail: null });
     await this.load();
   },
-  onHide() { this._visible = false; this._generation = (this._generation || 0) + 1; this.clearPreview(); clearTimeout(this._sheetTimer); this.setData({ sheet: '', sheetOpen: false }); },
-  onUnload() { this.onHide(); },
+  onHide(force) {
+    if (!force && nativePreview.hiddenByPreview(this)) return;
+    this._visible = false; this._generation = (this._generation || 0) + 1; this.clearPreview(); clearTimeout(this._sheetTimer); this.setData({ sheet: '', sheetOpen: false });
+  },
+  onUnload() { this.onHide(true); },
   current(g) { const c = identity(); return this._visible && this._token === c.token && this._identityKey === c.key && canAccessRoute(route, c.bootstrap) && (g == null || g === this._generation); },
   async onPullDownRefresh() { try { await this.load(); } finally { wx.stopPullDownRefresh(); } },
   async load(quiet = false) {
@@ -296,7 +301,7 @@ Page({
       } finally { if (valid()) this.setData({ loading: false }); }
     }
   },
-  previewPhoto(e) { if (this.current() && this.data.previewPhotos.some(p => p.path === e.currentTarget.dataset.path)) wx.previewImage({ current: e.currentTarget.dataset.path, urls: this.data.previewPhotos.map(p => p.path) }); },
+  previewPhoto(e) { if (this.current() && this.data.previewPhotos.some(p => p.path === e.currentTarget.dataset.path)) nativePreview.previewImage({ current: e.currentTarget.dataset.path, urls: this.data.previewPhotos.map(p => p.path) }, this); },
   openManagement() { if (this.data.detail?.manage && !this.data.busy && !this.data.pending) this.showSheet({ sheet: 'manage' }); },
   openStageList() { if (this.data.detail && !this.data.busy) this.showSheet({ sheet: 'stages' }); },
   openMembers() { if (this.data.detail && !this.data.busy) this.showSheet({ sheet: 'members' }); },

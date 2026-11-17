@@ -133,8 +133,8 @@ function ownerSections(project: WeeklyProjectFacts) {
     section('progress', '本周施工进展', [
       { text: project.stageName ? '本周项目处于' + project.stageName + '阶段。' : '本周项目阶段尚未识别，进度无法核实。', refs: stage ? [stage.refId] : [] },
       ...project.records.map(record => ({ text: recordLine(record), refs: [recordRefs(project, [record])[0].refId] })),
-      ...(project.records.length ? [] : [{ text: '本周暂无已发布的现场记录，未记录不等于未施工。' }]),
-    ], '本周暂无已发布的现场记录，未记录不等于未施工。'),
+      ...(project.records.length ? [] : [{ text: '本周还没有新的现场记录，有新进展会及时更新。' }]),
+    ], '本周还没有新的现场记录，有新进展会及时更新。'),
     section('stage', '当前装修阶段', [
       { text: project.stageName ? '当前阶段：' + project.stageName + '。' : '当前阶段未识别，不能据此判断进度。', refs: stage ? [stage.refId] : [] },
       { text: project.plan?.available ? '已发布施工计划V' + (project.plan.version ?? 0) + '，整体' + project.plan.label + '。'
@@ -147,7 +147,7 @@ function ownerSections(project: WeeklyProjectFacts) {
     section('in_progress', '目前正在处理的事项', [
       ...activeNodes.map(node => ({ text: node.roomName + ' · ' + node.stageName + '正在施工，计划状态' + node.label + '。', refs: nodeRefs(project, [node]).map(r => r.refId) })),
       ...project.records.filter(record => record.pending || record.coordination).map(record => ({ text: recordLine(record), refs: [recordRefs(project, [record])[0].refId] })),
-    ], '目前没有已记录的在处理事项，未记录不等于未施工。'),
+    ], '目前没有正在处理的事项，有新进展会及时更新。'),
     section('confirmations', '需要你确认的需求或事项', project.pending.ownerConfirmations.map(item => ({
       text: item.title, refs: pendingRefs(project, [item]).map(r => r.refId),
     })), '目前没有需要你确认的事项。'),

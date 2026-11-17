@@ -7,13 +7,15 @@ import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { Pool } from 'pg';
+import { closePostgresPool, getPostgresPool } from '@/lib/postgresql';
+import { xiaokTestDatabase } from './xiaok-test-database';
 import { PortfolioService } from '@/lib/portfolio/service';
 import { PortfolioCatalog } from '@/lib/portfolio/catalog';
 import { ConversationService } from '@/lib/assistant/core/conversation';
 import { HandoffService } from '@/lib/assistant/handoff/service';
 import { HandoffWorkflow } from '@/lib/assistant/handoff/workflow';
-import { reviewCheckpointer } from '@/lib/assistant/core/review-graph';
+import { reviewCheckpointer, setupReviewWorkflow } from '@/lib/assistant/core/review-graph';
 import { assistantHttp } from '@/lib/assistant/application/http';
 import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
@@ -58,9 +60,45 @@ async function publishWork(title: string, service = author, authorId = fixture.s
   return { id: workId, versionId: String((detail.work as Row).published_version_id), assetId: String(asset.assetId), authorId };
 }
 
+async function prepareReviewCheckpoints() {
+  const target = xiaokTestDatabase();
+  const ready = async () => {
+    const { rows: [result] } = await getPostgresPool().query(`
+      select count(*)::int as tables from pg_class c join pg_namespace n on n.oid=c.relnamespace
+      where n.nspname='assistant_requirement_workflow'
+        and c.relname in ('checkpoints','checkpoint_blobs','checkpoint_writes')
+        and has_schema_privilege(n.oid,'USAGE')
+        and has_table_privilege(c.oid,'SELECT') and has_table_privilege(c.oid,'INSERT')
+        and has_table_privilege(c.oid,'UPDATE') and has_table_privilege(c.oid,'DELETE')
+    `);
+    return result.tables === 3;
+  };
+  if (await ready()) return;
+
+  const ownerConnection = process.env.DATABASE_MIGRATION_URL;
+  assert.ok(ownerConnection, 'Set DATABASE_MIGRATION_URL for the isolated LangGraph checkpoint setup');
+  const owner = xiaokTestDatabase(ownerConnection);
+  assert.equal(owner.host, target.host, 'The checkpoint migrator must target the same isolated database');
+  const appRole = decodeURIComponent(target.username);
+  assert.match(appRole, /^[a-zA-Z_][a-zA-Z0-9_]*$/);
+  assert.notEqual(owner.username, target.username);
+  const pool = new Pool({ connectionString: owner.href, max: 2, connectionTimeoutMillis: 5000 });
+  try {
+    const lock = await pool.connect();
+    try {
+      await lock.query("select pg_advisory_lock(hashtext('xiaok-test-review-checkpoints'))");
+      if (await ready()) return;
+      await setupReviewWorkflow(pool);
+      await lock.query('REVOKE ALL ON SCHEMA assistant_requirement_workflow FROM PUBLIC');
+      await lock.query(`GRANT USAGE ON SCHEMA assistant_requirement_workflow TO "${appRole}"`);
+      await lock.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA assistant_requirement_workflow TO "${appRole}"`);
+      assert.ok(await ready(), 'The test application role must be able to use all review checkpoint tables');
+    } finally { lock.release(true); }
+  } finally { await pool.end(); }
+}
+
 before(async () => {
-  const target = new URL(resolvePostgresRuntimeConfig().connectionString);
-  assert.ok(['localhost', '127.0.0.1'].includes(target.hostname)); assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
+  await prepareReviewCheckpoints();
   globalThis.fetch = async () => { report.externalFetchRequests++; throw Error('D3 contact acceptance forbids external calls'); };
   await withPlatformTransaction(async tx => {
     for (let i = 0; i < 2; i++) {

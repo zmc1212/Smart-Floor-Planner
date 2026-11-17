@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { privateReportReply } from '@/lib/construction/report-reference';
 import { withTenantTransaction } from '@/db/transaction';
-import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { AssistantRepository, authorizeHandoffStaff, one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { isEnterpriseManagementRole } from '@/lib/admin-user-roles';
 import { fail, id, safeText, userContent, type ActorContext } from '../contracts';
 import { appendMessage, cancelRuns, idempotent, conversationSource } from '../core/conversation';
 import { allRequirementKeys } from '../requirements/contract';
@@ -23,21 +24,6 @@ export function dispatchHandoff(h: Handoff | undefined) {
     recipientName: h.recipientName, requestedAt: h.requestedAt, ownerId: h.ownerId,
     ownerName: h.ownerName } : null;
 }
-export async function authorizeHandoffStaff(repo: AssistantRepository) {
-  const a = repo.actor;
-  if (a.principal.kind !== 'admin' || !a.capabilities.includes('assistant.handoff.staff')) fail('assistant_capability_forbidden', 403);
-  const staff = await one(repo.tx, sql`select id,display_name,username,user_id,role from app.admin_users
-    where enterprise_id=${a.enterpriseId} and id=${a.principal.adminId} and status='active'
-      and role in ('designer','enterprise_admin') and must_change_password=false for share`);
-  if (!staff) fail('assistant_capability_forbidden', 403);
-  if (a.entry?.staffUserId) {
-    if (String(staff.user_id) !== a.entry.staffUserId) fail('identity_context_invalid', 401);
-    const current = await one(repo.tx, sql`select app.assistant_identity_is_current(${String(a.entry.staffUserId)}::bigint,${a.contextVersion}::integer) as valid`);
-    if (!current?.valid) fail('identity_context_invalid', 401);
-  }
-  return staff;
-}
-
 /** Uses the existing tenant conversation lock, participant grant and run cancellation fence. */
 export class HandoffService {
   constructor(readonly actor: ActorContext) {}
@@ -146,7 +132,7 @@ export class HandoffService {
   }
   staffList() {
     return this.scoped(false,async repo=>{
-      await authorizeHandoffStaff(repo);
+      await authorizeHandoffStaff(repo.tx, this.actor);
       const staffId = this.actor.principal.kind==='admin'?this.actor.principal.adminId:'';
       const list=await rows(repo.tx,sql`select * from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId}
         and (purpose='customer_consultation' or (purpose='construction_followup' and exists(select 1 from app.construction_followup_bindings b
@@ -160,7 +146,7 @@ export class HandoffService {
     });
   }
   private async staffConversation(repo:AssistantRepository, conversationId:string) {
-    const staff=await authorizeHandoffStaff(repo);
+    const staff=await authorizeHandoffStaff(repo.tx, this.actor);
     const c=await one(repo.tx,sql`select * from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId} and id=${id(conversationId)}
       and (purpose='customer_consultation' or (purpose='construction_followup' and exists(select 1 from app.construction_followup_bindings b
         where b.enterprise_id=app.assistant_conversations.enterprise_id and b.conversation_id=app.assistant_conversations.id and b.audience='customer'
@@ -177,7 +163,7 @@ export class HandoffService {
       where l.enterprise_id=${this.actor.enterpriseId} and l.archived_at is null and l.status not in ('closed','converted')
       and exists(select 1 from app.assistant_participants p where p.enterprise_id=l.enterprise_id and p.conversation_id=${conversationId}
         and p.user_id=l.customer_user_id and p.status='active')
-      and (${staff.role === 'enterprise_admin'} or l.assigned_to=${String(staff.id)} or l.promoter_id=${String(staff.id)})
+       and (${isEnterpriseManagementRole(String(staff.role))} or l.assigned_to=${String(staff.id)} or l.promoter_id=${String(staff.id)})
       order by l.id desc limit 100`);
     return candidates.map(l => ({ id: String(l.id), name: String(l.name || '服务档案'), community: String(l.community_name || ''),
       floorPlanId: l.layout_data && parseFormalSurveyLayout(l.layout_data) ? String(l.primary_floor_plan_id) : null,
@@ -207,8 +193,6 @@ export class HandoffService {
   staffWrite(conversationId:string,requestKey:string,input:Row) {
     if(!['claim','reply','end','release','correct','associate','link'].includes(String(input.action)) || Object.keys(input).some(k=>!['action','text','field','sourceMessageId','note','expectedVersion','mediaId','category','roomName','leadId','floorPlanId','roomId'].includes(k))) fail('invalid_message',422);
     return this.scoped(true,async repo=>{
-      // Recheck identity before idempotent replay; stale grants must never restore content.
-      await authorizeHandoffStaff(repo);
       const c=await one(repo.tx,sql`select id from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId} and id=${id(conversationId)} for update`);
       if(!c) fail('assistant_resource_not_found',404);
       await idempotent(repo.tx,this.actor,'staff-handoff:'+conversationId,requestKey,input,async()=>{

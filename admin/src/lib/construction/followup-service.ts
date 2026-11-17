@@ -160,7 +160,7 @@ export class FollowupService {
       generationRetryable: b.status === 'enabled' && !r.body && !r.body_dispatched && !r.body_unknown_io && Number(r.body_attempts) < 3
         && !(r.kind === 'stage' && (r.body_run_error || r.body_error_code) === 'context_changed')
         && (r.body_run_status === 'failed' || !r.body_run_status && r.knowledge_status === 'failed'),
-      generationLabel: r.body ? body.length ? '' : '工艺来源或权限已变化，可先查看有效记录。'
+      generationLabel: r.body ? body.length ? '' : '这份简报的工艺说明暂时取不到，可以先看看现场记录。'
         : ['queued','running'].includes(String(r.body_run_status)) ? '正文生成中，可先查看原记录。'
         : r.body_run_status === 'indeterminate' ? '正文结果正在核对，可先查看原记录。'
         : r.knowledge_status === 'failed' || r.body_run_status === 'failed' ? '正文暂未生成，可先查看原记录。' : '',

@@ -1,21 +1,25 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { deleteConstructionData } from '@/db/repositories/construction-cleanup';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import { ConversationService } from '@/lib/assistant/core/conversation';
 import { HandoffService } from '@/lib/assistant/handoff/service';
+import { FloorplanContextService } from '@/lib/assistant/media/floorplan-context';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer, finalToolForMessages, agentSourceFinalProtocol } from '@/lib/assistant/agent/worker';
 import { ConstructionService } from '@/lib/construction/service';
 import type { ActorContext } from '@/lib/assistant/contracts';
-import type { ModelTurnOutput, ModelMessage } from '@/lib/assistant/contracts/model';
+import type { ModelTurnOutput, ModelMessage, ModelTool } from '@/lib/assistant/contracts/model';
+import { isKnowledgeTool } from '@/lib/assistant/knowledge/rag-tools';
 import { agentMessageAvailable } from '@/lib/assistant/agent/media-context';
 import { synthesisRepairBase } from '@/lib/assistant/agent/synthesis-repair';
 import { synthesisRepairProjectionVersion, synthesisRepairTask } from '@/lib/assistant/agent/synthesis';
@@ -30,11 +34,23 @@ const office = '书房靠窗办公需同时考虑自然采光、屏幕眩光和�
 const waterproof = '防水阶段先核对基层和施工条件，施工与检查由项目团队安排。闭水检查前不能把进入防水节点当作防水完成；铺砖前须核对检查记录。客户到场时间以管家实际沟通为准，不承诺固定日期。';
 const call = (name: string, args: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: randomUUID(), name, arguments: JSON.stringify(args) }],
   usage: { inputTokens: 30, outputTokens: 30 }, finishReason: 'tool_calls', providerRequestId: null });
+function searchKnowledge(tools: ModelTool[], query: string, questions?: string[]) {
+  const search = tools.find(tool => ['search_knowledge', 'knowledge_search'].includes(tool.name));
+  assert.ok(search, 'The model needs an advertised knowledge search');
+  return call(search.name, questions ? { query, questions } : { query });
+}
+function searchWithCurrentStage(tools: ModelTool[], query: string) {
+  assert.ok(tools.some(tool => tool.name === 'query_business'));
+  const search = searchKnowledge(tools, query);
+  search.toolCalls.push(...call('query_business', { domain: 'construction' }).toolCalls);
+  return search;
+}
 const results = (messages: ModelMessage[]) => messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as Array<{ sourceId: string; kind: string; title: string; text: string; citationOptions: Array<{ citationId: string }> }>;
 const synth = (segments: unknown[]) => call('final_response', { kind: 'synthesis', segments });
 
 before(async () => {
-  const target = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
+  useLocalKnowledgeTestDatabase();
+  process.env.ASSISTANT_REQUESTS_PER_MINUTE = '1000';
   await withPlatformTransaction(async tx => {
     for (let i = 0; i < 2; i++) tenants.push(String((await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));
     eid = tenants[0];
@@ -42,7 +58,7 @@ before(async () => {
       values(${eid},${prefix},'unusable-synthetic','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!.id);
   });
   for (const e of tenants) await withTenantTransaction(e, tx => tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
-    values(${e},true,1000,12000000,1000000000,30,'{"runtime":"langgraph-v1","providerKey":"deepseek","model":"deepseek-flash","tools":true,"imageInput":false,"probeVersion":"p2m0-synthetic-v1"}'::jsonb)`));
+    values(${e},true,1000,12000000,1000000000,30,'{"runtime":"langgraph-v1","providerKey":"deepseek","model":"deepseek-flash","tools":true,"imageInput":false,"enterpriseKnowledgeEnabled":true,"probeVersion":"p2m0-synthetic-v1"}'::jsonb)`));
   knowledge = new KnowledgeService({ enterpriseId: eid, adminId: ownerId });
   await publish('合成办公布置', office); await publish('合成防水条件', waterproof);
   await publish('内部禁止外发', 'PRIVATE_ONLY_NEVER_SEND 书房办公和防水的内部客户密码不得外发。', 'staff_internal');
@@ -56,12 +72,16 @@ after(async () => {
     for (const u of users) await tx.execute(sql`delete from app.users where id=${u}`);
   }); } finally { await closePostgresPool(); }
 });
-async function publish(title: string, body: string, audience = 'customer_public') {
-  const created = await knowledge.execute('create', { title, body, audience, sourceType: 'manual_text' }, randomUUID());
+async function publish(title: string, body: string, audience = 'customer_public', effectiveTo?: string) {
+  const created = await knowledge.execute('create', { title, body, audience, sourceType: 'manual_text', effectiveTo }, randomUUID());
   const d = { documentId: String((created.document as Row).id), versionId: String((created.draft as Row).id), expectedVersion: 1, expectedEditVersion: 1 };
-  await knowledge.execute('index', d, randomUUID()); const job = await claimKnowledgeJob(); assert.ok(job); await runKnowledgeJob(job);
-  const result = await knowledge.execute('job', { jobId: job.jobId }); assert.equal(result.status, 'succeeded', JSON.stringify(result));
+  await finishKnowledgeJob((await knowledge.execute('index', d, randomUUID())).jobId);
   await knowledge.execute('publish', d, randomUUID()); return d;
+}
+async function finishKnowledgeJob(jobId: unknown) {
+  const job = await claimKnowledgeJob({ enterpriseId: eid, jobId: String(jobId) });
+  assert.ok(job); await runKnowledgeJob(job);
+  const result = await knowledge.execute('job', { jobId: job.jobId }); assert.equal(result.status, 'succeeded', JSON.stringify(result));
 }
 async function fixture(targetEid = eid, bound = true) {
   const uid = await withPlatformTransaction(async tx => { const u = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!.id); users.push(u);
@@ -70,8 +90,16 @@ async function fixture(targetEid = eid, bound = true) {
     values(${targetEid},${uid},'合成综合问答客户','13800000000','natural','合成书房之家') returning id`)))!.id);
   const actor: ActorContext = { enterpriseId: targetEid, principal: { kind: 'user', userId: uid }, contextVersion: 1, capabilities: ['assistant.chat.self'], ...(bound ? { entry: { kind: 'lead' as const, id: leadId } } : {}) };
   const chat = new ConversationService(actor), cid = String((await chat.create(randomUUID())).id);
-  const send = async (text: string, model: NonNullable<Parameters<typeof processAgentAnswer>[1]>['model']) => {
-    const sent = await chat.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] }); const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
+  const send = async (text: string, model: NonNullable<Parameters<typeof processAgentAnswer>[1]>['model'], retainedSynthesis = false) => {
+    const sent = await chat.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
+    if (retainedSynthesis) {
+      // These drafts were captured before extractive answers and question coverage were bound at admission.
+      await withTenantTransaction(targetEid, tx => tx.execute(sql`update app.assistant_runs
+        set policy_snapshot=policy_snapshot-'sourceAnswerMode'-'sourceQuestionCoverage'
+        where enterprise_id=${targetEid} and id=${String(sent.runId)} and status='queued'`));
+    }
+    const lease = await claimJob({ enterpriseId: targetEid, runId: String(sent.runId) });
+    assert.ok(lease); assert.equal(lease.runId, sent.runId);
     await processAgentAnswer(lease, { model }); return { run: await chat.run(lease.runId), runId: lease.runId };
   };
   return { actor, chat, cid, send, leadId, uid };
@@ -79,7 +107,7 @@ async function fixture(targetEid = eid, bound = true) {
 
 test('current-message scope preserves real memory and reentry while dispatching only the exact current original', async () => {
   const x = await fixture(eid, false), quote = '请记下：书房需要收纳。';
-  const saved = await x.send(quote, async () => call('record_need', { room: '书房', field: 'storage', value: '需要收纳', quote, additionalNeeds: [] }));
+  const saved = await x.send(quote, async () => call('record_need', { room: '书房', field: 'storage', value: '需要收纳', quote: '请记下：书房需要收纳', additionalNeeds: [] }));
   assert.equal(saved.run.status, 'succeeded', JSON.stringify(saved.run));
   const memory = () => withTenantTransaction(eid, async tx => readMemory((await one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`))?.entry_snapshot));
   const beforeMemory = await memory();
@@ -143,9 +171,17 @@ test('current-message scope repairs a forged source envelope once without reads 
 test('independent advice narrows the entire task, repairs once and preserves real writes, reentry, idempotency and revocation', async () => {
   const x = await fixture(eid, false), quote = '请记下：书房需要收纳。';
   const saved = await x.send(quote, async (_m, _t, turn) => !turn
-    ? call('record_need', { room: '书房', field: 'storage', value: '需要收纳', quote })
+    ? call('record_need', { room: '书房', field: 'storage', value: '需要收纳', quote: '请记下：书房需要收纳', additionalNeeds: [] })
     : call('final_response', { kind: 'general', text: '已记录书房收纳需求。' }));
   assert.equal(saved.run.status, 'succeeded', JSON.stringify(saved.run));
+  const file = await knowledge.execute('createFile', { title: '合成柔和照明资料', fileName: '合成照明.txt',
+    fileBase64: Buffer.from(office).toString('base64'), authorization: 'SYNTHETIC ONLY - permitted test fixture', audience: 'customer_public' }, randomUUID());
+  const draft = { documentId: String((file.document as Row).id), versionId: String((file.draft as Row).id), expectedVersion: 1 };
+  await finishKnowledgeJob(file.jobId);
+  await knowledge.execute('reviewFile', { ...draft, expectedEditVersion: 2, acknowledgeWarnings: true, excludedBlockIds: [] }, randomUUID());
+  const reviewed = { ...draft, expectedEditVersion: 3 };
+  await finishKnowledgeJob((await knowledge.execute('index', reviewed, randomUUID())).jobId);
+  await knowledge.execute('publish', reviewed, randomUUID());
   const original = await withTenantTransaction(eid, tx => one(tx, sql`select trigger_message_id::text id from app.assistant_runs where enterprise_id=${eid} and id=${saved.runId}`));
   const question = '关于书房柔和照明，请给一个一般选择建议。这是独立问题，不新增或修改我的需求。';
   const text = '可先比较光线方向与屏幕反光，选择使用时舒适的布置。';
@@ -156,13 +192,16 @@ test('independent advice narrows the entire task, repairs once and preserves rea
   const requestKey = randomUUID(), content = { version: 1 as const, blocks: [{ type: 'text' as const, text: question }] };
   const sent = await x.chat.send(x.cid, requestKey, content), lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
   let calls = 0;
-  await processAgentAnswer(lease, { model: async (messages, _tools, turn, dispatch) => {
+  await processAgentAnswer(lease, { model: async (messages, tools, turn, dispatch) => {
     calls++;
-    assert.ok(dispatch?.every(tool => ['search_knowledge', 'final_response'].includes(tool.name)));
+    assert.ok(dispatch?.every(tool => isKnowledgeTool(tool.name) || ['search_knowledge', 'final_response'].includes(tool.name)));
     assert.doesNotMatch(JSON.stringify(messages), /已记录书房收纳需求|请记下：书房需要收纳/);
-    if (!turn) return call('search_knowledge', { query: office });
+    if (!turn) {
+      assert.ok(tools.some(tool => tool.name === 'knowledge_search'));
+      return call('knowledge_search', { query: '书房自然采光和屏幕眩光', documentId: draft.documentId, topK: 1 });
+    }
     assert.ok(results(messages).every(source => source.kind === 'knowledge'));
-    assert.ok(results(messages).some(source => source.text === office), 'the numeric-repair case requires the actual published original, not an assumed nonempty retrieval');
+    assert.ok(results(messages).some(source => source.title === '合成柔和照明资料' && source.text.includes('屏幕眩光')));
     if (turn === 1) return synth([{ basis: 'advice', text: '建议选3000K光源。', citations: [] }]);
     const base = synthesisRepairBase(messages); assert.ok(base);
     return call('final_response', { kind: 'synthesis_repair', baseHash: base.baseHash, edits: [{ segment: 0, text }] });
@@ -184,7 +223,7 @@ test('independent advice narrows the entire task, repairs once and preserves rea
 test('material numeric repair preserves real need receipts, cited originals, one-repair limits and revocation', async () => {
   const x = await fixture();
   const saved = await x.send('请记录预算18万元。', async (_m, _t, turn) => !turn
-    ? call('record_need', { room: '', field: 'budget', value: '18万元', quote: '请记录预算18万元。' })
+    ? call('record_need', { room: '', field: 'budget', value: '18万元', quote: '请记录预算18万元', additionalNeeds: [] })
     : call('final_response', { kind: 'general', text: '已记录预算意向。' }));
   assert.equal(saved.run.status, 'succeeded', JSON.stringify(saved.run));
   // Same bounded v4 wall-graph shape as the existing materials contract fixture.
@@ -194,13 +233,22 @@ test('material numeric repair preserves real need receipts, cited originals, one
     walls: [{ id: 'ab', startNodeId: 'a', endNodeId: 'b' }, { id: 'bc', startNodeId: 'b', endNodeId: 'c' }, { id: 'cd', startNodeId: 'c', endNodeId: 'd' }, { id: 'da', startNodeId: 'd', endNodeId: 'a' }],
     openings: [], spaces: [{ id: 'study', name: '书房', closed: true, wallIds: ['ab', 'bc', 'cd', 'da'] }],
   }] } };
-  await withTenantTransaction(eid, async tx => {
+  const planId = await withTenantTransaction(eid, async tx => {
     const plan = await one(tx, sql`insert into app.floor_plans(enterprise_id,creator_id,name,source,status,layout_data)
       values(${eid},${x.uid},'合成主正式v4户型，非实机量测','manual','completed',${JSON.stringify(layout)}::jsonb) returning id`);
     await tx.execute(sql`update app.leads set primary_floor_plan_id=${String(plan!.id)} where enterprise_id=${eid} and id=${x.leadId}`);
+    return String(plan!.id);
   });
+  const floorplans = new FloorplanContextService(x.actor, x.cid);
+  const available = await floorplans.read();
+  const listed = available.items.find(item => item.id === planId);
+  assert.ok(listed);
+  const choice = await floorplans.select(randomUUID(), { expectedVersion: available.version,
+    selection: { leadId: listed.leadId, floorPlanId: listed.id, layoutHash: listed.layoutHash } });
+  assert.equal(choice.selected?.floorPlanId, planId);
   const delivered: Array<{ id: string }> = [];
-  const floorplan = await x.send('现有户型资料能说明什么，现场尺寸是否已核实？', async (messages, _tools, turn, dispatch) => {
+  const floorplanQuestion = '请查看我家的现有户型资料。现场尺寸已经核实了吗？';
+  const floorplan = await x.send(floorplanQuestion, async (messages, _tools, turn, dispatch) => {
     if (!turn) return call('query_business', { domain: 'floorplans' });
     const final = dispatch?.find(tool => tool.name === 'final_response'); assert.ok(final);
     assert.deepEqual((final.parameters.properties as Row).kind, { type: 'string', enum: ['synthesis'] });
@@ -214,17 +262,16 @@ test('material numeric repair preserves real need receipts, cited originals, one
   assert.ok(floorplanMessage.available); delivered.push({ id: floorplanMessage.id });
   for (const mode of ['material', 'advice', 'ignored']) {
     let calls = 0;
-    const answer = await x.send(mode === 'advice' ? '书房柔和照明，请给一个一般选择建议。这是独立问题，不新增或修改我的需求。' : '现有户型资料能说明什么，现场尺寸是否已核实？', async (messages, tools, turn, dispatch) => {
-      try {
+    const question = mode === 'advice' ? '请查看我家的现有户型资料。书房柔和照明怎么布置？' : floorplanQuestion;
+    const answer = await x.send(question, async (messages, tools, turn, dispatch) => {
       calls++;
-      if (!turn) return call(mode === 'advice' ? 'search_knowledge' : 'query_materials', mode === 'advice' ? { query: '书房柔和照明' } : { room: '' });
+      if (!turn) return call('query_materials', { room: '', scope: 'materials' });
       if (turn === 1) assert.deepEqual((dispatch?.find(tool => tool.name === 'final_response')!.parameters.properties as Row).kind,
         { type: 'string', enum: ['synthesis'] });
       const all = results(messages), scope = all.find(s => s.title === '本次材料查询范围与缺项') || all[0]; assert.ok(scope);
       const budget = all.find(s => s.text.includes('预算18万元'));
       const plan = all.find(s => s.text.includes('合成主正式v4户型'));
-      if (mode === 'advice') assert.ok(all.every(source => source.kind === 'knowledge'));
-      else { assert.ok(budget); assert.ok(plan); }
+      assert.ok(budget); assert.ok(plan);
       if (turn === 1) return synth([{ basis: mode === 'advice' ? 'advice' : 'evidence',
         text: mode === 'advice' ? '书房主灯可选3000K色温，配合可调光台灯。' : '现有资料包含正式v4户型和预算意向18万元；这次不能据此核实现场尺寸。',
         citations: mode === 'advice' ? [] : [{ citationId: scope.citationOptions[0].citationId }] }]);
@@ -236,10 +283,12 @@ test('material numeric repair preserves real need receipts, cited originals, one
       if (mode === 'ignored') return call('final_response', { kind: 'synthesis_repair', baseHash, edits: [{ segment: 0, basis: 'uncertainty' }] });
       return call('final_response', { kind: 'synthesis_repair', baseHash, edits: [mode === 'advice'
         ? { segment: 0, text: '可用均匀的基础照明搭配可调台灯，选择防眩光灯具，阅读时避开直射。' }
-        : { segment: 0, addCitationIds: [budget!.citationOptions[0].citationId, plan!.citationOptions[0].citationId] }] });
-      } catch (error) { console.error('material numeric injected callback', mode, turn, error); throw error; }
+        : { segment: 0, addCitationIds: [budget.citationOptions[0].citationId, plan.citationOptions[0].citationId] }] });
     });
-    assert.equal(calls, 3);
+    assert.equal(calls, 3, JSON.stringify({ mode, run: answer.run }));
+    const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind from app.assistant_run_steps where enterprise_id=${eid} and run_id=${answer.runId}`));
+    assert.equal(steps.filter(s => s.kind === 'agent_validation').length, mode === 'ignored' ? 2 : 1);
+    assert.equal(steps.filter(s => s.kind === 'agent_need_write').length, 0);
     if (mode === 'ignored') { assert.equal(answer.run.status, 'failed'); assert.equal(answer.run.errorCode, 'unsupported_model_commitment'); assert.equal(answer.run.outputMessageId, null); continue; }
     assert.equal(answer.run.status, 'succeeded', JSON.stringify({ mode, calls, run: answer.run }));
     const message = (await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === answer.run.outputMessageId)!; assert.ok(message.available);
@@ -248,11 +297,9 @@ test('material numeric repair preserves real need receipts, cited originals, one
       const bound = await withTenantTransaction(eid, tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${answer.runId} and kind='agent_synthesis_context'`));
       const citations = ((bound!.private_checkpoint as Row).segments as Array<{ citations: Array<{sourceId:string;quote:string}> }>).flatMap(s => s.citations);
       assert.ok(citations.some(c => c.quote.includes('预算18万元'))); assert.ok(citations.some(c => c.quote.includes('非实机量测')));
-      delivered.push({ id: message.id });
     }
     else { assert.doesNotMatch(JSON.stringify(message.content), /3000|kind.*general/); assert.match(JSON.stringify(message.content), /防眩光/); }
-    const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind from app.assistant_run_steps where enterprise_id=${eid} and run_id=${answer.runId}`));
-    assert.equal(steps.filter(s => s.kind === 'agent_validation').length, 1); assert.equal(steps.filter(s => s.kind === 'agent_need_write').length, 0);
+    delivered.push({ id: message.id });
   }
   for (const foreign of [await fixture(eid, false), await fixture(tenants[1], false)]) {
     await assert.rejects(foreign.chat.messages(x.cid), /assistant_resource_not_found/);
@@ -271,7 +318,7 @@ test('original model context repairs retained1369/1370 drafts once with real wri
     const a = await x.send(question, async (messages, tools, turn, dispatch) => {
       calls++;
       assert.doesNotMatch(JSON.stringify(messages.filter(m => m.role === 'system')), /施工节点与到场|先用当前实际阶段/);
-      if (!turn) return call('search_knowledge', { query: '合成原文上下文点位说明 第二节 方案同意 关闭' });
+      if (!turn) return searchKnowledge(tools, '合成原文上下文点位说明 第二节 方案同意 关闭');
       assert.ok(results(messages).every(s => s.kind === 'knowledge'));
       const source = results(messages).find(s => s.text.includes('第二节 状态区别')); assert.ok(source);
       const citations = [{ citationId: source.citationOptions[0].citationId }];
@@ -286,7 +333,7 @@ test('original model context repairs retained1369/1370 drafts once with real wri
       assert.deepEqual(((dispatch![0].parameters.properties as Row).kind as Row).enum, ['synthesis_repair']);
       return call('final_response', { kind: 'synthesis_repair', baseHash: synthesisRepairBase(messages)!.baseHash,
         edits: ignoreRepair ? [{ segment: 1, basis: 'uncertainty' }] : [{ segment: 1, remove: true }, { segment: 2, remove: true }] });
-    });
+    }, true);
     assert.equal(calls, 3);
     if (ignoreRepair) {
       assert.equal(a.run.status, 'failed'); assert.equal(a.run.errorCode, 'unsupported_model_commitment'); assert.equal(a.run.outputMessageId, null);
@@ -297,10 +344,11 @@ test('original model context repairs retained1369/1370 drafts once with real wri
     assert.ok(message.available); assert.equal(message.citations.length, 1);
     assert.doesNotMatch(JSON.stringify(message.content), /第一节|暂无团队|待办事项/);
     delivered.push({ id: message.id, citationId: message.citations[0].id });
-    const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
+    const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,capability_name from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
     assert.equal(steps.filter(s => s.kind === 'agent_validation').length, 1);
     assert.equal(steps.filter(s => s.kind === 'agent_need_write').length, 0);
-    assert.ok(steps.some(s => s.kind === 'agent_material_context'));
+    assert.ok(steps.some(s => s.capability_name === 'knowledge.search.v1'));
+    assert.ok(steps.every(s => s.kind !== 'agent_material_context'));
   }
   for (const foreign of [await fixture(eid, false), await fixture(tenants[1], false)]) {
     await assert.rejects(foreign.chat.messages(x.cid), /assistant_resource_not_found/);
@@ -327,7 +375,7 @@ test('original answer scope rejects retained unsupported conditions and uses one
     let calls = 0;
     const a = await x.send(question, async (messages, tools, turn, dispatch) => {
       calls++;
-      if (!turn) { assert.deepEqual(dispatch!.map(t => t.name), ['search_knowledge']); return call('search_knowledge', { query: '合成点位说明 第二节 方案同意 关闭' }); }
+      if (!turn) { assert.deepEqual(dispatch!.map(t => t.name), ['search_knowledge']); return searchKnowledge(tools, '合成点位说明 第二节 方案同意 关闭'); }
       const source = results(messages).find(s => s.text === body); assert.ok(source);
       const citations = [{ citationId: source.citationOptions[0].citationId }];
       if (turn === 1) return synth([
@@ -339,7 +387,7 @@ test('original answer scope rejects retained unsupported conditions and uses one
       assert.match(JSON.stringify(messages), /unsupported_source_condition|source_answer_scope/);
       assert.deepEqual(((dispatch![0].parameters.properties as Row).kind as Row).enum, ['synthesis_repair']);
       return call('final_response', { kind: 'synthesis_repair', baseHash: base.baseHash, edits: [{ segment: 1, remove: true }] });
-    });
+    }, true);
     assert.equal(a.run.status, 'succeeded', JSON.stringify(a.run)); assert.equal(calls, 3);
     const message = (await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === a.run.outputMessageId)!;
     assert.ok(message.available); assert.equal(message.citations.length, 1);
@@ -357,12 +405,12 @@ test('original answer scope rejects retained unsupported conditions and uses one
     await assert.rejects(foreign.chat.messages(x.cid), /assistant_resource_not_found/);
     await assert.rejects(foreign.chat.citation(delivered[0].citationId), /assistant_resource_not_found/);
   }
-  const ignored = await x.send(question, async (messages, _tools, turn) => {
-    if (!turn) return call('search_knowledge', { query: '合成点位说明 第二节' });
+  const ignored = await x.send(question, async (messages, tools, turn) => {
+    if (!turn) return searchKnowledge(tools, '合成点位说明 第二节');
     const source = results(messages).find(s => s.text === body); assert.ok(source);
     if (turn === 1) return synth([{ basis: 'evidence', text: originals[0], citations: [{ citationId: source.citationOptions[0].citationId }] }]);
     return call('final_response', { kind: 'synthesis_repair', baseHash: synthesisRepairBase(messages)!.baseHash, edits: [{ segment: 0, basis: 'uncertainty' }] });
-  });
+  }, true);
   assert.equal(ignored.run.status, 'failed'); assert.equal(ignored.run.errorCode, 'ungrounded_response_scope'); assert.equal(ignored.run.outputMessageId, null);
   await knowledge.execute('retire', { documentId: doc.documentId, expectedVersion: 2 }, randomUUID());
   const reopened = await new ConversationService(x.actor).messages(x.cid);
@@ -375,8 +423,8 @@ test('original answer scope rejects retained unsupported conditions and uses one
 test('explicit completion denials persist exact knowledge and reentry while a separate positive claim stays rejected', async () => {
   const body = '厨房设备调整须先核对电器尺寸、插座位置与通道条件；若处在水电施工阶段，还需核对当前点位图和现场记录。客户提出保留冰箱只表示需求，不证明点位已落实或通过验收。未查到图纸或现场记录时不能据此认定现实没有，也不承诺更改日期。';
   const doc = await publish('合成否定完工边界厨房规程', body), x = await fixture();
-  const model = (positive: boolean): NonNullable<Parameters<typeof processAgentAnswer>[1]>['model'] => async (messages, _tools, turn) => {
-    if (!turn) return call('search_knowledge', { query: '合成否定完工边界厨房规程' });
+  const model = (positive: boolean): NonNullable<Parameters<typeof processAgentAnswer>[1]>['model'] => async (messages, tools, turn) => {
+    if (!turn) return searchKnowledge(tools, '合成否定完工边界厨房规程');
     assert.equal(turn, 1, 'An explicit denial must not consume a repair');
     const source = results(messages).find(s => s.text === body); assert.ok(source?.citationOptions.length);
     return synth([{ basis: 'evidence', text: body + (positive ? '\n项目已批准。' : ''),
@@ -400,8 +448,8 @@ test('explicit completion denials persist exact knowledge and reentry while a se
 
 test('QA01/06: an enterprise without a knowledge index still receives labelled general advice and an honest knowledge gap', async () => {
   const x = await fixture(tenants[1]);
-  const a = await x.send('书房靠窗办公为什么要考虑反光？', async (m,_t,turn) => {
-    if (!turn) return call('search_knowledge', { query: '书房靠窗办公 反光' });
+  const a = await x.send('书房靠窗办公为什么要考虑反光？', async (m,tools,turn) => {
+    if (!turn) return searchKnowledge(tools, '书房靠窗办公 反光');
     assert.match(JSON.stringify(m), /not_ready/); assert.equal(results(m).filter(s => s.kind === 'knowledge').length, 0);
     return synth([{ basis: 'advice', text: '可以先比较侧向与正对窗的屏幕反光情况，兼顾采光和使用感受。', citations: [] },
       { basis: 'uncertainty', text: '当前企业知识尚未就绪，企业做法和现场条件需核实。', citations: [] }]);
@@ -413,12 +461,16 @@ test('QA01/06: an enterprise without a knowledge index still receives labelled g
 test('AG05/09: duplicate knowledge reads execute once, retain real citations and revoke on persisted reentry', async () => {
   const doc = await publish('合成重复读甲', '书房遮光补查甲：屏幕可比较侧向布置，避免直对强光窗户。');
   const x = await fixture();
-  const a = await x.send('书房遮光补查甲怎样避免反光？', async (messages, _tools, turn) => {
-    if (!turn) return { ...call('search_knowledge', { query: '书房遮光补查甲' }), toolCalls: [
-      { id: 'original', name: 'search_knowledge', arguments: '{"query":"书房遮光补查甲"}' },
-      { id: 'same-batch', name: 'search_knowledge', arguments: '{ "query": "书房遮光补查甲" }' },
-    ] };
-    if (turn === 1) return call('search_knowledge', { query: '书房遮光补查甲' });
+  const a = await x.send('书房遮光补查甲怎样避免反光？', async (messages, tools, turn) => {
+    if (!turn) {
+      const first = searchKnowledge(tools, '书房遮光补查甲');
+      const [tool] = first.toolCalls;
+      return { ...first, toolCalls: [
+        { ...tool, id: 'original' },
+        { ...tool, id: 'same-batch', arguments: '{ "query": "书房遮光补查甲" }' },
+      ] };
+    }
+    if (turn === 1) return searchKnowledge(tools, '书房遮光补查甲');
     const packets = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content));
     assert.equal(packets.filter(p => p.status === 'already_queried').length, 2);
     const source = results(messages).find(s => s.kind === 'knowledge' && s.text.includes('书房遮光补查甲'))!;
@@ -444,11 +496,11 @@ test('AG05/09: duplicate knowledge reads execute once, retain real citations and
 test('AG05/07: a source change before a repeated read blocks reuse and delivery', async () => {
   const doc = await publish('合成重复读乙', '书房遮光补查乙：屏幕可比较侧向布置，避免直对强光窗户。');
   const x = await fixture();
-  const a = await x.send('书房遮光补查乙怎样避免反光？', async (messages, _tools, turn) => {
-    if (!turn) return call('search_knowledge', { query: '书房遮光补查乙' });
+  const a = await x.send('书房遮光补查乙怎样避免反光？', async (messages, tools, turn) => {
+    if (!turn) return searchKnowledge(tools, '书房遮光补查乙');
     assert.ok(results(messages).some(s => s.kind === 'knowledge' && s.text.includes('书房遮光补查乙')));
     await knowledge.execute('retire', { documentId: doc.documentId, expectedVersion: 2 }, randomUUID());
-    return call('search_knowledge', { query: '书房遮光补查乙' });
+    return searchKnowledge(tools, '书房遮光补查乙');
   });
   assert.notEqual(a.run.status, 'succeeded');
   const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select capability_name from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
@@ -461,10 +513,10 @@ test('AG05 read-input recovery preserves real knowledge, queries once with a cor
   const x = await fixture(eid, false);
   assert.ok(Number.isSafeInteger(Number(x.leadId)));
   let calls = 0;
-  const a = await x.send('书房参数恢复甲怎样避免反光，核对现场资料？', async (messages, _tools, turn) => {
+  const a = await x.send('书房参数恢复甲怎样避免反光，核对现场资料？', async (messages, tools, turn) => {
     calls++;
     if (!turn) {
-      const first = call('search_knowledge', { query: '书房参数恢复甲' });
+      const first = searchKnowledge(tools, '书房参数恢复甲');
       first.toolCalls.push(...call('query_materials', { leadId: Number(x.leadId), room: '书房' }).toolCalls);
       return first;
     }
@@ -533,18 +585,18 @@ test('AG05 read-input correction never grants a foreign customer or tenant resou
 
 test('QA02/05 PPT6/15: real retrieval plus authorized originals produces persisted explanatory prose without a handling side effect', async () => {
   const x = await fixture();
-  const save = await x.send('请记录书房靠窗，偶尔两人办公', async (_m,_t,turn) => turn === 0
-    ? call('record_need', { room: '书房', field: 'desk', value: '靠窗，偶尔两人办公', quote: '请记录书房靠窗，偶尔两人办公' })
+  const save = await x.send('请记录书房靠窗、偶尔两人办公', async (_m,_t,turn) => turn === 0
+    ? call('record_need', { room: '书房', field: 'desk', value: '靠窗、偶尔两人办公', quote: '请记录书房靠窗、偶尔两人办公', additionalNeeds: [] })
     : call('final_response', { kind: 'general', text: '已记录，可以继续聊。' })); assert.equal(save.run.status, 'succeeded');
   let answerCalls = 0;
-  const a = await x.send('书房靠窗办公为什么还要考虑桌子的朝向？', async (m,tools,turn) => {
+  const a = await x.send('请查一下我家书房的需求原话。书房靠窗办公为什么还要考虑桌子的朝向？', async (m,tools,turn) => {
     answerCalls++;
     assert.doesNotMatch(JSON.stringify(m), /PRIVATE_ONLY_NEVER_SEND/);
-    if (turn === 0) { const a = call('search_knowledge', { query: '书房靠窗办公 屏幕眩光 双人桌' }); a.toolCalls.push(...call('query_materials', { room: '书房' }).toolCalls); return a; }
+    if (turn === 0) { const a = searchKnowledge(tools, '书房靠窗办公 屏幕眩光 双人桌'); a.toolCalls.push(...call('query_materials', { room: '书房', scope: 'materials' }).toolCalls); return a; }
     const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!, b = s.find(s => s.sourceId.includes(':customer_need:'))!;
     if (turn === 2) { assert.equal(tools.length, 0); assert.match(JSON.stringify(m), /unscoped_measurement_gap/); }
     return synth([{ basis: 'evidence', text: '你希望靠窗并偶尔两人办公，可以保留采光偏好，但桌向需要同时照顾屏幕眩光和共用通道，因此先比较侧向摆放更有讨论价值。',
-      citations: [{ sourceId: k.sourceId, quote: '显示器避免直对强光窗户，可比较侧向布置。' }, { sourceId: b.sourceId, quote: '靠窗，偶尔两人办公' }] },
+      citations: [{ sourceId: k.sourceId, quote: '显示器避免直对强光窗户，可比较侧向布置。' }, { sourceId: b.sourceId, quote: '靠窗、偶尔两人办公' }] },
     { basis: 'uncertainty', text: turn === 1 ? '目前缺少有效点位图和现场尺寸，需要设计师核对后再确定位置。'
       : '本次查询未包含有效点位图和现场尺寸，需要设计师核对后再确定位置。', citations: [] }]);
   });
@@ -559,15 +611,20 @@ test('QA02/05 PPT6/15: real retrieval plus authorized originals produces persist
   assert.ok(state); assert.match(JSON.stringify(state.source_refs), /owned_conversation|customer_need/);
   assert.equal(Number((await withTenantTransaction(eid, tx => one(tx, sql`select count(*) n from app.domain_event_outbox where enterprise_id=${eid} and type like 'construction.%issue.%' and payload->>'conversationId'=${x.cid}`)))!.n), 0);
   const added = await x.send('请记录书房还要放打印机', async (_m,_t,turn) => !turn
-    ? call('record_need', { room: '书房', field: 'desk', value: '还要放打印机', quote: '请记录书房还要放打印机' })
+    ? call('record_need', { room: '书房', field: 'desk', value: '还要放打印机', quote: '请记录书房还要放打印机', additionalNeeds: [] })
     : call('final_response', { kind: 'general', text: '已记录，可以继续讨论。' })); assert.equal(added.run.status, 'succeeded');
-  const follow = await x.send('为什么侧向会更合适？', async (m,_t,turn) => {
-    if (!turn) { assert.match(JSON.stringify(m), /书房靠窗办公为什么/); return call('search_knowledge', { query: '书房办公 屏幕眩光 侧向布置' }); }
+  const follow = await x.send('看看我家书房的需求原话。为什么侧向会更合适？', async (m,tools,turn) => {
+    if (!turn) {
+      assert.match(JSON.stringify(m), /书房靠窗办公为什么/);
+      const search = searchKnowledge(tools, '书房办公 屏幕眩光 侧向布置');
+      search.toolCalls.push(...call('query_materials', { room: '书房', scope: 'materials' }).toolCalls);
+      return search;
+    }
     assert.match(JSON.stringify(m.at(-1)), /为什么侧向会更合适/);
-    assert.ok(results(m).some(s => s.kind === 'project' && s.sourceId.startsWith('Bbound:') && s.text.includes('打印机')),
-      'A knowledge-only follow-up must receive fresh authorized home material, not the old missing-data snapshot');
+    assert.ok(results(m).some(s => s.kind === 'project' && s.text.includes('打印机')),
+      'A follow-up requesting the home archive must receive the current authorized material');
     const k = results(m).find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!;
-    const need = results(m).find(s => s.kind === 'project' && s.sourceId.startsWith('Bbound:') && s.text.includes('打印机'))!;
+    const need = results(m).find(s => s.kind === 'project' && s.text.includes('打印机'))!;
     return synth([{ basis: 'evidence', text: '侧向是为了比较采光与屏幕眩光的取舍，并不是仅凭靠窗偏好就决定你家的最终桌向。你不用重复确认已保存的书房需求。',
       citations: [{ sourceId: k.sourceId, quote: '显示器避免直对强光窗户，可比较侧向布置。' }, { sourceId: need.sourceId, quote: need.text.split('\n')[0] }] }]);
   }); assert.equal(follow.run.status, 'succeeded');
@@ -585,9 +642,10 @@ test('QA03 PPT18: actual project stage enters synthesis and a later stage change
   ] }, randomUUID());
   const progress = async (key: string) => { const d = await service.execute('detail', { projectId: pid }); await service.execute('progress', { projectId: pid, expectedVersion: (d.project as Row).version, stageKey: key, note: '', sendReminder: false }, randomUUID()); };
   await progress('waterproofing');
-  const a = await x.send('我家现场现在防水阶段，为什么还不能直接铺砖？', async (m,_t,turn) => {
-    if (!turn) return call('search_knowledge', { query: '防水阶段 闭水检查 铺砖条件' });
-    const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('闭水检查前'))!, b = s.find(s => s.sourceId.startsWith('Bstage:'))!;
+  const a = await x.send('我家现在到哪个施工阶段了？按企业做法，为什么不能直接铺砖？', async (m,tools,turn) => {
+    if (!turn) return searchWithCurrentStage(tools, '防水阶段 闭水检查 铺砖条件');
+    const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('闭水检查前'))!;
+    const b = s.find(s => s.kind === 'project' && s.text.includes('团队标记的当前节点：'))!;
     assert.match(b.text, /防水/);
     return synth([{ basis: 'evidence', text: '当前进入防水节点只说明所处阶段；铺砖前还需核对检查记录，不能据此认定防水已经完成。',
       citations: [{ sourceId: b.sourceId, quote: '防水' + (b.text.includes('防水施工') ? '施工' : '阶段') }, { sourceId: k.sourceId, quote: '闭水检查前不能把进入防水节点当作防水完成；铺砖前须核对检查记录。' }] },
@@ -596,26 +654,35 @@ test('QA03 PPT18: actual project stage enters synthesis and a later stage change
   assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === a.run.outputMessageId)?.available, true);
   await progress('tiling');
   assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === a.run.outputMessageId)?.available, false);
-  const fresh = await x.send('那现在呢？',async(m,_t,turn)=>{
-    if(!turn)return call('search_knowledge',{query:'防水检查与铺砖条件'});
-    const stage=results(m).find(s=>s.sourceId.startsWith('Bstage:'))!;assert.match(stage.text,/铺砖阶段/);
+  const fresh = await x.send('现在记录里是什么施工阶段？铺砖前的检查要求还适用吗？',async(m,tools,turn)=>{
+    if(!turn)return searchWithCurrentStage(tools, '防水检查与铺砖条件');
+    const stage=results(m).find(s=>s.kind==='project' && s.text.includes('团队标记的当前节点：'))!;assert.match(stage.text,/铺砖阶段/);
     return synth([{basis:'evidence',text:'团队现在标记为铺砖阶段，具体检查结果仍需核对记录。',citations:[{sourceId:stage.sourceId,quote:'团队标记的当前节点：铺砖阶段。'}]}]);
   });assert.equal(fresh.run.status,'succeeded',JSON.stringify(fresh.run));
   const reentry=await new ConversationService(x.actor).messages(x.cid);
   assert.equal(reentry.items.find(m=>m.id===fresh.run.outputMessageId)?.available,true);
   const steps=await withTenantTransaction(eid,tx=>rows(tx,sql`select capability_name from app.assistant_run_steps where enterprise_id=${eid} and run_id=${fresh.runId}`));
-  assert.ok(steps.some(s=>s.capability_name==='synthesis.bound_construction.v1'));
+  assert.ok(steps.some(s=>s.capability_name==='query_business'));
 });
 
 test('KB3 XK07/08 a changed actual node during generation fences a knowledge-only late answer',async()=>{
   const x=await fixture(),service=new ConstructionService({enterpriseId:eid,adminId:ownerId});
   const pid=String((await service.execute('create',{leadId:x.leadId,name:'合成KB3在途变化',managerId:ownerId,rooms:['书房']},randomUUID())).id);
-  const a=await x.send('结合我家阶段解释铺砖前提',async(m,_t,turn)=>{
-    if(!turn)return call('search_knowledge',{query:'防水与铺砖检查'});
-    assert.ok(results(m).some(s=>s.sourceId.startsWith('Bstage:')));
+  const settings=await service.execute('stages');
+  await service.execute('saveStages',{expectedVersion:settings.version,stages:[
+    {key:'waterproofing',name:'防水阶段',visitReminder:false,visitReason:'',watchPoints:''},
+    {key:'tiling',name:'铺砖阶段',visitReminder:false,visitReason:'',watchPoints:''},
+  ]},randomUUID());
+  const project=await service.execute('detail',{projectId:pid});
+  await service.execute('progress',{projectId:pid,expectedVersion:(project.project as Row).version,stageKey:'waterproofing',note:'合成初始节点',sendReminder:false},randomUUID());
+  let changed=false;
+  const a=await x.send('结合我家阶段解释铺砖前提',async(m,tools,turn)=>{
+    if(!turn)return searchWithCurrentStage(tools, '防水与铺砖检查');
+    assert.ok(results(m).some(s=>s.kind==='project'&&s.text.includes('团队标记的当前节点：')));
     const d=await service.execute('detail',{projectId:pid});await service.execute('progress',{projectId:pid,expectedVersion:(d.project as Row).version,stageKey:'tiling',note:'合成在途更新',sendReminder:false},randomUUID());
+    changed=true;
     return synth([{basis:'advice',text:'先核对项目团队当前检查记录。',citations:[]}]);
-  });assert.notEqual(a.run.status,'succeeded');
+  });assert.ok(changed);assert.equal(a.run.status,'failed',JSON.stringify(a.run));assert.equal(a.run.errorCode,'context_changed');
   assert.equal((await x.chat.messages(x.cid)).items.filter(m=>m.authorKind==='assistant').length,0);
 });
 
@@ -623,7 +690,7 @@ test('KB3 citation repair uses the same authorized originals and persists one re
   const x=await fixture();let modelCalls=0;
   const a=await x.send('书房靠窗办公应如何考虑屏幕方向？',async(m,tools,turn)=>{
     modelCalls++;
-    if(!turn)return call('search_knowledge',{query:'书房靠窗办公 屏幕眩光'});
+    if(!turn)return searchKnowledge(tools, '书房靠窗办公 屏幕眩光');
     const k=results(m).find(s=>s.kind==='knowledge'&&s.text.includes('屏幕眩光'))!;assert.ok(k);
     if(turn===2){assert.equal(tools.length,0);assert.match(JSON.stringify(m),/唯一一次格式修复/);assert.match(JSON.stringify(m),/copyExact(?:Quote|SourceText)/);
       assert.ok(k.text.includes('显示器避免直对强光窗户，可比较侧向布置。'),'The same exact authorized original must remain in the projected repair context');}
@@ -641,7 +708,7 @@ test('AG08 source grounding repair persists one scoped reply, keeps real action 
   const x = await fixture(); let modelCalls = 0;
   const response = await x.send('管路间距和交叉屏蔽应该怎样核对？', async (messages, tools, turn) => {
     modelCalls++;
-    if (!turn) return call('search_knowledge', { query: '强弱电管线平行间距 交叉屏蔽' });
+    if (!turn) return searchKnowledge(tools, '强弱电管线平行间距 交叉屏蔽');
     const source = results(messages).find(s => s.kind === 'knowledge' && s.text.includes('300mm'))!; assert.ok(source);
     if (turn === 1) return synth([{ basis: 'evidence', text: '现场记录平行间距200mm符合手册300mm的要求。记录只看到一小段包裹。主要风险是长期干扰和检修困难。还要再等两天。',
       citations: [{ sourceId: source.sourceId, quote: source.text }] }]);
@@ -681,15 +748,15 @@ test('AG08 bounded citation edits preserve knowledge while adding actual-stage s
   }
   const detail = await service.execute('detail', { projectId });
   await service.execute('progress', { projectId, expectedVersion: (detail.project as Row).version, stageKey: 'waterproofing', note: '', sendReminder: false }, randomUUID());
-  let calls = 0, firstId = '', stageId = '';
-  const response = await x.send('结合实际阶段解释有界修复测试的铺砖前提', async (messages, tools, turn) => {
+  let calls = 0, firstId = '', stageId = '', stageSourceId = '';
+  const response = await x.send('我家现在的施工阶段是什么？结合有界修复测试资料，铺砖前要核对什么？', async (messages, tools, turn) => {
     calls++;
-    if (!turn) return call('search_knowledge', { query: '有界修复测试 铺砖前 核对检查记录' });
+    if (!turn) return searchWithCurrentStage(tools, '有界修复测试 铺砖前 核对检查记录');
     const all = results(messages) as Array<{ sourceId: string; text: string; citationOptions: Array<{ citationId: string }> }>;
     const knowledge = all.find(source => source.text.includes('有界修复测试：'))!;
-    const stage = all.find(source => source.sourceId.startsWith('Bstage:'))!; assert.ok(knowledge && stage);
+    const stage = all.find(source => source.sourceId.startsWith('B') && source.text.includes('团队标记的当前节点：'))!; assert.ok(knowledge && stage);
     if (turn === 1) {
-      firstId = knowledge.citationOptions[0].citationId; stageId = stage.citationOptions[0].citationId;
+      firstId = knowledge.citationOptions[0].citationId; stageId = stage.citationOptions[0].citationId; stageSourceId = stage.sourceId;
       return synth([{ basis: 'evidence', text: '铺砖前须核对检查记录，团队当前节点是防水。', citations: [{ citationId: firstId }] }]);
     }
     assert.equal(tools.length, 0);
@@ -709,7 +776,7 @@ test('AG08 bounded citation edits preserve knowledge while adding actual-stage s
   const persisted = steps.find(step => step.kind === 'agent_synthesis_context')!.private_checkpoint as { segments: Array<{ citations: Array<{ sourceId: string }> }> };
   assert.equal(persisted.segments[0].citations.length, 2);
   assert.ok(persisted.segments[0].citations.some(citation => citation.sourceId.startsWith('K')));
-  assert.ok(persisted.segments[0].citations.some(citation => citation.sourceId.startsWith('Bstage:')));
+  assert.ok(persisted.segments[0].citations.some(citation => citation.sourceId === stageSourceId));
   const provider = steps.filter(step => step.kind === 'agent_model'); assert.equal(provider.length, 3);
   const repair = provider.find(step => (step.input_summary as Row).repairProtocol === 'synthesis-edit-v1')!; assert.ok(repair);
   assert.equal((repair.input_summary as Row).repairProjection, synthesisRepairProjectionVersion);
@@ -727,7 +794,7 @@ test('AG08 bounded citation edits cannot deliver a cached original after source 
   const x = await fixture(); let calls = 0;
   const response = await x.send('有界修复撤回测试应怎样核对尺寸？', async (messages, tools, turn) => {
     calls++;
-    if (!turn) return call('search_knowledge', { query: '有界修复撤回测试 现场尺寸' });
+    if (!turn) return searchKnowledge(tools, '有界修复撤回测试 现场尺寸');
     const source = results(messages).find(s => s.text.includes('有界修复撤回测试：'));
     assert.ok(source);
     if (turn === 1) return synth([{ basis: 'uncertainty', text: '目前缺少现场尺寸，需要核对。', citations: [{ citationId: source.citationOptions[0].citationId }] }]);
@@ -742,8 +809,8 @@ test('AG08 bounded citation edits cannot deliver a cached original after source 
 test('QA06/07: consulted but uncited conflict candidates remain dependencies; withdrawal hides synthesis and human packets', async () => {
   const conflict = await publish('合成冲突办公条件', '书房办公规则存在冲突：本资料要求正对强光窗户，需负责人核实适用版本，不能自行择一。');
   const x = await fixture();
-  const a = await x.send('书房办公桌为什么不能直接正对窗户？', async (m,_t,turn) => {
-    if (!turn) return call('search_knowledge', { query: '书房办公 正对强光窗户 冲突' });
+  const a = await x.send('书房办公桌为什么不能直接正对窗户？', async (m,tools,turn) => {
+    if (!turn) return searchKnowledge(tools, '书房办公 正对强光窗户 冲突');
     const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!;
     assert.ok(s.some(s => s.text.includes('本资料要求正对强光窗户')));
     return synth([{ basis: 'uncertainty', text: '两份资料对正对窗户的说法不一致，适用规则需负责人核实。', citations: [] },
@@ -756,19 +823,32 @@ test('QA06/07: consulted but uncited conflict candidates remain dependencies; wi
 });
 
 test('QA06: expired source during generation prevents a late answer; valid remaining knowledge is still usable', async () => {
-  const doc = await publish('合成短期办公说明', '书房临时讨论可先比较侧向布置，适用期内使用。'); const x = await fixture();
-  const a = await x.send('书房临时讨论该怎么摆？', async (m,_t,turn) => {
-    if (!turn) return call('search_knowledge', { query: '书房临时讨论 侧向布置' });
+  const expiresAt = Date.now() + 15000, x = await fixture();
+  await publish('合成短期办公说明', '书房临时讨论可先比较侧向布置，适用期内使用。', 'customer_public', new Date(expiresAt).toISOString());
+  let waitedForExpiry = false;
+  const a = await x.send('书房临时讨论该怎么摆？', async (m,tools,turn) => {
+    if (!turn) return searchKnowledge(tools, '书房临时讨论 侧向布置');
     assert.ok(results(m).some(s => s.text.includes('适用期内')));
-    await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_knowledge_versions set effective_to=now()-interval '1 second' where enterprise_id=${eid} and id=${doc.versionId}`));
+    await delay(Math.max(0, expiresAt - Date.now() + 200));
+    waitedForExpiry = true;
     return synth([{ basis: 'advice', text: '可以先比较侧向布置。', citations: [] }]);
-  }); assert.notEqual(a.run.status, 'succeeded'); assert.equal((await x.chat.messages(x.cid)).items.filter(m => m.authorKind === 'assistant').length, 0);
+  });
+  assert.ok(waitedForExpiry); assert.equal(a.run.status, 'failed', JSON.stringify(a.run)); assert.equal(a.run.errorCode, 'context_changed');
+  assert.equal((await x.chat.messages(x.cid)).items.filter(m => m.authorKind === 'assistant').length, 0);
+  const fresh = await x.send('书房靠窗办公怎么避开屏幕眩光？', async (messages, tools, turn) => {
+    if (!turn) return searchKnowledge(tools, '书房靠窗办公 屏幕眩光');
+    const sources = results(messages);
+    assert.ok(sources.every(source => source.title !== '合成短期办公说明'));
+    const source = sources.find(source => source.text === office); assert.ok(source);
+    return synth([{ basis: 'evidence', text: '屏幕可以比较侧向布置，避开强光直射。', citations: [{ citationId: source.citationOptions[0].citationId }] }]);
+  });
+  assert.equal(fresh.run.status, 'succeeded', JSON.stringify(fresh.run));
 });
 
 test('QA06: publishing a replacement invalidates the old synthesis and its citation; a fresh question uses the effective version', async () => {
   const old = await publish('合成书房遮阳版本', '书房遮阳应先讨论浅色窗帘，此为旧版讨论方向。'); const x = await fixture();
-  const model: NonNullable<Parameters<typeof processAgentAnswer>[1]>['model'] = async (m,_t,turn) => {
-    if (!turn) return call('search_knowledge', { query: '书房遮阳 窗帘 讨论方向' });
+  const model: NonNullable<Parameters<typeof processAgentAnswer>[1]>['model'] = async (m,tools,turn) => {
+    if (!turn) return searchKnowledge(tools, '书房遮阳 窗帘 讨论方向');
     const source = results(m).find(s => s.text.includes('书房遮阳应先讨论'))!;
     return synth([{ basis: 'evidence', text: source.text.includes('可调遮阳') ? '当前版本建议先比较可调遮阳，方便讨论不同光线下的使用感受。' : '旧版资料提供浅色窗帘作为讨论方向，具体做法仍需核对。',
       citations: [{ sourceId: source.sourceId, quote: source.text }] }]);
@@ -813,11 +893,11 @@ test('AG05 bound-read injects the same home for material and business reads, per
   const doc = await publish('合成身份绑定甲', '厨房身份绑定甲：设备布置先核对通道和使用条件，不从需求原话推断现场已完成。');
   const x = await fixture();
   const seed = await x.send('请记录厨房保留冰箱。', async (_messages, _tools, turn) => !turn
-    ? call('record_need', { room: '厨房', field: 'devices', value: '冰箱', quote: '厨房保留冰箱' })
+    ? call('record_need', { room: '厨房', field: 'devices', value: '冰箱', quote: '请记录厨房保留冰箱', additionalNeeds: [] })
     : call('final_response', { kind: 'general', text: '已记录厨房保留冰箱。' }));
   assert.equal(seed.run.status, 'succeeded', JSON.stringify(seed.run));
   let calls = 0;
-  const answer = await x.send('查询我家厨房需求和施工资料，结合厨房身份绑定甲解释核对条件。', async (messages, tools, turn) => {
+  const answer = await x.send('请查一下我家厨房的施工资料。再结合厨房身份绑定甲解释核对条件。', async (messages, tools, turn) => {
     calls++;
     if (!turn) {
       for (const name of ['query_materials', 'query_business']) {
@@ -825,9 +905,10 @@ test('AG05 bound-read injects the same home for material and business reads, per
         assert.equal(Object.hasOwn(tool.parameters.properties as object, 'leadId'), false);
         assert.equal((tool.parameters.required as string[]).includes('leadId'), false);
       }
-      const output = call('query_materials', { room: '厨房' });
+      const output = call('query_materials', { room: '厨房', scope: 'materials' });
+      assert.ok(tools.some(tool => tool.name === 'knowledge_search'));
       output.toolCalls.push(...call('query_business', { domain: 'construction' }).toolCalls,
-        ...call('search_knowledge', { query: '厨房身份绑定甲 通道 使用条件' }).toolCalls);
+        ...call('knowledge_search', { query: '厨房身份绑定甲 通道 使用条件', documentId: doc.documentId, topK: 1 }).toolCalls);
       return output;
     }
     const packets = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content));
@@ -867,8 +948,13 @@ test('AG05 bound-read recovers cached new and legacy provider outputs without re
     const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
     const cached = call('query_materials', legacy ? { leadId: x.leadId, room: '厨房' } : { room: '厨房' });
     const summary = legacy ? { fixture: true } : { fixture: true, readContext: readToolContext({ kind: 'lead', id: x.leadId }) };
-    await withTenantTransaction(eid, tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
-      values(${eid},${lease.runId},1100,'agent_model','succeeded',${JSON.stringify(summary)}::jsonb,${JSON.stringify(cached)}::jsonb)`));
+    await withTenantTransaction(eid, async tx => {
+      // Replay the two recorded read-identity formats from before the owner question fingerprint.
+      await tx.execute(sql`update app.assistant_runs set policy_snapshot=policy_snapshot-'ownerQuestionScope'-'ownerArchiveRead'
+        where enterprise_id=${eid} and id=${lease.runId}`);
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
+        values(${eid},${lease.runId},1100,'agent_model','succeeded',${JSON.stringify(summary)}::jsonb,${JSON.stringify(cached)}::jsonb)`);
+    });
     let calls = 0;
     await processAgentAnswer(lease, { model: async (messages, tools, turn) => {
       calls++; assert.equal(turn, 1);
@@ -899,8 +985,8 @@ test('AG05 bound-read detects a changed conversation home before executing a too
 
 test('QA08 PPT10/11: takeover during synthesis stops the late answer but retains originals and observed usage', async () => {
   const x = await fixture();
-  const a = await x.send('书房办公布置需要考虑哪些条件？', async (m,_t,turn) => {
-    if (!turn) return call('search_knowledge', { query: '书房办公布置 采光 通道' });
+  const a = await x.send('书房办公布置需要考虑哪些条件？', async (m,tools,turn) => {
+    if (!turn) return searchKnowledge(tools, '书房办公布置 采光 通道');
     const k = results(m).find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!;
     await new HandoffService(x.actor).customerWrite(x.cid, randomUUID(), { action: 'request' });
     return synth([{ basis: 'evidence', text: '书房办公需兼顾采光和通道。', citations: [{ sourceId: k.sourceId, quote: '书房靠窗办公需同时考虑自然采光、屏幕眩光和通道。' }] }]);
@@ -911,8 +997,8 @@ test('QA08 PPT10/11: takeover during synthesis stops the late answer but retains
 
 test('QA07: loss of the customer participant hides synthesis instead of treating reception staff as a preview owner', async () => {
   const x = await fixture();
-  const a = await x.send('书房办公要考虑什么？', async (m,_t,turn) => {
-    if (!turn) return call('search_knowledge', { query: '书房办公 采光 眩光' });
+  const a = await x.send('书房办公要考虑什么？', async (m,tools,turn) => {
+    if (!turn) return searchKnowledge(tools, '书房办公 采光 眩光');
     const k = results(m).find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!;
     return synth([{basis:'evidence',text:'办公布置需要兼顾自然采光、眩光和通道。',citations:[{sourceId:k.sourceId,quote:'书房靠窗办公需同时考虑自然采光、屏幕眩光和通道。'}]}]);
   }); assert.equal(a.run.status,'succeeded');
@@ -926,11 +1012,12 @@ test('QA07: loss of the customer participant hides synthesis instead of treating
   });
 });
 
-test('KB3 projected legacy selection writes exact original citations and revokes them on reentry',async()=>{
+test('KB3 projected extractive selection writes exact original citations and revokes them on reentry',async()=>{
   const body=office+'\n😀合成选择定位：仅核对原文，不表示项目安排。';
   const document=await publish('合成投影摘录',body),x=await fixture();let selectedQuote='';
-  const a=await x.send('请只摘录书房靠窗办公的原文，不做综合解释。',async(messages,_tools,turn)=>{
-    if(!turn)return call('search_knowledge',{query:'书房靠窗办公 屏幕眩光 自然采光 通道'});
+  const question='这份资料关于书房靠窗办公的原文怎么说？';
+  const a=await x.send(question,async(messages,tools,turn)=>{
+    if(!turn)return searchKnowledge(tools, '书房靠窗办公 屏幕眩光 自然采光 通道', [question]);
     const packets=messages.filter(m=>m.role==='tool').map(m=>JSON.parse(m.content));
     const source=packets.flatMap(p=>p.synthesisSources||[]).find(s=>s.text===body);
     assert.ok(source?.selectionLines,'The actual model request must use the compact selection map');
@@ -939,7 +1026,7 @@ test('KB3 projected legacy selection writes exact original citations and revokes
       const line=source.text.split('\n')[(Array.isArray(span)?span[0]:span)-1];
       const quote=Array.isArray(span)?line.slice(span[1],span[2]):line;
       if(!quote.includes('显示器避免直对'))return false;selectedQuote=quote;return true;
-    });assert.ok(choice);return call('final_response',{kind:'knowledge',selections:[choice[0]]});
+    });assert.ok(choice);return call('final_response',{kind:'knowledge',selections:[choice[0]],coverage:{Q1:[choice[0]]}});
   });
   assert.equal(a.run.status,'succeeded',JSON.stringify(a.run));
   const message=(await x.chat.messages(x.cid)).items.find(m=>m.id===a.run.outputMessageId)!;
@@ -954,8 +1041,8 @@ test('KB3 projected legacy selection writes exact original citations and revokes
 test('KB3 legacy full-source citation selection persists canonical quotes without advertising the legacy wire format',async()=>{
   const body='合成完整引用：主卫参考高度1800mm，须先核对基层；观察不等于验收。😀';
   const document=await publish('合成整段引用选择',body),x=await fixture();
-  const a=await x.send('请结合原资料解释主卫高度和核对前提，不要只返回摘录。',async(messages,_tools,turn)=>{
-    if(!turn)return call('search_knowledge',{query:'主卫 参考高度1800mm 核对基层'});
+  const a=await x.send('请结合原资料解释主卫高度和核对前提，不要只返回摘录。',async(messages,tools,turn)=>{
+    if(!turn)return searchKnowledge(tools, '主卫 参考高度1800mm 核对基层');
     const source=results(messages).find(s=>s.text===body) as {sourceId:string;text:string;citationOptions?:unknown[]}|undefined;
     assert.ok(source?.citationOptions?.length);assert.doesNotMatch(JSON.stringify(messages),/PRIVATE_ONLY_NEVER_SEND/);
     return synth([{basis:'evidence',text:'参考高度1800mm应和基层前提一起核对，观察本身不能替代检查结论。',citations:[{sourceId:source!.sourceId,quoteFromSource:true}]}]);
@@ -973,8 +1060,8 @@ test('KB3 catalog citation first draft persists exact originals with typed docum
   const body='合成引用目录：参考间距310mm，须先核对适用前提；不代表现场结论。😀';
   const filename='03 合成引用目录v3.2.pdf';
   const document=await publish(filename,body),x=await fixture();
-  const a=await x.send('请解释资料中的间距要求与前提，不要只摘录。',async(messages,_tools,turn)=>{
-    if(!turn)return call('search_knowledge',{query:'合成引用目录 参考间距310mm 适用前提'});
+  const a=await x.send('请解释资料中的间距要求与前提，不要只摘录。',async(messages,tools,turn)=>{
+    if(!turn)return searchKnowledge(tools, '合成引用目录 参考间距310mm 适用前提');
     assert.equal(turn,1,'The catalog protocol must not require a format repair');
     const kinds = (finalToolForMessages(messages).parameters.properties as Record<string, { enum: string[] }>).kind.enum;
     assert.deepEqual(kinds, ['synthesis']);
@@ -998,13 +1085,13 @@ test('KB3 catalog citation first draft persists exact originals with typed docum
 test('AG08 knowledge-only mixed final envelopes remain rejected despite real current citations',async()=>{
  const body='合成最终协议：检查安排由项目团队核对，阶段标签不证明检查通过。';
  await publish('合成最终协议',body);const x=await fixture();let calls=0;
- const sent=await x.send('请解释企业资料中的检查安排和阶段标签含义。',async(messages,_tools,turn,requestTools)=>{
-  calls++;if(!turn)return call('search_knowledge',{query:'合成最终协议 检查安排 阶段标签'});
+ const sent=await x.send('请解释企业资料中的检查安排和阶段标签含义。',async(messages,tools,turn,requestTools)=>{
+  calls++;if(!turn)return searchKnowledge(tools, '合成最终协议 检查安排 阶段标签');
   const final=requestTools?.find(t=>t.name==='final_response');assert.ok(final);
   assert.deepEqual((final.parameters.properties as Row).kind,{type:'string',enum:['synthesis']});
   const source=results(messages).find(s=>s.text===body);assert.ok(source);
   return call('final_response',{kind:'knowledge',text:body,segments:[{basis:'evidence',text:body,citations:[{citationId:source.citationOptions[0].citationId}]}]});
- });assert.equal(calls,2);assert.equal(sent.run.status,'failed');assert.equal(sent.run.errorCode,'invalid_model_answer');assert.equal(sent.run.outputMessageId,null);
+ });assert.equal(calls,3);assert.equal(sent.run.status,'failed');assert.equal(sent.run.errorCode,'invalid_model_answer');assert.equal(sent.run.outputMessageId,null);
  const steps=await withTenantTransaction(eid,tx=>rows(tx,sql`select kind,private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${sent.runId}`));
  assert.equal(steps.filter(s=>s.kind==='agent_need_write').length,0);
  const checkpoint=steps.filter(s=>s.kind==='agent_model').at(-1)!.private_checkpoint as Row;
@@ -1014,9 +1101,9 @@ test('AG08 knowledge-only mixed final envelopes remain rejected despite real cur
 
 test('AG08 zero-evidence final schema persists advice before and after retirement while fabricated citations still fail',async()=>{
  const x=await fixture(tenants[1],false);
- const send=async(fabricated:boolean,knowledgeStatus:string)=>x.send('请查询企业资料，说明书房靠窗办公的一般布置思路；没有依据时说明缺口，不要记录需求。',async(messages,_tools,turn,requestTools)=>{
-  if(!turn)return call('search_knowledge',{query:'合成空目录边界 书房靠窗办公'});
-  assert.equal(turn,1,'Empty evidence needs no extra read or repair');
+ const send=async(fabricated:boolean,knowledgeStatus:string)=>x.send('请查询企业资料，说明书房靠窗办公的一般布置思路；没有依据时说明缺口，不要记录需求。',async(messages,tools,turn,requestTools)=>{
+  if(!turn)return searchKnowledge(tools, '合成空目录边界 书房靠窗办公');
+  if (!fabricated) assert.equal(turn,1,'Empty evidence needs no extra read or repair');
   const packet=messages.filter(m=>m.role==='tool').map(m=>JSON.parse(m.content)).find(p=>Array.isArray(p.synthesisSources));
   assert.equal(packet.knowledgeStatus,knowledgeStatus);assert.equal(packet.synthesisSources.length,0);
   const final=requestTools?.find(t=>t.name==='final_response');assert.ok(final);
@@ -1032,7 +1119,7 @@ test('AG08 zero-evidence final schema persists advice before and after retiremen
  const doc={documentId:String((created.document as Row).id),versionId:String((created.draft as Row).id),expectedVersion:1,expectedEditVersion:1};
  const indexed=await ops.execute('index',doc,randomUUID()),job=await claimKnowledgeJob();assert.ok(job);assert.equal(job.jobId,indexed.jobId);await runKnowledgeJob(job);assert.equal((await ops.execute('job',{jobId:job.jobId},randomUUID())).status,'succeeded');
  await ops.execute('publish',doc,randomUUID());await ops.execute('retire',{documentId:doc.documentId,expectedVersion:2},randomUUID());assert.equal(((await ops.execute('detail',{documentId:doc.documentId},randomUUID())).document as Row).status,'retired');
- const retired=await check('ready'),bad=await send(true,'ready');assert.equal(bad.run.status,'failed');assert.equal(bad.run.errorCode,'invalid_model_citation');assert.equal(bad.run.outputMessageId,null);
+ const retired=await check('empty'),bad=await send(true,'empty');assert.equal(bad.run.status,'failed');assert.equal(bad.run.errorCode,'invalid_model_citation');assert.equal(bad.run.outputMessageId,null);
  const steps=await withTenantTransaction(tenants[1],tx=>rows(tx,sql`select kind from app.assistant_run_steps where enterprise_id=${tenants[1]} and run_id in (${unready.runId},${retired.runId},${bad.runId})`));assert.equal(steps.filter(s=>s.kind==='agent_need_write').length,0);
  await assert.rejects(new ConversationService((await fixture()).actor).messages(x.cid),/assistant_resource_not_found/);
 });

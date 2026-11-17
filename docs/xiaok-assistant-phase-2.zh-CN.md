@@ -194,7 +194,7 @@ service04原样保存无来源答复及两个网页原件，六个引用可重�
 
 新任务固化`enterprise-knowledge-policy-v1`；切换递增policy_version，派发、缓存接续和提交均受原守卫约束。未固化模式的历史任务按已结合知识处理，关闭时不能继续。关闭移除企业检索/知识案例工具，在Embedding前拒绝检索，排除旧知识模式助手回复，不恢复含企业知识的综合上下文。获权项目事实、成员、媒体、幂等和用量仍归业务服务。明确的后台知识试问/维护独立保留；开关不发布或删除知识。开启复用原KnowledgeRetriever/Evidence，旧失败及回答质量Limited不升级。
 
-阶段/日/周报告保持同一事实、正文和投递链，以及原收件人/周期/精确引用守卫。关闭时跳过readWorkmanship，原Worker只生成一至两条阶段通用注意事项，进展/待核对/已确认安排继续展示原记录。复用综合解析器拒绝新增无据工程量数/承诺，不增加判分模型，不伪造guidanceReviewed证明。正文`model-general-stage-advice-v1`经原批准“工艺关注”组件展示“通用建议（模型知识）”，没有企业来源按钮。完工/入住保留原自动报告生命周期排除。Mini结构/样式/素材/路由未改；四角色/照片及整版闭环分别记范围。
+阶段/日/周报告保持同一事实、正文和投递链，以及原收件人/周期/精确引用守卫。关闭时跳过readWorkmanship，原Worker只生成一至两条阶段通用注意事项，进展/待核对/已确认安排继续展示原记录。复用综合解析器拒绝新增无据工程量数/承诺，不增加判分模型，不伪造guidanceReviewed证明。正文`model-general-stage-advice-v1`经原批准“工艺关注”组件展示小K建议，没有企业来源按钮。完工/入住保留原自动报告生命周期排除。Mini结构/样式/素材/路由未改；四角色/照片及整版闭环分别记范围。
 
 采用决定：保留现有LangGraph authorize/model/tool/checkpoint接口，以服务端上下文选择工具，与[维护中的LangChain运行上下文/中间件指引](https://github.com/langchain-ai/docs/blob/main/src/oss/javascript/migrate/langchain-v1.mdx)一致；复用已维护的供应商能力配置及最终函数协议。Qwen原响应3013/run10579只有一个完整、结构合法的最终函数，但finish_reason=stop，被原报告解析器拒绝。现仅在应用侧已核为function_call/schemaValid时接受stop，随后仍验函数名称/数量、无附带正文和完整schema；length、未核验及混合响应继续拒绝，原包/失败保留。[官方函数调用合同](https://help.aliyun.com/en/model-studio/qwen-function-calling)。证据`tmp/v1-knowledge-switch-20261106/`。
 
@@ -3097,7 +3097,7 @@ P2M.0–P2M.3保持 **Limited**：开发企业1454已从现有小程序入口启
 - 客户发送时自动从最近最多200条客户消息保存摘要草稿，每字段最多1,000字；提取未变化不重复建草稿。保留既有确认记录及仅客户本人可用的旧requirements GET/POST合同，自动草稿不覆盖已确认字段。显式命名的多房间分别保留于room字段；后来的同房间分句替换该房间工作描述。隐式跨房间指代、通用语义冲突消解仍Limited。
 - 既有客户 `POST /api/miniprogram/assistant/conversations/:id/handoff` 直接接受 `{action:'request'}`；明确自然语言找人请求进入相同等待状态，无额外资料分享同意表。电话联系仍是兼容API中的独立可选授权字段，本批不主动索取电话。正式报价/具体项目工期及沟通卡住的规则共用“请设计师接着聊”，不编造报价、预约或响应时限。
 - 等待中可补文字/图片和更新草稿，不创建AI任务。原子接管后在同一对话进入human；退出接待返回waiting，取消/结束恢复AI并撤销服务访问。转接状态写入持久化system消息，区别于AI/真人回复。接待人被停用时显示暂不可用，不虚报已结束。
-- 员工接管前的队列/详情只给分派状态、标识和接收人，不给packet、原文或私有图片。每次读写重验当前有效接管、租户、角色和身份。小程序保留设计师/企业管理员入口；Web另需原enterprise-admin/menu权限，不增加企业全部客户访问权。
+- 员工接管前的队列/详情只给分派状态、标识和接收人，不给packet、原文或私有图片。每次读写重验当前有效接管、租户、角色和身份。小程序使用在职且已绑定的设计师或企业负责人身份。后台在所选企业内向持有授权的 `enterprise_admin` 及 `admin`、`super_admin` 开放，资料访问按客户授权的接续请求核定。
 - 既有员工POST `/api/miniprogram/assistant/handoffs/:id` 及Admin等价端点增加 `correct`、`associate`、`link`，携带 `expectedVersion` 和 Idempotency-Key。修正把字段/内容/客户原话消息/操作者/时间/备注写入 `entry_snapshot.handoff.packet.corrections`；图片分类、房间及授权线索/户型/房间标识写入 `packet.mediaAnnotations`。客户投影剔除内部标注，不视为客户确认。
 - 候选限定为本对话客户的有效线索，并符合当前员工原有企业管理员或assigned/promoter范围。仅已完成主正式version-4户型通过只读适配器提供房间。关联只改handoff.leadId，不建档/合并、不改分配/推广佣金、不编辑墙图或写回旧layout。候选展示标识以区分同名档案。
 - 图片继续使用鉴权私有JPEG/PNG（每张4MB、每对话20张）；删除/源撤回/当前权限重验后显示不可用占位。员工分类不改图片字节。麦克风/人像PNG沿用Lucide/ISC，不暗示ASR或识图已可用。 AI模式成功传图会在同一事务保存system收图提示，说明暂不能识图，可补充问题或找设计师；复用C01/U01既有状态，不改布局。原请求重试不重复提示、重进可见；失败不报成功，等待/人工模式不插话，不创建模型任务。首图/并发重试/重进/接续边界的真实数据库回归通过。
@@ -3153,13 +3153,13 @@ P2M.0–P2M.3保持 **Limited**：开发企业1454已从现有小程序入口启
 
 设计师/企业管理员的小程序工作台进入 `packages/assistant/handoff/handoff?staff=1`。接单前仅可读客户授权资料包；原子接单授予当前请求的 handoff_staff 成员权，并将同一会话切为 human，多人竞争只有一人成功。双方发送持久化文字，不创建 AI 任务。员工明确退出撤权并回到等待；客户取消或任一方结束撤权并明确恢复 AI。停用/解绑/身份变更或成员撤权后不可继续访问；重进恢复真实状态。
 
-后台 `/assistant-knowledge` → “真人接续”提供队列、授权资料、接管、回复、退出与结束，使用共享操作反馈。Web 要求 enterprise_admin 及既有 assistant-knowledge 菜单授权；Mini 允许已绑定的有效 designer/enterprise_admin。知识管理员或平台管理员不会因此获得客户会话权。服务端重验租户、角色、身份版本及成员授权；未知写入复用原键和正文核对，不发第二次操作。
+后台 `/assistant-knowledge` → “真人接续”提供队列、授权资料、接管、回复、退出与结束，使用共享操作反馈。Web 允许所选企业内的 `admin`、`super_admin` 和有 `assistant-knowledge` 授权的 `enterprise_admin`。小程序允许已绑定的有效 `designer`、`enterprise_admin`。服务端重验租户、角色、身份版本及成员授权；未知写入复用原键和正文核对，不发第二次操作。
 
 ### 接口、存储与限制
 
 - 客户 GET/POST `/api/miniprogram/assistant/conversations/:id/handoff`：request/cancel/end。
 - 员工 GET `/api/miniprogram/assistant/handoffs`，GET/POST `…/handoffs/:id`：claim/reply/release/end。
-- 后台 GET `/api/assistant/handoffs`，GET/POST `…/handoffs/:id`，复用相同服务及更窄的 Web 授权。
+- 后台 GET `/api/assistant/handoffs`，GET/POST `…/handoffs/:id`，复用相同服务及所选企业的后台授权。
 - 状态/同意/接收人/接待负责人/来源/可选 lead 和资料包存于既有 conversations.entry_snapshot，成员沿用 participants。幂等只存标识；会话保留期清理 entry_snapshot 时一并移除资料包及电话。事件保留动作/同意/标识，不记录电话或原文。
 - `0066_assistant_handoff_guard.sql` 更新既有成员/消息触发器为请求级接待授权，保留预览规则与强制 RLS。开发主库和隔离评估库已应用并核验哈希/触发器，生产未操作。已验证迁移前备份：`tmp/xiaok-vector/phase2-pre-migration-2026-10-15T16-55-06-791Z.dump`。
 - 文字资料包最多近期200条（超出有提示），员工接管后视图最多近期100条；P2A.2另增下述单独授权私有图片。尚无员工历史翻页、在线状态、外部推送或自动升级接待；活动页每3秒轮询。接单不修改推荐来源、线索负责人、预约派单或佣金；自愿关联线索只是关联，不写正式项目需求。
@@ -3179,7 +3179,7 @@ P2M.0–P2M.3保持 **Limited**：开发企业1454已从现有小程序入口启
 实现参考：[LangGraph持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence)及[checkpointer](https://docs.langchain.com/oss/javascript/langgraph/add-memory)说明线程状态保留；本项目据此推断已保存checkpoint并不代表当前业务来源仍获权。沿用现有逐次source resolver和正式v4解析器，不新增Agent、checkpoint仓库、权限解析器或框架迁移。这是应用来源校验一致性修复，不是供应商特例或模型质量证据。
 
 - 客户 GET/POST `/api/miniprogram/assistant/conversations/:id/media`；GET/DELETE `…/media/:mediaId`；GET/POST `…/media/floorplans`。写入要求 Idempotency-Key；删除按资源幂等。
-- 员工 GET `/api/miniprogram/assistant/handoffs/:id/media[/…mediaId]`；后台 GET `/api/assistant/handoffs/:id/media[/…mediaId]`。每次读取重验既有租户、角色、身份和当前请求/成员授权；后台仍要求 enterprise_admin 加菜单权。
+- 员工 GET `/api/miniprogram/assistant/handoffs/:id/media[/…mediaId]`；后台 GET `/api/assistant/handoffs/:id/media[/…mediaId]`。每次读取重验既有租户、角色、身份和当前请求/成员授权；后台图片沿用所选企业的管理角色与当前接管权限。
 - 新接续同意明确包含本次及后续上传的图片资料，记为 `mediaConsent: true`；没有此标记的旧请求不授予图片。员工小程序和后台授权资料卡按需读取私有预览；取消/结束/撤权后失去服务端访问。
 - `0067_assistant_media.sql`、`0068_assistant_media_source.sql` 新增强制RLS的 `app.assistant_media`，私有 bytea 正文及不可变 source_ref，无公开媒体URL。删除/保留期清理字节、房间标签和来源，保留墓碑防止复活。此限量存储不是通用大媒体库。
 - 设计：draw-ui 对应批准PPT5输入框图片入口、PPT14正式户型入口，沿用已还原弹层/卡片和插画。新增Lucide图片图标48rpx、触区72×84rpx；资料标签32rpx、上传/选择操作28rpx且最小84rpx，操作间距16rpx。资源 `miniprogram/packages/assistant/assets/image.png`，PNG96×96/1,089 bytes，许可见 `docs/icon-sources/assistant/README.md`。无截图切片或新增业务插画。

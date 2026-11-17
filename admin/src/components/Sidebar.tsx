@@ -36,6 +36,7 @@ import {
   MessageSquareText,
   BrainCircuit,
   LayoutTemplate,
+  PlayCircle,
 } from 'lucide-react';
 import { Button, Divider, Drawer, Dropdown, Select } from 'antd';
 import { cn } from '@/lib/utils';
@@ -87,6 +88,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'ai-providers', label: 'AI 供应商', icon: Cable, href: '/ai-providers' },
         { key: 'ai-models', permissionKey: 'ai-providers', label: '生图模型', icon: Image, href: '/ai-models' },
         { key: 'llm-settings', label: 'LLM大模型配置', icon: BrainCircuit, href: '/llm-settings' },
+        { key: 'assistant-worker', label: '小K Worker 启停', icon: PlayCircle, href: '/assistant-worker' },
         { key: 'map-settings', label: '地图服务配置', icon: Map, href: '/map-settings' },
         { key: 'portfolio-templates', label: '作品集模板', icon: LayoutTemplate, href: '/portfolio-templates' },
         { key: 'media-storage', label: '媒体存储', icon: HardDrive, href: '/media-storage' },
@@ -118,6 +120,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'assistant-knowledge', label: '小 K 知识库', icon: ClipboardList, href: '/assistant-knowledge' },
         { key: 'case-publishing', label: '案例发布管理', icon: ClipboardList, href: '/case-publishing' },
         { key: 'construction-projects', label: '施工项目与节点', icon: ClipboardList, href: '/construction-projects' },
+        { key: 'construction-video-settings', permissionKey: 'construction-projects', label: '工地视频设置', icon: Settings, href: '/construction-video-settings' },
         { key: 'leads', label: '客户线索', icon: ClipboardList, href: '/leads' },
         { key: 'lead-pool', permissionKey: 'leads', label: '线索抢单池', icon: Trophy, href: '/lead-pool' },
       ]
@@ -506,6 +509,7 @@ export default function Sidebar() {
     if (key === 'media-storage') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'sms-settings') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'llm-settings') return admin.role === 'super_admin' || admin.role === 'admin';
+    if (key === 'assistant-worker') return admin.role === 'super_admin';
     if (key === 'portfolio-templates') return admin.role === 'super_admin' || admin.role === 'admin';
     if (['ai-credit-prices', 'ai-presets', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;
     if (admin.effectivePermissions?.includes(key)) return true;

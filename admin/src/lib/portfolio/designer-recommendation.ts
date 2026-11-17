@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { one, type Row } from '@/db/repositories/assistant-repository';
+import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import { CITY_OPTIONS } from './regions';
@@ -27,7 +27,7 @@ export type DesignerCard = {
   };
   reason: string; match: string;
 };
-export type DesignerRecommendation = { items: DesignerCard[]; notice: string };
+export type DesignerRecommendation = { items: DesignerCard[]; notice: string; needContext?: boolean };
 
 /** A city the customer already stated in this conversation still applies to a
  * later style request. The newest message that names a city decides; an
@@ -146,6 +146,12 @@ export async function recommendDesigners(tx: PostgresTransaction, actor: ActorCo
       notice: designerNotice, cityCode: credit.cityCode, style: '', layout: '', requestMessageIds: request.requestMessageIds };
   }
   const facts = readMemory(conversation.entry_snapshot).facts.filter(fact => fact.status === 'current');
+  // The newest explicit city still applies when the customer asks for a style a
+  // few turns later and the model did not save it as a housing fact. Only this
+  // authorized conversation is read; an ambiguous or negated newer mention
+  // still asks for clarification instead of reaching further back.
+  const earlier = await rows(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
+    and conversation_id=${String(conversation.id)} and author_kind='user' order by seq desc limit 10`);
   const query = resolveDesignerQuery({
     memoryHousing: facts.filter(fact => fact.field === 'housing').map(fact => fact.value).join(' '),
     memoryStyle: facts.filter(fact => fact.field === 'style').map(fact => fact.value).join(' '),
@@ -153,6 +159,7 @@ export async function recommendDesigners(tx: PostgresTransaction, actor: ActorCo
     input,
     location: recommendationRegion(conversation.entry_snapshot)?.source === 'wechat_location'
       ? recommendationRegion(conversation.entry_snapshot) as NearbyRegion : null,
+    conversationTexts: earlier.map(message => (message.content as { blocks?: Array<{ text?: string }> }).blocks?.map(block => block.text || '').join(' ') || ''),
   });
   if (!query) return { items: [], notice: designerNotice, needContext: true, requestMessageIds: request.requestMessageIds };
   const candidates = (await portfolioCandidates(tx, actor.enterpriseId, { city: query.cityCode, style: query.style || undefined, layout: query.layout || undefined, recommend: true }))
@@ -196,8 +203,8 @@ export async function designerMessageProjection(tx: PostgresTransaction, actor: 
   if (!run) return null;
   const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId}
     and run_id=${String(run.id)} and kind='agent_designer_result' and step_seq=2000`);
-  const snapshot = step?.private_checkpoint as DesignerSnapshot | undefined;
+  const snapshot = step?.private_checkpoint as (DesignerSnapshot & { needContext?: boolean }) | undefined;
   if (!snapshot) return null;
-  const items = await revalidateDesignerSnapshot(tx, actor, snapshot);
-  return items.length ? { items, notice: designerNotice } : null;
+  const items = snapshot.needContext ? [] : await revalidateDesignerSnapshot(tx, actor, snapshot);
+  return { items, notice: designerNotice, ...(snapshot.needContext ? { needContext: true } : {}) };
 }

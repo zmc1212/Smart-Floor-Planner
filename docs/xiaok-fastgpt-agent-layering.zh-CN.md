@@ -229,7 +229,7 @@ FastGPT 4.17.4 的 HTTP 工具节点只能解析**静态头**，不能注入每-
     "site.public": {
       "appId": "<24 hex>",
       "audience": "customer",
-      "input": ["name", "cityName", "district", "stageName", "excerpts", "photoCount", "designerName"],
+      "input": ["name", "cityName", "district", "stageName", "styleName", "excerpts", "photoCount", "designerName"],
       "constraints": { "minChars": 8, "maxChars": 140, "noUrl": true,
                        "noCitationMarkers": true, "noPhotoClaims": true, "noCommitments": true }
     }
@@ -257,11 +257,14 @@ FastGPT 4.17.4 的 HTTP 工具节点只能解析**静态头**，不能注入每-
   "sourceRole": "published_site_snapshot",
   "site": {
     "name": "...", "cityName": "...", "district": "...",
-    "stageName": "...", "excerpts": [{ "role": "...", "text": "...", "date": "..." }],
+    "stageName": "...", "styleName": "...", // 无公开风格则不带该字段
+    "excerpts": [{ "role": "...", "text": "...", "date": "..." }],
     "photoCount": 3, "designerName": "..." // 无署名则不带该字段
   }
 }
 ```
+
+`styleName` 取自公开版本：保存时优先复制客户已共享的装修画像风格，缺失时回退客户线索的 AI 设计风格，随业主预览/企业审核/撤回；不是后台手填字段。开场指令要求有 `styleName` 时说明公开风格，并在结尾用自然问句询问客户自己是否也在准备装修。
 
 不含：会话历史、客户身份、项目/业主信息、私聊内容、照片像素、工地内部记录。
 调用使用 `chatId: 'NO_RECORD_HISTORIES'`，且不带 `variables.workflowTicket`，与建议应用一致。

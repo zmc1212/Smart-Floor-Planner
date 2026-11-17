@@ -549,7 +549,7 @@ test('composer previews uploaded references together with the locked floor-plan 
 
     host.previewReferenceImage({ currentTarget: { dataset: { referenceIndex: 1 } } });
 
-    assert.deepEqual(previewCalls, [{
+    assert.deepEqual(previewCalls.map(({ current: shown, urls }) => ({ current: shown, urls })), [{
       current: 'https://example.com/site-2.jpg',
       urls: [
         'https://example.com/floor-plan.jpg',

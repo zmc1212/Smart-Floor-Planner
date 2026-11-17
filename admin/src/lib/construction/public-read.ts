@@ -56,6 +56,7 @@ export async function publicMaterialDto(tx: PostgresTransaction, site: Row, vers
   const media = await rows(tx, sql`select id::text,width,height from app.construction_public_media where enterprise_id=${String(site.enterprise_id)} and site_id=${String(site.id)} and version_id=${String(version.id)} order by position`);
   return { id: String(site.id), versionId: String(version.id), revision: Number(site.revision), status: String(site.status), statusLabel: publicStatusLabels[String(site.status)] || '当前不可用',
     name: content.name, cityCode: content.cityCode, cityName: content.cityName, district: content.district, stageName: content.stageName,
+    styleName: content.styleName || null,
     designer: content.designerId ? { id: content.designerId, name: content.designerName || '' } : null,
     excerpts: content.excerpts, photos: media as Array<{ id: string; width: number; height: number }>,
     updatedAt: new Date(String(site.updated_at)).toISOString() };
@@ -73,6 +74,16 @@ export async function publicCandidates(tx: PostgresTransaction, eid: string, cit
   }
   return result;
 }
+/** A located district with no published site widens to the same city only.
+ * The explicit flag lets cards and receipts say so instead of implying the
+ * shown sites are in the requested district; another city never fills in. */
+export function selectPublicCandidates<T extends { district: string }>(items: T[], district = '') {
+  if (!district) return { items, scope: 'city' as const, districtFallback: false };
+  const exact = items.filter(item => item.district === district);
+  return exact.length
+    ? { items: exact, scope: 'district' as const, districtFallback: false }
+    : { items, scope: 'city' as const, districtFallback: true };
+}
 export class PublicSiteCatalog {
   constructor(readonly enterpriseId: string) { id(enterpriseId); }
   private scope<T>(fn: (tx: PostgresTransaction) => Promise<T>) {
@@ -84,7 +95,13 @@ export class PublicSiteCatalog {
   }
   list(cityCode = '', district = '') {
     if ((cityCode && !/^[1-9]\d{5}$/.test(cityCode)) || district.length > 50) fail('invalid_public_material', 422);
-    return this.scope(async tx => ({ items: await publicCandidates(tx, this.enterpriseId, cityCode, district) }));
+    return this.scope(async tx => {
+      const items = await publicCandidates(tx, this.enterpriseId, cityCode);
+      const selected = cityCode
+        ? selectPublicCandidates(items, district)
+        : { items: district ? items.filter(item => item.district === district) : items, scope: 'city' as const, districtFallback: false };
+      return { items: selected.items, scope: selected.scope, districtFallback: selected.districtFallback };
+    });
   }
   areas() {
     return this.scope(async tx => {

@@ -191,8 +191,11 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   const webReason = projected.find(x => !x.available && 'reason' in x && webIds.includes(x.id) && x.reason !== 'source_unavailable');
   const publicReason = publicProjection && publicProjection.available === false ? publicProjection.reason
     : webReason && 'reason' in webReason ? webReason.reason : undefined;
-  const designerRecommendation = available && actor.principal.kind === 'user'
+  const designerProjection = available && actor.principal.kind === 'user'
     ? await designerMessageProjection(tx, actor, String(c.id), String(message.id)) : null;
+  const designerRecommendation = designerProjection?.items.length ? designerProjection : null;
+  const designerDiscovery = designerProjection && !designerProjection.items.length
+    ? { needContext: designerProjection.needContext === true } : null;
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
     ...(publicProjection ? { publicSourceBound: true } : {}),
     content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',
@@ -207,6 +210,6 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
     siteWatch: available && message.purpose === 'construction.watch' ? await siteWatchProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
     ...(available && publicProjection?.available && !publicProjection.opening ? { publicConsent: publicProjection.publicConsent || null, publicContext: publicProjection.publicContext || null, publicReferences: publicProjection.publicReferences || [] } : {}),
     ...(available && actor.principal.kind === 'user' ? { constructionContacts: await constructionMessageActions(tx, actor, String(c.id), String(message.id)) } : {}),
-    ...(available ? { designerRecommendation } : {}),
+    ...(available ? { designerRecommendation, ...(designerDiscovery ? { designerDiscovery } : {}) } : {}),
     ...(media ? { mediaId: String(media.id), mediaAvailable: !!media.available } : {}) };
 }

@@ -41,7 +41,7 @@ export function readOriginal(actor: KnowledgeActor, documentId: string, versionI
     const file=await one(tx,sql`select a.name,a.format,a.data,a.source_hash from app.assistant_knowledge_assets a
       join app.assistant_knowledge_versions v on v.enterprise_id=a.enterprise_id and v.document_id=a.document_id and v.source_asset_id=a.id
       join app.assistant_knowledge_documents d on d.enterprise_id=v.enterprise_id and d.id=v.document_id
-      where a.enterprise_id=${actor.enterpriseId} and d.id=${id(documentId)} and v.id=${id(versionId)}`);
+      where a.enterprise_id=${actor.enterpriseId} and d.id=${id(documentId)} and v.id=${id(versionId)} and d.status<>'retired'`);
     if(!file || createHash('sha256').update(file.data as Buffer).digest('hex') !== file.source_hash) fail('assistant_resource_not_found',404);
     return file;
   });

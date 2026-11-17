@@ -14,11 +14,11 @@ import type { BatchRemote,BailianOfflineTransport } from '@/lib/ai/providers/bai
 import type { AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
 import { fingerprint } from '@/lib/assistant/contracts';
 import { lockAssistantAcceptance } from '../../../scripts/assistant-acceptance-safety.mjs';
+import { xiaokTestDatabase } from './xiaok-test-database';
 
-const root=path.resolve(process.cwd(),'..'),evidence=path.join(root,'tmp/xiaok-p0-20261027');
-const connection=JSON.parse(fs.readFileSync(path.join(root,'tmp/xiaok-vector/connection.private.json'),'utf8').replace(/^\uFEFF/,''));
-const url=new URL(connection.DATABASE_URL);assert.equal(url.port,'55432');assert.equal(url.pathname,'/xiaok_embedding_eval');
-process.env.DATABASE_URL=connection.DATABASE_URL;process.env.LANGCHAIN_TRACING_V2='false';process.env.LANGSMITH_TRACING='false';
+const root=path.resolve(process.cwd(),'..');
+const evidence=process.env.ASSISTANT_P0_EVIDENCE_DIRECTORY || path.join(root,'tmp/xiaok-p0-20261027');
+process.env.LANGCHAIN_TRACING_V2='false';process.env.LANGSMITH_TRACING='false';
 const binding=bailianBinding('https://dashscope.aliyuncs.com/compatible-mode','qwen3.8-flash',false)!;
 const prefix='synthetic-p0-'+randomUUID(),tenants:string[]=[],admins:string[]=[],tasks:string[]=[];
 let providerId='',unlock:(()=>Promise<void>)|undefined,network=0;
@@ -29,7 +29,8 @@ const sourceFiles=['admin/src/lib/assistant/agent/model-tasks.ts','admin/src/lib
   'admin/src/lib/ai/postgres-workflow-chat.ts','admin/src/db/repositories/assistant-cleanup.ts','admin/src/db/repositories/ai-creation-repository.ts',
   'admin/src/db/transaction.ts','admin/src/db/schema.ts','admin/src/db/assistant-model-task-schema.ts','admin/drizzle/0096_assistant_model_tasks.sql',
   'admin/scripts/assistant-model-capabilities.ts','admin/src/db/__tests__/assistant-model-tasks.test.ts','admin/package-lock.json','admin/tsconfig.json',
-  'admin/src/lib/assistant/knowledge/manager.ts','admin/src/lib/platform-llm-config.ts','admin/src/lib/postgresql.ts','admin/src/lib/ai/provider-types.ts'];
+  'admin/src/lib/assistant/knowledge/manager.ts','admin/src/lib/platform-llm-config.ts','admin/src/lib/postgresql.ts','admin/src/lib/ai/provider-types.ts',
+  'admin/src/db/__tests__/xiaok-test-database.ts','admin/scripts/assistant-acceptance-safety.mjs'];
 const bind=()=>Object.fromEntries(sourceFiles.map(f=>[f,createHash('sha256').update(fs.readFileSync(path.join(root,f))).digest('hex')]));
 const beforeHashes=bind(),checks:Array<{name:string;status:string}>=[];
 const syntheticItems={synthetic:true as const,items:[{customId:'first',text:'合成评估：厨房通道有什么准备事项？',maxTokens:128},{customId:'second',text:'合成评估：收纳如何按生活习惯安排？',maxTokens:128},{customId:'third',text:'合成评估：卫生间铺砖前先核对什么？',maxTokens:128}]};
@@ -54,7 +55,9 @@ function fixture(options:{unknownSubmit?:boolean;unknownUpload?:boolean;approval
 }
 async function prepare(f:ReturnType<typeof fixture>,items=syntheticItems) {const task=await f.service().prepareBatch(randomUUID(),items,binding);tasks.push(String(task.id));return String(task.id);}
 before(async()=>{
-  unlock=await lockAssistantAcceptance(connection.DATABASE_URL);globalThis.fetch=async()=>{network++;throw Error('external_network_forbidden_in_P0_acceptance');};
+  const database = xiaokTestDatabase();
+  unlock=await lockAssistantAcceptance(database.href, { isolatedPort: database.port });
+  globalThis.fetch=async()=>{network++;throw Error('external_network_forbidden_in_P0_acceptance');};
   await withPlatformTransaction(async tx=>{
     for(let i=0;i<2;i++){
       const enterprise=(await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!;
@@ -69,14 +72,20 @@ before(async()=>{
   });
 });
 after(async()=>{
-  const afterHashes=bind();const noDrift=JSON.stringify(afterHashes)===JSON.stringify(beforeHashes);
+  let cleaned = false;
   try {
+    if (!unlock) return;
     await withPlatformTransaction(async tx=>{for(const tenant of tenants){await deleteAssistantData(tx,BigInt(tenant));await tx.execute(sql`delete from app.admin_users where enterprise_id=${tenant}`);await tx.execute(sql`delete from app.enterprises where id=${tenant}`);}if(providerId)await tx.execute(sql`delete from app.ai_provider_configs where id=${providerId}`);});
-    assert.equal(network,0);assert.ok(noDrift,'Source changed during P0 acceptance');
+    cleaned = true;
+    assert.equal(network,0);
   }finally{
+    globalThis.fetch=originalFetch;
+    try { await closePostgresPool(); } finally { await unlock?.(); }
+    const afterHashes=bind();const noDrift=JSON.stringify(afterHashes)===JSON.stringify(beforeHashes);
+    fs.mkdirSync(evidence, { recursive: true });
     fs.writeFileSync(path.join(evidence,`service-evidence-${process.env.ASSISTANT_P0_EVIDENCE_LABEL||Date.now()}.json`),JSON.stringify({version:1,kind:'real-isolated-database-mocked-native-transport',checks,
-      sourceBefore:beforeHashes,sourceAfter:afterHashes,noDrift,externalNetworkCalls:network,actualProviderCalls:0,syntheticAttemptAudits:true,fixtureIds:{enterprises:tenants,admins,tasks},cleanup:'completed'},null,2));
-    globalThis.fetch=originalFetch;await closePostgresPool();await unlock?.();
+      sourceBefore:beforeHashes,sourceAfter:afterHashes,noDrift,externalNetworkCalls:network,actualProviderCalls:0,syntheticAttemptAudits:true,fixtureIds:{enterprises:tenants,admins,tasks},cleanup:cleaned?'completed':'incomplete'},null,2));
+    assert.ok(noDrift,'Source changed during P0 acceptance');
   }
 });
 test('P0 real writes: original key, persisted reentry, immutable bindings, owner inheritance and forced tenant RLS',async()=>{

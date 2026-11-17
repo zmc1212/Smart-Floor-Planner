@@ -14,8 +14,8 @@ export const serverSectionText = {
   arrangements: '安排以本份报告中已确认的原记录为准。',
 } as const;
 
-export const noVerifiedCitationText = '（本段没有可核验的原记录引用）';
-export const rejectedCitationText = '（本段引用的来源未通过当前校验，已隐藏）';
+export const noVerifiedCitationText = '（这段没有可对照的现场记录）';
+export const rejectedCitationText = '（引用的资料刚有更新，相关引用先隐藏了）';
 
 type ReportCitation = { sourceId: string; quote: string };
 export type ReportCitationProject = {

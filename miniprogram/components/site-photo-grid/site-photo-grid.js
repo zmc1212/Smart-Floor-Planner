@@ -1,4 +1,5 @@
 const sitePhotos = require('../../utils/sitePhotoService.js');
+const nativePreview = require('../../utils/native-preview.js');
 const { openSheet, closeSheet, clearSheetTimer } = require('../../utils/sheetMotion.js');
 
 const TAG_SHEET = { mountedKey: 'tagMounted', openKey: 'tagOpen' };
@@ -119,7 +120,7 @@ Component({
       }
       const preview = sitePhotos.previewUrls(this.properties.photos, photo);
       if (!preview.current) return;
-      wx.previewImage({ current: preview.current, urls: preview.urls });
+      nativePreview.previewImage({ current: preview.current, urls: preview.urls });
     },
 
     noop() {},

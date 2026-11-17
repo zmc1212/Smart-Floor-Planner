@@ -4,6 +4,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import { previewAssistantQueue } from './job-preview';
 import { workerTaskScope, nativeWorkflowScope, type NativeWorkflowScope } from './worker-scope';
 import { evaluateWorkerSafetyGate } from '@/lib/xiaok-v1/worker-safety-gate';
+import type { WorkerDeployment } from '@/lib/xiaok-v1/worker-runtime-config';
 import { nativeWorkflowEnabled, nativeWorkflowEnterpriseIds } from '@/lib/native-workflow/live/tenant-allowlist';
 import { delegationEnterprises } from '@/lib/native-workflow/live/delegation-config';
 
@@ -61,10 +62,11 @@ async function safeCount(table: string, query: CountQuery): Promise<number | nul
 export async function previewWorkerSideEffects(input: {
   env?: Record<string, string | undefined>;
   now?: Date;
+  deployment?: WorkerDeployment;
 } = {}): Promise<WorkerSideEffectsPreview> {
-  const env = input.env ?? process.env;
+  const env = input.deployment?.env ?? input.env ?? process.env;
   const now = input.now ?? new Date();
-  const gate = evaluateWorkerSafetyGate(env);
+  const gate = input.deployment?.gate ?? evaluateWorkerSafetyGate(env);
   const execution = workerTaskScope(gate);
   const eid = execution.enterpriseId;
   const scope = eid ? sql`and enterprise_id=${eid}` : sql``;

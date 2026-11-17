@@ -74,28 +74,72 @@ const closedGate = {
   status: 'closed', reason: 'pilot_scope_missing', deliveryScope: 'none',
   mode: 'enterprise', enterpriseId: null, pilotId: null,
 };
+const disabledGate = {
+  status: 'closed', reason: 'worker_disabled', deliveryScope: 'none',
+  mode: null, enterpriseId: null, pilotId: null,
+};
+test('I7.5.8 a resident Worker starts ticking when the admin enables it', async () => {
+  let gate = disabledGate;
+  await withWorker((incoming, outgoing) => {
+    outgoing.writeHead(200, { 'content-type': 'application/json' });
+    outgoing.end(JSON.stringify(incoming.method === 'GET'
+      ? { success: true, data: { safetyGate: gate } }
+      : { success: true, data: {} }));
+  }, async ({ child, exited, health, mock }) => {
+    assert.equal(await waitFor(async () => (await readHealth(health)).safetyGate?.reason === 'worker_disabled'), true);
+    assert.equal(mock.counts.tick, 0);
+    gate = openGate;
+    assert.equal(await waitFor(() => mock.counts.tick > 0, 12000), true);
+    assert.equal(child.exitCode, null, 'the Worker keeps running after the switch opens');
+    child.kill();
+    await exited;
+  });
+});
+
 const openGate = {
   status: 'open', reason: 'pilot_scope_configured', deliveryScope: 'pilot',
   mode: 'pilot', enterpriseId: '1454', pilotId: 'first-pilot',
 };
 
-test('I7.5.8 a closed safety gate prevents the Worker from ticking', async () => {
+test('I7.5.8 a closed safety gate keeps the Worker resident and idle', async () => {
   await withWorker((incoming, outgoing) => {
     outgoing.writeHead(200, { 'content-type': 'application/json' });
     outgoing.end(JSON.stringify({ success: true, data: { safetyGate: closedGate } }));
-  }, async ({ exited, health, mock }) => {
-    assert.equal(await exited, 2);
-    assert.equal(mock.counts.preflight, 1);
+  }, async ({ child, exited, health, mock }) => {
+    const idle = await waitFor(async () => (await readHealth(health)).safetyGate?.status === 'closed');
+    assert.equal(idle, true);
+    assert.equal(child.exitCode, null, 'the Worker must not exit on a closed gate');
+    assert.equal((await readHealth(health)).lastErrorCode, null);
+    assert.ok(mock.counts.preflight >= 1);
     assert.equal(mock.counts.tick, 0);
-    const saved = await readHealth(health);
-    assert.equal(saved.lastErrorCode, 'safety_gate_closed');
-    assert.equal(saved.safetyGate.status, 'closed');
     const checked = spawnSync(process.execPath, ['scripts/assistant-worker-healthcheck.mjs'], {
       cwd: admin, encoding: 'utf8',
       env: { ...process.env, ASSISTANT_WORKER_HEALTH_FILE: health },
     });
     assert.equal(checked.status, 1);
     assert.match(checked.stderr, /safety_gate_closed/);
+    child.kill();
+    await exited;
+  });
+});
+
+test('I7.5.8 an admin-disabled Worker reports a healthy idle container', async () => {
+  await withWorker((incoming, outgoing) => {
+    outgoing.writeHead(200, { 'content-type': 'application/json' });
+    outgoing.end(JSON.stringify({ success: true, data: { safetyGate: disabledGate } }));
+  }, async ({ child, exited, health, mock }) => {
+    const idle = await waitFor(async () => (await readHealth(health)).safetyGate?.reason === 'worker_disabled');
+    assert.equal(idle, true);
+    assert.equal(child.exitCode, null);
+    assert.equal(mock.counts.tick, 0);
+    const checked = spawnSync(process.execPath, ['scripts/assistant-worker-healthcheck.mjs'], {
+      cwd: admin, encoding: 'utf8',
+      env: { ...process.env, ASSISTANT_WORKER_HEALTH_FILE: health },
+    });
+    assert.equal(checked.status, 0);
+    assert.equal(JSON.parse(checked.stdout).tickStatus, 'idle');
+    child.kill();
+    await exited;
   });
 });
 

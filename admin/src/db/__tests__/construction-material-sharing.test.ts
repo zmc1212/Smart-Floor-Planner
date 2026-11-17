@@ -22,7 +22,9 @@ let needGrantId = '', drawingId = '', mediaId = '', originalSourceId = '', origi
 const count = () => withTenantTransaction(f.eid, tx => one(tx, sql`select count(*)::int n from app.domain_event_outbox
   where enterprise_id=${f.eid} and type='construction.material.shared.v1'`));
 async function prepared(text: string, input: Row = {}) {
-  const sent = await f.send(text), lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+  const sent = await f.send(text);
+  const lease = await claimJob({ enterpriseId: f.eid, runId: String(sent.runId) });
+  assert.equal(lease?.runId, sent.runId);
   await processAgentAnswer(lease!, { model: async (_messages, tools) => {
     assert.ok(tools.some(t => t.name === 'prepare_material_share'));
     return { text: '', toolCalls: [{ id: randomUUID(), name: 'prepare_material_share', arguments: JSON.stringify({ project: '测试工地甲', room: '书房',

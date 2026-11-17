@@ -8,7 +8,9 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
+import { configuredEmbeddingProfile } from '@/lib/assistant/infrastructure/embedding-gateway';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import { ConversationService } from '@/lib/assistant/core/conversation';
@@ -32,7 +34,7 @@ let actor:ActorContext, other:ActorContext, manager:KnowledgeService, imageBase6
 let priorProvider:Awaited<ReturnType<typeof getPlatformLlmRuntimeConfig>>|undefined;
 const live=process.env.ASSISTANT_P2M_LIVE==='1';
 before(async()=>{
-  const url=new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port,'55432'); assert.equal(url.pathname,'/xiaok_embedding_eval');
+  useLocalKnowledgeTestDatabase();
   if(live){
     const primary=new URL(process.env.ASSISTANT_P2M_PRIMARY_DATABASE_URL||''); assert.ok(['localhost','127.0.0.1'].includes(primary.hostname)); assert.equal(primary.port,'5432'); assert.equal(primary.pathname,'/smart_floor_planner');
     const evalUrl=process.env.DATABASE_URL; await closePostgresPool();
@@ -44,7 +46,7 @@ before(async()=>{
   await withPlatformTransaction(async tx=>{
     for(let i=0;i<2;i++){
       const e=(await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!;tenants.push(String(e.id));
-      const config={runtime:'langgraph-v1',providerKey:live?'deepseek':'siliconflow',model:live?'deepseek-flash':'Qwen/Qwen3.5-4B',imageInput:true,tools:true,probeVersion:'p2a3-ppt-v1'};
+      const config={runtime:'langgraph-v1',providerKey:live?'deepseek':'siliconflow',model:live?'deepseek-flash':'Qwen/Qwen3.5-4B',imageInput:true,tools:true,enterpriseKnowledgeEnabled:true,probeVersion:'p2a3-ppt-v1'};
       await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
         values(${tenants[i]},true,1000,12000000,1000000000,30,${JSON.stringify(config)}::jsonb)`);
       const a=(await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password)
@@ -72,7 +74,11 @@ async function create(tag='原木',audience='customer_public'){
 }
 async function publish(d:Row){
   const job=await exec('index',d),lease=await claimKnowledgeJob();assert.ok(lease);assert.equal(lease.jobId,job.jobId);
-  await runKnowledgeJob(lease,{chunk:async text=>[{text,start:0,end:[...text].length,tokens:40}],embedding:{profile:{model:'test',revision:'test',dimensions:1024},embed:async texts=>({vectors:texts.map(()=>[1,...Array(1023).fill(0)]),usage:{inputTokens:40}})}});
+  const profile = configuredEmbeddingProfile();
+  await runKnowledgeJob(lease,{
+    chunk:async text=>[{text,start:0,end:[...text].length,tokens:40}],
+    embedding:{profile,embed:async texts=>({vectors:texts.map(()=>[1,...Array(profile.dimensions-1).fill(0)]),usage:{inputTokens:40}})},
+  });
   assert.equal((await exec('job',{jobId:job.jobId})).status,'succeeded');await exec('publish',d);d.expectedVersion=2;
 }
 async function start(text:string,c?:string){const chat=new ConversationService(actor),id=c||String((await chat.create(randomUUID())).id);const sent=await chat.send(id,randomUUID(),{version:1,blocks:[{type:'text',text}]});const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);return {chat,c:id,sent,lease};}

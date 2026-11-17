@@ -6,7 +6,7 @@ import { appendMessage, cancelQueuedRun, cancelRuns, idempotent, newRun } from '
 import { object } from './contracts';
 import { publicRevision, samePublicRef, type PublicContent, type PublicContextRef } from './public-contract';
 import { publicAudit, publicEvent } from './public-service';
-import { publicCandidates, publicMaterial, publicMaterialDto, publishedPublicMaterial } from './public-read';
+import { publicCandidates, publicMaterial, publicMaterialDto, publishedPublicMaterial, selectPublicCandidates } from './public-read';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import { recommendationRegion } from '@/lib/assistant/location/region';
 import { CITY_OPTIONS } from '@/lib/portfolio/regions';
@@ -146,8 +146,11 @@ export class PublicCustomerService {
       const housing = memory.facts.filter(f => f.field === 'housing' && f.status === 'current').map(f => f.value).join(' ');
       const latestText = request ? request.text.replace(/[？?]/g, '') : messages[0] ? safeText(messages[0].content as Parameters<typeof safeText>[0]) : '';
       const region = recommendationRegion(c.entry_snapshot, housing, latestText);
-      if (region) return { items: areas.filter(a => a.cityCode === region.cityCode && (!region.district || a.district === region.district)).slice(0, 3),
-        enterpriseId: this.actor.enterpriseId, needRegion: false, region };
+      if (region) {
+        const selected = selectPublicCandidates(areas.filter(a => a.cityCode === region.cityCode), region.district);
+        return { items: selected.items.slice(0, 3), enterpriseId: this.actor.enterpriseId, needRegion: false, region,
+          scope: selected.scope, districtFallback: selected.districtFallback };
+      }
       // A place named in the newest request decides. When it cannot be resolved
       // (ambiguous, negated or unsupported), ask instead of reusing an older city.
       if (CITY_OPTIONS.some(city => latestText.includes(city.label.replace(/市$/, ''))))

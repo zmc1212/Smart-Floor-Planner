@@ -41,6 +41,33 @@ test('chat browsing reads the full public catalog in the server-resolved region 
   assert.equal(c.state.publicError,''); assert.equal(c.state.publicItems.length,1);
 });
 
+test('a district without public sites widens to the same city and says so', async () => {
+  const c = new PublicChatController({ emit(){}, identity:()=> 'a', media:noMedia(), detailMedia:noMedia(),
+    client:new AssistantClient(async()=>({success:true,data:{items:[material()],region:{cityCode:'420500',district:'西陵区'},scope:'city',districtFallback:true}})),
+    catalog:{async read(){return {items:[material()],scope:'city',districtFallback:true};}} });
+  await c.load('11','1',[discoveryReply]);
+  assert.equal(c.state.publicBrowsing,false); assert.equal(c.state.publicItems.length,1);
+  assert.match(c.state.publicNotice,/同城其他片区/);
+  await c.browse('11','1',[discoveryReply],'','61');
+  assert.equal(c.state.publicBrowsing,true); assert.match(c.state.publicNotice,/同城其他片区/);
+});
+
+test('a designer location card requests permission and loads recommendations from the assistant message', async () => {
+  const oldApp = global.getApp, oldWx = global.wx;
+  global.getApp = () => ({ globalData: { token: 'a' } }); global.wx = { getStorageSync: () => '' };
+  try {
+    const page = require('../packages/assistant/chat/chat-definition')(); const calls = [];
+    Object.assign(page, { _alive: true, _shown: true, controller: { conversationId: '11' },
+      data: { enterpriseId: '1', messages: [{ id: '61', designerDiscovery: { needContext: true } }] },
+      syncLocation: async requestPermission => { calls.push(['sync', requestPermission]); return { changed: true }; },
+      recommendations: { clear() { calls.push('clear'); }, async load(...args) { calls.push(['load', ...args]); } },
+      setData(patch) { Object.assign(this.data, patch); } });
+    await page.loadDesigners({ currentTarget: { dataset: { message: '61' } } });
+    assert.ok(calls.some(item => Array.isArray(item) && item[0] === 'sync' && item[1] === true));
+    assert.ok(calls.some(item => Array.isArray(item) && item[0] === 'load' && item[1] === '11' && item[2] === true && item[3] === '61'));
+  } finally { global.getApp = oldApp; global.wx = oldWx; }
+});
+
 test('denied location falls back to public service areas and a hidden browsing response is discarded', async () => {
   let finish;
   const c = new PublicChatController({ emit(){}, identity:()=> 'a', media:noMedia(), detailMedia:noMedia(),

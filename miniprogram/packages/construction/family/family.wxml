@@ -82,8 +82,8 @@
           分享卡片给家人。家人登录后可查看施工进度和工地视频，只能看直播，不能抓拍、控制摄像头，也不会收到报告和提醒。每张卡片仅供一位家人使用，可重新生成。
         </view>
         <button wx:if="{{inviteToken}}" class="primary" open-type="share">分享给家人</button>
-        <button wx:else class="primary" bindtap="createInvite">生成家人邀请</button>
-        <button wx:if="{{inviteToken}}" class="link" bindtap="refreshInvite">重新生成邀请</button>
+        <button wx:else class="primary" bindtap="createInvite" disabled="{{inviteLoading}}">{{inviteLoading ? '正在生成邀请…' : '生成家人邀请'}}</button>
+        <button wx:if="{{inviteToken}}" class="link" bindtap="refreshInvite" disabled="{{inviteLoading}}">重新生成邀请</button>
         <view wx:if="{{inviteError}}" class="notice">{{inviteError}}</view>
 
         <view class="viewer-head">已加入的家人</view>

@@ -1,6 +1,7 @@
 const { PortfolioController, initial, studioDefaults } = require('./portfolio');
 const { goToLogin } = require('../../../utils/session');
 const { copyDesignerWechatId } = require('../../../utils/designerContact');
+const nativePreview = require('../../../utils/native-preview');
 const { loadStudioFont } = require('./studio-font');
 function identity() { return getApp().globalData.token || wx.getStorageSync('token') || ''; }
 function originalChat(page, id) {
@@ -28,6 +29,9 @@ function page(kind) {
     },
     async onShow() {
       this._shown = true;
+      // Returning from the native image viewer keeps the rendered gallery,
+      // filters and scroll position instead of rebuilding the page.
+      if (nativePreview.shownAfterPreview(this)) { this._previewPaths = null; this._previewPending = null; return; }
       if (this._previewPaths) this.controller.images.clear();
       this._previewPaths = null;
       this._previewPending = null;
@@ -42,7 +46,9 @@ function page(kind) {
       }
     },
     onHide() {
-      this._shown = false; this.dismissStudioFilters(); this.dismissPublicContact();
+      this._shown = false;
+      if (nativePreview.hiddenByPreview(this)) return;
+      this.dismissStudioFilters(); this.dismissPublicContact();
       this.controller.hide(this.controller.session === identity() ? this._previewPaths || [] : []);
     },
     onUnload() { this.dismissStudioFilters(); this.dismissPublicContact(); this._alive = false; this.controller.hide(); },
@@ -199,7 +205,7 @@ function page(kind) {
     },
     previewContactQr() {
       return this.controller.refreshContact({ qr: true, apply: (_contact, filePath) => {
-        if (filePath) wx.previewImage({ current: filePath, urls: [filePath] });
+        if (filePath) nativePreview.previewImage({ current: filePath, urls: [filePath] }, this);
         else contactToast('二维码已更新');
       } });
     },
@@ -243,7 +249,7 @@ function page(kind) {
         const urls = shown.map(item => this.data.images['i' + item.assetId]).filter(Boolean);
         // The native viewer can hide this page before reading its local files.
         this._previewPaths = urls;
-        wx.previewImage({ current, urls, fail: () => {
+        nativePreview.previewImage({ current, urls, fail: () => {
           if (this._previewPaths !== urls) return;
           this._previewPaths = null;
           if (this.controller.valid(epoch)) {
@@ -252,7 +258,7 @@ function page(kind) {
             delete next['i' + id];
             this.controller.set({ images: next, imageError: '部分图片暂未加载，点此重试。' });
           } else if (!this._shown) this.controller.images.clear();
-        } });
+        } }, this);
       } catch (error) {
         if (this.controller.valid(epoch)) this._previewPaths = null;
         this.controller.fail(error, epoch);

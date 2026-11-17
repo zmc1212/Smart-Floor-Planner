@@ -7,7 +7,7 @@ import {
   publicIntroPrompt,
   validatePublicIntro,
 } from '@/lib/construction/public-intro';
-import type { PublicContent } from '@/lib/construction/public-contract';
+import { publicStyleName, type PublicContent } from '@/lib/construction/public-contract';
 import { parseOpenings, sceneForOpeningPurpose } from '@/lib/assistant/fastgpt/agent-v2/openings';
 import { guardAnswerCommitments } from '@/lib/assistant/agent/context';
 
@@ -23,6 +23,7 @@ const content = (overrides: Partial<PublicContent> = {}): PublicContent => ({
   cityName: '杭州',
   district: '西湖区',
   stageName: '泥木阶段',
+  styleName: '现代简约',
   excerpts: [{ role: '业主', text: '  墙面\n找平   完成  ', date: '2026-11-01' }],
   sourceCount: 3,
   photoCount: 4,
@@ -33,28 +34,37 @@ const content = (overrides: Partial<PublicContent> = {}): PublicContent => ({
 const siteOf = (facts: string) => JSON.parse(facts).site as Record<string, unknown>;
 
 test('defaultPublicIntroInput only names fields the openings contract accepts', () => {
-  assert.deepEqual([...defaultPublicIntroInput], ['name', 'cityName', 'cityCode', 'district', 'stageName',
+  assert.deepEqual([...defaultPublicIntroInput], ['name', 'cityName', 'cityCode', 'district', 'stageName', 'styleName',
     'excerpts', 'photoCount', 'designerName']);
   assert.equal(new Set(defaultPublicIntroInput).size, defaultPublicIntroInput.length);
   assert.doesNotThrow(() => parseOpenings(openingRegistry([...defaultPublicIntroInput])));
   // The registry vocabulary is closed; an extra owner field is not a public fact.
-  assert.throws(() => parseOpenings(openingRegistry([...defaultPublicIntroInput, 'ownerPhone'])), /context_changed/);
+  assert.throws(() => parseOpenings(openingRegistry([...defaultPublicIntroInput.slice(0, 8), 'ownerPhone'])), /context_changed/);
 });
 
 test('publicIntroFacts projects only the requested published fields', () => {
   const facts = JSON.parse(publicIntroFacts(content(), defaultPublicIntroInput));
   assert.equal(facts.sourceRole, 'published_site_snapshot');
   assert.deepEqual(Object.keys(facts.site).sort(), ['cityCode', 'cityName', 'designerName', 'district',
-    'excerpts', 'name', 'photoCount', 'stageName']);
+    'excerpts', 'name', 'photoCount', 'stageName', 'styleName']);
   // sourceCount and designerId are not in the opening input contract.
   assert.equal('sourceCount' in facts.site, false);
   assert.equal('designerId' in facts.site, false);
 });
 
-test('publicIntroFacts omits an absent designer and normalizes excerpt whitespace', () => {
-  const facts = siteOf(publicIntroFacts(content({ designerName: undefined }), defaultPublicIntroInput));
+test('publicIntroFacts omits an absent designer or style and normalizes excerpt whitespace', () => {
+  const facts = siteOf(publicIntroFacts(content({ designerName: undefined, styleName: undefined }), defaultPublicIntroInput));
   assert.equal('designerName' in facts, false);
+  assert.equal('styleName' in facts, false);
   assert.deepEqual(facts.excerpts, [{ role: '业主', text: '墙面 找平 完成', date: '2026-11-01' }]);
+});
+
+test('public style prefers the shared profile, falls back to the lead AI style, and never invents one', () => {
+  assert.equal(publicStyleName('原木风', '现代简约'), '原木风');
+  assert.equal(publicStyleName('  ', ' 现代简约 '), '现代简约');
+  assert.equal(publicStyleName(undefined, null), undefined);
+  assert.equal(publicStyleName('', ''), undefined);
+  assert.throws(() => publicStyleName('电话13800138000', undefined), /public_material_sensitive/);
 });
 
 test('defaultPublicIntroConstraints keeps a bounded, guarded opening', () => {
@@ -68,6 +78,8 @@ test('defaultPublicIntroConstraints keeps a bounded, guarded opening', () => {
 test('publicIntroPrompt derives its length limit and forbids unsupported claims', () => {
   const prompt = publicIntroPrompt(140);
   assert.match(prompt, /全文不超过115字/);
+  assert.match(prompt, /styleName/);
+  assert.match(prompt, /是否也在准备装修/);
   assert.match(prompt, /不得输出链接、引用标记、表格、标题或编号列表/);
   assert.match(prompt, /不得承诺价格、工期、验收、可预约或已联系团队/);
   assert.match(prompt, /不得说看过照片或描述照片内容/);

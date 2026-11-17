@@ -32,7 +32,7 @@ export async function readRetrievalDiagnostics(actor:ActorContext,runId:string) 
         if (!source || source.content_hash!==candidate.contentHash) return unavailable;
         candidates.push({...candidate,text:String(source.text)});
       }
-      traces.push({...d,candidates,status:'retrieved'});
+      traces.push({...d,candidates,status:summary?.knowledgeStatus==='not_ready'?'not_ready':'retrieved'});
     }
     const policy=previewPolicy(c);
     // Counts explain legal exclusion; no out-of-scope candidate text/identifiers are retained.

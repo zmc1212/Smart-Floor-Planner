@@ -6,6 +6,10 @@ import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
+import { SignJWT } from 'jose';
+import { NextRequest } from 'next/server';
+import { GET as webHandoffGet, POST as webHandoffPost } from '@/app/api/assistant/handoffs/[[...path]]/route';
+import { GET as webProfileGet } from '@/app/api/leads/[id]/renovation-profile/route';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
@@ -15,6 +19,7 @@ import { RequirementService } from '@/lib/assistant/requirements/service';
 import { runAssistantRetention } from '@/lib/assistant/retention/service';
 import { assistantHttp } from '@/lib/assistant/application/http';
 import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
+import { getJwtSecret } from '@/lib/jwt-secret';
 import { GuidanceSettingsService } from '@/lib/assistant/requirements/guidance-settings';
 import { defaultGuidance } from '@/lib/assistant/requirements/guidance';
 import { claimJob, completeGuidance } from '@/lib/assistant/infrastructure/job-queue';
@@ -26,6 +31,7 @@ import { AssistantMediaService } from '@/lib/assistant/media/service';
 
 const prefix='requirements-'+randomUUID();
 const tenants:string[]=[],users:string[]=[];
+const webAdminIds: string[] = [];
 let actor:ActorContext, stranger:ActorContext, other:ActorContext, adminId:string, leadId:string, foreignLead:string;
 const fields={housing:'90平米旧房',household:'两个人住',style:'现代简约',budget:'尚未确定',timeline:'半年内入住'};
 test('P2A.2 formal plan snapshots bind an owned room/version and never write the graph',async()=>{
@@ -147,8 +153,9 @@ test('P2B consent, concurrent claim, human replies, reentry, cancellation and re
   const second=new HandoffService({...staffActor,principal:{kind:'admin',adminId:secondId}});
   await assert.rejects(customer.customerWrite(c,randomUUID(),{action:'request',consent:false,contactConsent:false}),/invalid_message/);
   await assert.rejects(staff.staffRead(c),/assistant_resource_not_found/);
-  const pending=await chat.send(c,randomUUID(),{version:1,blocks:[{type:'text',text:'想和设计师聊'}]});
-  const lateLease=await claimJob();assert.ok(lateLease);assert.equal(lateLease.runId,pending.runId);
+  const pending=await chat.send(c,randomUUID(),{version:1,blocks:[{type:'text',text:'旧房量房前要准备什么？'}]});
+  assert.ok(pending.runId);
+  const lateLease=await claimJob({enterpriseId:actor.enterpriseId,runId:String(pending.runId)});assert.ok(lateLease);
   const requestKey=randomUUID();
   const request={action:'request',consent:true,contactConsent:false};
   const requested=await customer.customerWrite(c,requestKey,request);
@@ -186,10 +193,86 @@ test('P2B consent, concurrent claim, human replies, reentry, cancellation and re
   await customer.customerWrite(c,randomUUID(),{action:'cancel'});
   await assert.rejects(new HandoffService(stranger).customerRead(c),/assistant_resource_not_found/);
 });
+
+test('Web handoff gives platform managers selected-enterprise access to consenting customers', async t => {
+  const customer = new HandoffService(actor);
+  const photo = await sharp({ create: { width: 120, height: 80, channels: 3, background: '#00b979' } }).png().toBuffer();
+  for (const role of ['enterprise_admin', 'admin', 'super_admin'] as const) {
+    await t.test(role, async () => {
+      const platform = role !== 'enterprise_admin';
+      const operatorId = platform ? await withPlatformTransaction(async tx => {
+        const operator = await one(tx, sql`insert into app.admin_users(username,password_hash,role,status,must_change_password)
+          values(${prefix + role},'test',${role},'active',false) returning id`);
+        const id = String(operator!.id);
+        webAdminIds.push(id);
+        return id;
+      }) : adminId;
+      const token = await new SignJWT({ id: operatorId, role, enterpriseId: platform ? null : actor.enterpriseId })
+        .setProtectedHeader({ alg: 'HS256' }).setExpirationTime('5m').sign(getJwtSecret());
+      const { chat, c } = await setup('我家是套旧房 打算重新装修');
+      const uploaded = await new AssistantMediaService(actor).upload(c, randomUUID(), photo, 'image', '客厅');
+      const call = (path: string[], body?: Record<string, unknown>, enterpriseId: string | null = actor.enterpriseId) => {
+        const request = new NextRequest('http://localhost:3006/api/assistant/handoffs/' + path.join('/'), {
+          method: body ? 'POST' : 'GET',
+          headers: { Cookie: `auth_token=${token}${enterpriseId ? `; global_tenant_id=${enterpriseId}` : ''}`,
+            'Idempotency-Key': randomUUID(), 'Content-Type': 'application/json' },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        });
+        return (body ? webHandoffPost : webHandoffGet)(request, { params: Promise.resolve({ path }) });
+      };
+
+      if (platform) assert.equal((await call([], undefined, null)).status, 400);
+      assert.equal((await call([c])).status, 404);
+      await customer.customerWrite(c, randomUUID(), { action: 'request', recipientId: adminId });
+      if (platform) assert.equal((await call([c], { action: 'claim' })).status, 404);
+      await customer.customerWrite(c, randomUUID(), { action: 'cancel' });
+
+      await customer.customerWrite(c, randomUUID(), { action: 'request', mediaConsent: true });
+      if (platform) assert.equal((await call([c], undefined, other.enterpriseId)).status, 404);
+      const queue = await call([]);
+      assert.equal(queue.status, 200);
+      assert.ok((await queue.json()).data.items.some((item: { conversationId: string }) => item.conversationId === c));
+      const waiting = await call([c]);
+      assert.equal(waiting.status, 200);
+      const waitingDetail = (await waiting.json()).data;
+      assert.equal(waitingDetail.handoff.packet, undefined);
+      assert.deepEqual(waitingDetail.messages, []);
+      assert.equal((await call([c, 'media', String(uploaded.id)])).status, 404);
+
+      assert.equal((await call([c], { action: 'claim' })).status, 200);
+      const detail = await call([c]);
+      assert.equal(detail.status, 200);
+      const active = (await detail.json()).data;
+      assert.equal(active.handoff.ownerId, operatorId);
+      assert.equal(active.handoff.packet.summary.draft_fields.housing.text, '我家是套旧房 打算重新装修');
+      assert.equal((await call([c, 'media', String(uploaded.id)])).status, 200);
+      assert.equal((await call([c], { action: 'reply', text: '继续聊聊这套旧房。' })).status, 200);
+      assert.ok((await chat.messages(c)).items.some(message => message.authorKind === 'admin'));
+      const supplement = await chat.send(c, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '我和父母一起住。' }] });
+      assert.equal(supplement.runId, null);
+      assert.equal((await customer.customerRead(c)).handoff?.ownerAvailable, true);
+
+      assert.equal((await call([c], { action: 'release' })).status, 200);
+      assert.equal((await call([c, 'media', String(uploaded.id)])).status, 404);
+      assert.equal((await call([c], { action: 'claim' })).status, 200);
+      if (platform) {
+        await withPlatformTransaction(tx => tx.execute(sql`update app.admin_users set must_change_password=true where id=${operatorId}`));
+        assert.equal((await call([c])).status, 403);
+        assert.equal((await customer.customerRead(c)).handoff?.ownerAvailable, false);
+        await withPlatformTransaction(tx => tx.execute(sql`update app.admin_users set must_change_password=false where id=${operatorId}`));
+      }
+      assert.equal((await call([c], { action: 'end' })).status, 200);
+      assert.equal((await call([c])).status, 404);
+      assert.equal((await chat.detail(c)).mode, 'ai');
+    });
+  }
+});
+
 before(async()=>{
   const url=new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['localhost','127.0.0.1'].includes(url.hostname));
-  assert.equal(url.port,'55432'); assert.equal(url.pathname,'/xiaok_embedding_eval');
+  assert.equal(url.port, process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55432');
+  assert.equal(url.pathname,'/xiaok_embedding_eval');
   await withPlatformTransaction(async tx=>{
     for(let i=0;i<2;i++){
       const e=(await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!;
@@ -215,6 +298,7 @@ after(async()=>{
   await withPlatformTransaction(async tx=>{
     for(const t of tenants){await deleteAssistantData(tx,BigInt(t));await tx.execute(sql`delete from app.leads where enterprise_id=${t}`);
       await tx.execute(sql`delete from app.admin_users where enterprise_id=${t}`);await tx.execute(sql`delete from app.enterprises where id=${t}`);}
+    for (const adminId of webAdminIds) await tx.execute(sql`delete from app.admin_users where id=${adminId}`);
     for(const u of users)await tx.execute(sql`delete from app.users where id=${u}`);
   });
   await closePostgresPool();
@@ -229,6 +313,207 @@ async function send(chat:ConversationService,c:string,text:string){
   const sent=await chat.send(c,randomUUID(),{version:1,blocks:[{type:'text',text}]});
   await chat.run(String(sent.runId),'cancel',randomUUID());return sent;
 }
+test('renovation profile follows the confirmed home, merges corrections, and withdraws access', async () => {
+  const { chat, c } = await setup('我家是套旧房打算重新装修。我和父母一起住。');
+  const household = '我和父母一起住';
+  const identity = await signMiniProgramToken({ sub: users[0], id: users[0], contextVersion: 1,
+    mode: 'customer', enterpriseId: actor.enterpriseId, role: 'user', source: 'wechat' });
+  const ops = async (path: string[], body?: Record<string, unknown>, requestKey = randomUUID()) => {
+    const url = 'http://localhost/api/miniprogram/assistant/' + path.join('/') + (body ? '' : '?profile=1');
+    return assistantHttp(new Request(url, {
+      method: body ? 'POST' : 'GET',
+      headers: { Authorization: 'Bearer ' + identity, 'Idempotency-Key': requestKey },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }), path);
+  };
+  const fixtures = await withPlatformTransaction(async tx => {
+    const secondHome = await one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+      values(${actor.enterpriseId},${users[0]},${prefix+'-second-home'},'13000000000','manual') returning id`);
+    const operators = [];
+    for (const role of ['admin', 'super_admin', 'designer', 'designer'] as const) {
+      const staff = await one(tx, sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,must_change_password)
+        values(${role === 'designer' ? actor.enterpriseId : null},${prefix + '-profile-' + operators.length},'test',${role},'active',false) returning id`);
+      const operator = { id: String(staff!.id), role };
+      if (role !== 'designer') webAdminIds.push(operator.id);
+      operators.push(operator);
+    }
+    await tx.execute(sql`update app.leads set assigned_to=${operators[2].id} where id=${leadId}`);
+    return { secondHome: String(secondHome!.id), operators };
+  });
+  const manager = { id: adminId, role: 'enterprise_admin' };
+  const adminRead = async (operator = manager, target = leadId, enterpriseId: string | null = actor.enterpriseId) => {
+    const token = await new SignJWT({ id: operator.id, role: operator.role,
+      enterpriseId: ['admin','super_admin'].includes(operator.role) ? null : actor.enterpriseId })
+      .setProtectedHeader({ alg: 'HS256' }).setExpirationTime('5m').sign(getJwtSecret());
+    return webProfileGet(new Request('http://localhost/api/leads/' + target + '/renovation-profile', {
+      headers: { Cookie: `auth_token=${token}${enterpriseId ? '; global_tenant_id=' + enterpriseId : ''}` },
+    }), { params: Promise.resolve({ id: target }) });
+  };
+  const requirements = ['conversations', c, 'requirements'];
+  const snapshot = (await (await ops(requirements)).json()).data;
+  assert.equal(snapshot.profile.leadId, null);
+  assert.ok(snapshot.profile.options.find((choice: { id: string }) => choice.id === fixtures.secondHome));
+  assert.deepEqual((await (await adminRead()).json()).data, null);
+  const initialBody = { action: 'share_profile', draftId: snapshot.latest.id, expectedVersion: snapshot.latest.version,
+    fields: { ...fields, housing: '旧房重新装修', household, style: '' }, leadId, profileVersion: 0, consent: true };
+  assert.equal((await ops(requirements, { ...initialBody, consent: false })).status, 422);
+  assert.equal((await ops(requirements, { ...initialBody, leadId: foreignLead })).status, 404);
+  const key = randomUUID();
+  const savedResponse = await ops(requirements, initialBody, key);
+  const saved = (await savedResponse.json()).data;
+  assert.equal(savedResponse.status, 200);
+  assert.equal(saved.profile.current.version, 1);
+  assert.equal(saved.profile.current.leadId, leadId);
+  assert.equal((await (await ops(requirements, initialBody, key)).json()).data.profileVersion, 1);
+  for (const operator of [manager, ...fixtures.operators.slice(0, 3)]) {
+    const web = await adminRead(operator);
+    assert.equal(web.status, 200);
+    const profile = (await web.json()).data;
+    assert.equal(profile.fields.find((field: { key: string }) => field.key === 'household').value, household);
+    assert.ok(!profile.fields.some((field: { key: string }) => field.key === 'budget'));
+  }
+  assert.equal((await adminRead(fixtures.operators[3])).status, 404);
+  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.leads set assigned_to=null where id=${leadId}`));
+  assert.equal((await adminRead(fixtures.operators[2])).status, 404);
+  assert.equal((await adminRead(fixtures.operators[1], leadId, other.enterpriseId)).status, 404);
+  assert.equal((await adminRead(fixtures.operators[1], leadId, null)).status, 400);
+  assert.equal((await (await adminRead(manager, fixtures.secondHome)).json()).data, null);
+
+  const entry = (await (await ops(['entry-context'], { leadId })).json()).data;
+  const next = (await (await ops(['conversations'], { entryToken: entry.entryToken })).json()).data;
+  const nextId = String(next.id);
+  assert.equal((await (await ops(['conversations', nextId])).json()).data.hasRequirementSummary, true);
+  const messageKey = randomUUID();
+  const sent = (await (await ops(['conversations', nextId, 'messages'], {
+    clientMessageId: messageKey, content: { version: 1, blocks: [{ type: 'text', text: '回顾一下这套房已确认的装修需求。' }] },
+  }, messageKey)).json()).data;
+  const lease = await claimJob({ enterpriseId: actor.enterpriseId, runId: sent.runId });
+  assert.ok(lease);
+  await processAnswer(lease);
+  const recap = await chat.messages(nextId);
+  assert.match(JSON.stringify(recap.items[0].content), /我和父母一起住/);
+  await send(chat, nextId, '这套房现在两个人住。');
+  const nextPath = ['conversations', nextId, 'requirements'];
+  const corrected = (await (await ops(nextPath)).json()).data;
+  const update = { ...initialBody, draftId: corrected.latest.id, expectedVersion: corrected.latest.version,
+    fields: { housing: '', household: '两个人住', style: '', budget: '', timeline: '' }, profileVersion: 1 };
+  assert.equal((await ops(nextPath, { ...update, leadId: fixtures.secondHome })).status, 404);
+  assert.equal((await ops(nextPath, { ...update, profileVersion: 0 })).status, 409);
+  const updated = await ops(nextPath, update);
+  assert.equal(updated.status, 200);
+  assert.deepEqual(Object.fromEntries((await updated.json()).data.profile.current.fields
+    .map((field: { key: string; value: string }) => [field.key, field.value])),
+  { housing: '旧房重新装修', household: '两个人住', timeline: fields.timeline });
+  assert.doesNotMatch(JSON.stringify((await chat.messages(nextId)).items.find(message => message.id === recap.items[0].id)?.content), /我和父母一起住/);
+
+  const withdrawPath = ['conversations', c, 'renovation-profile'];
+  const withdrawKey = randomUUID();
+  for (let retry = 0; retry < 2; retry++) {
+    const withdrawn = await ops(withdrawPath, { leadId, expectedVersion: 2 }, withdrawKey);
+    assert.equal(withdrawn.status, 200);
+    assert.equal((await withdrawn.json()).data.options[0].shared, false);
+  }
+  assert.equal((await (await ops(requirements, initialBody, key)).json()).data.profile.current, null);
+  assert.equal((await (await adminRead()).json()).data, null);
+  const retained = (await (await ops(requirements)).json()).data.latest;
+  const reshare = await ops(requirements, { ...initialBody, expectedVersion: retained.version, profileVersion: 3 });
+  assert.equal(reshare.status, 200);
+  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.leads set archived_at=now() where id=${leadId}`));
+  assert.equal((await adminRead()).status, 404);
+  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.leads set archived_at=null where id=${leadId}`));
+  assert.equal((await (await adminRead()).json()).data, null);
+});
+test('ordinary service chat builds a staff-only profile and preserves other homes and withdrawn sources', async () => {
+  const home = await withTenantTransaction(actor.enterpriseId, async tx => String((await one(tx, sql`
+    insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+    values(${actor.enterpriseId},${users[0]},${prefix+'-automatic-profile'},'13000000000','manual') returning id`))!.id));
+  const miniToken = await signMiniProgramToken({ sub: users[0], id: users[0], contextVersion: 1,
+    mode: 'customer', enterpriseId: actor.enterpriseId, role: 'user', source: 'wechat' });
+  const calls: string[] = [];
+  const bridge = async (path: string, method: string, body: Record<string, unknown>, options: { headers: Record<string, string> }) => {
+    calls.push(method+' '+path);
+    const url = new URL('http://localhost/api'+path);
+    if (method === 'GET') for (const [key, value] of Object.entries(body)) url.searchParams.set(key, String(value));
+    const response = await assistantHttp(new Request(url, {
+      method, headers: { Authorization: 'Bearer '+miniToken, ...options.headers },
+      ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
+    }), path.replace('/miniprogram/assistant/','').split('/'));
+    const result = await response.json();
+    assert.ok(response.ok, JSON.stringify(result));
+    return result;
+  };
+  const request = async (path: string[], body: Record<string, string | boolean>) =>
+    (await bridge('/miniprogram/assistant/'+path.join('/'), 'POST', body,
+      { headers: { 'Idempotency-Key': randomUUID() } })).data;
+  const staffToken = await new SignJWT({ id: adminId, role: 'enterprise_admin', enterpriseId: actor.enterpriseId })
+    .setProtectedHeader({ alg: 'HS256' }).setExpirationTime('5m').sign(getJwtSecret());
+  const readStaff = async (id = home, expected = 200) => {
+    const response = await webProfileGet(new Request('http://localhost/api/leads/'+id+'/renovation-profile', {
+      headers: { Cookie: 'auth_token='+staffToken },
+    }), { params: Promise.resolve({ id }) });
+    assert.equal(response.status, expected);
+    return (await response.json()).data;
+  };
+  const chat = new ConversationService(actor);
+  const linked = await request(['entry-context'], { leadId: home });
+  assert.equal(linked.staffProfileCapture, true);
+  const newChat = async () => String((await request(['conversations'], {
+    entryToken: linked.entryToken, staffProfileNotice: true,
+  })).id);
+  const earlierClient = await request(['conversations'], { entryToken: linked.entryToken });
+  await send(chat, earlierClient.id, '我们喜欢奶油风。');
+  assert.equal(await readStaff(), null);
+  const ambiguous = await request(['entry-context'], {});
+  assert.equal(ambiguous.staffProfileCapture, undefined);
+  const unbound = await request(['conversations'], { entryToken: ambiguous.entryToken, staffProfileNotice: true });
+  await send(chat, unbound.id, '这套新房准备装修。');
+  assert.equal(await readStaff(), null);
+
+  const requireMini = createRequire(join(process.cwd(),'package.json'));
+  const { AssistantClient } = requireMini('../miniprogram/packages/assistant/lib/client.js');
+  const { ChatController } = requireMini('../miniprogram/packages/assistant/lib/chat.js');
+  const client = new ChatController({ client: new AssistantClient(bridge), identity: () => miniToken, emit() {},
+    schedule: () => 0, unschedule() {} });
+  const span = calls.length;
+  await client.show({ leadId: home });
+  assert.equal(client.state.staffProfileCapture, true);
+  client.input('我家是套旧房，打算重新装修。');
+  await client.sendMessage();
+  const c = String(client.state.conversation.id);
+  const runId = String(client.state.run.id);
+  assert.ok(calls.slice(span).includes('POST /miniprogram/assistant/conversations/'+c+'/messages'));
+  assert.ok(calls.slice(span).every(call => !call.includes('/requirements')));
+  client.dispose();
+  await chat.run(runId,'cancel',randomUUID());
+  await send(chat, c, '我和父母一起住。预算二十万。');
+  const profile = await readStaff();
+  assert.deepEqual(profile.fields.map(({ key, value, source }: { key: string; value: string; source: string }) => [key,value,source]), [
+    ['housing', '我家是套旧房', 'consultation'],
+    ['household', '我和父母一起住', 'consultation'],
+  ]);
+  assert.equal(await readStaff(leadId), null);
+  const customer = await new RequirementService(actor).read(c, true);
+  assert.equal(customer.profile?.current, null);
+  assert.ok(profile.fields.every((field: Record<string, unknown>) => field.recordedAt && !field.confirmedAt));
+
+  const next = await newChat();
+  const corrected = await send(chat, next, '后来改了，这套房现在两个人住。');
+  assert.deepEqual((await readStaff()).fields.map((field: { value: string }) => field.value), [
+    '我家是套旧房', '这套房现在两个人住',
+  ]);
+  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages
+    set content='{"version":1,"blocks":[{"type":"notice","code":"speech_deleted"}]}'::jsonb
+    where enterprise_id=${actor.enterpriseId} and id=${String(corrected.messageId)}`));
+  assert.deepEqual((await readStaff()).fields.map((field: { key: string }) => field.key), ['housing']);
+
+  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.leads set archived_at=now() where id=${home}`));
+  await readStaff(home, 404);
+  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.leads set archived_at=null where id=${home}`));
+  await send(chat, c, '我改主意了，还是原木风。');
+  assert.equal(await readStaff(), null);
+  await send(chat, await newChat(), '我们想做原木风。');
+  assert.deepEqual((await readStaff()).fields.map((field: { key: string }) => field.key), ['style']);
+});
 test('draft/confirm are atomic and replay-safe; own lead association leaves attribution and assignment unchanged',async()=>{
   const {requirements,c}=await setup();
   const draft=await requirements.write(c,'draft',{action:'draft'});

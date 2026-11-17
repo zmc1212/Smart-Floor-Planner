@@ -15,6 +15,7 @@ import { cameraWvp } from '../src/lib/construction/camera/wvp';
 import {authorizeRecordingMedia,reconcileRecordings,purgeCameraRecordings} from '../src/lib/construction/camera/recordings';
 import {refreshSdWindows,reconcileSdPlaybacks} from '../src/lib/construction/camera/sd';
 import {purgeCameraSnapshots} from '../src/lib/construction/camera/snapshot-retention';
+import {captureDueOwnerCovers} from '../src/lib/construction/camera/owner-cover';
 import {startStorageHealthSampler} from '../src/lib/construction/camera/storage';
 import {embeddedCameraHttp} from './construction-camera-embedded';
 
@@ -40,7 +41,7 @@ const watchdog = setInterval(async () => {
   finally { watchdogBusy = false; }
 }, 500);
 // Provider reconciliation must never delay the short PTZ STOP watchdog.
-let recorderBusy=false,lastPurge=0,sdBusy=false,sdClockBusy=false,snapshotBusy=false;
+let recorderBusy=false,lastPurge=0,sdBusy=false,sdClockBusy=false,snapshotBusy=false,coverBusy=false;
 const stopStorageSampler=startStorageHealthSampler(undefined,()=>console.error('Camera storage sampling unavailable; recording remains protected'));
 // Database-only byte cleanup stays independent of WVP/storage outages and PTZ.
 const snapshots=setInterval(async()=>{
@@ -48,6 +49,14 @@ const snapshots=setInterval(async()=>{
   try{await purgeCameraSnapshots();}
   catch{console.error('Camera snapshot cleanup unavailable; private expiry remains enforced');}
   finally{snapshotBusy=false;}
+},60000);
+// Scheduled owner covers. Each binding claims at most one slot per configured
+// interval; a failed slot waits for the next interval instead of retrying.
+const covers=setInterval(async()=>{
+  if(coverBusy)return;coverBusy=true;
+  try{await captureDueOwnerCovers();}
+  catch{console.error('Camera cover capture unavailable; previous frames remain readable');}
+  finally{coverBusy=false;}
 },60000);
 const sdWatcher=setInterval(async()=>{
   if(sdBusy)return;sdBusy=true;
@@ -121,7 +130,9 @@ const server = http.createServer(async (req, res) => {
         try { await authorizeCameraMedia(token, generation); } catch { abort.abort(); res.destroy(); }
         finally { validating = false; }
       }, 5000);
-      const firstByteTimeout = setTimeout(disconnect, 15000);
+      // 4G SD playback needs a SIP INVITE round trip before ZLM emits the first
+      // byte, which can exceed 15s on a cold start. Live streams start at once.
+      const firstByteTimeout = setTimeout(disconnect, 45000);
       try {
         const upstream = await fetch(source, { method: req.method, redirect: 'error', signal: abort.signal, headers });
         clearTimeout(firstByteTimeout);
@@ -160,5 +171,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 server.listen(Number(process.env.CAMERA_GATEWAY_PORT || 3017), process.env.CAMERA_BIND_HOST || '127.0.0.1', () => console.log('Construction camera gateway listening'));
-async function shutdown() { clearInterval(watchdog);clearInterval(recorder);clearInterval(sdWatcher);clearInterval(sdClockWatcher);clearInterval(snapshots); server.closeAllConnections(); server.close(); await stopStorageSampler(); await closePostgresPool(); }
+async function shutdown() { clearInterval(watchdog);clearInterval(recorder);clearInterval(sdWatcher);clearInterval(sdClockWatcher);clearInterval(snapshots);clearInterval(covers); server.closeAllConnections(); server.close(); await stopStorageSampler(); await closePostgresPool(); }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

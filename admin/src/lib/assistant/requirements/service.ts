@@ -4,13 +4,14 @@ import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, requireCapability, type ActorContext } from '../contracts';
 import { idempotent, cancelRuns } from '../core/conversation';
-import { confirmedRequirements, evidencedRequirements, excerptRequirements } from './contract';
+import { allRequirementKeys, confirmedRequirements, evidencedRequirements, excerptRequirements, type ConfirmedRequirements } from './contract';
 import { conversationGuidance, guidanceProgress } from './guidance';
 import { requirementCheckpoint } from './checkpoint';
 import { applyRequirementChanges, type RequirementProposal } from './items';
 import { requirementReview } from './review';
 import { selectedRequirementFields, selectedRequirementReview } from './selection';
 import { requirementProposalIsCurrent } from './current';
+import { lockRenovationLead, profileFieldLabels, renovationProfileOptions, writeRenovationProfile } from './renovation-profile';
 
 function dto(row: Row) {
   return { id: String(row.id), conversationId: String(row.conversation_id), version: Number(row.version),
@@ -49,7 +50,7 @@ export class RequirementService {
         && settings?.enabled === true && !entry.retentionRedacted && c.mode === 'ai' && c.status === 'open';
     });
   }
-  read(conversationId: string) {
+  read(conversationId: string, includeProfile = false) {
     return this.scoped(conversationId, false, async (repo, c) => {
       const latest = await one(repo.tx, sql`select * from app.assistant_requirement_summaries
         where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} order by id desc limit 1`);
@@ -68,9 +69,27 @@ export class RequirementService {
       return { latest: latest ? dto(latest) : null, confirmed: confirmed ? dto(confirmed) : null,
         sourceSeq: String(source!.seq),
         reviewMode: (c.entry_snapshot as Row)?.requirementReviewMode === true,
+        ...(includeProfile && this.actor.principal.kind === 'user'
+          ? { profile: await renovationProfileOptions(repo.tx, this.actor.enterpriseId, this.actor.principal.userId, c.entry_snapshot as Row) } : {}),
         proposal: current && pending ? { id: pending.id, digest: pending.digest, status: 'pending', sourceSeq: pending.sourceSeq,
           diff: pending.diff, requiresRestoreConsent: pending.requiresRestoreConsent,
           summary: { status: 'proposal', draftFields: pending.fields, confirmedFields: null } } : null };
+    });
+  }
+  withdrawProfile(conversationId: string, requestKey: string, input: Record<string, unknown>) {
+    if (Object.keys(input).some(k => !['leadId', 'expectedVersion'].includes(k))
+      || !Number.isInteger(input.expectedVersion) || Number(input.expectedVersion) < 1) fail('invalid_message', 422);
+    const leadId = id(input.leadId);
+    return this.scoped(conversationId, false, async (repo, c) => {
+      if (this.actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
+      const { enterpriseId, principal: { userId } } = this.actor;
+      const entry = c.entry_snapshot as Row;
+      const prior = await lockRenovationLead(repo.tx, enterpriseId, userId, entry, leadId);
+      await idempotent(repo.tx, this.actor, 'renovation-profile-withdraw:' + leadId, requestKey, input, async () => {
+        const version = await writeRenovationProfile(repo.tx, enterpriseId, userId, conversationId, leadId, Number(input.expectedVersion), {}, prior);
+        return { leadId, version };
+      });
+      return renovationProfileOptions(repo.tx, enterpriseId, userId, entry);
     });
   }
   /** Internal proposal-only capability. No model-facing tool can accept it. */
@@ -148,15 +167,22 @@ export class RequirementService {
   }
   write(conversationId: string, requestKey: string, input: Record<string, unknown>, proposal?: RequirementProposal,
     guard?: (repo: AssistantRepository, conversation: Row) => Promise<void>) {
-    const confirm = input.action === 'confirm', apply = input.action === 'apply_proposal';
+    const share = input.action === 'share_profile';
+    const confirm = input.action === 'confirm' || share, apply = input.action === 'apply_proposal';
     if (proposal && (confirm || typeof proposal.sourceSeq !== 'string')) fail('invalid_requirement_evidence', 422);
     if (input.action !== 'draft' && !confirm && !apply) fail('invalid_message', 422);
+    const confirmKeys = ['action','draftId','expectedVersion','fields','consent','leadId','reviewedSourceSeq'];
     const allowed = apply ? ['action','proposalId','digest','consent','restoreConsent','selectedFields']
-      : confirm ? ['action','draftId','expectedVersion','fields','consent','leadId','reviewedSourceSeq'] : ['action'];
+      : confirm ? [...confirmKeys, ...(share ? ['profileVersion', 'removedFields'] : [])] : ['action'];
     if (Object.keys(input).some(k => !allowed.includes(k))) fail('invalid_message', 422);
     const fields = confirm ? confirmedRequirements(input.fields) : null;
     const draftId = confirm ? id(input.draftId) : null;
     const leadId = input.leadId === undefined ? null : id(input.leadId);
+    const removed = input.removedFields ?? [];
+    if (share && (!leadId || !Number.isInteger(input.profileVersion) || Number(input.profileVersion) < 0
+      || !Array.isArray(removed) || removed.length > Object.keys(profileFieldLabels).length
+      || removed.some(k => typeof k !== 'string' || !Object.hasOwn(profileFieldLabels, k) || fields?.[k as keyof typeof fields])))
+      fail('invalid_message', 422);
     if (confirm && (input.consent !== true || !Number.isInteger(input.expectedVersion) || Number(input.expectedVersion) < 1)) fail('invalid_message', 422);
     if (apply && (proposal || input.consent !== true || typeof input.proposalId !== 'string' || typeof input.digest !== 'string'
       || (input.restoreConsent !== undefined && typeof input.restoreConsent !== 'boolean'))) fail('invalid_message', 422);
@@ -170,6 +196,9 @@ export class RequirementService {
       // Internal integrations can fence an authorized snapshot within the same
       // settings/participant transaction, including before idempotent replay.
       if (guard) await guard(repo, c);
+      const ownerId = this.actor.principal.kind === 'user' ? this.actor.principal.userId : null;
+      const entry = c.entry_snapshot as Row;
+      const prior = share && leadId && ownerId ? await lockRenovationLead(repo.tx, this.actor.enterpriseId, ownerId, entry, leadId) : undefined;
       // Store identifiers only in idempotency records; replay always projects current,
       // possibly redacted content instead of caching private requirement text.
       const result = await idempotent(repo.tx, this.actor, 'requirements:' + conversationId, requestKey, proposal ? { ...input, proposal } : input, async () => {
@@ -178,6 +207,7 @@ export class RequirementService {
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and author_kind='user'`);
         if (proposal && proposal.sourceSeq !== String(source!.seq)) fail('requirements_stale');
         let summary: Row;
+        let profileVersion: number | undefined;
         if (apply) {
           const pending = (c.entry_snapshot as Row)?.requirementProposal as Row | undefined;
           if ((c.entry_snapshot as Row)?.requirementReviewMode !== true) fail('requirements_proposal_required', 409);
@@ -239,16 +269,33 @@ export class RequirementService {
         } else {
           const latest = await one(repo.tx, sql`select * from app.assistant_requirement_summaries
             where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} order by id desc limit 1 for update`);
-          if (!latest || String(latest.id) !== draftId || latest.status !== 'draft' || Number(latest.version) !== input.expectedVersion) fail('version_conflict');
-          if ((c.entry_snapshot as Row)?.requirementReviewMode === true
-            ? input.reviewedSourceSeq !== String(source!.seq)
-            : String(latest.source_seq) !== String(source!.seq)) fail('requirements_stale');
-          if (leadId && !await one(repo.tx, sql`select id from app.leads where enterprise_id=${this.actor.enterpriseId} and id=${leadId}
+          if (!latest || String(latest.id) !== draftId || (latest.status !== 'draft' && !(share && latest.status === 'confirmed'))
+            || Number(latest.version) !== input.expectedVersion) fail('version_conflict');
+          if (latest.status === 'draft' && (entry.requirementReviewMode === true ? input.reviewedSourceSeq !== String(source!.seq)
+            : String(latest.source_seq) !== String(source!.seq))) fail('requirements_stale');
+          if (share && latest.lead_id && String(latest.lead_id) !== leadId) fail('assistant_resource_not_found', 404);
+          if (!share && leadId && !await one(repo.tx, sql`select id from app.leads where enterprise_id=${this.actor.enterpriseId} and id=${leadId}
             and customer_user_id=${this.actor.principal.kind === 'user' ? this.actor.principal.userId : null}
             and archived_at is null and status not in ('closed','converted') for share`)) fail('assistant_resource_not_found', 404);
-          summary = (await one(repo.tx, sql`update app.assistant_requirement_summaries set status='confirmed',confirmed_fields=${JSON.stringify(fields)}::jsonb,
-            lead_id=${leadId},confirmed_at=now(),updated_at=now(),version=version+1
-            where enterprise_id=${this.actor.enterpriseId} and id=${draftId} returning *`))!;
+          if (latest.status === 'confirmed') {
+            const existing = latest.confirmed_fields as ConfirmedRequirements;
+            if (allRequirementKeys.some(key => (existing[key] || '') !== (fields?.[key] || ''))) fail('version_conflict');
+            summary = latest.lead_id ? latest : (await one(repo.tx, sql`insert into app.assistant_requirement_summaries
+              (enterprise_id,conversation_id,customer_user_id,source_seq,status,draft_fields,confirmed_fields,lead_id,confirmed_at)
+              values(${this.actor.enterpriseId},${conversationId},${ownerId},${String(latest.source_seq)},'confirmed',
+                ${JSON.stringify(latest.draft_fields)}::jsonb,${JSON.stringify(fields)}::jsonb,${leadId},now()) returning *`))!;
+          } else {
+            summary = (await one(repo.tx, sql`update app.assistant_requirement_summaries set status='confirmed',confirmed_fields=${JSON.stringify(fields)}::jsonb,
+              lead_id=${leadId},confirmed_at=now(),updated_at=now(),version=version+1
+              where enterprise_id=${this.actor.enterpriseId} and id=${draftId} returning *`))!;
+          }
+          if (share && leadId && ownerId) {
+            profileVersion = await writeRenovationProfile(repo.tx, this.actor.enterpriseId, ownerId, conversationId, leadId,
+              Number(input.profileVersion), fields!, prior, String(summary.id), removed as string[]);
+            await repo.tx.execute(sql`update app.assistant_conversations
+              set entry_snapshot=jsonb_set(entry_snapshot,'{renovationLeadId}',to_jsonb(${leadId}::text))
+              where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`);
+          }
           // Fence a reply computed from the previous requirement version.
           await cancelRuns(repo.tx, this.actor, conversationId);
           await repo.tx.execute(sql`update app.assistant_conversations set context_revision=context_revision+1
@@ -258,10 +305,15 @@ export class RequirementService {
               ${JSON.stringify(this.actor.principal)}::jsonb,${String(summary.id)},${JSON.stringify({ conversationId, summaryId: String(summary.id), leadId })}::jsonb)`);
         }
         await repo.tx.execute(sql`update app.assistant_conversations set updated_at=now(),version=version+1 where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`);
-        return { conversationId, summaryId: String(summary.id) };
+        return { conversationId, summaryId: String(summary.id), ...(profileVersion !== undefined ? { profileVersion } : {}) };
       });
       const saved = await one(repo.tx, sql`select * from app.assistant_requirement_summaries where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and id=${String(result.summaryId)}`);
       if (!saved) fail('assistant_resource_not_found', 404);
+      if (share && ownerId) {
+        const fresh = await repo.conversation(conversationId);
+        return { ...dto(saved), profileVersion: result.profileVersion, profile:
+          await renovationProfileOptions(repo.tx, this.actor.enterpriseId, ownerId, fresh.entry_snapshot as Row) };
+      }
       return dto(saved);
     });
   }

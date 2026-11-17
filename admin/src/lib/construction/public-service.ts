@@ -8,11 +8,12 @@ import { idempotent } from '@/lib/assistant/core/conversation';
 import { constructionAccess } from './service';
 import { siteActor, siteDto } from './site-chat';
 import { object, text, type ConstructionActor } from './contracts';
-import { excerptOf, publicMaterialInput, publicRevision, type PublicContent, type PublicPhotoInput } from './public-contract';
+import { excerptOf, publicMaterialInput, publicRevision, publicStyleName, type PublicContent, type PublicPhotoInput } from './public-contract';
 import { availableStaffSources, materialSource, privateSourceAccess, type PublicSource } from './public-sources';
 import { publicMaterial, publicMaterialDto } from './public-read';
 import { portfolioCandidates } from '@/lib/portfolio/public-query';
 import { currentStage, readStageSettings } from './stages-store';
+import { renovationProfile } from '@/lib/assistant/requirements/renovation-profile';
 
 export async function publicAudit(tx: PostgresTransaction, site: Row, versionId: string, actor: unknown, action: string, reason = '') {
   await tx.execute(sql`insert into app.construction_public_audits(enterprise_id,project_id,site_id,version_id,actor_ref,action,reason)
@@ -122,8 +123,17 @@ export class PublicMaterialService {
           credit = { designerId: String(member.id), designerName: String(member.display_name) };
         }
         const settings = await readStageSettings(tx, eid);
+        // The public style is derived from the customer's own records. A shared
+        // renovation profile is the customer-confirmed source; the lead's AI
+        // design preference is only a fallback. Staff cannot type a different
+        // style here, and the derived value enters the same owner preview and
+        // enterprise review as every other published field.
+        const profile = await renovationProfile(tx, eid, String(project.lead_id));
+        const lead = await one(tx, sql`select style_preference from app.leads where enterprise_id=${eid} and id=${String(project.lead_id)}`);
+        const styleName = publicStyleName(profile?.fields.find(field => field.key === 'style')?.value, lead?.style_preference as string | null);
         const content: PublicContent = { name: draft.name, cityCode: draft.cityCode, cityName: draft.cityName, district: draft.district,
-          stageName: currentStage(project, settings.stages)?.name || '现场记录', sourceCount: sources.length, photoCount: photos.length,
+          stageName: currentStage(project, settings.stages)?.name || '现场记录', ...(styleName ? { styleName } : {}),
+          sourceCount: sources.length, photoCount: photos.length,
           ...credit,
           excerpts: sources.map((source, i) => ({ role: source.role, text: draft.sources[i].text, date: source.date })) };
         if (!site) site = (await one(tx, sql`insert into app.construction_public_sites(enterprise_id,project_id,prepared_by,customer_id) values(${eid},${pid},${aid},${String(project.customer_user_id)}) returning *`))!;

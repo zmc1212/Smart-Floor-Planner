@@ -37,8 +37,8 @@ RUN rm -rf /app/.next/standalone/scripts
 
 # The TypeScript build checks scripts/, so the full source tree must stay in the
 # build context. The runtime image only receives the scripts that deploy,
-# migration and Worker healthchecks actually execute; acceptance, live and
-# fixture helpers never enter any runtime layer.
+# migration, Worker healthchecks and knowledge file parsing actually execute;
+# acceptance, live and fixture helpers never enter any runtime layer.
 RUN mkdir -p /app/runtime-scripts \
  && cp -p /app/scripts/postgres-migrate.mjs \
       /app/scripts/postgres-integration-migrations.mjs \
@@ -49,6 +49,9 @@ RUN mkdir -p /app/runtime-scripts \
       /app/scripts/assistant-worker-healthcheck.mjs \
       /app/scripts/assistant-worker-health.mjs \
       /app/scripts/assistant-speech-local.py \
+      /app/scripts/assistant-file-parser.mjs \
+      /app/scripts/assistant-text-parser.mjs \
+      /app/scripts/assistant-xlsx-parser.mjs \
       /app/runtime-scripts/
 
 # ============================================

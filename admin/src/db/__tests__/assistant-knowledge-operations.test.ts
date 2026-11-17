@@ -5,7 +5,8 @@ import {sql} from 'drizzle-orm';
 import {withPlatformTransaction,withTenantTransaction} from '@/db/transaction';
 import {one,rows,type Row} from '@/db/repositories/assistant-repository';
 import {deleteAssistantData} from '@/db/repositories/assistant-cleanup';
-import {closePostgresPool,resolvePostgresRuntimeConfig} from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import {KnowledgeOperations} from '@/lib/assistant/knowledge/operations';
 import {KnowledgeService} from '@/lib/assistant/knowledge/service';
 import {appendMessage,ConversationService} from '@/lib/assistant/core/conversation';
@@ -27,7 +28,7 @@ async function index(d:Row){const q=await op('index',d),lease=await claimKnowled
 async function publish(audience:string){const d=await op('create',{title:'测试专用KB4 '+audience,sourceType:'manual_text',audience,body});const target={documentId:String((d.document as Row).id),versionId:String((d.draft as Row).id),expectedVersion:1,expectedEditVersion:1};await index(target);await op('publish',target);return target;}
 async function finish(evaluationId:string){const d=await ops.read(evaluationId);assert.equal(d.available,true);const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,d.run!.id);await processAnswer(lease,{model});return ops.read(evaluationId);}
 before(async()=>{
-  const target=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(target.port,'55432');assert.equal(target.pathname,'/xiaok_embedding_eval');
+  useLocalKnowledgeTestDatabase();
   await withPlatformTransaction(async tx=>{
     for(let i=0;i<2;i++)tenants.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));eid=tenants[0];
     for(const t of tenants)await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${t},true,1000,12000000,1000000000,30)`);
@@ -107,7 +108,8 @@ test('K11 an unready index is an operational failure, never a verified expected 
   const c=await service.save({title:'合成未建索引反例',question,expectation:{kind:'missing',requiredDocumentIds:[],forbiddenDocumentIds:[]}},randomUUID());
   const e=await service.start(String(c.id),{expectedVersion:c.version},randomUUID()),pending=await service.read(e.evaluationId),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,pending.run!.id);
   await processAnswer(lease,{model});const result=await service.read(e.evaluationId);assert.equal(result.available,true);assert.equal(result.structural!.passed,false);
-  const diagnostic=result.diagnostic;assert.ok(diagnostic&&diagnostic.available);assert.equal(result.run!.errorCode,'retrieval_unavailable',JSON.stringify(diagnostic));
+  const diagnostic=result.diagnostic;assert.ok(diagnostic&&diagnostic.available&&'traces' in diagnostic);assert.equal(result.run!.errorCode,'retrieval_unavailable',JSON.stringify(diagnostic));
+  assert.deepEqual(diagnostic.traces.map(trace=>trace.status),['not_ready']);
   await assert.rejects(service.review(e.evaluationId,{expectedVersion:c.version,outcome:'accepted',note:'没有索引不能当作专业知识缺口通过'},randomUUID()),/knowledge_evaluation_not_passed/);
 });
 test('K10/11 history sorts numeric identities across digit widths and keeps the cursor exact',async()=>{

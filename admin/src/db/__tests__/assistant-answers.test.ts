@@ -28,10 +28,13 @@ const body='本企业卫生间防水施工后，应进行48小时闭水试验，
 before(async()=>{
   loadEnvConfig(process.cwd());const url=new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['127.0.0.1','localhost'].includes(url.hostname));assert.equal(url.pathname,'/xiaok_embedding_eval');
+  // This acceptance test indexes into the isolated local vector store. The
+  // managed provider is a deployment mode, not a deterministic test fixture.
+  process.env.ASSISTANT_KNOWLEDGE_PROVIDER='local';
   await withPlatformTransaction(async tx=>{
     for(let i=0;i<2;i++) {
       const t=(await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!;const eid=String(t.id);tenants.push(eid);
-      await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${eid},true,1000,12000000,1000000000,90)`);
+      await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config) values(${eid},true,1000,12000000,1000000000,90,'{"enterpriseKnowledgeEnabled":true}'::jsonb)`);
       const a=(await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password)
         values(${eid},${prefix+i},'test-only','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!;admins.push(String(a.id));
       managers.push({enterpriseId:eid,principal:{kind:'admin',adminId:String(a.id)},contextVersion:1,capabilities:['assistant.preview.self']});
@@ -60,7 +63,9 @@ async function createDocument(text:string,audience='customer_public') {
 async function index(d:Row) {await op('index',d);const l=await claimKnowledgeJob();assert.ok(l);await runKnowledgeJob(l);assert.equal((await op('job',{jobId:l.jobId})).status,'succeeded');}
 async function pending(actor=actors[0],query='根据企业资料，卫生间防水闭水试验一般持续多久？',conversationId?:string) {
   const service=new ConversationService(actor),cid=conversationId ?? String((await service.create(randomUUID())).id);
-  const run=await service.send(cid,randomUUID(),{version:1,blocks:[{type:'text',text:query}]});const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,run.runId);
+  const run=await service.send(cid,randomUUID(),{version:1,blocks:[{type:'text',text:query}]});const lease=await claimJob();
+  if(!lease){const open=await withTenantTransaction(actor.enterpriseId,tx=>rows(tx,sql`select id,kind,status,lease_expires_at,run_id from app.assistant_jobs where enterprise_id=${actor.enterpriseId} and status in ('queued','running') order by id`));console.log('DEBUG no lease',JSON.stringify(open));}
+  assert.ok(lease);assert.equal(lease.runId,run.runId);
   return {service,cid,runId:String(run.runId),lease};
 }
 const model=(fn:(input:Parameters<TextModelGateway['generate']>[0])=>Promise<string>|string):TextModelGateway=>({capabilities:{streaming:false,toolCalling:false,usage:false},generate:async input=>({text:await fn(input),attemptId:'',usage:null,finishReason:null,providerRequestId:null})});
@@ -87,7 +92,7 @@ test('empty or weak evidence succeeds with a safe notice and no text-provider ca
   for(const values of [[],[{ref:{type:'knowledge_chunk',id:'1',version:'1'},hash:'not-used',text:'irrelevant',similarity:0.1}] as Evidence[]]) {
     const p=await pending();let called=false;
     await processAnswer(p.lease,{retriever:{retrieve:async()=>values},model:model(()=>{called=true;throw new Error('must not call');})});
-    assert.equal(called,false);assert.equal((await p.service.run(p.runId)).answerKind,'insufficient_evidence');
+    assert.equal(called,false);const emptyRun=await p.service.run(p.runId);assert.equal(emptyRun.answerKind,'insufficient_evidence',JSON.stringify(emptyRun));
     assert.ok(JSON.stringify((await p.service.messages(p.cid)).items[0].content).includes(INSUFFICIENT_TEXT));
     const quota=await withTenantTransaction(tenants[0],tx=>one(tx,sql`select status from app.assistant_quota_reservations where run_id=${p.runId}`));assert.equal(quota!.status,'released');
   }
@@ -97,7 +102,7 @@ test('different sentences from one chunk merge into one exact contiguous quotati
     const data=JSON.parse(input.messages[1].content);assert.ok(data.evidence.length>=2);
     return JSON.stringify({selections:data.evidence.slice(0,2).map((e:{selectionId:string})=>e.selectionId)});
   })});
-  assert.equal((await p.service.run(p.runId)).status,'succeeded');
+  const mergeRun=await p.service.run(p.runId);assert.equal(mergeRun.status,'succeeded',JSON.stringify(mergeRun));
   const answer=(await p.service.messages(p.cid)).items[0];assert.equal(answer.citations.length,1);
   const texts=(answer.content as {blocks:Array<{type:string;text?:string}>}).blocks.filter(b=>b.type==='text').map(b=>b.text);
   assert.deepEqual(answer.citations.map(c=>'quote' in c?c.quote:null),texts);

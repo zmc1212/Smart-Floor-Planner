@@ -33,14 +33,18 @@ Admin `20261113-001` 为企业 `1` 提供带演示标记的项目 `1` 和 12 套
 项目 `1` 绑定一台摄像头，演示业主具备仅观看权限。业主视频入口、员工会话和
 匿名拒绝均已验证。WVP 报告通道离线，实际点播返回 `502`，画面仍待验证。
 
-发布或回滚重建 `smart-floor-planner-admin` 后，检查其 Docker 网络，必要时重新接入 WVP：
+发布包的 Compose 已把 `sfp-wvp-cloud_default` 声明为 Admin 的外部网络，`deploy.sh` 重建 Admin 时会同时接入，不再丢网。为兼容没有这条声明的旧发布包，`deploy.sh` 与 `auto_deploy.sh` 在部署和回滚完成后都会自动检查并补接；补接只作用于 Admin 容器，不会重启摄像头网关、WVP 或 ZLM。网络名可用 `SFP_CAMERA_NETWORK`（或运行时 env 文件中的同名变量）覆盖。
+
+发布或回滚后可自查：
 
 ```sh
-docker network connect sfp-wvp-cloud_default smart-floor-planner-admin
+docker inspect smart-floor-planner-admin \
+  --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}'
 curl -fsS http://127.0.0.1:33418/camera-gateway-health
 ```
 
-当前发布包的 Compose 文件未管理这条网络连接。接回后复查授权视频入口。
+补接失败只输出告警、不阻断发布；此时应手工核查授权视频入口。
+
 写入前的数据库归档与原摄像头配置位于
 `/datas/smartfloor/backups/tenant1-demo-20261113/`。如需回退摄像头路由，
 恢复原 Nginx 片段并移除正式摄像头映射，再执行 `nginx -t && nginx -s reload`，

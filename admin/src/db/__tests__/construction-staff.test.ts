@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import bcrypt from 'bcryptjs';
 import { sql } from 'drizzle-orm';
 import { SignJWT } from 'jose';
 import { NextRequest } from 'next/server';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { ReferrerNetworkRepository, TenantEnterpriseResetRepository } from '@/db/repositories';
+import { AdminUserRepository, ReferrerNetworkRepository, TenantEnterpriseResetRepository } from '@/db/repositories';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { ConstructionService } from '@/lib/construction/service';
@@ -16,6 +17,7 @@ import { MiniProgramIdentityRepository } from '@/db/repositories';
 import { POST as join } from '@/app/api/miniprogram/onboarding/staff/route';
 import { GET, POST } from '@/app/api/miniprogram/construction/[[...path]]/route';
 import { PUT as updateStaff } from '@/app/api/staff/[id]/route';
+import { POST as resetStaffPassword } from '@/app/api/staff/[id]/reset-password/route';
 import { GET as readProfile } from '@/app/api/miniprogram/profile/route';
 import { POST as uploadAvatar } from '@/app/api/miniprogram/profile/avatar/route';
 import { PUT as updatePassword } from '@/app/api/miniprogram/account/password/route';
@@ -33,8 +35,8 @@ async function miniToken(user: string, staff?: string, role = 'construction_staf
   return signMiniProgramToken({ sub: user, id: user, mode: staff ? 'staff' : 'customer', role: staff ? role as 'construction_staff' : 'user',
     staffRole: staff ? role : undefined, staffId: staff, enterpriseId: staff ? tenants[0] : undefined, contextVersion, source });
 }
-async function cookie(adminId: string) {
-  return new SignJWT({ id: adminId, role: 'enterprise_admin', enterpriseId: tenants[0], permissions: ['staff','construction-projects'] })
+async function cookie(adminId: string, role = 'enterprise_admin', enterpriseId: string | null = tenants[0]) {
+  return new SignJWT({ id: adminId, role, enterpriseId, permissions: ['staff','construction-projects'] })
     .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('10m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
 }
 const ownerService = () => new ConstructionService({ enterpriseId: tenants[0], adminId: owners[0] });
@@ -79,6 +81,41 @@ after(async () => {
       for (const user of userIds) await tx.execute(sql`delete from app.users where id=${user}`);
     });
   } finally { await closePostgresPool(); }
+});
+
+test('the employee roster resets construction staff passwords only in the selected tenant', async () => {
+  const reset = (authCookie: string, staffId = worker) => resetStaffPassword(
+    new Request(`http://localhost:3006/api/staff/${staffId}/reset-password`, {
+      method: 'POST', headers: { cookie: authCookie },
+    }),
+    { params: Promise.resolve({ id: staffId }) }
+  );
+  const ownerCookie = `auth_token=${await cookie(owners[0])}`;
+  const otherOwnerCookie = `auth_token=${await cookie(owners[1], 'enterprise_admin', tenants[1])}`;
+  assert.equal((await reset(otherOwnerCookie)).status, 404);
+  assert.equal((await reset(ownerCookie, owners[0])).status, 400);
+
+  const selectedTenant = `global_tenant_id=${tenants[0]}`;
+  const adminCookie = `auth_token=${await cookie(owners[0], 'admin', null)}`;
+  const superAdminCookie = `auth_token=${await cookie(owners[0], 'super_admin', null)}`;
+  assert.equal((await reset(adminCookie)).status, 400);
+  assert.equal((await reset(`${adminCookie}; global_tenant_id=${tenants[1]}`)).status, 404);
+
+  let previousPassword = 'test-only';
+  for (const authCookie of [ownerCookie, `${adminCookie}; ${selectedTenant}`, `${superAdminCookie}; ${selectedTenant}`]) {
+    const response = await reset(authCookie);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    const { data } = await response.json();
+    assert.deepEqual(Object.keys(data).sort(), ['mustChangePassword', 'tempPassword']);
+    assert.equal(data.mustChangePassword, true);
+    const staff = await withTenantTransaction(tenants[0], tx => new AdminUserRepository(tx).findById(BigInt(worker)));
+    assert.ok(staff);
+    assert.equal(staff.mustChangePassword, true);
+    assert.equal(await bcrypt.compare(data.tempPassword, staff.passwordHash), true);
+    assert.equal(await bcrypt.compare(previousPassword, staff.passwordHash), false);
+    previousPassword = data.tempPassword;
+  }
 });
 
 test('phone-authorized employee joining persists trades, reenters the construction identity and rejects role/enterprise replacement', async () => {

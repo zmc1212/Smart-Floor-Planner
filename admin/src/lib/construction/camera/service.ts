@@ -11,6 +11,7 @@ import {currentStorageHealth} from './storage';
 import {guardLiveWriter} from './writer-policy';
 import {authorizeSdMedia,reconcileSdPlaybacks} from './sd';
 import {retentionDefault,nodeRetentionDays} from './retention-defaults';
+import {coverIntervalHours} from './cover-defaults';
 import { cameraAccess, cameraActorRef, isCameraCustomer, type CameraActor } from './access';
 import { currentCameraCustomerGrant } from './customer-grants';
 import { privateSnapshot, retainedSnapshot, snapshotRetentionJoins } from './snapshot-retention';
@@ -146,6 +147,7 @@ export async function listCameraProject(actor: CameraActor, pid: string) {
   const eid = actor.enterpriseId;
   const result = await withTenantTransaction(eid, async tx => {
     const access = await cameraAccess(tx, actor, pid), defaults = await retentionDefault(tx, eid);
+    const coverDefault = !isCameraCustomer(actor) && access.owner ? await coverIntervalHours(tx, eid) : null;
     const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,coalesce(r.retention_days,${defaults.retentionDays}) retention_days,r.retention_override_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at,r.recording_mode,r.sd_last_error,r.sd_checked_at from app.construction_camera_bindings b
       join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
       left join app.construction_camera_recording_policies r on r.enterprise_id=b.enterprise_id and r.binding_id=b.id
@@ -156,6 +158,7 @@ export async function listCameraProject(actor: CameraActor, pid: string) {
       canViewSnapshots: !isCameraCustomer(actor) || access.canCapture, maxRetentionDays: nodeRetentionDays(), items,
       customerGrant: access.owner ? await currentCameraCustomerGrant(tx, eid, pid) : null,
       retentionDefault: access.owner ? { ...defaults, affectedCount: Number(affected!.n) } : null,
+      coverDefault,
       serviceOrder: order ? { id: String(order.id), status: String(order.status), cameraCount: Number(order.camera_count), boundCount: Number(order.bound) } : null };
   });
   return { ...result, storage: result.canConfigure && result.items.length ? await currentStorageHealth() : null };

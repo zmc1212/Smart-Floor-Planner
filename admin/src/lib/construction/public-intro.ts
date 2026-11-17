@@ -7,7 +7,7 @@ import type { PublicContent } from './public-contract';
  * published fields only, <=140 characters, no links/citations/photo claims or
  * business commitments. A registered scene may narrow the input fields or
  * constraints, but it is not required to run the native entry. */
-export const defaultPublicIntroInput: readonly string[] = ['name', 'cityName', 'cityCode', 'district', 'stageName',
+export const defaultPublicIntroInput: readonly string[] = ['name', 'cityName', 'cityCode', 'district', 'stageName', 'styleName',
   'excerpts', 'photoCount', 'designerName'];
 export const defaultPublicIntroConstraints: OpeningConstraints = { minChars: 8, maxChars: 140,
   noUrl: true, noCitationMarkers: true, noPhotoClaims: true, noCommitments: true };
@@ -19,6 +19,7 @@ export function publicIntroFacts(content: PublicContent, input: readonly string[
   for (const field of input) {
     if (field === 'excerpts') site.excerpts = content.excerpts.map(excerpt => ({ role: excerpt.role, text: excerpt.text.replace(/\s+/g, ' ').trim(), date: excerpt.date }));
     else if (field === 'designerName') { if (content.designerName) site.designerName = content.designerName; }
+    else if (field === 'styleName') { if (content.styleName) site.styleName = content.styleName; }
     else if (['name', 'cityName', 'cityCode', 'district', 'stageName', 'photoCount'].includes(field))
       site[field] = (content as unknown as Record<string, unknown>)[field];
   }
@@ -27,7 +28,8 @@ export function publicIntroFacts(content: PublicContent, input: readonly string[
 
 export const publicIntroPrompt = (maxChars: number) => '你是装修公司的助手小K。客户刚打开一个公开工地的围观页，这是系统进入事件，不是客户提问。'
   + '请根据用户消息中的公开快照写一段自然、具体、克制的开场白：说明现在能看到这个工地的哪些公开信息、当前阶段大致在做什么；'
-  + `有公开署名设计师时可自然提到姓名。全文不超过${Math.max(40, maxChars - 25)}字，最后用一句邀请收尾。`
+  + '快照里有 styleName 且不是“其他”时，用一句话说明这个公开工地偏什么装修风格；没有 styleName 或只有“其他”就不要提风格，不要猜。'
+  + `有公开署名设计师时可自然提到姓名。全文不超过${Math.max(40, maxChars - 25)}字，最后用一个自然的问句询问客户自己是否也在准备装修，并邀请客户继续提问。`
   + '只能使用快照里已有的信息，不补充、不推断项目细节。'
   + '不得承诺价格、工期、验收、可预约或已联系团队；不得说看过照片或描述照片内容；不得输出链接、引用标记、表格、标题或编号列表。'
   + '只输出开场白正文，不要解释你的做法。';

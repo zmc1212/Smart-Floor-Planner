@@ -1,4 +1,5 @@
 const aiService = require('../../../utils/aiDesignService.js');
+const nativePreview = require('../../../utils/native-preview');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
 
 const MODE_TITLES = {
@@ -115,6 +116,7 @@ Page({
   },
 
   onShow() {
+    if (nativePreview.shownAfterPreview(this)) return;
     this.resetPageScroll();
   },
 
@@ -207,7 +209,7 @@ Page({
 
   previewResult() {
     const task = this.data.task;
-    if (task && task.resultImageUrl) wx.previewImage({ urls: [task.resultImageUrl], current: task.resultImageUrl });
+    if (task && task.resultImageUrl) nativePreview.previewImage({ urls: [task.resultImageUrl], current: task.resultImageUrl }, this);
   },
 
   async saveResult() {

@@ -6,7 +6,8 @@ import { randomUUID, createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { readOriginal } from '@/lib/assistant/knowledge/file-service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
@@ -64,16 +65,14 @@ async function citation(auth?: string) {
 }
 
 before(async () => {
-  const target = new URL(resolvePostgresRuntimeConfig().connectionString);
-  assert.ok(['localhost', '127.0.0.1'].includes(target.hostname));
-  assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
+  useLocalKnowledgeTestDatabase();
   globalThis.fetch = async () => { evidence.fetchRequests.push('forbidden'); throw Error('D2 notes acceptance forbids network model/embedding requests'); };
   await withPlatformTransaction(async tx => {
     for (let i = 0; i < 2; i++) {
       const id = String((await one(tx, sql`insert into app.enterprises(name,code,status) values(${'测试专用 D2 注释 ' + i},${prefix + i},'active') returning id`))!.id);
       fixture.enterprises.push(id);
       await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
-        values(${id},true,100,200000,5000000,30,'{}'::jsonb)`);
+        values(${id},true,100,200000,5000000,30,'{"enterpriseKnowledgeEnabled":true}'::jsonb)`);
     }
     for (let i = 0; i < 3; i++) {
       const userId = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix + i},1) returning id`))!.id);
@@ -129,7 +128,7 @@ test('real upload/parse/review/index/publication persist complete note condition
 test('real retrieval/extractive persistence and authenticated source reopening retain notes and deny other customers/tenants', async () => {
   const result = await retrieveKnowledge(conversationId, actor, '合成底座检查 潮湿场景 厂家适用条件', await epoch(), gateway);
   assert.ok(result.evidence.some(e => e.file?.row === 2 && e.text.includes('合成章节限定')));
-  const sent = await customer.send(conversationId, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '这份设备资料里的底座检查有什么适用条件？' }] });
+  const sent = await customer.send(conversationId, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '你们公司的设备资料原文里，底座检查有什么适用条件？' }] });
   const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
   fixture.runId = lease.runId;
   const model: TextModelGateway = { capabilities: { streaming: false, toolCalling: false, usage: false }, async generate(input) {
@@ -147,7 +146,8 @@ test('real retrieval/extractive persistence and authenticated source reopening r
   const completed = await customer.run(lease.runId); evidence.run = completed; save();
   assert.equal(completed.status, 'succeeded', JSON.stringify(completed));
   const history = await new ConversationService(actor).messages(conversationId);
-  const reply = history.items.find(m => m.authorKind === 'assistant')!; assert.ok(reply?.available);
+  const reply = history.items.find(m => m.id === completed.outputMessageId);
+  assert.ok(reply?.available && reply.citations.length, JSON.stringify(reply));
   messageId = reply.id; citationId = reply.citations[0].id;
   const source = await citation(await token(fixture.users[0])); assert.equal(source.status, 200);
   assert.match(JSON.stringify(source.body), /合成章节限定/); assert.match(JSON.stringify(source.body), /潮湿场景/); assert.match(JSON.stringify(source.body), /表1·第2行/);

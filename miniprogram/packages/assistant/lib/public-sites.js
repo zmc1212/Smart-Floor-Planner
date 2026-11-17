@@ -43,7 +43,13 @@ class PublicChatController {
         const list = browsing ? await this.catalog.read(eid, 'sites', result.region ? { cityCode: result.region.cityCode, district: result.region.district || '' } : {}) : result;
         if (!this.valid(epoch)) return;
         const items = (list.items || []).map(viewMaterial);
-        this.set({ publicItems: items, publicNotice: browsing ? (!items.length ? '这一片区暂时没有授权公开的工地，可以先聊聊你家的装修。' : this.browseNotice || (result.needRegion ? '当前展示所有服务片区的授权公开工地。' : '')) : '' });
+        const districtFallback = !!(result.districtFallback || list.districtFallback);
+        const notice = !items.length
+          ? (browsing ? '这一片区暂时没有授权公开的工地，可以先聊聊你家的装修。' : '')
+          : (browsing && this.browseNotice ? this.browseNotice + ' ' : '')
+            + (districtFallback ? '你所在片区暂无授权公开的工地，先展示同城其他片区的公开工地。'
+              : (browsing && result.needRegion ? '当前展示所有服务片区的授权公开工地。' : ''));
+        this.set({ publicItems: items, publicNotice: notice });
       }
       const wanted = [...Object.values(cards).flatMap(item => item.photos.map(photo => ({ key: photo.key, path: imagePath(eid,item,photo,cid) }))),
         ...this.state.publicItems.flatMap(item => item.photos.slice(0,1).map(photo => ({ key: photo.key, path: imagePath(eid,item,photo) })))];

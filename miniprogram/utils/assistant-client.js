@@ -260,6 +260,9 @@ function designerRecommendationForView(value) {
   }).filter(Boolean);
   return items.length ? { items, notice: portfolioText(value.notice, 200) } : null;
 }
+function designerDiscoveryForView(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? { needContext: value.needContext === true } : null;
+}
 function latestDesignerCard(items) {
   let latest = null;
   for (const message of items || []) if (message.authorKind === 'assistant' && !message.isUser && message.available !== false && message.designerRecommendation?.items?.length) latest = message;
@@ -304,6 +307,7 @@ function messagesForView(items, formatAssistantText) {
       publicContext: available && item.publicContext && /^[1-9]\d*$/.test(String(item.publicContext.id)) && /^[1-9]\d*$/.test(String(item.publicContext.versionId)) ? item.publicContext : null,
       publicReferences: available ? (item.publicReferences || []).filter(r => /^[1-9]\d*$/.test(String(r.id)) && /^[1-9]\d*$/.test(String(r.versionId))).slice(0, 8) : [],
       designerRecommendation: available ? designerRecommendationForView(item.designerRecommendation) : null,
+      designerDiscovery: available ? designerDiscoveryForView(item.designerDiscovery) : null,
       siteRecord: available && item.siteRecord?.available && /^[1-9]\d*$/.test(String(item.siteRecord.id)) && Number.isSafeInteger(item.siteRecord.version)
         ? { ...item.siteRecord, assets: (item.siteRecord.assets || []).filter(id => /^[1-9]\d*$/.test(String(id))).slice(0, 4).map(String) } : null,
       siteRecordList: available ? [item.siteRecord, ...(item.siteRecords || [])].map(record).filter(Boolean).filter((r, index, all) => all.findIndex(a => a.id === r.id && a.version === r.version) === index) : [],

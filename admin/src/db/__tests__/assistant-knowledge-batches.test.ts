@@ -5,7 +5,8 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import { KnowledgeOperations } from '@/lib/assistant/knowledge/operations';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
@@ -45,7 +46,7 @@ async function finishBatch(id:string) {
   assert.fail('Bounded synthetic batch did not complete');
 }
 before(async()=>{
-  const url=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(url.port,'55432');assert.equal(url.pathname,'/xiaok_embedding_eval');
+  useLocalKnowledgeTestDatabase();
   await withPlatformTransaction(async tx=>{
     for(let i=0;i<2;i++)tenants.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));eid=tenants[0];
     await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${eid},true,1000,12000000,1000000000,30)`);
@@ -157,10 +158,10 @@ test('K07 all management roles create private batches without employee membershi
 });
 
 test('K06 configuration changes hide old results and immutable batch provenance cannot be edited',async()=>{
-  const {id}=await create(1);const previous=process.env.ASSISTANT_TEXT_MODEL;
-  process.env.ASSISTANT_TEXT_MODEL='synthetic-config-change';
+  const {id}=await create(1);const previous=process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+  process.env.ASSISTANT_TEXT_DISABLE_THINKING=previous==='1'?'0':'1';
   try{assert.equal((await batch(id)).available,false);await ops.batches().advance(id);}
-  finally{if(previous===undefined)delete process.env.ASSISTANT_TEXT_MODEL;else process.env.ASSISTANT_TEXT_MODEL=previous;}
+  finally{if(previous===undefined)delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;else process.env.ASSISTANT_TEXT_DISABLE_THINKING=previous;}
   const d=await batch(id);assert.equal(d.state,'blocked');await ops.batches().command(id,'cancel',{expectedVersion:d.version},randomUUID());
   const inactive=await create(1),profile=await withTenantTransaction(eid,tx=>one(tx,sql`select active_index_profile_id from app.assistant_enterprise_settings where enterprise_id=${eid}`));
   await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_knowledge_index_profiles set status='disabled' where enterprise_id=${eid} and id=${String(profile!.active_index_profile_id)}`));

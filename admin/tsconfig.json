@@ -44,7 +44,15 @@
     ".next-camera-build/types/**/*.ts",
     ".next-camera-build/dev/types/**/*.ts",
     ".next-camera-cloud/types/**/*.ts",
-    ".next-camera-cloud/dev/types/**/*.ts"
+    ".next-camera-cloud/dev/types/**/*.ts",
+    ".next-i73-build/types/**/*.ts",
+    ".next-i73-build/dev/types/**/*.ts",
+    ".next-build/types/**/*.ts",
+    ".next-build/dev/types/**/*.ts",
+    ".next-i73/types/**/*.ts",
+    ".next-i73/dev/types/**/*.ts",
+    ".next-site-workbench-qa/types/**/*.ts",
+    ".next-site-workbench-qa/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

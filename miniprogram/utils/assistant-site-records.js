@@ -1,4 +1,5 @@
 const api = require('./api');
+const nativePreview = require('./native-preview');
 /** Customer photos always use a reviewed record/version grant; no internal chat or reusable public URL. */
 class SiteRecordMedia {
   constructor({ identity, emit, download = api.downloadFile }) { Object.assign(this, { identity, emit, download }); this.epoch = 0; this.paths = {}; }
@@ -33,7 +34,7 @@ class SiteRecordMedia {
       const d = await this.download(this.url({ recordId, version, mediaId }), { suppressUnauthorized: true });
       if (epoch !== this.epoch || session !== this.identity()) { this.unlink(d.tempFilePath); return; }
       this.unlink(this.paths[key]); this.paths[key] = d.tempFilePath; this.emit({ siteRecordPaths: { ...this.paths } });
-      wx.previewImage({ urls: [d.tempFilePath], current: d.tempFilePath });
+      nativePreview.previewImage({ urls: [d.tempFilePath], current: d.tempFilePath });
     } catch { if (epoch === this.epoch && session === this.identity()) { this.unlink(this.paths[key]); delete this.paths[key]; this.emit({ siteRecordPaths: { ...this.paths }, siteRecordError: '本条照片已不可访问，请重新读取。' }); } }
   }
 }

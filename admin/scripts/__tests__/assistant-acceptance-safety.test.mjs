@@ -18,10 +18,24 @@ async function fakeClient(respond, work) {
 test('waiting never connects to an unapproved database, port or host',async()=>{
   await fakeClient(()=>{throw Error('Unexpected connection');},async calls=>{
     for(const waitForLock of [false,true])for(const url of ['postgresql://synthetic@localhost:5432/smart_floor_planner',
-      'postgresql://synthetic@localhost:55432/other','postgresql://synthetic@example.invalid:55432/xiaok_embedding_eval']){
+      'postgresql://synthetic@localhost:55432/other','postgresql://synthetic@example.invalid:55432/xiaok_embedding_eval',
+      target+'?host=example.invalid',target+'?dbname=smart_floor_planner']){
       await assert.rejects(lockAssistantAcceptance(url,{waitForLock}),/Acceptance requires isolated loopback/);
     }
     assert.deepEqual(calls,[]);
+  });
+});
+
+test('an explicitly selected isolated port still checks the application role and queue',async()=>{
+  await fakeClient(sql=>sql.includes('pg_roles')?[{rolsuper:false,rolbypassrls:false}]
+    :sql.includes('try_advisory_lock')?[{acquired:true}]:sql.includes('to_regclass')?[{present:true}]
+    :sql.includes('assistant_jobs')?[{active:0}]:[],async(calls,ended)=>{
+    const alternate=target.replace(':55432/',':55448/');
+    await assert.rejects(lockAssistantAcceptance(alternate),/Acceptance requires isolated loopback/);
+    const release=await lockAssistantAcceptance(alternate,{isolatedPort:'55448'});
+    assert.ok(calls.some(sql=>sql.includes('pg_roles')));
+    assert.ok(calls.some(sql=>sql.includes('assistant_jobs')));
+    await release();assert.equal(ended(),1);
   });
 });
 

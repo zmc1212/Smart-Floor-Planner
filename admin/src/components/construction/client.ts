@@ -18,7 +18,7 @@ const messages: Record<string, string> = {
   camera_recording_clock_unavailable:'录像时间暂无法核对，请联系管理员处理。',
   camera_recording_busy:'请先关闭云端录像，并确认状态为“已停止”后再解绑。',
   camera_recording_not_configured:'云端录像服务尚未配置，请联系管理员。',camera_recording_conflict:'摄像头已有其他录像计划，未覆盖原设置，请联系管理员核对。',
-  camera_invalid_retention:'请填写当前节点允许范围内的整数保留天数。',construction_camera_recordings_require_cleanup:'请先关闭录像并完成该企业私有录像文件清理，再删除企业数据。',
+  camera_invalid_retention:'请填写当前节点允许范围内的整数保留天数。',camera_invalid_cover_interval:'请填写 1–24 之间的整数抓拍间隔。',construction_camera_recordings_require_cleanup:'请先关闭录像并完成该企业私有录像文件清理，再删除企业数据。',
   camera_unavailable: '摄像头不存在或已停用，请刷新后重试。', camera_already_assigned: '该通道已分配，不能重复认领。',
   camera_already_bound: '摄像头已绑定其他工地，请先在原工地解绑。', camera_invalid_channel: '请核对 WVP 设备和视频通道编号。',
   camera_forbidden: '当前身份没有此摄像头操作权限。', camera_not_configured: '视频服务尚未配置，请联系管理员。',

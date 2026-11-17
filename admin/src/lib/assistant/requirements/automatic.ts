@@ -3,10 +3,11 @@ import { AssistantRepository, one, rows } from '@/db/repositories/assistant-repo
 import { chatFirstProgress, defaultGuidance } from './guidance';
 import { fingerprint } from '../contracts';
 import { readMemory } from '../agent/memory';
+import { captureStaffRenovationProfile } from './renovation-profile';
 
 /** Draft versions retain correction provenance; confirmed historical versions
  * are never overwritten or treated as approval of newer customer statements. */
-export async function saveAutomaticRequirements(repo: AssistantRepository, conversationId: string) {
+export async function saveAutomaticRequirements(repo: AssistantRepository, conversationId: string, sourceMessageId?: string) {
   if (repo.actor.principal.kind !== 'user') return;
   const messages = await rows(repo.tx, sql`select id,seq,content from app.assistant_messages
     where enterprise_id=${repo.actor.enterpriseId} and conversation_id=${conversationId}
@@ -14,7 +15,7 @@ export async function saveAutomaticRequirements(repo: AssistantRepository, conve
   const inputs = messages.reverse().map(m => ({ id: String(m.id), text:
     ((m.content as { blocks?: { text?: string }[] })?.blocks || []).map(b => b.text || '').join('\n') }));
   const fields = chatFirstProgress(defaultGuidance, inputs).fields;
-  const conversation = await one(repo.tx, sql`select entry_snapshot from app.assistant_conversations
+  const conversation = await one(repo.tx, sql`select purpose,mode,created_at,entry_snapshot from app.assistant_conversations
     where enterprise_id=${repo.actor.enterpriseId} and id=${conversationId}`);
   if ((conversation?.entry_snapshot as { requirementReviewMode?: boolean })?.requirementReviewMode === true) return;
   const currentFacts = readMemory(conversation?.entry_snapshot).facts.filter(f => f.status === 'current');
@@ -32,8 +33,13 @@ export async function saveAutomaticRequirements(repo: AssistantRepository, conve
     where enterprise_id=${repo.actor.enterpriseId} and conversation_id=${conversationId} and status!='redacted' order by id desc limit 1`);
   if (latest && fingerprint(latest.draft_fields) === fingerprint(fields)) return;
   if (!Object.values(fields).some(f => f.text)) return;
-  await repo.tx.execute(sql`insert into app.assistant_requirement_summaries
+  const saved = await one(repo.tx, sql`insert into app.assistant_requirement_summaries
     (enterprise_id,conversation_id,customer_user_id,source_seq,draft_fields,confirmed_fields)
     values(${repo.actor.enterpriseId},${conversationId},${repo.actor.principal.userId},${String(messages.at(-1)?.seq || 0)},
-      ${JSON.stringify(fields)}::jsonb,'{}'::jsonb)`);
+      ${JSON.stringify(fields)}::jsonb,'{}'::jsonb) returning id`);
+  const source = sourceMessageId && inputs.find(input => input.id === sourceMessageId);
+  const sourceContent = source && messages.find(message => String(message.id) === source.id)?.content;
+  if (conversation && saved && source && !(sourceContent as { reportContextVersion?: number } | undefined)?.reportContextVersion) {
+    await captureStaffRenovationProfile(repo.tx, repo.actor.enterpriseId, repo.actor.principal.userId, conversation, String(saved.id), source, fields);
+  }
 }

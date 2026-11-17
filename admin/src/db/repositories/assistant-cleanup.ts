@@ -8,7 +8,7 @@ export const assistantCleanupTables = [
   'domain_event_deliveries', 'assistant_messages', 'assistant_runs', 'domain_event_outbox',
   'assistant_conversations', 'assistant_enterprise_settings',
   'assistant_knowledge_attempts','assistant_knowledge_chunks','assistant_knowledge_assets','assistant_knowledge_versions','assistant_knowledge_documents','assistant_knowledge_index_profiles',
-  'assistant_message_citations', 'assistant_cost_reviews', 'assistant_requirement_summaries', 'assistant_media', 'assistant_speech_assets',
+  'assistant_message_citations', 'assistant_cost_reviews', 'assistant_requirement_summaries', 'assistant_renovation_profiles', 'assistant_media', 'assistant_speech_assets',
   'assistant_knowledge_batch_items','assistant_knowledge_batches','assistant_knowledge_evaluations','assistant_knowledge_cases',
   'assistant_model_task_items','assistant_model_tasks','assistant_managed_knowledge_imports','assistant_managed_knowledge_libraries',
 ] as const;
@@ -17,10 +17,12 @@ export async function assistantCounts(tx: PostgresTransaction, enterpriseId: big
   const batches=(await rows(tx,sql`select to_regclass('app.assistant_knowledge_batches') is not null as ready`))[0].ready;
   const modelTasks=(await rows(tx,sql`select to_regclass('app.assistant_model_tasks') is not null as ready`))[0].ready;
   const managed=(await rows(tx,sql`select to_regclass('app.assistant_managed_knowledge_imports') is not null as ready`))[0].ready;
+  const profiles = (await rows(tx, sql`select to_regclass('app.assistant_renovation_profiles') is not null as ready`))[0].ready;
   for (const table of assistantCleanupTables) {
     if (!managed && table.startsWith('assistant_managed_knowledge_')) continue;
     if(!batches&&['assistant_knowledge_batch_items','assistant_knowledge_batches'].includes(table))continue;
     if(!modelTasks&&['assistant_model_task_items','assistant_model_tasks'].includes(table))continue;
+    if (!profiles && table === 'assistant_renovation_profiles') continue;
     result.push({
     table, label: table, count: Number((await rows(tx, sql`select count(*) as n from ${sql.identifier('app')}.${sql.identifier(table)} where enterprise_id=${enterpriseId}`))[0].n),
   });
@@ -56,6 +58,8 @@ export async function deleteAssistantData(tx: PostgresTransaction, enterpriseId:
   await tx.execute(sql`delete from app.assistant_knowledge_cases where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_media where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_speech_assets where enterprise_id=${enterpriseId}`);
+  if (counts.some(c => c.table === 'assistant_renovation_profiles'))
+    await tx.execute(sql`delete from app.assistant_renovation_profiles where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_requirement_summaries where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_cost_reviews where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_message_citations where enterprise_id=${enterpriseId}`);

@@ -11,7 +11,7 @@ import { processManagedKnowledgeCleanup } from '../knowledge/managed-cleanup';
 import { processAnswer } from './answer-worker';
 import { resolveEvidence, validatePreviewSnapshot } from '../knowledge/sources';
 import { saveKnowledgeCitation } from '../knowledge/save-citation';
-import { factsOnlyMode, factsOnlyNotice, parseAnswer, safeInsufficientContent, type GroundedAnswer } from '../knowledge/answer';
+import { factsOnlyMode, factsOnlyNotice, parseAnswer, safeInsufficientContent, safeFallbackApplies, safeFallbackContent, type GroundedAnswer, type SafeFallbackCode } from '../knowledge/answer';
 import { knowledgeContext } from '../knowledge/applicability-context';
 import { factsOnlyKnowledgeAnswer } from '../agent/synthesis';
 import { explicitHumanHandoffRequested } from '../agent/read-tool-input';
@@ -267,6 +267,55 @@ export async function failRun(lease: Lease, code: string, outcomeKnown=false, de
       await tx.execute(sql`update app.assistant_quota_reservations set status='settled',settled_tokens=0,settled_cost_micros=0,version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
     await finish(tx, lease, status, unknown ? 'provider_outcome_unknown' : code);
   });
+}
+/** Customer-facing safety rejections must not leave an empty failed turn.
+ * Commit a fixed server-authored notice only for the two rejections that would
+ * otherwise hide the answer entirely. Infrastructure failures, staff previews,
+ * internal actions and already-committed answers retain the original failure. */
+export async function completeSafeFallback(lease: Lease, code: SafeFallbackCode) {
+  try {
+    return await withTenantTransaction(lease.enterpriseId, async tx => {
+      const { job, run, conversation } = await runContext(tx, lease);
+      if (lease.actor.principal.kind !== 'user' || run.purpose !== 'reply' || run.trigger_kind !== 'user_message'
+        || !['customer_consultation', 'construction_followup'].includes(String(conversation.purpose))
+        || run.output_message_id) return false;
+      if (code === 'source_read_required') {
+        // A real retrieval outage is an infrastructure failure, not a safe
+        // "no evidence" answer; keep it failed for retry and reconciliation.
+        const unavailable = await one(tx, sql`select id from app.assistant_run_steps
+          where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='retrieval' and status='failed'
+            and input_summary->>'knowledgeStatus'='retrieval_unavailable' limit 1`);
+        if (unavailable) return false;
+      }
+      const trigger = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
+        and conversation_id=${String(conversation.id)} and id=${String(run.trigger_message_id)} and author_kind in ('user','admin')`);
+      if (!trigger) return false;
+      const reportScoped = !!reportContext(conversation.entry_snapshot).selection
+        || (run.policy_snapshot as Row).reportContextVersion !== undefined;
+      if (!safeFallbackApplies(code, safeText(trigger.content as MessageContent), reportScoped)) return false;
+      const next = await one(tx, sql`select coalesce(max(step_seq),0)+1 as seq from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+        values(${lease.enterpriseId},${lease.runId},${Number(next?.seq || 1)},'agent_fallback','succeeded',
+          ${JSON.stringify({ code, protocol: 'safe-fallback-v1', providerStarted: !!job.provider_started_at, reportScoped })}::jsonb)`);
+      const message = await appendMessage(tx, lease.actor, String(conversation.id), { author: 'assistant', runId: lease.runId,
+        purpose: 'agent.reply', content: safeFallbackContent(code, { reportScoped }) });
+      await tx.execute(sql`update app.assistant_messages set answer_kind='insufficient_evidence'
+        where enterprise_id=${lease.enterpriseId} and id=${String(message.id)}`);
+      await tx.execute(sql`update app.assistant_quota_reservations set status=${job.provider_started_at ? 'reconciling' : 'released'},
+        version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
+      if (!job.provider_started_at) await tx.execute(sql`insert into app.assistant_usage_records
+        (enterprise_id,run_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
+        values(${lease.enterpriseId},${lease.runId},${'fallback:' + lease.runId},'tokens',0,'observed',0,0) on conflict do nothing`);
+      await finish(tx, lease, 'succeeded', null, String(message.id));
+      await tx.execute(sql`update app.assistant_runs set answer_kind='insufficient_evidence'
+        where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
+      return true;
+    });
+  } catch (error) {
+    if (error instanceof AssistantError && error.code === 'context_changed') return false;
+    throw error;
+  }
 }
 /** Oldest eligible kind prevents chat/index starvation. Up to the configured
  * worker limit is claimed per request: different enterprises run concurrently,

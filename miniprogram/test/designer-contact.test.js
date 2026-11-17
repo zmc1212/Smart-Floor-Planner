@@ -36,7 +36,7 @@ test('designer-contact-sheet restores the approved Xiao K QR-first contact desig
   assert.equal(json.component, true);
   assert.match(js, /loadDesignerQrToTempFile/);
   assert.match(js, /copyDesignerWechatId/);
-  assert.match(js, /wx\.previewImage/);
+  assert.match(js, /nativePreview\.previewImage/);
   assert.match(js, /openSheet/);
   assert.match(js, /sheetMotion/);
   assert.match(js, /getMenuButtonBoundingClientRect/);

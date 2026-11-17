@@ -1,4 +1,5 @@
 const api = require('../../../utils/api');
+const nativePreview = require('../../../utils/native-preview');
 const surveyLayout = require('../../../utils/surveyLayout.js');
 const { openSurveyingEditor } = require('../../../utils/surveyNavigation.js');
 const {
@@ -229,6 +230,7 @@ Page({
   },
 
   onShow() {
+    if (nativePreview.shownAfterPreview(this)) return;
     if (this.data.appointmentId || this.data.leadId) this.load();
   },
 

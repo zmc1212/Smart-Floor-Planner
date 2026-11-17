@@ -6,6 +6,8 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { deleteConstructionData } from '@/db/repositories/construction-cleanup';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
+import { SystemRoleRepository } from '@/db/repositories/system-role-repository';
+import { getDefaultMenuKeys } from '@/lib/admin-user-roles';
 import { resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { SiteChatService } from '@/lib/construction/site-chat';
@@ -38,6 +40,9 @@ export class D4SharingFixture {
     assert.equal(target.port, process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55432');
     assert.equal(target.pathname, '/xiaok_embedding_eval');
     await withPlatformTransaction(async tx => {
+      await new SystemRoleRepository(tx).ensureDefaults([
+        { roleKey: 'designer', label: '设计师', menuKeys: getDefaultMenuKeys('designer') },
+      ]);
       for (const role of ['admin', 'super_admin']) this.platformIds.push(String((await one(tx, sql`insert into app.admin_users(username,password_hash,role,status,must_change_password,display_name)
         values(${this.prefix + role},'unusable-synthetic',${role},'active',false,${'测试管理者' + role}) returning id`))!.id));
       for (let i = 0; i < 2; i++) {
@@ -81,7 +86,7 @@ export class D4SharingFixture {
     const picture = await sharp({ create: { width: 96, height: 72, channels: 3, background: '#c9dfd0' } }).png().toBuffer();
     const media = await worker.upload(this.projectId, randomUUID(), picture);
     const sent = await worker.send(this.projectId, { text: '书房底盒今天还没固定，等待核对位置。', mediaIds: [String(media.id)] }, randomUUID());
-    const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+    const lease = await claimJob({ enterpriseId: this.eid, runId: String(sent.runId) }); assert.equal(lease?.runId, sent.runId);
     await processSiteRecord(lease!, async () => ({ text: JSON.stringify({ title: '测试专用 · 底盒待核对', roomId: this.roomId, completed: '线管铺好', pending: '底盒还没固定', coordination: '现场核准桌子摆位', note: '' }),
       toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 0, outputTokens: 0 } }));
     const draft = ((await this.site().read(this.projectId)).items as Row[]).find(i => (i.record as Row)?.id === String(sent.recordId))!.record as Row;

@@ -1,5 +1,6 @@
 const { PublicSitesController, initial } = require('./public-sites-model');
 const { loadSiteFont } = require('../lib/site-font');
+const nativePreview = require('../../../utils/native-preview');
 function identity() { return getApp().globalData.token || wx.getStorageSync('token') || ''; }
 function page(detail) {
   return {
@@ -15,12 +16,16 @@ function page(detail) {
     },
     async onShow() {
       this.shown = true;
+      if (nativePreview.shownAfterPreview(this)) return;
       const app = getApp(); if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
       if (!this.alive || !this.shown) return;
       await this.controller.show(this.options, detail);
       if (this.alive && this.shown) this.timer = setInterval(() => { if (!this.data.loading) this.controller.load(); }, 15000);
     },
-    onHide() { this.shown = false; clearInterval(this.timer); this.controller.hide(); },
+    onHide() {
+      if (nativePreview.hiddenByPreview(this)) return;
+      this.shown = false; clearInterval(this.timer); this.controller.hide();
+    },
     onUnload() { this.alive = false; clearInterval(this.timer); this.controller.hide(); },
     refresh() { return this.controller.load(); },
     back() { wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/index/index' }) }); },

@@ -65,7 +65,7 @@ function appendPatch(patch, previousLength) {
 const initial = () => ({
   loading: true, busy: false, error: '', fatal: false, needsLogin: false,
   enterpriseId: '', enterpriseName: '', canSend: false, maxChars: 4000,
-  shareReferenceEntry: '',
+  shareReferenceEntry: '', staffProfileCapture: false,
   welcomeText: WELCOME, guidanceEnabled: false, guidance: null, selectedOptions: [], selectedOptionMap: {},
   conversation: null, readOnly: false, messages: [], messageCursor: null, run: null, sending: false,
   history: [], historyCursor: null, historyLoading: false, historyError: '',
@@ -169,7 +169,9 @@ class ChatController {
     if (!this.valid(epoch)) return null;
     this.entry = entry;
     this.entryExpiry = Date.now() + Math.max(0, Number(entry.expiresIn || 900) - 30) * 1000;
-    this.set({ enterpriseId: entry.enterprise.id, enterpriseName: entry.enterprise.name, canSend: entry.canSend !== false, maxChars: Math.min(4000, Number(entry.maxMessageChars) || 4000), shareReferenceEntry: entry.referenceEntry || '' });
+    this.set({ enterpriseId: entry.enterprise.id, enterpriseName: entry.enterprise.name, canSend: entry.canSend !== false,
+      maxChars: Math.min(4000, Number(entry.maxMessageChars) || 4000), shareReferenceEntry: entry.referenceEntry || '',
+      staffProfileCapture: entry.staffProfileCapture === true });
     if (!this.state.conversation) this.set({ welcomeText: entry.guidanceOpening || WELCOME, guidanceEnabled: !!entry.guidanceEnabled, guidance: entry.guidance || null });
     return entry;
   }
@@ -451,11 +453,11 @@ class ChatController {
   async handoffConversation() {
     if (this.state.busy || this.state.pendingSend || this.state.pendingAction || this.state.loading || this.state.fatal || !this.state.canSend) return null;
     if (this.conversationId) return this.conversationId;
-    const epoch = this.epoch; this.set({ busy: true });
+    const epoch = this.epoch, noticeWasShown = this.state.staffProfileCapture; this.set({ busy: true });
     try {
       const entry = await this.ensureEntry();
       if (!entry || !this.valid(epoch)) return null;
-      const c = await this.client.mutate('create', '/conversations', { entryToken: entry.entryToken });
+      const c = await this.createConsultation(entry, noticeWasShown);
       if (!this.valid(epoch)) return null;
       this.conversationId = c.id; this.set({ conversation: c }); return c.id;
     } catch (error) { this.fail(error, epoch); return null; }
@@ -528,7 +530,7 @@ class ChatController {
     if (!s.pendingSend && (!s.canSend || (this.operationalDraft == null && (s.generating || s.uncertainRun)) || (s.conversation && (s.conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(s.conversation.mode))))) return;
     const text = s.pendingText || s.draft.trim();
     if (!text || text.length > s.maxChars) return;
-    const epoch = this.epoch;
+    const epoch = this.epoch, noticeWasShown = s.staffProfileCapture;
     let committed = false;
     // `sending` keeps the approved conversation view (optimistic message and
     // run state) in place until the authoritative projection of this send is
@@ -540,7 +542,7 @@ class ChatController {
       if (!this.conversationId) {
         const entry = await this.ensureEntry();
         if (!this.valid(epoch) || !entry) return;
-        const created = await this.client.mutate('create', '/conversations', { entryToken: entry.entryToken });
+        const created = await this.createConsultation(entry, noticeWasShown);
         if (!this.valid(epoch)) return;
         this.conversationId = created.id;
         this.set({ conversation: created });
@@ -564,6 +566,11 @@ class ChatController {
         if (!committed && uncertain(error)) this.set({ error: '发送结果尚未确认。点“确认发送结果”会核对同一条消息，不会重复提交。' });
       }
     } finally { this.setIf(epoch, { busy: false, sending: false }); }
+  }
+
+  createConsultation(entry, noticeWasShown) {
+    return this.client.mutate('create', '/conversations', { entryToken: entry.entryToken,
+      ...(entry.staffProfileCapture === true && noticeWasShown ? { staffProfileNotice: true } : {}) });
   }
 
   async selectConversation(id) {

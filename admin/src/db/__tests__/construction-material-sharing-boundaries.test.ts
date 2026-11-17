@@ -24,7 +24,9 @@ test('scoped revocation selects the actual requested kind and rejects a model-se
   const need = (await f.sources()).sources.find(s => s.kind === 'need')!;
   const bytes = await sharp({ create: { width: 80, height: 60, channels: 3, background: '#c6d5cf' } }).png().toBuffer();
   await new AssistantMediaService(f.actor).upload(f.conversationId, randomUUID(), bytes, 'image', '');
-  const imageRequest = await f.send('测试工地甲书房点位图，给设计师看看。'), imageLease = await claimJob(); assert.equal(imageLease?.runId, imageRequest.runId);
+  const imageRequest = await f.send('测试工地甲书房点位图，给设计师看看。');
+  const imageLease = await claimJob({ enterpriseId: f.eid, runId: String(imageRequest.runId) });
+  assert.equal(imageLease?.runId, imageRequest.runId);
   await processAgentAnswer(imageLease!, { model: async () => ({ text: '', toolCalls: [{ id: randomUUID(), name: 'prepare_material_share', arguments: JSON.stringify({
     project: '测试工地甲', room: '书房', kind: 'drawing', sourceMessageId: '', excerpt: '书房点位图',
   }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 100, outputTokens: 25 } }) });
@@ -32,7 +34,7 @@ test('scoped revocation selects the actual requested kind and rejects a model-se
   const drawing = (await f.sources()).sources.find(s => s.kind === 'drawing')!;
   const revoke = async (text: string, grantId: string, quote = text) => {
     const sent = await f.send(text); assert.ok(sent.runId, 'named target must not revoke the latest preview implicitly');
-    const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+    const lease = await claimJob({ enterpriseId: f.eid, runId: String(sent.runId) }); assert.equal(lease?.runId, sent.runId);
     await processAgentAnswer(lease!, { model: async () => ({ text: '', toolCalls: [{ id: randomUUID(), name: 'revoke_material_share',
       arguments: JSON.stringify({ grantId, quote }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 100, outputTokens: 25 } }) });
     assert.equal((await f.chat.run(String(sent.runId))).status, 'succeeded');
@@ -51,10 +53,14 @@ test('scoped revocation selects the actual requested kind and rejects a model-se
   await f.send('停止共享这张图。');
   assert.equal((await f.sources()).sources.length, 0);
 });
-async function preview() {
-  const sent = await f.send(`测试工地甲的${excerpt}，把这段需求发给设计师。`), lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+async function preview(conversationId = f.conversationId, sourceText = excerpt) {
+  const sent = await f.chat.send(conversationId, randomUUID(), {
+    version: 1, blocks: [{ type: 'text', text: `测试工地甲的书房需求：${sourceText}，把这段需求发给设计师。` }],
+  }, siteWatchInterceptor);
+  const lease = await claimJob({ enterpriseId: f.eid, runId: String(sent.runId) });
+  assert.equal(lease?.runId, sent.runId);
   await processAgentAnswer(lease!, { model: async () => ({ text: '', toolCalls: [{ id: randomUUID(), name: 'prepare_material_share', arguments: JSON.stringify({
-    project: '测试工地甲', room: '书房', kind: 'need', sourceMessageId: '', excerpt,
+    project: '测试工地甲', room: '书房', kind: 'need', sourceMessageId: '', excerpt: sourceText,
   }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 100, outputTokens: 25 } }) });
   assert.equal((await f.chat.run(String(sent.runId))).status, 'succeeded'); return sent;
 }
@@ -68,7 +74,9 @@ test('an expired displayed preview cannot grant access', async () => {
 test('legacy commands with personal-recipient wording stay private until the actual preview and team confirmation', async () => {
   const before = await withTenantTransaction(f.eid, tx => one(tx, sql`select count(*)::int n from app.domain_event_outbox where enterprise_id=${f.eid} and type='construction.material.shared.v1'`));
   for (const text of ['共享测试工地甲·书房需求：双人书桌，仅向张三开放。', '共享测试工地甲·书房需求：留两个插座，供张三查看。']) {
-    const sent = await f.send(text), lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+    const sent = await f.send(text);
+    const lease = await claimJob({ enterpriseId: f.eid, runId: String(sent.runId) });
+    assert.equal(lease?.runId, sent.runId);
     await processAgentAnswer(lease!, { model: async () => ({ text: '', toolCalls: [{ id: randomUUID(), name: 'prepare_material_share', arguments: JSON.stringify({
       project: '测试工地甲', room: '书房', kind: 'need', sourceMessageId: '', excerpt: text.split('：')[1],
     }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 100, outputTokens: 25 } }) });
@@ -81,7 +89,9 @@ test('legacy commands with personal-recipient wording stay private until the act
 test('a newer same-room grant from another owned consultation fences the previous preview', async () => {
   await preview();
   const other = new ConversationService(f.actor), cid = String((await other.create(randomUUID())).id);
-  await other.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '共享测试工地甲·书房需求：单人办公，以这次为准。' }] }, siteWatchInterceptor);
+  await preview(cid, '单人办公，以这次为准。');
+  await other.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '确认共享给项目团队。' }] }, siteWatchInterceptor);
+  assert.equal((await f.sources()).sources[0]?.text, '单人办公，以这次为准。');
   await assert.rejects(f.send('确认共享给项目团队。'), /context_changed/);
   assert.equal((await f.sources()).sources.length, 1); assert.equal((await f.sources()).sources[0].text, '单人办公，以这次为准。');
 });
@@ -100,7 +110,9 @@ test('two confirmations do not duplicate a grant and consent-source changes revo
 });
 test('a model cannot claim it shared or revoked data without the actual service receipt', async () => {
   const before = await withTenantTransaction(f.eid, tx => one(tx, sql`select count(*)::int n from app.domain_event_outbox where enterprise_id=${f.eid} and type='construction.material.shared.v1'`));
-  const sent = await f.send('把测试工地甲书房的这段资料给设计师看看。'), lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+  const sent = await f.send('把测试工地甲书房的这段资料给设计师看看。');
+  const lease = await claimJob({ enterpriseId: f.eid, runId: String(sent.runId) });
+  assert.equal(lease?.runId, sent.runId);
   await processAgentAnswer(lease!, { model: async () => ({ text: JSON.stringify({ kind: 'general', text: '已把资料发给设计师。' }), toolCalls: [],
     finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 100, outputTokens: 20 } }) });
   const run = await f.chat.run(String(sent.runId)); assert.equal(run.status, 'failed'); assert.equal(run.errorCode, 'unsupported_model_commitment');
@@ -114,7 +126,9 @@ test('an old private upload cannot be selected through a source-message argument
     where enterprise_id=${f.eid} and conversation_id=${f.conversationId} and client_message_id=${'media:' + key}`));
   await withTenantTransaction(f.eid, tx => appendMessage(tx, f.actor, f.conversationId, { author: 'user', clientMessageId: randomUUID(),
     content: { version: 1, blocks: [{ type: 'text', text: '先聊一下书房的其他安排。' }] } }));
-  const sent = await f.send('给设计师看看测试工地甲书房这张图。'), lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+  const sent = await f.send('给设计师看看测试工地甲书房这张图。');
+  const lease = await claimJob({ enterpriseId: f.eid, runId: String(sent.runId) });
+  assert.equal(lease?.runId, sent.runId);
   await processAgentAnswer(lease!, { model: async () => ({ text: '', toolCalls: [{ id: randomUUID(), name: 'prepare_material_share', arguments: JSON.stringify({
     project: '测试工地甲', room: '书房', kind: 'drawing', sourceMessageId: String(original!.id), excerpt: safeText(original!.content as MessageContent),
   }) }], finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 100, outputTokens: 25 } }) });

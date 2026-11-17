@@ -30,6 +30,7 @@ export const ALL_MENUS = [
   { key: 'enterprises', label: '企业管理' },
   { key: 'ai-providers', label: 'AI 供应商' },
   { key: 'llm-settings', label: 'LLM大模型配置' },
+  { key: 'assistant-worker', label: '小K Worker 启停' },
   { key: 'map-settings', label: '地图服务配置' },
   { key: 'media-storage', label: '媒体存储' },
   { key: 'mini-program-code-settings', label: '小程序码环境' },
@@ -74,6 +75,7 @@ export const MENU_PERMISSION_GROUPS: Array<{
       'enterprises',
       'ai-providers',
       'llm-settings',
+      'assistant-worker',
       'map-settings',
       'media-storage',
       'mini-program-code-settings',
@@ -125,8 +127,10 @@ export function getMenuLabel(key: string) {
 }
 
 /** Platform administrators inherit enterprise-owner management rights in the selected tenant. */
-export function isEnterpriseManagementRole(role: string | null | undefined) {
-  return role === 'enterprise_admin' || role === 'admin' || role === 'super_admin';
+export const ENTERPRISE_MANAGEMENT_ROLES = ['enterprise_admin', 'admin', 'super_admin'] as const;
+
+export function isEnterpriseManagementRole(role: string | null | undefined): role is typeof ENTERPRISE_MANAGEMENT_ROLES[number] {
+  return ENTERPRISE_MANAGEMENT_ROLES.some(managementRole => managementRole === role);
 }
 
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {

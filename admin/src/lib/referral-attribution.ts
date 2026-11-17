@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { getJwtSecretString } from '@/lib/jwt-secret';
 
 const TOKEN_PREFIX = 'prs_';
 const ACTIVITY_TOKEN_PREFIX = 'pas_';
@@ -34,17 +35,14 @@ export type PendingClaimSource = PendingReferralSource | PendingStaffActivitySou
 function sourceSecret() {
   const configured =
     process.env.REFERRER_PENDING_SOURCE_SECRET ||
-    process.env.REFERRER_TOKEN_SECRET ||
-    process.env.JWT_SECRET;
-  if (
-    process.env.NODE_ENV === 'production' &&
-    (!configured || Buffer.byteLength(configured, 'utf8') < 16)
-  ) {
-    throw new Error(
-      'REFERRER_PENDING_SOURCE_SECRET, REFERRER_TOKEN_SECRET, or JWT_SECRET must contain at least 128 bits'
-    );
+    process.env.REFERRER_TOKEN_SECRET;
+  if (configured) {
+    if (process.env.NODE_ENV === 'production' && Buffer.byteLength(configured, 'utf8') < 16) {
+      throw new Error('REFERRER_PENDING_SOURCE_SECRET or REFERRER_TOKEN_SECRET must contain at least 128 bits');
+    }
+    return configured;
   }
-  return configured || 'local_referral_pending_source_secret_32_bytes';
+  return getJwtSecretString();
 }
 
 function encryptionKey() {

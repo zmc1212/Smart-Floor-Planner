@@ -148,6 +148,10 @@ or a roadmap do not replace the current module inventory.
 
 ## Development Context And User Direction
 
+- On this workstation, use `G:/workspace/向总/Smart-Floor-Planner` on
+  `codex/xiaok-integration` for routine XiaoK development. Open its
+  `miniprogram/` in WeChat DevTools. Verify the checkout path and branch before
+  editing.
 - User instruction, 2026-11-05: automatic context-capacity chat creation and
   handoff are revoked. Continue in the current chat by default, including after
   automatic compaction. Do not create, fork or transfer to a successor chat

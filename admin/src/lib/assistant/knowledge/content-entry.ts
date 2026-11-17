@@ -6,8 +6,9 @@ import { fail, id } from '../contracts';
 import { ReferrerNetworkRepository } from '@/db/repositories/referrer-network-repository';
 import { sourceReady } from './sources';
 import { knowledgeTextAllowed } from './provenance';
+import { getJwtSecret } from '@/lib/jwt-secret';
 
-function secret() { if (!process.env.JWT_SECRET) fail('assistant_unavailable',503); return new TextEncoder().encode(process.env.JWT_SECRET); }
+function secret() { return getJwtSecret(); }
 /** Share tokens contain only published source identifiers, never a customer or conversation. */
 export async function contentChannel(tx:PostgresTransaction,enterpriseId:string,code:unknown) {
   if(code==null)return {kind:'company',enterpriseId};

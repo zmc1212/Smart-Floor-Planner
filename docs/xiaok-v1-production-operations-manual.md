@@ -48,11 +48,12 @@
 - `ASSISTANT_WORKER_ENDPOINT=http://admin:3005/api/internal/assistant/jobs/run`
 - `CRON_SECRET`
 - `ASSISTANT_WORKER_HEALTH_FILE=/shared/assistant-worker-health.json`（compose 已为 `admin` 与 `assistant-worker` 挂载同一 `assistant_health` 卷）
-- 试点门禁必须成对一致：
-  - `XIAOK_STAGE_REMINDER_MODE=pilot`、`XIAOK_STAGE_REMINDER_ENTERPRISE_ID`、`XIAOK_STAGE_REMINDER_PILOT_ID`
-  - `XIAOK_WEEKLY_REPORT_MODE=pilot`、`XIAOK_WEEKLY_REPORT_ENTERPRISE_ID`、`XIAOK_WEEKLY_REPORT_PILOT_ID`
+- 试点门禁由后台「平台管理中心 → 小K Worker 启停」页维护（表 `app.assistant_worker_settings`，版本化审计）。
+  - 首次保存前，可由 `XIAOK_STAGE_REMINDER_*` / `XIAOK_WEEKLY_REPORT_*` 成对提供初始 pilot 配置作为种子值。
+  - 保存过一次后以数据库最新版本为准；建议随后清空运行时 env 中的这六个变量，避免数据库不可读时回退到旧值。
+  - 后台只允许配置 pilot（企业 + pilot ID + 试点项目范围），不提供企业全域开关。
 
-任一缺失、不一致、pilot 不存在/未激活/为空或查询失败时，Worker 必须以退出码 2 停止，不得回退企业全量。
+未保存配置且 env 也未成对提供 pilot 时门禁关闭。门禁关闭、试点范围不存在/未激活/为空或查询失败时，Worker 保持常驻空转，不生成、不投递，也不得回退企业全量。
 
 ### 2.4 自有密钥初始化与运行时文件
 
@@ -114,26 +115,37 @@ psql -v ON_ERROR_STOP=1 -v app_password='...' -v migrator_password='...' \
 5. 执行 `deploy.sh`：先运行生产环境门禁，再创建迁移前备份，迁移器无待执行项时不重复迁移。
 6. 启动 `postgres`、`admin`、`lead-claim-worker`；等待健康检查与登录 smoke 通过。
 7. 首次启用 AI 知识前完成第 5 节映射/上传/索引/引用冒烟。
-8. `assistant-worker` 只在单独批准后按第 4 节启动；未批准时保持不启动。
+8. `assistant-worker` 容器在维护窗口按第 4.2 节启动；业务启停由第 4.1 节的后台开关控制。
 
 `deploy.sh` 不会启动 `assistant-worker`；该服务属于 compose `assistant` profile，默认不启动。
 
 ## 4. Worker 启停
 
-启动前：
-1. 确认 `CRON_SECRET`、试点企业/项目、共享健康文件均已配置。
-2. `GET /api/internal/assistant/jobs/preflight`：门禁必须 `open` 且 `deliveryScope=pilot`。
-3. 单独审批启动窗口；未批准外部通知时保持通知开关关闭。
+### 4.1 后台启停（常规方式）
 
-启动：`docker compose --profile assistant up -d assistant-worker`。
-停止：`docker compose --profile assistant stop assistant-worker`。
+1. 以平台超级管理员登录后台：平台管理中心 → 小K Worker 启停（`/assistant-worker`）。
+2. 填写试点企业 ID 与试点 ID，点击「加载企业与试点项目」，勾选试点项目范围并保存。
+3. 打开「启用 Assistant Worker」并保存。保存会新增一条版本记录（含操作人与时间），Worker 在下一次心跳自动生效，无需重启容器。
+4. 关闭开关后 Worker 进程保持常驻，但不再执行任何业务任务；健康检查显示 `idle` 而非失败。
 
-启动后检查：
-- 容器 healthcheck 通过；
-- `/shared/assistant-worker-health.json` 有 PID、时间、`lastSuccessAt`、`safetyGate`；
-- 门禁关闭或 preflight 不可达时进程以非零码退出，不得回退企业全量。
+权限与审计：仅 `super_admin` 可访问页面与 `/api/platform/assistant-worker`；每次保存都写入 `app.assistant_worker_settings` 新版本，历史版本保留。
 
-当前生产默认：`.env.production` 未设置任何 `XIAOK_STAGE_REMINDER_*`/`XIAOK_WEEKLY_REPORT_*`，门禁关闭；外部通知 `subscriptionMessagesEnabled` 未开启（平台默认配置版本 2、8 个模板、无该键）。
+### 4.2 容器启停（维护窗口）
+
+启用过后台开关后，容器本身仍需按批准窗口运行：
+
+- 启动：`docker compose --profile assistant up -d assistant-worker`
+- 停止：`docker compose --profile assistant stop assistant-worker`
+
+启动前建议确认 `GET /api/internal/assistant/jobs/preflight` 返回的 `deployment.source` 与 `safetyGate` 符合预期（`open` + `deliveryScope=pilot`，或明确 `worker_disabled`）。
+
+### 4.3 状态检查
+
+- 容器 healthcheck 通过；后台关闭时状态为 `idle`，其余关闭原因仍为 `blocked`。
+- `/shared/assistant-worker-health.json` 含 PID、时间、`lastSuccessAt`、`safetyGate`。
+- preflight 不可达、响应非法或缺少 `CRON_SECRET` 时进程以非零码退出；门禁关闭不会退出，也不会回退企业全量。
+
+当前生产默认：尚未在后台保存开关，且 `.env.production` 未设置 `XIAOK_STAGE_REMINDER_*`/`XIAOK_WEEKLY_REPORT_*`，门禁关闭；外部通知 `subscriptionMessagesEnabled` 未开启（平台默认配置版本 2、8 个模板、无该键）。
 
 ## 5. 知识库运营
 

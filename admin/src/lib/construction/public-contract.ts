@@ -13,6 +13,11 @@ export type PublicSourceInput = { kind: 'site_record' | 'consultation_message'; 
 export type PublicPhotoInput = { recordId: string; mediaId: string; masks: PublicMask[] };
 export type PublicMaterialInput = { name: string; cityCode: string; cityName: string; district: string; sources: PublicSourceInput[]; photos: PublicPhotoInput[]; designerId?: string };
 export type PublicContent = { name: string; cityCode: string; cityName: string; district: string; stageName: string;
+  /** Optional public style snapshot. It is derived on the server from the
+   * customer's shared renovation profile or the lead's AI design preference;
+   * it is never a free-form manual field and follows the same owner consent
+   * and enterprise review as every other published field. */
+  styleName?: string;
   excerpts: Array<{ role: string; text: string; date: string }>; sourceCount: number; photoCount: number;
   /** Optional enterprise-chosen public credit. The name is snapshotted so a
    * revoked or renamed staff record cannot silently rewrite published material. */
@@ -20,6 +25,14 @@ export type PublicContent = { name: string; cityCode: string; cityName: string; 
 export function noPublicPii(value: string) {
   if (/1[3-9]\d{9}|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\d{1,4}\s*(?:栋|幢|单元|号楼|室)/i.test(value)) fail('public_material_sensitive', 422);
   return value;
+}
+/** The public style is copied from customer-owned data, not typed by staff.
+ * The shared renovation profile wins because the customer confirmed it; the
+ * lead's AI design preference is only a fallback. A missing or sensitive value
+ * is not replaced with an invented style. */
+export function publicStyleName(profileStyle: string | null | undefined, leadStyle: string | null | undefined) {
+  const value = [profileStyle, leadStyle].map(item => typeof item === 'string' ? item.replace(/\s+/g, ' ').trim().slice(0, 40) : '').find(Boolean);
+  return value ? noPublicPii(value) : undefined;
 }
 export function publicMaterialInput(value: unknown): PublicMaterialInput {
   const v = object(value, ['name', 'cityCode', 'district', 'sources', 'photos', 'designerId']);

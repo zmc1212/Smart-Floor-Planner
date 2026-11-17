@@ -4,7 +4,7 @@
   <view class="content public-detail-content">
     <text wx:if="{{loading && !site}}" class="state">正在读取公开内容…</text>
     <view wx:if="{{error || publicError}}" class="state public-feedback" role="alert"><text>{{error || publicError}}</text><button class="outline" bindtap="refresh">重新读取</button><button class="book-link" bindtap="back">返回工地列表</button></view>
-    <block wx:if="{{site && !unavailable}}"><text class="page-title">{{site.name}}</text><view class="public-detail-meta"><text class="stage-tag">{{site.stageName}}</text><text class="helper">{{site.district}} · 业主授权公开</text></view>
+    <block wx:if="{{site && !unavailable}}"><text class="page-title">{{site.name}}</text><view class="public-detail-meta"><text class="stage-tag">{{site.stageName}}</text><text wx:if="{{site.styleName}}" class="stage-tag">{{site.styleName}}</text><text class="helper">{{site.district}} · 业主授权公开</text></view>
       <view class="public-photo-mat"><image wx:if="{{site.photos.length && publicPaths[site.photos[0].key]}}" src="{{publicPaths[site.photos[0].key]}}" mode="aspectFill" data-key="{{site.photos[0].key}}" bindtap="preview"/><view wx:else class="public-photo-empty">这一版没有公开现场照片。</view></view>
       <button wx:if="{{liveEntry}}" class="primary public-live-row" bindtap="watchLive"><image class="book-icon" src="../assets/notebook/video-white.png"/><text>观看工地直播 · {{liveEntry.alias}}</text><text>›</text></button>
       <view class="public-detail-tabs"><button class="{{tab === 'photos' ? 'fabric' : ''}}" data-tab="photos" bindtap="changeTab">现场进展</button><button class="{{tab === 'records' ? 'fabric' : ''}}" data-tab="records" bindtap="changeTab">小K服务记录</button></view>

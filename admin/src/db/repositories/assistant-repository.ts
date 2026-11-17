@@ -17,6 +17,23 @@ export async function rows<T = Row>(tx: PostgresTransaction, query: SQL): Promis
 export async function one<T = Row>(tx: PostgresTransaction, query: SQL): Promise<T | undefined> {
   return (await rows<T>(tx, query))[0];
 }
+
+export async function authorizeHandoffStaff(tx: PostgresTransaction, actor: ActorContext) {
+  if (actor.principal.kind !== 'admin' || !actor.capabilities.includes('assistant.handoff.staff')) {
+    fail('assistant_capability_forbidden', 403);
+  }
+  const staff = await one(tx, sql`select * from app.assistant_handoff_staff_identity(
+    ${actor.principal.adminId}::bigint, ${actor.enterpriseId}::bigint)`);
+  if (!staff) fail('assistant_capability_forbidden', 403);
+  if (actor.entry?.staffUserId) {
+    if (String(staff.user_id) !== actor.entry.staffUserId) fail('identity_context_invalid', 401);
+    const current = await one(tx, sql`select app.assistant_identity_is_current(
+      ${String(actor.entry.staffUserId)}::bigint, ${actor.contextVersion}::integer) as valid`);
+    if (!current?.valid) fail('identity_context_invalid', 401);
+  }
+  return staff;
+}
+
 /** All business access is through an explicitly scoped tenant transaction. */
 export class AssistantRepository {
   constructor(readonly tx: PostgresTransaction, readonly actor: ActorContext) {}
@@ -45,9 +62,7 @@ export class AssistantRepository {
         return;
       }
       if (a.capabilities.includes('assistant.handoff.staff')) {
-        const staff = await one(this.tx, sql`select id from app.admin_users where enterprise_id=${a.enterpriseId} and id=${a.principal.adminId}
-          and status='active' and role in ('designer','enterprise_admin') and must_change_password=false for share`);
-        if (!staff) fail('assistant_capability_forbidden',403);
+        await authorizeHandoffStaff(this.tx, a);
         return;
       }
       if (!a.capabilities.includes('assistant.preview.self')) fail('assistant_capability_forbidden',403);

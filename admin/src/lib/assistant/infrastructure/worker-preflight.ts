@@ -1,10 +1,12 @@
 import { withTenantTransaction } from '@/db/transaction';
 import { previewAssistantQueue, type AssistantQueuePreview } from './job-preview';
 import { previewWorkerSideEffects, type WorkerSideEffectsPreview } from './worker-side-effects';
-import { evaluateWorkerSafetyGate, type WorkerSafetyGate } from '@/lib/xiaok-v1/worker-safety-gate';
+import { type WorkerSafetyGate } from '@/lib/xiaok-v1/worker-safety-gate';
 import { checkPilotWorkerAlignment } from '@/lib/xiaok-v1/pilot-worker-alignment';
 import { resolvePilotScope, tenantPilotScopeRead,
   type PilotScopeResolutionStatus } from '@/lib/xiaok-v1/pilot-scope-resolver';
+import { resolveWorkerDeployment, type WorkerDeployment,
+  type WorkerRuntimeConfig } from '@/lib/xiaok-v1/worker-runtime-config';
 
 /** Read-only startup snapshot for the assistant Worker process.
  *
@@ -15,6 +17,12 @@ import { resolvePilotScope, tenantPilotScopeRead,
 export type AssistantWorkerPreflight = {
   checkedAt: string;
   safetyGate: WorkerSafetyGate;
+  /** Where the gate came from: the saved platform switch or, until the first
+   * save, the legacy deployment environment. */
+  deployment: {
+    source: 'database' | 'environment';
+    config: WorkerRuntimeConfig | null;
+  };
   alignment: {
     status: 'aligned' | 'mismatch' | 'invalid';
     mode: 'enterprise' | 'pilot' | null;
@@ -35,10 +43,14 @@ export type AssistantWorkerPreflight = {
 export async function assistantWorkerPreflight(input: {
   env?: Record<string, string | undefined>;
   now?: Date;
+  resolveWorkerDeployment?: () => Promise<WorkerDeployment>;
 } = {}): Promise<AssistantWorkerPreflight> {
-  const env = input.env ?? process.env;
+  const baseEnv = input.env ?? process.env;
   const now = input.now ?? new Date();
-  const safetyGate = evaluateWorkerSafetyGate(env);
+  const deployment = await (input.resolveWorkerDeployment
+    ?? (() => resolveWorkerDeployment({ env: baseEnv })))();
+  const env = deployment.env;
+  const safetyGate = deployment.gate;
   const alignment = checkPilotWorkerAlignment(env);
 
   let pilotScope: AssistantWorkerPreflight['pilotScope'] = null;
@@ -61,11 +73,12 @@ export async function assistantWorkerPreflight(input: {
   const scopedQueue = safetyGate.enterpriseId
     ? await previewAssistantQueue({ enterpriseId: safetyGate.enterpriseId, now })
     : null;
-  const sideEffects = await previewWorkerSideEffects({ env, now });
+  const sideEffects = await previewWorkerSideEffects({ env, now, deployment });
 
   return {
     checkedAt: now.toISOString(),
     safetyGate,
+    deployment: { source: deployment.source, config: deployment.config },
     alignment: {
       status: alignment.status, mode: alignment.mode,
       enterpriseId: alignment.enterpriseId, pilotId: alignment.pilotId,

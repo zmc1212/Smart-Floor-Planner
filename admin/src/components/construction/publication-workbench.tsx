@@ -9,7 +9,7 @@ import { constructionRequest, ConstructionRequestError, errorText } from './clie
 import { PublicLiveWorkbench } from './public-live-workbench';
 
 type Source = PublicSourceInput & { role: string; date: string; media: Array<{id:string;width:number;height:number}> };
-type Material = { id:string;versionId:string;revision:number;status:string;statusLabel:string;name:string;cityCode:string;district:string;stageName:string;reason:string;
+type Material = { id:string;versionId:string;revision:number;status:string;statusLabel:string;name:string;cityCode:string;district:string;stageName:string;styleName:string|null;reason:string;
   designer:{id:string;name:string}|null;
   sources:PublicSourceInput[];draftPhotos:PublicPhotoInput[];photos:Array<{id:string}>;excerpts:Array<{role:string;text:string;date:string}> };
 type View = { owner:boolean;manage:boolean;write:boolean;revision:number;unavailable:boolean;projectName:string;material:Material|null;sourceItems:Source[];designers:Array<{id:string;name:string}>;audits:Array<{action:string;reason:string;created_at:string}> };
@@ -92,10 +92,14 @@ export function PublicationWorkbench({projectId,identity}:{projectId:string;iden
       <Typography.Paragraph type="secondary" style={{margin:'4px 0 8px'}}>只列出本工地有效设计师且已有可推荐公开作品；访客询问设计师时优先展示此人，未设置则按风格/城市推荐。</Typography.Paragraph>
       <Select allowClear style={{width:'100%',marginBottom:16}} placeholder="不署名" disabled={disabled} value={draft.designerId||undefined}
         options={(view?.designers||[]).map(d=>({value:d.id,label:d.name}))} onChange={value=>edit({designerId:value||undefined})}/>
+      <Typography.Text>公开装修风格（自动）</Typography.Text>
+      <Typography.Paragraph type="secondary" style={{margin:'4px 0 16px'}}>
+        保存时自动取自客户已共享的装修画像，没有则用客户线索里的 AI 设计风格；后台不手填。{material?.styleName?'上一版：'+material.styleName:'当前没有可用的客户风格。'}
+      </Typography.Paragraph>
       <Alert type="warning" showIcon message="请逐张检查人物、门牌和联系方式，完成遮挡；文字中也需隐藏私人信息。"/>
       <Checkbox style={{marginTop:16}} checked={checked} disabled={busy||!!pending} onChange={e=>setChecked(e.target.checked)}>已核对全部节选与照片的公开范围和脱敏结果</Checkbox>
     </Card></Col><Col xs={24} lg={11}><Space direction="vertical" size={16} style={{width:'100%'}}><Card title="访客会看到" size="small" extra={<Tag color="green">预览</Tag>}>
-      <Typography.Title level={5} style={{marginTop:0}}>{draft.name||'待填写公开名称'}{material?.stageName?' · '+material.stageName:''}</Typography.Title><Typography.Paragraph type="secondary">{draft.district||'待选择公开片区'}</Typography.Paragraph>
+      <Typography.Title level={5} style={{marginTop:0}}>{draft.name||'待填写公开名称'}{material?.stageName?' · '+material.stageName:''}</Typography.Title><Typography.Paragraph type="secondary">{draft.district||'待选择公开片区'}{material?.styleName?' · '+material.styleName:''}</Typography.Paragraph>
       {draft.sources.map(s=><Typography.Paragraph key={sourceKey(s)} style={{whiteSpace:'pre-wrap'}}>{view?.sourceItems.find(a=>sourceKey(a)===sourceKey(s))?.role||material?.excerpts[draft.sources.indexOf(s)]?.role}：{s.text}</Typography.Paragraph>)}
       <Row gutter={[8,8]}>{draft.photos.map((p,i)=><Col span={12} key={p.mediaId}>{dirty?maskedPhoto(p,photoUrl(p)):<img src={preparedUrl(i)} alt="独立脱敏后的公开照片" style={{width:'100%',borderRadius:8}}/>}</Col>)}</Row>
       <Typography.Paragraph type="secondary" style={{marginTop:12}}>现场照片 {draft.photos.length} 张 · 服务节选 {draft.sources.length} 条{draft.designerId?' · 公开署名设计师 '+(view?.designers.find(d=>d.id===draft.designerId)?.name||''):''}</Typography.Paragraph><Alert type="warning" showIcon message="不包含业主姓名、电话、门牌或完整私聊"/>

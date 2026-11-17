@@ -72,7 +72,7 @@ before(async () => {
     for (const role of ['admin','super_admin']) platformIds.push(String((await one(tx, sql`insert into app.admin_users(username,password_hash,role,status,must_change_password) values(${prefix+role},'test-only',${role},'active',false) returning id`))!.id));
     designer = String((await one(tx, sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,must_change_password,display_name) values(${eids[0]},${prefix+'designer'},'test-only','designer','active',false,'隔离设计师') returning id`))!.id); aids.push(designer);
     for (const label of ['owner','visitor']) uids.push(String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix+label},1) returning id`))!.id));
-    lid = String((await one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source) values(${eids[0]},${uids[0]},'私有业主姓名','13980001234','natural') returning id`))!.id);
+    lid = String((await one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source,style_preference) values(${eids[0]},${uids[0]},'私有业主姓名','13980001234','natural','现代简约') returning id`))!.id);
   });
   customer = { enterpriseId: eids[0], principal: { kind: 'user', userId: uids[0] }, contextVersion: 1, capabilities: ['assistant.chat.self'], entry: { kind: 'lead', id: lid } };
   visitor = { ...customer, principal: { kind: 'user', userId: uids[1] }, entry: { kind: 'identity' } };
@@ -103,7 +103,8 @@ test('originals stay private; tenant/visitor isolation and independent masked im
   assert.deepEqual((await catalog.list()).items, []); await assert.rejects(new PublicMaterialService({ enterpriseId: eids[1], adminId: aids[1] }).read(pid));
   assert.throws(() => new PublicCustomerService({ ...customer, principal: { kind: 'admin', adminId: aids[0] } }, cid));
   state = await draft(); const view = await materials.read(pid), m = view.material as Row;
-  assert.equal(state.status, 'draft'); assert.deepEqual((await catalog.list()).items, []);
+  assert.equal(state.status, 'draft'); assert.equal(m.styleName, '现代简约');
+  assert.deepEqual((await catalog.list()).items, []);
   const media = await materials.media(pid, String((m.photos as Row[])[0].id), String(state.versionId));
   assert.equal((await sharp(media.data).metadata()).exif, undefined);
   const pixel = await sharp(media.data).extract({ left: 10, top: 10, width: 1, height: 1 }).raw().toBuffer(); assert.ok(pixel[0] < 50 && pixel[1] < 50);
@@ -137,7 +138,7 @@ test('public company entry resumes only the visitor own unambiguous consultation
   await assert.rejects(entryContext({userId:uids[1],contextVersion:0,enterpriseId:undefined},{publicEnterpriseId:eids[0]}));
 });
 
-test('authorized device region finds real published nearby sites without any spoken city and never widens districts', async () => {
+test('authorized device region finds nearby sites; a district without data falls back to the same city only', async () => {
   const created = await new ConversationService(visitor).create(randomUUID()), cid = String(created.id);
   const location = new LocationService(visitor, cid, { config: async () => ({ key: 'synthetic', signingKey: '', license: '', validUntil: '', dailyLimit: 100 }),
     resolve: async () => ({ cityCode: '420500', cityName: '宜昌市', district: '伍家岗区', source: 'wechat_location', resolvedAt: new Date().toISOString() }) });
@@ -145,8 +146,17 @@ test('authorized device region finds real published nearby sites without any spo
   const service = new PublicCustomerService(visitor, cid), result = await service.recommendations();
   assert.equal(result.needRegion, false); assert.equal(result.items.length, 1); assert.equal(result.items[0].id, String(state.id));
   assert.ok(result.items.every(s => s.cityCode === '420500' && s.district === '伍家岗区'));
+  assert.equal(result.scope, 'district'); assert.equal(result.districtFallback, false);
+  assert.deepEqual((await catalog.list('420500', '伍家岗区')).items.map(s => s.id), [String(state.id)]);
+  assert.equal((await catalog.list('420500', '伍家岗区')).districtFallback, false);
   await withTenantTransaction(eids[0], tx => tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{nearbyRegion,district}','"西陵区"'::jsonb) where enterprise_id=${eids[0]} and id=${cid}`));
-  assert.equal((await service.recommendations()).items.length, 0);
+  const fallback = await service.recommendations();
+  assert.equal(fallback.items.length, 1); assert.equal(fallback.items[0].id, String(state.id));
+  assert.ok(fallback.items.every(s => s.cityCode === '420500'));
+  assert.equal(fallback.scope, 'city'); assert.equal(fallback.districtFallback, true);
+  const listed = await catalog.list('420500', '西陵区');
+  assert.deepEqual(listed.items.map(s => s.id), [String(state.id)]); assert.equal(listed.districtFallback, true); assert.equal(listed.scope, 'city');
+  assert.deepEqual((await catalog.list('330100', '西湖区')).items, []);
   await location.clear(); assert.equal((await service.recommendations()).needRegion, true);
 });
 

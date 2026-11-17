@@ -131,6 +131,19 @@ test('unknown confirmation retries original body/key, and concurrent taps share 
   assert.equal(confirms[1].body.fields.budget, '25万'); assert.equal(c.state.confirmed, true);
 });
 
+test('a previous app version’s pending profile share cannot become a private review write', async () => {
+  const f = fixture(), c = f.create();
+  await c.show('11');
+  c.client.pending.set('requirements:11', {
+    path: '/conversations/11/requirements', key: 'old-share-key', body: { action: 'share_profile', leadId: '42' },
+  });
+  await c.show('11');
+  assert.equal(c.state.pending, '');
+  assert.equal(await c.act('share_profile'), false);
+  assert.equal(await c.act('confirm'), true);
+  assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/requirements')).at(-1).body.action, 'confirm');
+  assert.equal(f.calls.some(call => call.body?.action === 'share_profile'), false);
+});
 test('stale confirmation requires refresh from conversation; read-only cannot mutate', async () => {
   const f = fixture(), c = f.create(); await c.show('11');
   f.intercept(call => { if (call.body.action === 'confirm') throw { code: 'requirements_stale', statusCode: 409 }; });

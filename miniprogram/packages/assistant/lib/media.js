@@ -1,4 +1,5 @@
 const api = require('../../../utils/api');
+const nativePreview = require('../../../utils/native-preview');
 const { AssistantClient, errorCopy } = require('./client');
 
 // Private media is downloaded with the current bearer token, never a public URL.
@@ -96,7 +97,7 @@ class MediaController {
       const result = await this.download('/miniprogram/assistant' + this.base + '/media/' + id, { suppressUnauthorized: true });
       this.paths.push(result.tempFilePath);
       if (!this.valid(epoch)) { this.cleanPaths(); return; }
-      wx.previewImage({ urls: [result.tempFilePath], current: result.tempFilePath });
+      nativePreview.previewImage({ urls: [result.tempFilePath], current: result.tempFilePath });
     } catch (e) { if (this.valid(epoch)) this.emit({ mediaError: errorCopy(e) }); }
   }
   async thumbnail(id) {

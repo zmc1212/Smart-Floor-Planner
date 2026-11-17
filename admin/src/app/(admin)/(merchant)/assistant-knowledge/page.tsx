@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import { Alert, Button, Drawer, Result, Skeleton, Space, Tabs, Tag } from 'antd';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { isEnterpriseManagementRole } from '@/lib/admin-user-roles';
 import { hasAssistantKnowledgeAccess } from '@/lib/assistant/access';
 import { assistantError, assistantRequest, audienceLabels, formatTime, statusLabels } from '@/components/assistant/client';
 import type { Audience, KnowledgeDocument } from '@/components/assistant/contracts';
@@ -66,6 +67,6 @@ function KnowledgeWorkbench({ canHandoff, canUsage }: { canHandoff: boolean; can
 export default function AssistantKnowledgePage() {
   const { user, isLoading, error } = useCurrentUser();
   return <div className="admin-page-frame"><PageContainer title="小 K 知识库" subTitle="维护企业资料，核对回答依据" breadcrumbRender={false} className="admin-page-container">
-    {isLoading ? <Skeleton active /> : error ? <Result status="error" title="登录信息读取失败" extra={<Button onClick={() => window.location.reload()}>重新加载</Button>} /> : !hasAssistantKnowledgeAccess(user?.role, user?.effectivePermissions) ? <Result status="403" title="尚未获得小 K 知识管理权限" subTitle="平台管理员、超级管理员及企业明确授权的负责人可维护知识和访问本人试问。" /> : !user?.enterpriseId?._id ? <Result status="info" title="请先选择企业" subTitle="通过侧栏顶部的企业选择器选择一家企业，再查看和维护该企业的小 K 知识。" /> : <KnowledgeWorkbench canHandoff={user?.role === 'enterprise_admin'} canUsage={user?.role==='enterprise_admin'&&Boolean(user?.effectivePermissions?.includes('assistant-usage'))} key={`${user?._id}:${user?.enterpriseId?._id}`} />}
+    {isLoading ? <Skeleton active /> : error ? <Result status="error" title="登录信息读取失败" extra={<Button onClick={() => window.location.reload()}>重新加载</Button>} /> : !hasAssistantKnowledgeAccess(user?.role, user?.effectivePermissions) ? <Result status="403" title="尚未获得小 K 知识管理权限" subTitle="平台管理员、超级管理员及企业明确授权的负责人可维护知识和访问本人试问。" /> : !user?.enterpriseId?._id ? <Result status="info" title="请先选择企业" subTitle="通过侧栏顶部的企业选择器选择一家企业，再查看和维护该企业的小 K 知识。" /> : <KnowledgeWorkbench canHandoff={isEnterpriseManagementRole(user.role)} canUsage={user?.role==='enterprise_admin'&&Boolean(user?.effectivePermissions?.includes('assistant-usage'))} key={`${user?._id}:${user?.enterpriseId?._id}`} />}
   </PageContainer></div>;
 }

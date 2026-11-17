@@ -1,4 +1,5 @@
 const createChat = require('./chat-definition');
+const nativePreview = require('../../../utils/native-preview');
 const definition = createChat();
 const lifecycle = new Set(['data', 'onLoad', 'onShow', 'onHide', 'onUnload', 'onResize', 'onShareAppMessage']);
 const methods = Object.fromEntries(Object.entries(definition).filter(([key]) => !lifecycle.has(key)));
@@ -22,8 +23,15 @@ Component({
     detached() { definition.onUnload.call(this); },
   },
   pageLifetimes: {
-    show() { this._hostVisible = true; this.syncVisibility(); },
-    hide() { this._hostVisible = false; this.syncVisibility(); },
+    show() {
+      this._hostVisible = true;
+      if (nativePreview.shownAfterPreview(nativePreview.currentPage())) return;
+      this.syncVisibility();
+    },
+    hide() {
+      if (nativePreview.hiddenByPreview(nativePreview.currentPage())) return;
+      this._hostVisible = false; this.syncVisibility();
+    },
     resize() { definition.onResize.call(this); },
   },
   methods: {

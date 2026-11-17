@@ -73,7 +73,7 @@ export async function persistNeedWrites(tx: PostgresTransaction, actor: ActorCon
       where enterprise_id=${actor.enterpriseId} and id=${String(conversation.id)}`);
     for (const fact of changedFacts) await recordNeedIssueSupplement(tx, actor, conversation, fact);
     await recordDelegationRequirements(tx, actor, String(conversation.id), operation.sourceMessageId, `${operation.runId}:${sequence}`, changedFacts, reply);
-    await saveAutomaticRequirements(repository, String(conversation.id));
+    await saveAutomaticRequirements(repository, String(conversation.id), operation.sourceMessageId);
     const scope = await privateMemoryScope(tx, actor, conversation);
     if (scope && changedFacts.length) {
       await new MemoryService(tx, scope).rememberNeeds(operation.sourceMessageId, changedFacts);

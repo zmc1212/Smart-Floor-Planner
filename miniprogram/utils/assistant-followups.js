@@ -40,7 +40,7 @@ function projectForView(p, context, report) {
 }
 function reportForView(report, context, projectId = '', now = Date.now()) {
   const selected = projectId && report.facts?.projects?.find(p => p.id === projectId);
-  if (!report.available || projectId && !selected) return { reportId: report.reportId, revision: report.revision, selectedProjectId: projectId, available: false, title: '这份简报已不可用', stateLabel: '来源或权限已变化' };
+  if (!report.available || projectId && !selected) return { reportId: report.reportId, revision: report.revision, selectedProjectId: projectId, available: false, title: '这份简报暂时看不了了', stateLabel: '可能是权限有调整，或简报已更新，刷新试试。' };
   if (projectId) report = { ...report, selectedProjectId: projectId, facts: { ...report.facts, projects: [selected] } };
   const kindLabel = { daily: '施工日报', weekly: '施工周报', stage: '阶段提醒' }[report.kind] || '施工简报';
   const projects = (report.facts?.projects || []).map(p => {

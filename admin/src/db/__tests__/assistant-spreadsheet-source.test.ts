@@ -5,7 +5,8 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction, withPlatformTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import { readOriginal } from '@/lib/assistant/knowledge/file-service';
@@ -42,11 +43,12 @@ function formulaFile() {
   const entries = syntheticXlsxEntries(); entries['xl/worksheets/sheet1.xml'] = entries['xl/worksheets/sheet1.xml'].replace('<v>2</v>', '<f>1+1</f><v>999</v>'); return syntheticZip(entries);
 }
 before(async () => {
-  const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
+  useLocalKnowledgeTestDatabase();
   await withPlatformTransaction(async tx => {
     for (let i = 0; i < 2; i++) tenants.push(String((await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));
     eid = tenants[0];
-    await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${eid},true,1000,12000000,1000000000,30)`);
+    await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
+      values(${eid},true,1000,12000000,1000000000,30,'{"enterpriseKnowledgeEnabled":true}'::jsonb)`);
     aid = String((await one(tx, sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password) values(${eid},${prefix},'unusable-synthetic','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!.id);
     uid = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!.id);
     await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${uid},${prefix})`);
@@ -245,7 +247,7 @@ test('K08 withdrawal during XLSX parsing fences the late result and never saves 
 });
 
 test('K08 persisted customer citations expose XLSX originals/ranges, then revoke on withdrawal with no construction effects', async () => {
-  const sent = await customer.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: 'TEST-A材料合成示例厚度与地暖前提' }] });
+  const sent = await customer.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '这份表格原文里，TEST-A 示例厚度是多少，地暖有什么前提？' }] });
   const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
   const model: TextModelGateway = { capabilities: { streaming: false, toolCalling: false, usage: false }, generate: async data => {
     const evidence = JSON.parse(data.messages[1].content).evidence;

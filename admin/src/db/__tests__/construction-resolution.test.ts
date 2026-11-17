@@ -5,7 +5,8 @@ import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { xiaokTestDatabase } from './xiaok-test-database';
 import { ConstructionService } from '@/lib/construction/service';
 import { SiteChatService } from '@/lib/construction/site-chat';
 import { PlanCustomerService } from '@/lib/construction/site-plans';
@@ -80,7 +81,8 @@ const media = (f: Fixture, conversationId = cid, actor = chat.actor) => withTena
 });
 
 before(async()=>{
-  const target=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(target.port,'55432');assert.equal(target.pathname,'/xiaok_embedding_eval');
+  xiaokTestDatabase();
+  process.env.ASSISTANT_REQUESTS_PER_MINUTE = '1000';
   await withPlatformTransaction(async tx=>{
     for(let n=0;n<2;n++){eids.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+n},${prefix+n},'active') returning id`))!.id));await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${eids[n]},true,200,12000000,1000000000,30)`);}
     for(const [i,role] of ['enterprise_admin','designer','construction_staff','construction_staff','construction_staff'].entries())admins.push(String((await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,must_change_password,display_name) values(${eids[0]},${prefix+i},'synthetic-only',${role},'active',false,${'合成成员'+i}) returning id`))!.id));

@@ -21,7 +21,7 @@ test('lead detail shows protected floor-plan preview and house facts after surve
   assert.match(script, /staffRole === 'enterprise_admin'/);
   assert.match(script, /fetchProtectedImage/);
   assert.match(script, /resolveProtectedPreviewEndpoint/);
-  assert.match(script, /wx\.previewImage/);
+  assert.match(script, /nativePreview\.previewImage/);
   assert.doesNotMatch(script, /onPreviewFloorPlan[\s\S]*surveying-editor/);
 });
 

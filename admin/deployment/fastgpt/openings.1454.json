@@ -5,7 +5,7 @@
     "site.public": {
       "appId": "6af27edb3a245855a926e011",
       "audience": "customer",
-      "input": ["name", "cityName", "district", "stageName", "excerpts", "photoCount", "designerName"],
+      "input": ["name", "cityName", "district", "stageName", "styleName", "excerpts", "photoCount", "designerName"],
       "constraints": { "minChars": 8, "maxChars": 140 }
     }
   }

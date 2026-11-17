@@ -5,7 +5,6 @@ import { fail, id, key, type ActorContext } from '@/lib/assistant/contracts';
 import { idempotent } from '@/lib/assistant/core/conversation';
 import { signFamilyInvite, type FamilyInvitePayload } from '@/lib/miniprogram-jwt';
 import { object } from './contracts';
-import { collaborationEnabled } from './collaboration-scope';
 import {
   familyAggregateId,
   familyGrantAggregate,
@@ -92,7 +91,9 @@ export async function customerConstructionProjects(
 
 export class CustomerProjectProgress {
   constructor(private readonly actor: ActorContext) {
-    if (actor.principal.kind !== 'user' || !collaborationEnabled(actor.enterpriseId)) fail('construction_not_found', 404);
+    // Family progress and live-only viewing are customer features authorized by
+    // the project owner, not projections of the cross-role collaboration slice.
+    if (actor.principal.kind !== 'user') fail('construction_not_found', 404);
   }
 
   private scoped<T>(projectId: string, write: boolean,

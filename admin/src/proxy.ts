@@ -7,6 +7,7 @@ import { constructionRouteAllowed } from '@/lib/construction/route-access';
 
 const ROUTE_PERMISSIONS: Record<string, string> = {
   '/construction-projects': 'construction-projects',
+  '/construction-video-settings': 'construction-projects',
   '/api/construction': 'construction-projects',
   '/case-publishing': 'case-publishing',
   '/api/portfolio': 'case-publishing',
@@ -22,6 +23,8 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/ai-models': 'ai-providers',
   '/ai-presets': 'ai-presets',
   '/llm-settings': 'llm-settings',
+  '/assistant-worker': 'assistant-worker',
+  '/api/platform/assistant-worker': 'assistant-worker',
   '/map-settings': 'map-settings',
   '/media-storage': 'media-storage',
   '/sms-settings': 'sms-settings',
@@ -240,6 +243,11 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/', request.url));
     }
     if ((pathname.startsWith('/portfolio-templates') || pathname.startsWith('/api/platform/portfolio-templates')) && role !== 'super_admin' && role !== 'admin') {
+      return pathname.startsWith('/api/') ? NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }) : NextResponse.redirect(new URL('/', request.url));
+    }
+    // The Worker switch controls deployment-wide generation and delivery, so it
+    // stays with the platform super admin only (not platform admins).
+    if ((pathname.startsWith('/assistant-worker') || pathname.startsWith('/api/platform/assistant-worker')) && role !== 'super_admin') {
       return pathname.startsWith('/api/') ? NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }) : NextResponse.redirect(new URL('/', request.url));
     }
 

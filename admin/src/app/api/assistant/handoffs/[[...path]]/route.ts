@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTenantRoute } from '@/lib/tenant-route';
+import { ENTERPRISE_MANAGEMENT_ROLES } from '@/lib/admin-user-roles';
 import { GuidanceSettingsService } from '@/lib/assistant/requirements/guidance-settings';
 import { handleHandoff, handoffError } from '@/lib/assistant/handoff/http';
 export const runtime='nodejs';
 async function handle(request:NextRequest,context:{params:Promise<{path?:string[]}>}) {
-  return withTenantRoute(request,{roles:['enterprise_admin'],requireEnterprise:true},async actor=>{
+  return withTenantRoute(request,{roles:[...ENTERPRISE_MANAGEMENT_ROLES],requireEnterprise:true},async actor=>{
     try {
       await new GuidanceSettingsService(actor.enterpriseId!,actor.userId).execute();
       const data=await handleHandoff(request,(await context.params).path||[],{enterpriseId:actor.enterpriseId!,principal:{kind:'admin',adminId:actor.userId},contextVersion:0,capabilities:['assistant.handoff.staff']});

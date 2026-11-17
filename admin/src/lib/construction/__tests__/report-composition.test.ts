@@ -29,6 +29,30 @@ test('report wording uses the existing exact citation catalog and preserves ever
   assert.equal(body.projects[0].selection.cutoffAt, selection.cutoffAt);
   assert.deepEqual(reportFinalTool(['9']).parameters.required, ['projects']);
 });
+test('report prompt restates standards and record fields without receipt wording', () => {
+  const system = reportMessages({}, [project])[0].content.map(part => part.type === 'text' ? part.text : '').join('\n');
+  assert.match(system, /保证……安全/);
+  assert.match(system, /企业标准原文本身含这些保证性表述，不要逐字引用该句/);
+  assert.match(system, /记录里写的是：现场交接为完成/);
+  const recordSafe = { projects: [{ projectId: '9',
+    progress: section('记录里写的是：厨房已穿线，插座位置仍待业主核对。', 0),
+    pending: section('插座位置仍待业主核对。', 0),
+    standards: section('铺设线路之前，应先核对插座位置。', 1),
+    arrangements: section('记录里写的是：本次没有可引用的后续安排。') }] };
+  assert.doesNotThrow(() => parseReportBody(JSON.stringify(recordSafe), [project]));
+  const safetyText = '厨房卫生间单放专线4m²，保证该区域大功率设备安全使用。';
+  const safetySource = { sourceId: 'K200', kind: 'knowledge' as const, title: '企业已发布标准', text: safetyText };
+  const safetyProject = { ...project, context: { ...context, sources: [...context.sources, safetySource] } };
+  const citationId = sourceCitationCatalog(safetySource)[0].citationId;
+  const body = (standardText: string) => ({ projects: [{ projectId: '9',
+    progress: section('厨房已穿线，插座位置仍待业主核对。', 0),
+    pending: section('插座位置仍待业主核对。', 0),
+    standards: { kind: 'synthesis', segments: [{ basis: 'evidence', text: standardText, citations: [{ citationId }] }] },
+    arrangements: section('本次没有可引用的后续安排。') }] });
+  assert.throws(() => parseReportBody(JSON.stringify(body(safetyText)), [safetyProject]), /unsupported_model_commitment/);
+  assert.doesNotThrow(() => parseReportBody(JSON.stringify(body(
+    '企业标准要求厨卫单放专线4m²，以降低大功率设备使用时的安全风险。')), [safetyProject]));
+});
 test('guidance-only final cannot author arrangements and inserts the exact authorized workmanship excerpt', async () => {
   const tool = reportGuidanceFinalTool([project]);
   const exact = sourceCitationCatalog(context.sources[1])[0];

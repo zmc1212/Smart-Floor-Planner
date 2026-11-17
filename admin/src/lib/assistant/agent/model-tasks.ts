@@ -36,19 +36,16 @@ const terminal = new Set(['completed','failed','expired','cancelled']);
  * sync; no real-time loop or additional Agent/knowledge orchestration is added. */
 export class ModelTaskService {
   constructor(readonly actor: { enterpriseId: string; adminId: string }, readonly ports: ModelTaskPorts = defaultPorts) {}
-  private async authorize(tx: PostgresTransaction) {
-    const url = new URL(process.env.DATABASE_URL || 'http://invalid');
-    if (process.env.NODE_ENV === 'production' || !['localhost','127.0.0.1'].includes(url.hostname)
-      || url.port !== '55432' || url.pathname !== '/xiaok_embedding_eval') fail('model_tasks_isolated_development_only',403);
-    // Reuse the existing current-manager guard, including selected-enterprise
-    // platform administrators, active identity and the existing menu boundary.
-    await authorizeKnowledgeManager(tx,this.actor.enterpriseId,this.actor.adminId);
-  }
   private scoped<T>(fn: (tx: PostgresTransaction) => Promise<T>) {
-    const url = new URL(process.env.DATABASE_URL || 'http://invalid');
-    if (process.env.NODE_ENV === 'production' || !['localhost','127.0.0.1'].includes(url.hostname)
-      || url.port !== '55432' || url.pathname !== '/xiaok_embedding_eval') fail('model_tasks_isolated_development_only',403);
-    return withTenantTransaction(this.actor.enterpriseId,async tx => { await this.authorize(tx); return fn(tx); });
+    const url = URL.parse(process.env.DATABASE_URL ?? '');
+    const port = process.env.NODE_ENV === 'test' ? process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55432' : '55432';
+    if (process.env.NODE_ENV === 'production' || !url || !['postgresql:', 'postgres:'].includes(url.protocol)
+      || url.search || !['localhost','127.0.0.1'].includes(url.hostname) || url.port !== port
+      || url.pathname !== '/xiaok_embedding_eval') fail('model_tasks_isolated_development_only',403);
+    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+      await authorizeKnowledgeManager(tx, this.actor.enterpriseId, this.actor.adminId);
+      return fn(tx);
+    });
   }
   private async owned(tx: PostgresTransaction, taskId: string, lock = false) {
     const task = await one(tx,sql`select * from app.assistant_model_tasks where enterprise_id=${this.actor.enterpriseId}

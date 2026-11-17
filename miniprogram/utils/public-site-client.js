@@ -1,4 +1,5 @@
 const api = require('./api');
+const nativePreview = require('./native-preview');
 const ID = /^[1-9]\d{0,18}$/;
 function validId(value) { return ID.test(String(value || '')); }
 function publicPath(eid, suffix) {
@@ -60,7 +61,7 @@ class PublicMedia {
     const item = this.wanted.find(w => w.key === key); if (!item) return;
     const epoch = this.epoch, session = this.identity();
     try { const result = await this.download(item.path, { suppressUnauthorized: true }); if (epoch !== this.epoch || session !== this.identity()) { this.unlink(result.tempFilePath); return; }
-      this.unlink(this.paths[key]); this.paths[key] = result.tempFilePath; this.emit({ publicPaths: { ...this.paths } }); wx.previewImage({ urls: [result.tempFilePath], current: result.tempFilePath });
+      this.unlink(this.paths[key]); this.paths[key] = result.tempFilePath; this.emit({ publicPaths: { ...this.paths } }); nativePreview.previewImage({ urls: [result.tempFilePath], current: result.tempFilePath });
     } catch (error) {
       if (epoch !== this.epoch || session !== this.identity()) return;
       const revoked = [401, 403, 404].includes(error.statusCode);

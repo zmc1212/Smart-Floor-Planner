@@ -39,16 +39,19 @@ camera binding with view-only access for its demo owner. The owner video entry,
 staff session and anonymous rejection were verified. WVP reported the channel
 offline and the live attempt returned `502`. Playback remains unverified.
 
-After a release or rollback recreates `smart-floor-planner-admin`, check its
-Docker networks and reattach it to WVP if needed:
+The release Compose file declares `sfp-wvp-cloud_default` as an external network for Admin, so `deploy.sh` recreates Admin with the attachment already in place. For older release packages that predate this declaration, `deploy.sh` and `auto_deploy.sh` also verify and reattach the network after both deploy and rollback. Reattachment only touches the Admin container; it never restarts the camera gateway, WVP, or ZLM. Override the network name with `SFP_CAMERA_NETWORK` (or the same variable in the runtime env file).
+
+Verify after a release or rollback:
 
 ```sh
-docker network connect sfp-wvp-cloud_default smart-floor-planner-admin
+docker inspect smart-floor-planner-admin \
+  --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}'
 curl -fsS http://127.0.0.1:33418/camera-gateway-health
 ```
 
-The current release Compose file does not manage that attachment. Verify the
-authorized video entry after reattaching. The pre-seed database archive and
+A failed reattachment only warns and never blocks the release; verify the authorized video entry manually in that case.
+
+The pre-seed database archive and
 prior camera configuration are under
 `/datas/smartfloor/backups/tenant1-demo-20261113/`. To undo the camera routing,
 restore the prior Nginx snippet and remove the production camera map, then run

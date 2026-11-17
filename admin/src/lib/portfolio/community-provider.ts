@@ -3,6 +3,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { AssistantError, fail, fingerprint } from '@/lib/assistant/contracts';
 import { cityCode, inCity, shortText } from './contracts';
 import { cityNameFor } from './regions';
+import { getJwtSecret } from '@/lib/jwt-secret';
 
 export type CommunityPoi = { poiId: string; name: string; cityCode: string; cityName: string; district: string; address: string };
 export type CommunityProviderConfig = { key: string; signingKey: string; license: string; validUntil: string; dailyLimit: number; providerKey?: string; configRevision?: number };
@@ -72,7 +73,7 @@ export class AmapCommunityProvider {
     return poi;
   }
 }
-function tokenSecret() { if (!process.env.JWT_SECRET) fail('community_provider_unconfigured', 503); return new TextEncoder().encode(process.env.JWT_SECRET); }
+function tokenSecret() { return getJwtSecret(); }
 export async function candidateToken(enterpriseId: string, adminId: string, poi: CommunityPoi, providerKey = 'amap', configRevision?: number) {
   return new SignJWT({ enterpriseId, providerKey, configRevision, name: poi.name, city: poi.cityCode, poiId: poi.poiId, hash: fingerprint(poi) }).setProtectedHeader({ alg: 'HS256' }).setAudience('portfolio-community').setSubject(adminId).setIssuedAt().setExpirationTime('5m').sign(tokenSecret());
 }

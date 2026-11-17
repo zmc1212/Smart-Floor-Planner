@@ -4,11 +4,11 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { one } from '@/db/repositories/assistant-repository';
 import { fail, id } from '@/lib/assistant/contracts';
 import { workContent } from './contracts';
+import { getJwtSecret } from '@/lib/jwt-secret';
 
 export type PortfolioEntry = { enterpriseId: string; workId: string; versionId: string; authorId: string };
 function secret() {
-  if (!process.env.JWT_SECRET) fail('assistant_unavailable', 503);
-  return new TextEncoder().encode(process.env.JWT_SECRET);
+  return getJwtSecret();
 }
 // A forwarding link identifies published content, never its viewer or consultation.
 export async function createPortfolioEntry(entry: PortfolioEntry) {

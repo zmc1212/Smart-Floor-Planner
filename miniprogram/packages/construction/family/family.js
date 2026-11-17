@@ -46,6 +46,7 @@ Page({
     inviteToken: '',
     inviteExpiresAt: '',
     inviteError: '',
+    inviteLoading: false,
     viewers: [],
     viewerLoading: false,
     viewerError: '',
@@ -144,6 +145,7 @@ Page({
       inviteToken: '',
       inviteExpiresAt: '',
       inviteError: '',
+      inviteLoading: false,
       viewers: [],
       viewerError: '',
     });
@@ -192,9 +194,9 @@ Page({
   },
 
   async createInvite(generation) {
-    if (this.data.role !== 'owner' || !this.data.projectId) return;
+    if (this.data.role !== 'owner' || !this.data.projectId || this.data.inviteLoading) return;
     const g = generation || this._generation;
-    this.setData({ inviteError: '' });
+    this.setData({ inviteError: '', inviteLoading: true });
     try {
       const result = await api.request(
         '/miniprogram/construction/projects/' + this.data.projectId + '/family-invite',
@@ -208,6 +210,8 @@ Page({
       });
     } catch (error) {
       if (g === this._generation) this.setData({ inviteError: errorText(error) });
+    } finally {
+      if (g === this._generation) this.setData({ inviteLoading: false });
     }
   },
 

@@ -50,7 +50,7 @@ export async function reportBodyView(tx: PostgresTransaction, actor: ActorContex
           ? `${citation.title} · 记录${citation.original.id}（版本${citation.original.version}）`
           : citation.location ? `${citation.title} · ${citation.location.label}` : citation.title))];
         return { key: `${kind}:${i}`, basis: s.basis, citationStatus: rejected ? 'rejected' : citations.length ? 'verified' : 'none',
-          text: (s.basis === 'advice' ? '建议：' : s.basis === 'uncertainty' ? '待核实：' : '')
+          text: (s.basis === 'advice' ? '小K建议：' : s.basis === 'uncertainty' ? '还需要确认：' : '')
             + s.text + (labels.length ? '\n来源：' + labels.join('；') : '')
             + (rejected ? '\n' + rejectedCitationText : noSource ? '\n' + noVerifiedCitationText : ''), citations };
       })]));
@@ -67,13 +67,13 @@ export async function reportBodyView(tx: PostgresTransaction, actor: ActorContex
     });
     const standards = body.generalAdvice === generalReportAdviceProtocol && !p.context.knowledge.length
       ? p.sections.standards.segments.filter(s => s.basis === 'advice' && !s.citations.length).map((s, index) => ({
-        key: `standards:${index}`, basis: 'advice', citations: [] as ReportOriginal[], text: '通用建议（模型知识）：' + s.text,
+        key: `standards:${index}`, basis: 'advice', citations: [] as ReportOriginal[], text: '小K建议：' + s.text,
       })) : p.weekWorkmanship ? p.weekWorkmanship.stages.map((stage, index) => {
       const citation = [...originals.values()].find(original => original.sourceId === stage.sourceId);
       return citation ? displayOriginal(citation, index, stage.name)
-        : { key: `standards:${index}`, basis: 'uncertainty', citations: [], text: stage.name + ' · 本次没有可引用的企业工艺依据。' };
+        : { key: `standards:${index}`, basis: 'uncertainty', citations: [], text: stage.name + ' · 这次没找到可用的企业工艺说明，可以和现场团队确认做法。' };
     }) : [...originals.values()].map((citation, index) => displayOriginal(citation, index));
-    if (p.weekWorkmanship?.truncated) standards.push({ key: 'standards:truncated', basis: 'uncertainty', citations: [], text: '阶段记录较多，本份简报未覆盖全部阶段的工艺依据。' });
+    if (p.weekWorkmanship?.truncated) standards.push({ key: 'standards:truncated', basis: 'uncertainty', citations: [], text: '这周阶段较多，这份简报只覆盖了主要阶段。' });
     const cited = new Set(standards.flatMap(segment => segment.citations.map(c => c.sourceId)));
     const knowledgeSources = p.context.sources.filter(s => s.kind === 'knowledge' && s.evidence && cited.has(s.sourceId))
       .map(s => ({ sourceId: s.sourceId, title: s.title }));

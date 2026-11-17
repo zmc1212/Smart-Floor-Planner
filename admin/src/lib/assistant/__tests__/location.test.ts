@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { coordinates, reverseRegion } from '../location/geocode';
 import { nearbyRegion, recommendationRegion } from '../location/region';
 import { resolveDesignerQuery } from '@/lib/portfolio/designer-recommendation';
+import { selectPublicCandidates } from '@/lib/construction/public-read';
 
 const region = () => ({ cityCode: '330100', cityName: '杭州市', district: '西湖区', source: 'wechat_location' as const, resolvedAt: new Date().toISOString() });
 test('location provides a city without requiring spoken city/style/layout; explicit housing wins', () => {
@@ -16,6 +17,9 @@ test('location provides a city without requiring spoken city/style/layout; expli
   assert.equal(resolveDesignerQuery({ memoryHousing: '杭州或宁波', location: region() }), null);
   assert.equal(resolveDesignerQuery({ location: region(), input: { query: '宁波原木风' } }), null);
   assert.equal(recommendationRegion({ nearbyRegion: region() }, '宜昌西陵区')?.district, '西陵区');
+  assert.equal(resolveDesignerQuery({ triggerText: '原木风有推荐的设计师吗', memoryStyle: '原木风',
+    conversationTexts: ['我家在宜昌'] })?.cityCode, '420500');
+  assert.equal(resolveDesignerQuery({ triggerText: '原木风有推荐的设计师吗', conversationTexts: ['不在宜昌'] }), null);
 });
 test('stale, future, malformed or unsupported location cannot become recommendation context', () => {
   for (const patch of [{ resolvedAt: 'invalid' }, { resolvedAt: new Date(Date.now() - 1800001).toISOString() },
@@ -23,6 +27,12 @@ test('stale, future, malformed or unsupported location cannot become recommendat
     assert.equal(nearbyRegion({ nearbyRegion: { ...region(), ...patch } }), null);
   }
   assert.equal(recommendationRegion({ nearbyRegion: region() }, '杭州？'), null);
+});
+test('a district without public sites widens to the same city list only', () => {
+  const items = [{ district: '西陵区' }, { district: '伍家岗区' }];
+  assert.deepEqual(selectPublicCandidates(items, '西陵区'), { items: [items[0]], scope: 'district', districtFallback: false });
+  assert.deepEqual(selectPublicCandidates(items, '点军区'), { items, scope: 'city', districtFallback: true });
+  assert.deepEqual(selectPublicCandidates(items), { items, scope: 'city', districtFallback: false });
 });
 test('reverse geocode uses GCJ02 and structured administrative identity, never address guesses', async () => {
   let captured: URL | undefined;

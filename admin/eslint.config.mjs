@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-require-imports": "off",
     },
   },
+  {
+    // Standalone Kodo maintenance scripts run directly with Node and keep a
+    // CommonJS contract; they are not part of the Next.js application bundle.
+    files: ["deployment/portfolio-kodo/**/*.{js,cjs}"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

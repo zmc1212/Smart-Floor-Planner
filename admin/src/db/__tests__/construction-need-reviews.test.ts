@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { getDefaultMenuKeys } from '@/lib/admin-user-roles';
+import { SystemRoleRepository } from '@/db/repositories/system-role-repository';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
@@ -39,8 +41,9 @@ before(async () => {
   const target = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.equal(target.port, process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
   await withPlatformTransaction(async tx => {
-    await tx.execute(sql`insert into app.system_roles(role_key,label,menu_keys)
-      values('designer','合成测试设计师',array['construction-projects']) on conflict (role_key) do nothing`);
+    await new SystemRoleRepository(tx).ensureDefaults([
+      { roleKey: 'designer', label: '设计师', menuKeys: getDefaultMenuKeys('designer') },
+    ]);
     for (let n = 0; n < 2; n++) {
       const eid = String((await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix + n},${prefix + n},'active') returning id`))!.id); eids.push(eid);
       await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days)

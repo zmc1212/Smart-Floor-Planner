@@ -124,6 +124,20 @@ const messageReads = f => f.calls.filter(call => call.url.endsWith('/messages') 
 const { appendPatch } = require('../packages/assistant/lib/chat');
 const promptEvent = text => ({ currentTarget: { dataset: { text } } });
 
+test('a service consultation records the welcome notice through an ordinary chat send', async () => {
+  const f = fixture();
+  f.db.entry.staffProfileCapture = true;
+  await f.controller.show({});
+  assert.equal(f.controller.state.staffProfileCapture, true);
+  f.controller.input('这套旧房要重新装修');
+  await f.controller.sendMessage();
+  const create = f.calls.find(call => call.url === '/conversations' && call.method === 'POST');
+  assert.equal(create.body.staffProfileNotice, true);
+  assert.equal(f.calls.filter(call => call.url.endsWith('/messages') && call.method === 'POST').length, 1);
+  assert.ok(f.calls.every(call => !call.url.endsWith('/requirements')));
+  f.controller.dispose();
+});
+
 test('each welcome topic sends its text immediately through the existing chat flow', async () => {
   for (let index = 0; index < 3; index++) {
     const f = fixture(); await f.controller.show({});

@@ -6,7 +6,7 @@ import { runContext, type Lease } from '../infrastructure/job-queue';
 import { synthesisContextAvailable } from './synthesis-sources';
 import type { SynthesisContext } from './synthesis';
 import { recommendDesigners, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
-import { publicCandidates } from '@/lib/construction/public-read';
+import { publicCandidates, selectPublicCandidates } from '@/lib/construction/public-read';
 import { publicContextStatus, type PublicContextRef } from '@/lib/construction/public-projections';
 import { readMemory } from './memory';
 import { recommendationRegion } from '../location/region';
@@ -40,10 +40,11 @@ export type RecommendToolRuntime = {
  * in the conversation's authorized region: no distance, no owner identity and
  * no claim that a public site is the customer's own project. */
 export function nearbyPublicSitesText(region: { cityName: string; district?: string },
-  items: Array<{ name: string; stageName?: string }>) {
+  items: Array<{ name: string; stageName?: string }>, districtFallback = false) {
   const place = region.cityName + (region.district ? '·' + region.district : '');
   if (!items.length) return `按你所在的位置（${place}）暂时没有已授权公开的工地；这不代表这一片没有在施工的工地。`;
   const list = items.slice(0, 3).map(item => item.name + (item.stageName ? `（${item.stageName}）` : '')).join('、');
+  if (districtFallback) return `你所在的位置（${place}）暂时没有已授权公开的工地；先展示同城其他片区的 ${items.length} 个公开工地：${list}。公开工地卡片随本条回复展示，可直接打开查看公开记录；只按城市/区县筛选，没有精确距离。`;
   return `按你所在的位置（${place}）找到 ${items.length} 个已授权公开的工地：${list}。公开工地卡片随本条回复展示，可直接打开查看公开记录；只按城市/区县筛选，没有精确距离。`;
 }
 
@@ -51,9 +52,9 @@ export function nearbyPublicSitesText(region: { cityName: string; district?: str
  *  Keep this receipt authoritative so the model cannot prepend a contradictory
  *  “需要先知道城市/区县” sentence after the tool has already resolved the place. */
 export function nearbyPublicSitesReceipt(region: { cityName: string; district?: string },
-  items: Array<{ name: string; stageName?: string }>) {
+  items: Array<{ name: string; stageName?: string }>, districtFallback = false) {
   return { status: items.length ? 'ready' : 'empty', tool: 'recommend_public_sites',
-    text: nearbyPublicSitesText(region, items) };
+    text: nearbyPublicSitesText(region, items, districtFallback), ...(districtFallback ? { districtFallback: true } : {}) };
 }
 
 /** No authorized region yet: an honest ask, and deliberately no step is
@@ -63,22 +64,23 @@ export function publicSitesNeedRegionReceipt() {
     text: '还没有已获权的定位或明确的房屋城市，暂不能按附近筛选公开工地；可以请客户授权定位或补充所在城市。' };
 }
 
-/** Empty nearby results are delivered from the server receipt, never from a
- *  model draft that may ask for a location already known to the tool. */
-export function publicSitesDeliveryText(modelText: string, receipt: { status: string; text: string } | undefined) {
-  return receipt?.status === 'empty' ? receipt.text : modelText;
+/** Empty nearby results and same-city fallbacks are delivered from the server
+ *  receipt, never from a model draft that may ask for a location already known
+ *  to the tool or imply the shown sites are in the requested district. */
+export function publicSitesDeliveryText(modelText: string, receipt: { status: string; text: string; districtFallback?: boolean } | undefined) {
+  return receipt?.status === 'empty' || receipt?.districtFallback ? receipt.text : modelText;
 }
-export type PublicSitesOutcome = { status: string; text: string };
+export type PublicSitesOutcome = { status: string; text: string; districtFallback?: boolean };
 /** Only a located result may override delivery; `need_region` never does. */
 export function publicSitesOutcomeOf(receipt: ToolReceipt | undefined): PublicSitesOutcome | undefined {
   return receipt && (receipt.status === 'ready' || receipt.status === 'empty')
-    ? { status: String(receipt.status), text: String(receipt.text) } : undefined;
+    ? { status: String(receipt.status), text: String(receipt.text), ...(receipt.districtFallback ? { districtFallback: true } : {}) } : undefined;
 }
-/** Bridge delivery composition: an empty located result replaces the model text
- * and the model draft is not included at all. */
+/** Bridge delivery composition: an empty or same-city fallback result replaces
+ * the model text and the model draft is not included at all. */
 export function publicSitesDelivery(composed: { text: string; modelIncluded: boolean }, outcome: PublicSitesOutcome | undefined) {
   return { text: publicSitesDeliveryText(composed.text, outcome),
-    modelIncluded: outcome?.status === 'empty' ? false : composed.modelIncluded };
+    modelIncluded: outcome?.status === 'empty' || outcome?.districtFallback ? false : composed.modelIncluded };
 }
 
 /** The three authorized wordings: found N designers / missing city or direction
@@ -176,8 +178,9 @@ export function dialoguePublicSitesRecommendation(rt: RecommendToolRuntime) {
       const question = (rt.messages.at(-1)?.content || '').replace(/[？?]/g, '');
       const region = recommendationRegion(current.conversation.entry_snapshot, housing, question);
       if (!region) return publicSitesNeedRegionReceipt();
-      const items = (await publicCandidates(tx, rt.lease.enterpriseId, region.cityCode, region.district)).slice(0, 3);
-      const receipt = nearbyPublicSitesReceipt(region, items);
+      const selected = selectPublicCandidates(await publicCandidates(tx, rt.lease.enterpriseId, region.cityCode), region.district);
+      const items = selected.items.slice(0, 3);
+      const receipt = nearbyPublicSitesReceipt(region, items, selected.districtFallback);
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
         values(${rt.lease.enterpriseId},${rt.lease.runId},2010,'agent_public_sites','succeeded',
           ${JSON.stringify(items.map(item => ({ siteId: item.id, versionId: item.versionId })))}::jsonb,

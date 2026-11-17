@@ -1,4 +1,5 @@
 const aiService = require('../../../utils/aiDesignService.js');
+const nativePreview = require('../../../utils/native-preview');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
 const {
   applyModelDefaults,
@@ -347,6 +348,7 @@ Page({
   },
 
   onShow() {
+    if (nativePreview.shownAfterPreview(this)) return;
     if (this.data.workflowId && !this.data.loading && !this.data.creating) {
       this.loadStudio({ silent: true });
     }
@@ -667,7 +669,7 @@ Page({
     const state = this.data.canvasState;
     if (!state || !state.generation || !state.generation.imageUrl) return;
     const urls = state.batch.generations.filter((item) => item.imageUrl).map((item) => item.imageUrl);
-    wx.previewImage({ urls, current: state.generation.imageUrl });
+    nativePreview.previewImage({ urls, current: state.generation.imageUrl });
   },
 
   startNewRound() {
@@ -739,7 +741,7 @@ Page({
     const urls = [...new Set((this.data.timelineBatches || [])
       .flatMap((item) => (item.timelineReferences || []).map((reference) => reference.previewUrl))
       .filter(Boolean))];
-    wx.previewImage({ urls, current });
+    nativePreview.previewImage({ urls, current });
   },
 
   openMenu() {
@@ -1433,7 +1435,7 @@ Page({
     const urls = batch.generations
       .filter((item) => item.imageUrl)
       .map((item) => item.imageUrl);
-    wx.previewImage({ urls, current: generation.imageUrl });
+    nativePreview.previewImage({ urls, current: generation.imageUrl });
   },
 
   openGenerationActions(event) {
@@ -1566,7 +1568,7 @@ Page({
   previewFloorPlan() {
     const url = this.data.view && this.data.view.workflow.floorPlanPreviewUrl;
     if (!url) return;
-    wx.previewImage({ urls: [url], current: url });
+    nativePreview.previewImage({ urls: [url], current: url });
   },
 
   onShareAppMessage() {

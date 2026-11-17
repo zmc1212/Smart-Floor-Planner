@@ -22,11 +22,14 @@ import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platfo
 const prefix = 'p2m-' + randomUUID(), tenants: string[] = [], users: string[] = [];
 let actor: ActorContext, stranger: ActorContext;
 const deepseekLive = process.env.ASSISTANT_P2M_DEEPSEEK_PROBE === '1' && process.env.ASSISTANT_P2M_LIVE === '1';
-const config = { runtime: 'langgraph-v1', model: deepseekLive ? 'deepseek-flash' : 'Qwen/Qwen3.5-4B', providerKey: deepseekLive ? 'deepseek' : 'siliconflow', imageInput: true, tools: true, probeVersion: 'p2m0-synthetic-v1' };
+const config = { runtime: 'langgraph-v1', model: deepseekLive ? 'deepseek-flash' : 'Qwen/Qwen3.5-4B', providerKey: deepseekLive ? 'deepseek' : 'siliconflow', imageInput: true, tools: true, enterpriseKnowledgeEnabled: true, probeVersion: 'p2m0-synthetic-v1' };
 let priorProvider: Awaited<ReturnType<typeof getPlatformLlmRuntimeConfig>> | undefined;
 const response = (text = '可以先考虑靠窗摆桌，并保留走道。'): ModelTurnOutput => ({ text: JSON.stringify({ kind: 'general', text }), toolCalls: [], usage: { inputTokens: 100, outputTokens: 20 }, finishReason: 'stop', providerRequestId: null });
 before(async () => {
   const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
+  // Knowledge reads stay on the local pgvector index so an empty corpus is a
+  // deterministic not_ready read instead of a managed-provider outage.
+  process.env.ASSISTANT_KNOWLEDGE_PROVIDER = 'local';
   if (deepseekLive) {
     const primary = new URL(process.env.ASSISTANT_P2M_PRIMARY_DATABASE_URL || '');
     assert.ok(['localhost','127.0.0.1'].includes(primary.hostname)); assert.equal(primary.port, '5432'); assert.equal(primary.pathname, '/smart_floor_planner');
@@ -93,14 +96,16 @@ test('named original bypass drafts are blocked before delivery and a real empty 
   await processAgentAnswer(a.lease, { model: async (messages, _tools, _turn, dispatch) => {
     if (++calls === 1) {
       assert.deepEqual(dispatch!.map(t => t.name), ['search_knowledge']);
-      return { ...response(), text: '', toolCalls: [{ id: 'original-read', name: 'search_knowledge', arguments: '{"query":"合成点位说明 第二节 方案同意 关闭"}' }] };
+      return { ...response(), text: '', toolCalls: [{ id: 'original-read', name: 'search_knowledge', arguments: JSON.stringify({ query: '合成点位说明 第二节 方案同意 关闭', questions: ['合成点位说明第二节如何区分方案同意和关闭？'] }) }] };
     }
+
+
     assert.ok(dispatch!.some(t => t.name === 'final_response'));
     const packet = JSON.parse((messages.findLast(m => m.role === 'tool') as {content:string}).content);
     assert.equal(packet.knowledgeStatus, 'not_ready'); assert.deepEqual(packet.synthesisSources, []);
-    return { ...response(), text: JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'uncertainty', text: '本次尚未取得这份说明的可用原文，无法据此区分两种状态。', citations: [] }] }) };
+    return { ...response(), text: JSON.stringify({ kind: 'knowledge', selections: [], coverage: { Q1: [] } }) };
   } });
-  assert.equal((await a.chat.run(a.lease.runId)).status, 'succeeded'); assert.equal(calls, 2);
+  const runAfterRead = await a.chat.run(a.lease.runId); assert.equal(runAfterRead.status, 'succeeded', JSON.stringify(runAfterRead)); assert.equal(calls, 2);
   const reentry = await new ConversationService(actor).messages(a.c);
   assert.ok(reentry.items.some(m => m.authorKind === 'assistant'));
   const effects = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,count(*)::int count from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${a.lease.runId} and kind in ('retrieval','agent_need_write','agent_validation') group by kind`));
@@ -112,7 +117,7 @@ test('named original bypass drafts are blocked before delivery and a real empty 
   // into enterprise knowledge or resurrect a withdrawn saved original.
   const saved = await start('请记录：全屋预算18万元。');
   await processAgentAnswer(saved.lease, { model: async () => ({ ...response(), text: '', toolCalls: [{ id: 'budget-save', name: 'record_need',
-    arguments: '{"room":"全屋","field":"budget","value":"18万元","quote":"全屋预算18万元","additionalNeeds":[]}' }] }) });
+    arguments: '{"room":"全屋","field":"budget","value":"18万元","quote":"请记录：全屋预算18万元","additionalNeeds":[]}' }] }) });
   assert.equal((await saved.chat.run(saved.lease.runId)).status, 'succeeded');
   const questionBudget = '只回顾聊天原话：现在记住的预算是多少？';
   const recap = await start(questionBudget, saved.c);
@@ -137,8 +142,9 @@ test('named original bypass drafts are blocked before delivery and a real empty 
 test('ordinary inquiry and explicit no-change remain read-only through service writes and persisted reentry', async () => {
   const saved = await start('请记下：书房书桌靠窗');
   await processAgentAnswer(saved.lease, { model: async () => ({ ...response(), text: '', toolCalls: [{ id: 'initial-need', name: 'record_need',
-    arguments: JSON.stringify({ room: '书房', field: 'desk', value: '靠窗', quote: '书房书桌靠窗' }) }] }) });
-  assert.equal((await saved.chat.run(saved.lease.runId)).status, 'succeeded');
+    arguments: JSON.stringify({ room: '书房', field: 'desk', value: '靠窗', quote: '请记下：书房书桌靠窗', additionalNeeds: [] }) }] }) });
+  const initialRun = await saved.chat.run(saved.lease.runId);
+  assert.equal(initialRun.status, 'succeeded', JSON.stringify(initialRun));
   const getMemory = () => withTenantTransaction(actor.enterpriseId, async tx => readMemory((await one(tx,
     sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${saved.c}`))?.entry_snapshot));
   const before = await getMemory(); assert.equal(before.facts.length, 1);
@@ -280,8 +286,9 @@ test('source-linked semantic memory writes once, survives reentry and preserves 
   for (const [room, field, value] of [['书房','daylight','采光好'],['书房','desk','双人桌'],['次卧','use','客房']]) {
     const a = await start(room+'要'+value, c); c = a.c;
     await processAgentAnswer(a.lease, { model: async (_messages, _tools, turn) => turn === 0 ? { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need',
-      arguments: JSON.stringify({ room, field, value, quote: room+'要'+value }) }] } : response('记下了，可以继续聊。') });
-    assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
+      arguments: JSON.stringify({ room, field, value, quote: room+'要'+value, additionalNeeds: [] }) }] } : response('记下了，可以继续聊。') });
+    const savedRun = await a.chat.run(String(a.sent.runId));
+    assert.equal(savedRun.status, 'succeeded', JSON.stringify(savedRun));
   }
   const stored = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where id=${c!}`));
   assert.equal(readMemory(stored?.entry_snapshot).facts.filter(f => f.status === 'current').length, 3);
@@ -290,18 +297,19 @@ test('explicit record-only missing independent need is corrected before one atom
   const a = await start('请记下：书房书桌靠窗，书房需要收纳'); let calls = 0;
   await processAgentAnswer(a.lease, { model: async (messages) => {
     calls++;
-    if (calls === 1) return { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗' }) }] };
+    if (calls === 1) return { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '请记下：书房书桌靠窗', additionalNeeds: [] }) }] };
     const feedback = JSON.parse((messages.at(-1) as { content: string }).content);
     assert.equal(feedback.status, 'not_saved'); assert.equal(feedback.error, 'need_write_incomplete');
     assert.equal(feedback.batchCommitted, false); assert.deepEqual(feedback.missingStatements, ['书房需要收纳']);
     const before = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
     assert.equal(readMemory(before?.entry_snapshot).facts.length, 0, 'The rejected batch cannot partially persist');
     return { ...response(), text: '', toolCalls: [
-      { id: 'complete-desk', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗' }) },
-      { id: 'complete-storage', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'storage', value: '需要收纳', quote: '书房需要收纳' }) },
+      { id: 'complete-desk', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '请记下：书房书桌靠窗', additionalNeeds: [] }) },
+      { id: 'complete-storage', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'storage', value: '需要收纳', quote: '书房需要收纳', additionalNeeds: [] }) },
     ] };
   } });
-  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
+  const batchRun = await a.chat.run(String(a.sent.runId));
+  assert.equal(batchRun.status, 'succeeded', JSON.stringify(batchRun));
   const items = (await new ConversationService(actor).messages(a.c)).items;
   const reply = items.filter(m => m.authorKind === 'assistant').at(-1)!;
   const serialized = JSON.stringify(reply.content);
@@ -319,8 +327,8 @@ test('explicit record-only parallel inputs retain source checks and never persis
   const a = await start('请记下：书房书桌靠窗，书房需要收纳。'); let calls = 0;
   await processAgentAnswer(a.lease, { model: async messages => {
     if (++calls === 1) return { ...response(), text: '', toolCalls: [
-      { id: 'desk', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '靠窗', quote: '书房书桌靠窗' }) },
-      { id: 'storage', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'storage', value: '需要收纳', quote: '另一个客户的书房需要收纳' }) },
+      { id: 'desk', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '靠窗', quote: '请记下：书房书桌靠窗', additionalNeeds: [] }) },
+      { id: 'storage', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'storage', value: '另一个客户的书房需要收纳', quote: '书房需要收纳', additionalNeeds: [] }) },
     ] };
     const feedback = JSON.parse((messages.at(-1) as { content: string }).content);
     assert.equal(feedback.status, 'not_saved'); assert.equal(feedback.error, 'need_source_mismatch');
@@ -341,7 +349,7 @@ test('explicit record-only rejected incomplete batch cannot be acknowledged or l
   const a = await start('请记下：书房书桌靠窗，书房需要收纳'); let calls = 0;
   await processAgentAnswer(a.lease, { model: async () => {
     calls++;
-    return calls === 1 ? { ...response(), text: '', toolCalls: [{ id: 'partial', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗，书房需要收纳' }) }] }
+    return calls === 1 ? { ...response(), text: '', toolCalls: [{ id: 'partial', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '请记下：书房书桌靠窗', additionalNeeds: [] }) }] }
       : response('已记录书桌靠窗和书房需要收纳。');
   } });
   const run = await a.chat.run(String(a.sent.runId));assert.equal(run.status, 'failed');assert.equal(run.errorCode, 'unsupported_model_commitment');assert.equal(calls, 2);
@@ -355,7 +363,7 @@ test('explicit record-only atomic batch confirms each durable field once and ret
   const a = await start('请记下：书房书桌靠窗，书房需要收纳'); let calls = 0;
   await processAgentAnswer(a.lease, { model: async (_messages, tools) => {
     calls++; assert.deepEqual(tools.map(t => t.name), ['record_need']);
-    return { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗', additionalNeeds: [{ room: '书房', field: 'storage', value: '需要收纳', quote: '书房需要收纳' }] }) }] };
+    return { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '请记下：书房书桌靠窗', additionalNeeds: [{ room: '书房', field: 'storage', value: '需要收纳', quote: '书房需要收纳' }] }) }] };
   } });
   assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 1);
   const items = (await new ConversationService(actor).messages(a.c)).items;
@@ -371,7 +379,7 @@ test('mixed explicit correction and professional question retains the existing m
   const a = await start('更正：书房书桌改为靠内墙，另外插座怎么确定？'); let calls = 0;
   await processAgentAnswer(a.lease, { model: async (_messages, _tools, turn) => {
     calls++;
-    return turn === 0 ? { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '书房书桌改为靠内墙' }) }] }
+    return turn === 0 ? { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '更正：书房书桌改为靠内墙', additionalNeeds: [] }) }] }
       : response('已记录书桌改为靠内墙；插座位置仍需结合设备与现场尺寸核对。');
   } });
   assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 2);
@@ -464,7 +472,7 @@ test('a claimed save without a successful memory write never becomes a customer 
 test('invalid memory extraction receives bounded feedback and writes only the corrected quote', async () => {
   const a = await start('书房要双人桌');
   await processAgentAnswer(a.lease, { model: async (_messages, _tools, turn) => turn < 2 ? { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need',
-    arguments: JSON.stringify({ room: '书房', field: 'desk', value: turn === 0 ? '四人桌' : '双人桌', quote: '书房要双人桌' }) }] } : response('已记录书房的双人桌需求。') });
+    arguments: JSON.stringify({ room: '书房', field: 'desk', value: turn === 0 ? '四人桌' : '双人桌', quote: '书房要双人桌', additionalNeeds: [] }) }] } : response('已记录书房的双人桌需求。') });
   assert.equal((await a.chat.run(a.lease.runId)).status, 'succeeded');
   const c = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where id=${a.c}`));
   assert.deepEqual(readMemory(c?.entry_snapshot).facts.map(f => f.value), ['双人桌']);
@@ -505,7 +513,7 @@ test('conditional recording clarification follows an actually rejected ambiguous
   const a = await start(text); let calls = 0;
   await processAgentAnswer(a.lease, { model: async (messages, _tools, turn) => {
     calls++; if (!turn) return { ...response(), text: '', toolCalls: [{ id: 'ambiguous', name: 'record_need',
-      arguments: JSON.stringify({ room: '', field: 'desk', value: '书桌', quote: text }) }] };
+      arguments: JSON.stringify({ room: '', field: 'desk', value: '书桌', quote: text, additionalNeeds: [] }) }] };
     assert.equal(turn, 1); assert.match(JSON.stringify(messages), /need_room_ambiguous/); return response(clarification);
   } });
   const run = await a.chat.run(a.lease.runId);
@@ -518,7 +526,7 @@ test('conditional recording clarification follows an actually rejected ambiguous
 test('ambiguous room write is rejected without mutation and clarification is delivered', async () => {
   const a = await start('那间房改成三人书桌，请记录。');
   await processAgentAnswer(a.lease, { model: async (messages,_tools,turn) => {
-    if (!turn) return { ...response(),text:'',toolCalls:[{id:'need',name:'record_need',arguments:JSON.stringify({room:'',field:'desk',value:'三人书桌',quote:'那间房改成三人书桌，请记录。'})}] };
+    if (!turn) return { ...response(),text:'',toolCalls:[{id:'need',name:'record_need',arguments:JSON.stringify({room:'',field:'desk',value:'三人书桌',quote:'那间房改成三人书桌，请记录。',additionalNeeds:[]})}] };
     assert.match(JSON.stringify(messages),/need_room_ambiguous/);
     return response('请确认具体是哪间房间，我再记录。');
   } });
@@ -644,6 +652,38 @@ test('opt-in extended live correction survives reentry without replacing another
   assert.deepEqual(readMemory(after?.entry_snapshot), memory);
 });
 
+test('customer price commitment receives a fixed safe notice instead of an empty failed turn', async () => {
+  const a = await start('我家装修总价是多少？请给我一个具体数字。');
+  await processAgentAnswer(a.lease, { model: async () => response('确定装修总价18万元。') });
+  const run = await a.chat.run(a.lease.runId);
+  assert.equal(run.status, 'succeeded');
+  assert.equal(run.answerKind, 'insufficient_evidence');
+  assert.ok(run.outputMessageId);
+  const message = (await new ConversationService(actor).messages(a.c)).items.find(m => m.id === run.outputMessageId)!;
+  assert.ok(message?.available);
+  assert.match(JSON.stringify(message.content), /价格、工期或正式承诺/);
+  assert.match(JSON.stringify(message.content), /不能代替项目团队确认/);
+  assert.doesNotMatch(JSON.stringify(message.content), /18万元/);
+  const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select input_summary from app.assistant_run_steps
+    where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind='agent_fallback'`));
+  assert.equal(steps.length, 1);
+  assert.equal((steps[0].input_summary as Row).code, 'unsupported_model_commitment');
+});
+test('customer enterprise-standard question receives a fixed source-unavailable notice', async () => {
+  const a = await start('你们公司防水施工的企业标准是什么？闭水试验要多久？');
+  await processAgentAnswer(a.lease, { model: async () => response('一般建议先做闭水试验。') });
+  const run = await a.chat.run(a.lease.runId);
+  assert.equal(run.status, 'succeeded');
+  assert.equal(run.answerKind, 'insufficient_evidence');
+  assert.ok(run.outputMessageId);
+  const message = (await new ConversationService(actor).messages(a.c)).items.find(m => m.id === run.outputMessageId)!;
+  assert.ok(message?.available);
+  assert.match(JSON.stringify(message.content), /未核实到可引用的企业标准或施工依据/);
+  const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select input_summary from app.assistant_run_steps
+    where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind='agent_fallback'`));
+  assert.equal(steps.length, 1);
+  assert.equal((steps[0].input_summary as Row).code, 'source_read_required');
+});
 test('opt-in extended live public renovation photo survives upload and followup then revokes', { skip: !deepseekLive || process.env.ASSISTANT_P2M_EXTENDED !== '1' }, async () => {
   const chat = new ConversationService(actor), c = String((await chat.create(randomUUID())).id);
   const media = new AssistantMediaService(actor);

@@ -41,6 +41,12 @@ function recordFailure(errorCode) {
   }));
 }
 
+function recordSuccess() {
+  health.lastSuccessAt = Date.now();
+  health.consecutiveFailures = 0;
+  health.lastErrorCode = null;
+}
+
 const httpErrors = new Map([
   [401, 'unauthorized'],
   [422, 'invalid_request'],
@@ -56,25 +62,43 @@ async function requestTick() {
       signal: AbortSignal.timeout(180000),
     });
   } catch {
-    return { status: null, errorCode: 'endpoint_unreachable' };
+    return { status: null, errorCode: 'endpoint_unreachable', gate: null };
   }
 
   const status = response.status;
   if (!response.ok) {
     await response.body?.cancel().catch(() => {});
-    return { status, errorCode: httpErrors.get(status) ?? 'job_execution_failed' };
+    return { status, errorCode: httpErrors.get(status) ?? 'job_execution_failed', gate: null };
   }
+  let payload;
   try {
-    if ((await response.json())?.success === true) return { status, errorCode: null };
+    payload = await response.json();
   } catch {
     // A successful tick requires a valid acknowledgement. Keep raw responses out of diagnostics.
+    return { status, errorCode: 'job_execution_failed', gate: null };
   }
-  return { status, errorCode: 'job_execution_failed' };
+  if (payload?.success !== true) {
+    return { status, errorCode: 'job_execution_failed', gate: null };
+  }
+  return { status, errorCode: null, gate: sanitizeGate(payload?.data?.workerSafetyGate) };
 }
 
-/** The Worker must refuse to start unless the server confirms the reminder and
- * weekly-report deployment gate. The preflight is read-only; an unreachable or
- * invalid response fails closed instead of falling back to an enterprise run. */
+/** The Worker must refuse to run business tasks unless the server opens the
+ * reminder and weekly-report deployment gate. The server re-evaluates the
+ * saved platform switch on every tick, so a super admin can start or stop the
+ * Worker from the admin UI without a container restart. */
+function sanitizeGate(gate) {
+  if (!gate || (gate.status !== 'open' && gate.status !== 'closed')) return null;
+  return {
+    status: gate.status,
+    reason: typeof gate.reason === 'string' ? gate.reason : null,
+    deliveryScope: typeof gate.deliveryScope === 'string' ? gate.deliveryScope : 'none',
+    mode: gate.mode === 'enterprise' || gate.mode === 'pilot' ? gate.mode : null,
+    enterpriseId: typeof gate.enterpriseId === 'string' ? gate.enterpriseId : null,
+    pilotId: typeof gate.pilotId === 'string' ? gate.pilotId : null,
+  };
+}
+
 async function requestPreflight() {
   let response;
   try {
@@ -96,35 +120,55 @@ async function requestPreflight() {
   } catch {
     return { errorCode: 'safety_gate_invalid' };
   }
-  const gate = payload?.data?.safetyGate;
-  if (payload?.success !== true || !gate || (gate.status !== 'open' && gate.status !== 'closed')) {
-    return { errorCode: 'safety_gate_invalid' };
+  if (payload?.success !== true) return { errorCode: 'safety_gate_invalid' };
+  const gate = sanitizeGate(payload?.data?.safetyGate);
+  if (!gate || !gate.reason) return { errorCode: 'safety_gate_invalid' };
+  return { gate };
+}
+
+/** The Worker stays resident while the gate is closed. A closed gate is the
+ * normal idle state of an installed Worker: the platform switch is off, or the
+ * pilot scope is not configured yet. Only an unreachable or invalid preflight
+ * or a missing secret stops the process, so a configuration mistake is visible
+ * instead of being retried forever. */
+async function idleLoop() {
+  while (!stopping) {
+    const preflight = await requestPreflight();
+    if (preflight.errorCode) {
+      health.lastHttpStatus = null;
+      recordFailure(preflight.errorCode);
+      await saveHealth();
+      if (!stopping) await delay(5000);
+      continue;
+    }
+    health.safetyGate = preflight.gate;
+    health.consecutiveFailures = 0;
+    health.lastErrorCode = null;
+    await saveHealth();
+    console.error('[assistant-worker] safety_gate', JSON.stringify(preflight.gate));
+    if (preflight.gate.status === 'open') return true;
+    if (!stopping) await delay(5000);
   }
-  return {
-    gate: {
-      status: gate.status,
-      reason: typeof gate.reason === 'string' ? gate.reason : null,
-      deliveryScope: typeof gate.deliveryScope === 'string' ? gate.deliveryScope : 'none',
-      mode: gate.mode === 'enterprise' || gate.mode === 'pilot' ? gate.mode : null,
-      enterpriseId: typeof gate.enterpriseId === 'string' ? gate.enterpriseId : null,
-      pilotId: typeof gate.pilotId === 'string' ? gate.pilotId : null,
-    },
-  };
+  return false;
 }
 
 async function runLoop() {
   while (!stopping) {
+    if (health.safetyGate?.status !== 'open') {
+      const opened = await idleLoop();
+      if (!opened) break;
+      continue;
+    }
     health.lastRequestAt = Date.now();
     await saveHealth();
     if (stopping) break;
-    const { status, errorCode } = await requestTick();
+    const { status, errorCode, gate } = await requestTick();
     health.lastHttpStatus = status;
+    if (gate) health.safetyGate = gate;
     if (errorCode) {
       recordFailure(errorCode);
     } else {
-      health.lastSuccessAt = Date.now();
-      health.consecutiveFailures = 0;
-      health.lastErrorCode = null;
+      recordSuccess();
     }
     await saveHealth();
     if (!stopping) await delay(2000);
@@ -147,15 +191,8 @@ if (!secret?.trim()) {
     health.safetyGate = preflight.gate;
     console.error('[assistant-worker] safety_gate', JSON.stringify(preflight.gate));
     await saveHealth();
-    if (preflight.gate.status !== 'open') {
-      // The server-side tick enforces the same gate, but a closed gate means
-      // the deployment is not explicitly scoped. Do not start processing.
-      health.lastHttpStatus = null;
-      recordFailure('safety_gate_closed');
-      await saveHealth();
-      process.exitCode = 2;
-    } else {
-      await runLoop();
-    }
+    // Installed but maybe idle: runLoop waits on the gate and re-checks it
+    // before every tick, so an admin start/stop needs no container restart.
+    await runLoop();
   }
 }

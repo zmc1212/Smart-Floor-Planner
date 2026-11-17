@@ -15,6 +15,7 @@ import type { SynthesisContext } from './synthesis';
 import { historyRefsAvailable, type HistoryRef } from './history';
 import { needSourcesAvailable, type NeedSourceRef } from './memory-sources';
 import { formalMediaSourceAvailable } from '../media/formal-source';
+import { profileRecallKind, renovationRecallAvailable, type ProfileRecallRef } from '../requirements/renovation-profile';
 export type MediaDependency = { type: 'assistant_media'; id: string; hash: string };
 export type SitePhotoDependency = { type: 'construction_site_photo'; id: string; hash: string;
   recordId: string; recordVersion: number; projectId: string; roomId: string; roomName: string; ownerId: string };
@@ -63,10 +64,15 @@ export async function specialistSitePhotos(tx: PostgresTransaction, actor: Actor
   return photos;
 }
 export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseId: string, conversationId: string, messageId: string, reader?:ActorContext) {
-  const needs = await rows(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
+  const needs = await rows(tx, sql`select s.kind,s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId}
-      and s.kind in ('agent_need_context','agent_need_write') and s.status='succeeded'`);
-  for (const need of needs) if (!await needSourcesAvailable(tx, enterpriseId, conversationId, need.source_refs as NeedSourceRef[])) return false;
+      and s.kind in ('agent_need_context','agent_need_write',${profileRecallKind}) and s.status='succeeded'`);
+  for (const need of needs) {
+    const available = need.kind === profileRecallKind
+      ? await renovationRecallAvailable(tx, enterpriseId, need.source_refs as ProfileRecallRef, reader)
+      : await needSourcesAvailable(tx, enterpriseId, conversationId, need.source_refs as NeedSourceRef[]);
+    if (!available) return false;
+  }
   const longTerm = await one(tx, sql`select m.run_id::text from app.assistant_messages m join app.assistant_run_steps s
     on s.enterprise_id=m.enterprise_id and s.run_id=m.run_id and s.kind='agent_long_term_context'
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId}`);

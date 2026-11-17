@@ -18,6 +18,13 @@ function fixture() {
   const controller = new PortfolioController({ emit() {}, client, identity: () => token, images });
   return { controller, client, calls, setIdentity: value => { token = value; } };
 }
+test('designer discovery metadata survives message projection for an actionable location card', () => {
+  const [message] = messagesForView([{ id: '21', seq: '1', authorKind: 'assistant', available: true,
+    content: { blocks: [{ type: 'text', text: '暂未获取到可用位置。' }] }, designerDiscovery: { needContext: true } }]);
+  assert.deepEqual(message.designerDiscovery, { needContext: true });
+  assert.equal(message.designerRecommendation, null);
+});
+
 test('portfolio detail loads current exact version, real grouped images and explicit preferences survive reentry/correction', async () => {
   const { controller: c, calls } = fixture(), options = { conversationId: '11', workId: '12', versionId: '13' };
   await c.show(options, 'work'); assert.equal(c.state.work.renders[0].label, '效果图'); assert.equal(c.state.work.renders[0].aiGenerated, true); assert.equal(c.state.work.photos[0].label, '样板间实拍');
@@ -62,7 +69,7 @@ test('authorized JPEG downloads bind the exact work and version and discard a la
     const calls = [], images = new PortfolioImages(null, (path, options) => {
       calls.push({ path, options });
       return new Promise(resolve => { finish = resolve; });
-    });
+    }, 'local');
     const loading = images.load('11', work(), '15');
     assert.ok(finish, 'authorized JPEG should use the binary download');
     images.clear(); finish({ tempFilePath: '/private/cover.jpg' });
@@ -73,7 +80,7 @@ test('authorized JPEG downloads bind the exact work and version and discard a la
   } finally { global.wx = previous; }
 });
 
-test('native portfolio preview keeps the current gallery files through page hide and clears them on return', async () => {
+test('native portfolio preview returns to the same gallery without reloading or clearing files', async () => {
   const oldWx = global.wx, oldApp = global.getApp;
   const removed = [], authorizations = [], viewer = [];
   global.getApp = () => ({ globalData: { token: 'session-a' } });
@@ -82,11 +89,12 @@ test('native portfolio preview keeps the current gallery files through page hide
   const files = new PortfolioImages(null, async path => ({ tempFilePath: '/private/' + path.match(/\/assets\/(\d+)/)[1] + '.jpg' }));
   const shown = { i15: await files.load('11', data, '15'), i16: await files.load('11', data, '16') };
   const other = await files.load('11', data, '17');
-  const p = { ...fixture, _alive: true, _shown: true, data: { work: data, images: shown, conversationId: '11' },
+  let reloads = 0;
+  const p = { ...fixture, _alive: true, _shown: true, data: { work: data, images: { ...shown }, conversationId: '11' },
     controller: { epoch: 1, session: 'session-a', images: files, valid(epoch) { return epoch === this.epoch; },
       client: { read: async (route, query) => { authorizations.push({ route, query }); } },
       hide(paths) { this.epoch++; files.clear(paths); p.data.images = {}; },
-      async show() { files.clear(); },
+      async show() { reloads += 1; files.clear(); },
     } };
   global.wx = {
     getFileSystemManager: () => ({ unlink: ({ filePath }) => removed.push(filePath) }),
@@ -97,9 +105,13 @@ test('native portfolio preview keeps the current gallery files through page hide
     assert.deepEqual(authorizations, [{ route: '/conversations/11/portfolio/works/12', query: { versionId: '13' } }]);
     assert.equal(viewer[0].current, shown.i16);
     assert.deepEqual(viewer[0].urls, [shown.i15, shown.i16]);
-    assert.deepEqual(removed, [other]);
+    assert.deepEqual(removed, []);
     await p.onShow();
-    assert.deepEqual(removed, [other, shown.i15, shown.i16]);
+    assert.equal(reloads, 0);
+    assert.deepEqual(p.data.images, shown);
+    assert.deepEqual(removed, []);
+    p.onHide();
+    assert.deepEqual(p.data.images, {});
   } finally { global.wx = oldWx; global.getApp = oldApp; }
 });
 test('C01 reads recommendations without preference/contact writes and clears revoked cards', async () => {

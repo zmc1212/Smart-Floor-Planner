@@ -12,7 +12,7 @@ export type OpeningScene = { key: string; appId: string; audience: 'customer';
 export type EnterpriseOpenings = { enterpriseId: string; scenes: Record<string, OpeningScene> };
 export type Openings = { protocol: typeof openingsProtocol; enterprises: EnterpriseOpenings[] };
 
-const inputVocabulary = new Set(['name', 'cityName', 'cityCode', 'district', 'stageName', 'excerpts', 'photoCount', 'designerName']);
+const inputVocabulary = new Set(['name', 'cityName', 'cityCode', 'district', 'stageName', 'styleName', 'excerpts', 'photoCount', 'designerName']);
 const sceneKeyPattern = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*){1,2}$/;
 
 /** `site.public` keeps the existing purpose so queued and historical runs stay
@@ -55,7 +55,7 @@ function parseScenes(rawScenes: Record<string, unknown>) {
     // Staff audiences need the admin principal/capability model that the V2
     // authorization does not implement yet, so they fail closed here.
     if (scene.audience !== 'customer') fail('context_changed');
-    if (!Array.isArray(scene.input) || !scene.input.length || scene.input.length > 8
+    if (!Array.isArray(scene.input) || !scene.input.length || scene.input.length > 9
       || new Set(scene.input).size !== scene.input.length
       || scene.input.some(field => typeof field !== 'string' || !inputVocabulary.has(field))) fail('context_changed');
     const rawConstraints = (scene.constraints ?? {}) as Record<string, unknown>;

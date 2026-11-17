@@ -20,11 +20,16 @@ test('nearby text names the authorized place and only published sites', () => {
   assert.equal(nearbyPublicSitesText({ cityName: '苏州', district: '姑苏区' }, items),
     '按你所在的位置（苏州·姑苏区）找到 2 个已授权公开的工地：阳光新城工地（泥木阶段）、第二工地。'
     + '公开工地卡片随本条回复展示，可直接打开查看公开记录；只按城市/区县筛选，没有精确距离。');
+  assert.equal(nearbyPublicSitesText({ cityName: '苏州', district: '姑苏区' }, items, true),
+    '你所在的位置（苏州·姑苏区）暂时没有已授权公开的工地；先展示同城其他片区的 2 个公开工地：阳光新城工地（泥木阶段）、第二工地。'
+    + '公开工地卡片随本条回复展示，可直接打开查看公开记录；只按城市/区县筛选，没有精确距离。');
 });
 
 test('located results are ready or empty; need_region asks honestly and writes no step', () => {
   assert.deepEqual(nearbyPublicSitesReceipt(region, [{ name: '阳光新城工地' }]),
     { status: 'ready', tool: 'recommend_public_sites', text: nearbyPublicSitesText(region, [{ name: '阳光新城工地' }]) });
+  assert.deepEqual(nearbyPublicSitesReceipt(region, [{ name: '阳光新城工地' }], true),
+    { status: 'ready', tool: 'recommend_public_sites', text: nearbyPublicSitesText(region, [{ name: '阳光新城工地' }], true), districtFallback: true });
   assert.equal(nearbyPublicSitesReceipt(region, []).status, 'empty');
   const needRegion = publicSitesNeedRegionReceipt();
   assert.deepEqual(needRegion, { status: 'need_region', tool: 'recommend_public_sites',
@@ -37,12 +42,17 @@ test('an empty located result overrides delivery and drops the model draft', () 
   const model = '我们当然可以带您去看看附近的工地。';
   assert.equal(publicSitesDeliveryText(model, empty), empty.text);
   assert.equal(publicSitesDeliveryText(model, { status: 'ready', text: '列表' }), model);
+  assert.equal(publicSitesDeliveryText(model, { status: 'ready', text: '同城其他片区', districtFallback: true }), '同城其他片区');
   assert.equal(publicSitesDeliveryText(model, undefined), model);
   assert.deepEqual(publicSitesDelivery({ text: model, modelIncluded: true }, empty), { text: empty.text, modelIncluded: false });
   assert.deepEqual(publicSitesDelivery({ text: model, modelIncluded: true }, { status: 'ready', text: '列表' }),
     { text: model, modelIncluded: true });
+  assert.deepEqual(publicSitesDelivery({ text: model, modelIncluded: true }, { status: 'ready', text: '同城其他片区', districtFallback: true }),
+    { text: '同城其他片区', modelIncluded: false });
   assert.deepEqual(publicSitesDelivery({ text: model, modelIncluded: false }, undefined), { text: model, modelIncluded: false });
   assert.deepEqual(publicSitesOutcomeOf({ status: 'ready', text: '列表' }), { status: 'ready', text: '列表' });
+  assert.deepEqual(publicSitesOutcomeOf({ status: 'ready', text: '同城其他片区', districtFallback: true }),
+    { status: 'ready', text: '同城其他片区', districtFallback: true });
   assert.equal(publicSitesOutcomeOf({ status: 'empty', text: '占位' })?.status, 'empty');
   assert.equal(publicSitesOutcomeOf(undefined), undefined);
 });

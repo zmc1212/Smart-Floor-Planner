@@ -1,6 +1,7 @@
 const { ChatController, initial, appendPatch } = require('../lib/chat');
 const chatResume = require('../lib/chat-resume');
 const { goToLogin } = require('../../../utils/session');
+const nativePreview = require('../../../utils/native-preview');
 const { MediaController } = require('../lib/media');
 const { ReferenceImage } = require('../lib/reference-image');
 const { RecommendationController, PortfolioImages } = require('../lib/portfolio');
@@ -182,6 +183,7 @@ module.exports = () => ({
 		if (!this.plans) this.plans = new PlanChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
 		if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) { this.setData(p); if (p.publicDetail) this.liveConsent.entry(this.data.enterpriseId, p.publicDetail.id); else if (p.publicDetail === null) this.liveConsent.set({ publicLiveEntry: null }); } } });
 		this._shown = true;
+		if (nativePreview.shownAfterPreview(this)) return;
 		const app = getApp();
 		if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
 		const currentIdentity = app.globalData.bootstrap?.current?.context || app.globalData.userInfo || {};
@@ -225,7 +227,7 @@ module.exports = () => ({
 		}
 	},
 
-	onHide() { this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+	onHide() { if (nativePreview.hiddenByPreview(this)) return; this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
 	onUnload() {
 		this._alive = false; clearTimeout(this._sheetTimer);
 		this.stopOwnerReminderRefresh();
@@ -536,7 +538,8 @@ module.exports = () => ({
 		});
 	},
 	openRequirements() {
-		if (!this.data.conversation || this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
+		if (!this.data.conversation?.requirementProposalPending || this.data.conversation.mode !== 'ai'
+			|| this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
 		wx.navigateTo({ url: '/packages/assistant/requirements/requirements?conversationId=' + encodeURIComponent(this.data.conversation.id) });
 	},
 	async openHandoff() {
@@ -642,7 +645,7 @@ module.exports = () => ({
 	async loadDesigners(event) {
 		const replyId = event.currentTarget.dataset.message, cid = this.controller.conversationId, session = sessionToken();
 		const valid = () => this._alive && this._shown && cid === this.controller.conversationId && session === sessionToken()
-			&& this.data.messages.some(message => message.id === replyId && message.discovery?.works);
+			&& this.data.messages.some(message => message.id === replyId && (message.discovery?.works || message.designerDiscovery));
 		if (!valid() || this._locatingDesigners || this.data.busy || this.data.generating) return;
 		this._locatingDesigners = true;
 		if (replyId !== this.data.portfolioReplyId) this.recommendations.clear();

@@ -9,7 +9,9 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deletePortfolioData } from '@/db/repositories/portfolio-cleanup';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { getJwtSecret } from '@/lib/jwt-secret';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import { PortfolioService } from '@/lib/portfolio/service';
 import { AmapCommunityProvider } from '@/lib/portfolio/community-provider';
 import { DELETE, GET, POST, PUT } from '@/app/api/portfolio/[[...path]]/route';
@@ -31,7 +33,7 @@ const prefix = 'portfolio-' + randomUUID(), tenants: string[] = [], staff: strin
 const users: string[] = [], customers: ActorContext[] = [], conversations: string[] = [];
 let imageBase64: string, workId: string, assetId: string;
 before(async () => {
-  const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
+  useLocalKnowledgeTestDatabase();
   await withPlatformTransaction(async tx => {
     for (let i = 0; i < 2; i++) {
       const e = (await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix + i},${prefix + i},'active') returning id`))!; tenants.push(String(e.id)); staff.push([]); services.push([]);
@@ -50,6 +52,7 @@ before(async () => {
   imageBase64 = (await sharp({ create: { width: 400, height: 300, channels: 3, background: '#d8dfd5' } }).withMetadata({ exif: { IFD0: { Artist: 'private-owner' } } }).png().toBuffer()).toString('base64');
 });
 after(async () => {
+  if (!tenants.length) return;
   try { await withPlatformTransaction(async tx => { await tx.execute(sql`delete from app.platform_portfolio_templates where key like ${prefix + '%'}`); for (const eid of tenants) { await deletePortfolioData(tx, BigInt(eid)); await deleteAssistantData(tx, BigInt(eid)); await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`); await tx.execute(sql`delete from app.enterprises where id=${eid}`); } for (const uid of users) await tx.execute(sql`delete from app.users where id=${uid}`); }); }
   finally { await closePostgresPool(); }
 });
@@ -152,7 +155,7 @@ test('failed provider attempts stay counted and pause subsequent external calls'
   assert.equal(usage!.failure_code, 'community_provider_unavailable'); assert.ok(new Date(String(usage!.blocked_until)).getTime() > Date.now());
 });
 test('HTTP route rechecks actual identity, rejects body injection and returns private JPEGs', async () => {
-  const token = await new SignJWT({ id: staff[0][1], username: prefix, role: 'designer', enterpriseId: tenants[0], permissions: ['case-publishing'], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][1]).setIssuedAt().setExpirationTime('10m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+  const token = await new SignJWT({ id: staff[0][1], username: prefix, role: 'designer', enterpriseId: tenants[0], permissions: ['case-publishing'], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][1]).setIssuedAt().setExpirationTime('10m').sign(getJwtSecret());
   const headers = { cookie: 'auth_token=' + token };
   const detail = await GET(new NextRequest('http://localhost:3006/api/portfolio/works/' + workId, { headers }), { params: Promise.resolve({ path: ['works', workId] }) }); assert.equal(detail.status, 200);
   const asset = await GET(new NextRequest(`http://localhost:3006/api/portfolio/works/${workId}/assets/${assetId}`, { headers }), { params: Promise.resolve({ path: ['works', workId, 'assets', assetId] }) }); assert.equal(asset.status, 200); assert.equal(asset.headers.get('content-type'), 'image/jpeg'); assert.match(asset.headers.get('cache-control')!, /no-store/);
@@ -321,7 +324,7 @@ test('portrait requires author consent; managers remove but never upload; public
   assert.equal(me.portrait_available, true); assert.ok(!JSON.stringify(me).includes('consent')); assert.ok(!('image_base64' in me));
   const bytes = await new PortfolioCatalog(customers[0], conversations[0]).portrait(staff[0][1]);
   const meta = await sharp(bytes).metadata(); assert.equal(meta.width, 512); assert.equal(meta.height, 512); assert.equal(meta.format, 'jpeg');
-  const token = await new SignJWT({ id: staff[0][1], username: prefix, role: 'designer', enterpriseId: tenants[0], permissions: ['case-publishing'], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][1]).setIssuedAt().setExpirationTime('10m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+  const token = await new SignJWT({ id: staff[0][1], username: prefix, role: 'designer', enterpriseId: tenants[0], permissions: ['case-publishing'], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][1]).setIssuedAt().setExpirationTime('10m').sign(getJwtSecret());
   const path = ['profiles', staff[0][1], 'portrait'];
   const raw = await GET(new NextRequest('http://localhost:3006/api/portfolio/' + path.join('/'), { headers: { cookie: 'auth_token=' + token } }), { params: Promise.resolve({ path }) });
   assert.equal(raw.status, 200); assert.equal(raw.headers.get('content-type'), 'image/jpeg'); assert.equal(raw.headers.get('x-content-type-options'), 'nosniff'); assert.match(raw.headers.get('cache-control')!, /no-store/);
@@ -378,7 +381,7 @@ test('template library lists enterprise samples, instantiates designer drafts wi
   assert.equal(editable.version, 2);
   const delegated = await exec('instantiateTemplate', { templateId: row.id, authorId: staff[0][2] }, 0);
   assert.equal((await exec('detail', { workId: String(delegated.id) }, 0)).work.author_id, staff[0][2]);
-  const token = await new SignJWT({ id: staff[0][1], username: prefix, role: 'designer', enterpriseId: tenants[0], permissions: ['case-publishing'], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][1]).setIssuedAt().setExpirationTime('10m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+  const token = await new SignJWT({ id: staff[0][1], username: prefix, role: 'designer', enterpriseId: tenants[0], permissions: ['case-publishing'], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][1]).setIssuedAt().setExpirationTime('10m').sign(getJwtSecret());
   const headers = { cookie: 'auth_token=' + token };
   const httpList = await GET(new NextRequest('http://localhost:3006/api/portfolio/templates', { headers }), { params: Promise.resolve({ path: ['templates'] }) }); assert.equal(httpList.status, 200);
   const httpAsset = await GET(new NextRequest(`http://localhost:3006/api/portfolio/templates/${row.id}/assets/${row.cover_asset_id}`, { headers }), { params: Promise.resolve({ path: ['templates', String(row.id), 'assets', String(row.cover_asset_id)] }) });
@@ -453,10 +456,10 @@ test('platform template management enforces platform-admin auth and versioned pu
   assert.equal(published.status, 'published');
   const audits = await withPlatformTransaction(tx => one(tx, sql`select count(*)::int as n from app.platform_portfolio_template_audits where template_id=${id}`));
   assert.equal(Number(audits!.n), 2);
-  const designerToken = await new SignJWT({ id: staff[0][1], username: prefix, role: 'designer', enterpriseId: tenants[0], permissions: ['case-publishing'], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][1]).setIssuedAt().setExpirationTime('10m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+  const designerToken = await new SignJWT({ id: staff[0][1], username: prefix, role: 'designer', enterpriseId: tenants[0], permissions: ['case-publishing'], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][1]).setIssuedAt().setExpirationTime('10m').sign(getJwtSecret());
   const denied = await platformTemplatesGET(new NextRequest('http://localhost:3006/api/platform/portfolio-templates', { headers: { cookie: 'auth_token=' + designerToken } }), { params: Promise.resolve({ path: [] }) });
   assert.equal(denied.status, 403);
-  const adminToken = await new SignJWT({ id: staff[0][0], username: prefix, role: 'super_admin', enterpriseId: tenants[0], permissions: [], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][0]).setIssuedAt().setExpirationTime('10m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+  const adminToken = await new SignJWT({ id: staff[0][0], username: prefix, role: 'super_admin', enterpriseId: tenants[0], permissions: [], mustChangePassword: false }).setProtectedHeader({ alg: 'HS256' }).setSubject(staff[0][0]).setIssuedAt().setExpirationTime('10m').sign(getJwtSecret());
   const headers = { cookie: 'auth_token=' + adminToken };
   const listed = await platformTemplatesGET(new NextRequest('http://localhost:3006/api/platform/portfolio-templates', { headers }), { params: Promise.resolve({ path: [] }) });
   assert.equal(listed.status, 200);
@@ -555,7 +558,7 @@ test('versioned work contacts expose only consented channels and revoke QR, acto
   const profileContent = { template: 'notebook', bio: '隔离测试作者', cities: [{ code: '330100', name: '杭州市', districts: [] }], styles: ['原木风'], featuredWorkIds: [wid] };
   const contact = { wechatId: 'synthetic_work_contact', phone: '999 0000 0000', publishWechat: false, publishPhone: false, allowInApp: false };
   const token = await new SignJWT({ id: aid, username: prefix + '-contact', role: 'designer', enterpriseId: eid, permissions: ['case-publishing'], mustChangePassword: false })
-    .setProtectedHeader({ alg: 'HS256' }).setSubject(aid).setIssuedAt().setExpirationTime('10m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+    .setProtectedHeader({ alg: 'HS256' }).setSubject(aid).setIssuedAt().setExpirationTime('10m').sign(getJwtSecret());
   const profileUrl = 'http://localhost:3006/api/portfolio/profiles/' + aid;
   const profileContext = { params: Promise.resolve({ path: ['profiles', aid] }) };
   const put = (expectedVersion: number, changes: Row, requestKey = randomUUID()) => PUT(new NextRequest(profileUrl, { method: 'PUT',

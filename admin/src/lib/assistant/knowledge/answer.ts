@@ -128,3 +128,24 @@ export function parseSelection(raw:string,evidence:Evidence[]):GroundedAnswer {
   return parseAnswer(JSON.stringify(unique.length?{answerKind:'grounded',segments:unique}:insufficientAnswer),evidence);
 }
 export function safeInsufficientContent():MessageContent {return {version:1,blocks:[{type:'notice',code:'insufficient_evidence',fallbackText:INSUFFICIENT_TEXT}]};}
+export type SafeFallbackCode = 'source_read_required' | 'unsupported_model_commitment';
+export const SOURCE_UNAVAILABLE_TEXT = '本次未核实到可引用的企业标准或施工依据，无法确认这项具体要求。你可以补充想核对的资料，或直接联系项目团队确认。';
+export const COMMITMENT_UNAVAILABLE_TEXT = '这个问题涉及价格、工期或正式承诺，小K不能代替项目团队确认。建议你直接联系设计师或项目经理核对；已发布的施工记录和周报仍可查看。';
+export const REPORT_COMMITMENT_UNAVAILABLE_TEXT = '这份报告里已发布的事实可以在上方查看；涉及下周安排、价格或正式承诺的内容，小K不能代替项目团队确认，建议直接联系设计师或项目经理核对。';
+const sourceFallbackQuestion = /(?:企业|公司|你们|贵司)[^。！？!?；;\n]{0,24}(?:标准|工艺|规范|要求|做法)|(?:标准|规范|工艺|验收|闭水|打压|线径|管径|做法|依据)/u;
+const commitmentFallbackQuestion = /(?:价格|费用|总价|报价|多少钱|工期|多久|几天|什么时候|下周|保证|承诺|验收通过)/u;
+/** A safety rejection must leave a fixed server-authored notice, not an empty
+ * failed turn. The notice never quotes model prose or confirms a value. */
+export function safeFallbackContent(code: SafeFallbackCode, options: { reportScoped?: boolean } = {}): MessageContent {
+  return { version: 1, blocks: [{ type: 'notice',
+    code: code === 'source_read_required' ? 'source_unavailable' : 'commitment_unavailable',
+    fallbackText: code === 'source_read_required' ? SOURCE_UNAVAILABLE_TEXT
+      : options.reportScoped ? REPORT_COMMITMENT_UNAVAILABLE_TEXT : COMMITMENT_UNAVAILABLE_TEXT }] };
+}
+/** Keep the fallback narrow: generic memory/action rejections keep their
+ * existing failure semantics; only a customer question that actually asks for
+ * an enterprise standard or a price/schedule commitment gets a safe notice. */
+export function safeFallbackApplies(code: SafeFallbackCode, question: string, reportScoped = false) {
+  return code === 'source_read_required' ? sourceFallbackQuestion.test(question)
+    : reportScoped || commitmentFallbackQuestion.test(question);
+}

@@ -20,11 +20,14 @@ export type WorkerSafetyGateReason =
   | 'pilot_scope_configured'
   | 'pilot_worker_alignment'
   | 'pilot_scope_missing'
-  | 'enterprise_scope_not_allowed';
+  | 'enterprise_scope_not_allowed'
+  /** The platform super admin explicitly switched the Worker off. */
+  | 'worker_disabled';
 export type WorkerSafetyGateErrorCode =
   | PilotWorkerAlignmentErrorCode
   | 'worker_pilot_scope_missing'
-  | 'worker_enterprise_scope_not_allowed';
+  | 'worker_enterprise_scope_not_allowed'
+  | 'worker_disabled';
 
 export type WorkerSafetyGate = {
   status: WorkerSafetyGateStatus;

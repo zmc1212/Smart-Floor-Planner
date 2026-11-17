@@ -33,6 +33,7 @@ let actor: ActorContext, service: ConversationService;
 before(async () => {
   loadEnvConfig(process.cwd());
   assert.ok(['127.0.0.1', 'localhost'].includes(new URL(resolvePostgresRuntimeConfig().connectionString).hostname));
+  process.env.ASSISTANT_REQUESTS_PER_MINUTE = '1000';
   // The agent path uses the saved platform LLM override when it is enabled.
   // The synthetic capability probe must describe the same model or the real
   // binding check would reject every dispatch. No configuration is changed.

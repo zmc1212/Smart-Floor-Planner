@@ -29,9 +29,31 @@ import { fastGPTAgentV2Protocol, nativeAgentRuntimeBinding, nativeExecutorConfig
 import { publicHistoryScope } from '../agent/history';
 import { companyPracticeRequested, explicitHumanHandoffRequested, knowledgeOriginalRequested } from '../agent/read-tool-input';
 import { discoveryIntent } from '../core/discovery';
+import { profileFieldLabels, profileRecallKind, renovationLeadId, renovationProfileRecall } from '../requirements/renovation-profile';
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
 const requirementRecapRequested = (text: string) => /回顾|总结.*(?:需求|想法)|(?:需求|想法).*总结|整理一下|记了哪些想法|记住了什么/.test(text);
+
+async function tryRenovationProfileRecap(lease: Lease, context: Awaited<ReturnType<typeof runContext>>) {
+  if (lease.actor.principal.kind !== 'user' || context.conversation.purpose !== 'customer_consultation'
+    || context.run.purpose !== 'reply' || context.run.trigger_kind !== 'user_message' || context.job.provider_started_at
+    || !renovationLeadId(context.conversation.entry_snapshot as Row)) return null;
+  return completeGuidance(lease, async (tx, current) => {
+    const message = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
+      and conversation_id=${String(current.conversation.id)} and id=${String(current.run.trigger_message_id)}`);
+    const content = message?.content as MessageContent | undefined;
+    if (!content || content.blocks.some(block => block.type !== 'text')) return null;
+    const question = safeText(content);
+    if (!requirementRecapRequested(question) || !/装修画像|这套房.*(?:需求|想法)|已确认.*(?:需求|想法)/u.test(question)) return null;
+    const result = await renovationProfileRecall(tx, lease.actor, current.conversation);
+    if (!result) return null;
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs)
+      values(${lease.enterpriseId},${lease.runId},1,${profileRecallKind},'succeeded',${JSON.stringify(result.ref)}::jsonb)`);
+    const lines = result.profile.fields.map(field => profileFieldLabels[field.key] + '：'
+      + (field.value.length > 180 ? field.value.slice(0, 180) + '…' : field.value));
+    return '这套房已确认的装修需求：\n' + lines.join('\n') + '\n完整内容可在「装修需求」中查看。';
+  });
+}
 
 async function tryRequirementGuidance(lease: Lease, context: Awaited<ReturnType<typeof runContext>>) {
   const { conversation, job, run } = context;
@@ -94,11 +116,14 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
   try {
     const context=await withTenantTransaction(lease.enterpriseId,tx=>runContext(tx,lease));
     const policy = context.run.policy_snapshot as Row;
+    if (await tryRenovationProfileRecap(lease, context)) return;
     // I7.2: an owner's ordinary stage question is answered from the current
-    // project stage inside the original C01 conversation. Deep professional
-    // topics still return null and keep the existing specialist/model route.
+    // project stage inside the original C01 conversation. A visitor watching a
+    // public site has no own project: that turn must keep the public-context
+    // route so the withdrawn source is revalidated before delivery.
     if (lease.actor.principal.kind === 'user' && context.run.purpose === 'reply'
       && context.run.trigger_kind === 'user_message'
+      && !(context.conversation.entry_snapshot as Row).activePublicSite
       && ['customer_consultation', 'construction_followup'].includes(String(context.conversation.purpose))) {
       const userId = lease.actor.principal.userId;
       const question = await withTenantTransaction(lease.enterpriseId, async tx => {
@@ -211,6 +236,7 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     const diagnostic=retrieved?.diagnostic;
     const candidates=retrieved?retrieved.evidence.filter(e=>e.professional?.applicability.status!=='not_applicable')
       :await deps.retriever!.retrieve(lease.actor,retrievalQuery,Number(context.run.knowledge_epoch));
+    const knowledgeStatus=diagnostic?.profileId==='0' && !candidates.length ? 'not_ready' : 'ready';
     const evidence:Evidence[]=[];
     for(const e of candidates) {
       // Only reject near-unrelated vectors here. The selector judges answerability
@@ -230,10 +256,11 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
       const originals = diagnostic ? evidence.map(item => candidates.find(original => original.ref.id === item.ref.id)!) : undefined;
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,input_summary,source_refs,private_checkpoint,status)
         values(${lease.enterpriseId},${lease.runId},${Number(context.job.attempts)*10},'retrieval','knowledge.search.v1',1,
-        ${JSON.stringify({queryChars:query.length,candidateCount:candidates.length,promptVersion:'extractive-selection-v5-scoped-intent',knowledgeStatus:'ready',diagnostic:contextDiagnostic,
+        ${JSON.stringify({queryChars:query.length,candidateCount:candidates.length,promptVersion:'extractive-selection-v5-scoped-intent',knowledgeStatus,diagnostic:contextDiagnostic,
           ...(diagnostic ? { knowledgeContextHash: fingerprint(diagnostic.context) } : {})})}::jsonb,
         ${JSON.stringify(evidence.map(e=>({ref:e.ref,hash:e.hash})))}::jsonb,${originals ? JSON.stringify(originals) : null}::jsonb,'succeeded')`);
     });
+    if(knowledgeStatus==='not_ready' && context.conversation.purpose==='knowledge_preview') fail('retrieval_unavailable',503);
     if(!evidence.length) {await completeAnswer(lease,insufficientAnswer,[],null,followup);return;}
     await heartbeat(lease);
     const model=deps.model ?? textGateway(lease,evidence);

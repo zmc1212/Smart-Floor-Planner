@@ -2,6 +2,7 @@ const {
   loadDesignerQrToTempFile,
   copyDesignerWechatId,
 } = require('../../utils/designerContact.js');
+const nativePreview = require('../../utils/native-preview.js');
 const { openSheet, closeSheet, clearSheetTimer } = require('../../utils/sheetMotion.js');
 
 const DIALOG_KEYS = Object.freeze({
@@ -149,7 +150,7 @@ Component({
     onPreviewQr() {
       const { qrPath } = this.data;
       if (!qrPath) return;
-      wx.previewImage({ current: qrPath, urls: [qrPath] });
+      nativePreview.previewImage({ current: qrPath, urls: [qrPath] });
     },
 
     onCopyWechat() {

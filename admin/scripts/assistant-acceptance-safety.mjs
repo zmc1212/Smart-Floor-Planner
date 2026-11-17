@@ -1,15 +1,23 @@
 import pg from 'pg';
 
+export function assistantAcceptanceTarget(databaseUrl, isolatedPort = '55432') {
+  const url = URL.parse(databaseUrl);
+  if (!url || !['postgresql:', 'postgres:'].includes(url.protocol) || url.search
+    || !['127.0.0.1', 'localhost'].includes(url.hostname) || url.port !== isolatedPort
+    || url.pathname !== '/xiaok_embedding_eval') {
+    throw new Error(`Acceptance requires isolated loopback:${isolatedPort}/xiaok_embedding_eval; no migration or production switch is performed.`);
+  }
+  return url;
+}
+
 /** Hold one session lock for the whole suite, including its child processes.
  * @param {string} [databaseUrl]
- * @param {{waitForLock?: boolean, onLockError?: (error: Error) => void}} [options]
+ * @param {{waitForLock?: boolean, onLockError?: (error: Error) => void, isolatedPort?: string}} [options]
  */
-export async function lockAssistantAcceptance(databaseUrl = process.env.DATABASE_URL || '', { waitForLock = false, onLockError } = {}) {
-  const url = new URL(databaseUrl);
-  if (!['127.0.0.1', 'localhost'].includes(url.hostname) || url.port !== '55432'
-    || url.pathname !== '/xiaok_embedding_eval') {
-    throw new Error('Acceptance requires isolated loopback:55432/xiaok_embedding_eval; no migration or production switch is performed.');
-  }
+export async function lockAssistantAcceptance(databaseUrl = process.env.DATABASE_URL || '', {
+  waitForLock = false, onLockError, isolatedPort,
+} = {}) {
+  const url = assistantAcceptanceTarget(databaseUrl, isolatedPort);
   const client = new pg.Client({ connectionString: url.toString(), keepAlive: true, keepAliveInitialDelayMillis: 10000 });
   let lostError, heartbeat, checking = false;
   const lost = error => { lostError ||= error; onLockError?.(error); };

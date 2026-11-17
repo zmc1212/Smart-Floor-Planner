@@ -2,13 +2,12 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
-import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { AssistantRepository, authorizeHandoffStaff, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, key, type ActorContext } from '../contracts';
 import { adaptSurveyGraphToRooms, parseFormalSurveyLayout } from '@/lib/survey-graph';
 import { renderMiniAiFloorPlanControlPng, resolveMiniAiFloorPlanTarget } from '@/lib/ai/mini-ai-floorplan';
 import { appendMessage, cancelRuns, newRun } from '../core/conversation';
 import { agentConfig } from '../agent/config';
-import { authorizeHandoffStaff } from '../handoff/service';
 import { formalMediaSourceAvailable, ownedFormalPlan, type FormalSource } from './formal-source';
 
 export const MAX_MEDIA_BYTES = 4 * 1024 * 1024;
@@ -47,7 +46,7 @@ export class AssistantMediaService {
       if (this.actor.principal.kind === 'user') c = await repo.conversation(conversationId);
       else {
         if (write) fail('assistant_capability_forbidden', 403);
-        const staff = await authorizeHandoffStaff(repo);
+        const staff = await authorizeHandoffStaff(tx, this.actor);
         c = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId}
           and id=${conversationId} and status='open'
           and (purpose='customer_consultation' or (purpose='construction_followup' and exists(select 1 from app.construction_followup_bindings b

@@ -1,4 +1,5 @@
 const api = require('../../../utils/api');
+const nativePreview = require('../../../utils/native-preview');
 const {
   hasDesignerContact,
   copyDesignerWechatId,
@@ -241,6 +242,7 @@ Page({
     if (typeof wx.hideShareMenu === 'function') {
       wx.hideShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] });
     }
+    if (nativePreview.shownAfterPreview(this)) return;
     if (!this.data.leadId || !this._archiveReady) return;
     await this.load({ silent: true });
   },
@@ -253,10 +255,6 @@ Page({
 
   loadCameraProjects() { return customerCamera.load(this); },
   openCamera(event) { return customerCamera.open(this, event); },
-  openFamilySite() {
-    if (!this.data.leadId) return;
-    wx.navigateTo({ url: '/packages/construction/family/family?leadId=' + encodeURIComponent(this.data.leadId) });
-  },
 
   async load(options) {
     const silent = Boolean(options && options.silent);
@@ -536,7 +534,7 @@ Page({
       wx.showToast({ title: '户型图正在加载', icon: 'none' });
       return;
     }
-    wx.previewImage({ current: floorPlanImagePath, urls: [floorPlanImagePath] });
+    nativePreview.previewImage({ current: floorPlanImagePath, urls: [floorPlanImagePath] }, this);
   },
 
   previewFeaturedDelivery() {

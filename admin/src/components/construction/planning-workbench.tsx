@@ -155,7 +155,7 @@ function Workbench({ identity }: { identity: string }) {
         { key: 'video', label: '工地视频', children: <CameraPanel key={identity+':'+selected} projectId={selected} /> },
       ]} />}
     </Drawer>
-    <Modal title={editor ? ({ create: '建立施工项目', project: '项目设置', member: '设置项目成员', room: '项目房间', stages: '配置施工节点', contact: `${editor.stage?.name} · 联系管家电话`, progress: '更新实际施工节点' }[editor.kind]) : ''} width={editor?.kind === 'stages' ? 760 : 520} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }} open={!!editor} onCancel={() => { if (!busy) setEditor(null); }} onOk={() => void submit()} confirmLoading={busy} okButtonProps={{ disabled: !!pending }} okText="保存" forceRender>
+    <Modal zIndex={1200} title={editor ? ({ create: '建立施工项目', project: '项目设置', member: '设置项目成员', room: '项目房间', stages: '配置施工节点', contact: `${editor.stage?.name} · 联系管家电话`, progress: '更新实际施工节点' }[editor.kind]) : ''} width={editor?.kind === 'stages' ? 760 : 520} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }} open={!!editor} onCancel={() => { if (!busy) setEditor(null); }} onOk={() => void submit()} confirmLoading={busy} okButtonProps={{ disabled: !!pending }} okText="保存" forceRender>
       <Form key={formKey} form={form} layout="vertical" disabled={disabled} preserve={false} initialValues={initial}>
         {editor?.kind === 'stages' && <>
           <Alert type="info" showIcon message="默认10个节点，可增删、调整名称和顺序。开启到场提醒须填写原因与现场重点。需求补问独立配置，实际进入节点时最多问一个缺项，已有或问过的需求不重复问；客户可稍后再聊。" style={{ marginBottom: 20 }} />

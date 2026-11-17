@@ -7,15 +7,17 @@ import { one } from '@/db/repositories/assistant-repository';
 import { ConversationService } from '@/lib/assistant/core/conversation';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
-import { searchWeb, type WebQuery } from '@/lib/assistant/agent/web';
+import type { WebQuery } from '@/lib/assistant/agent/web';
 import { reserveConsultationDispatch, settleConsultationDispatch } from '@/lib/assistant/agent/consultation-usage';
-import { searchPublicResearch, publicReaderParser } from '@/lib/assistant/agent/public-research';
+import { searchPublicResearch, publicReaderParser, type PublicReadDocument } from '@/lib/assistant/agent/public-research';
+import { proseNumberProtocol } from '@/lib/assistant/agent/prose-number-view';
 import { consultationAcceptanceProfile as profile, consultationLongProfile, consultationCashAuthorization,
   consultationTariffVersion } from '@/lib/assistant/contracts/consultation';
 import type { ConsultationBinding, MeteredConsultationBinding } from '@/lib/assistant/agent/consultation-profile';
 import type { ActorContext } from '@/lib/assistant/contracts';
 import type { ModelMessage, ModelTurnOutput } from '@/lib/assistant/contracts/model';
-import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { closePostgresPool } from '@/lib/postgresql';
+import { xiaokTestDatabase } from './xiaok-test-database';
 
 const prefix = 'synthetic-consultation-' + randomUUID();
 const initialDailyLimits = process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
@@ -37,6 +39,28 @@ const final = (citationId: string) => ({ kind: 'synthesis', segments: [{ basis: 
 const expectCode = (code: string) => (error: unknown) => Boolean(error && typeof error === 'object' && 'code' in error && error.code === code);
 let firstRun: string, followupRun: string, citationId: string;
 
+const readerEndpoint = 'http://127.0.0.1:1';
+const savedReaderEndpoint = process.env.ASSISTANT_PUBLIC_READER_URL;
+const savedFetch = globalThis.fetch;
+const publicDocuments = new Map<string, PublicReadDocument>();
+function publicDocument(url: string, title: string, pages: string[], original: Buffer, mediaType = 'text/html') {
+  const document: PublicReadDocument = {
+    version: 1, url, title, parser: publicReaderParser, mediaType,
+    pages: pages.map((text, index) => ({ page: index + 1, text })), links: [], redirects: [],
+    original: { sha256: createHash('sha256').update(original).digest('hex'), bytes: original.length, base64: original.toString('base64') },
+    egress: 'upstream-v0.9.2-resolve-and-pin-proxy', tlsVerification: true,
+  };
+  publicDocuments.set(url, document);
+  return document;
+}
+
+function searchInstallation(query: WebQuery) {
+  const title = '合成厂家安装条件', text = '所选型号应支持地暖，仍须核对实际基层与安装条件。型号支持不证明这个客户家的现场已符合条件；网页不是企业承诺或施工验收。';
+  return searchPublicResearch(query, { name: 'labelled-synthetic',
+    search: async () => [{ url: 'https://maker.example/catalog-installation', title }],
+  }, async url => publicDocument(url, title, [text], Buffer.from(`<main>${text}</main>`)));
+}
+
 test('paid long trials share original cash holds across stages/groups, retain null actual billing and enforce enterprise limits',async()=>{
   const fixture=fixtures[2];
   const paid: MeteredConsultationBinding={profile:consultationLongProfile.id,stage:'R4',budgetGroup:prefix+'-paid',
@@ -45,11 +69,10 @@ test('paid long trials share original cash holds across stages/groups, retain nu
   await withTenantTransaction(fixture.enterpriseId,tx=>tx.execute(sql`update app.assistant_enterprise_settings
     set agent_config=${JSON.stringify(settings)}::jsonb where enterprise_id=${fixture.enterpriseId}`));
   const sent=await chat(fixture).send(fixture.conversationId,randomUUID(),content('查一下厂家公开地暖说明，解释条件，不保存、不安排。'));
-  const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,String(sent.runId));let calls=0;
+  const lease=await claimJob({ enterpriseId: fixture.enterpriseId, runId: String(sent.runId) });assert.ok(lease);assert.equal(lease.runId,String(sent.runId));let calls=0;
   await processAgentAnswer(lease,{model:async messages=>calls++===0?turn('search_web',{query:'地板 地暖 安装条件',domains:[]})
     :turn('final_response',final(sources(messages).find(source=>source.kind==='web')!.citationOptions[0].citationId)),
-    webSearch:async(query:WebQuery)=>searchWeb(query,{name:'labelled-synthetic',search:async()=>[{url:'https://maker.example/installation',title:'Synthetic'}]},
-      async url=>({url,type:'text/html',body:'<main>所选型号应支持地暖，仍须核对实际基层与安装条件。型号支持不证明这个客户家的现场已符合条件；网页不是企业承诺或施工验收。</main>'}))});
+    webSearch: searchInstallation });
   assert.equal((await chat(fixture).run(String(sent.runId))).status,'succeeded');assert.equal(calls,2);
   await withTenantTransaction(fixture.enterpriseId,async tx=>{
     const q=await one(tx,sql`select reserved_tokens,reserved_cost_micros,settled_cost_micros from app.assistant_quota_reservations
@@ -84,8 +107,19 @@ test('paid long trials share original cash holds across stages/groups, retain nu
 });
 
 before(async () => {
-  const url = new URL(resolvePostgresRuntimeConfig().connectionString);
-  assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
+  xiaokTestDatabase();
+  process.env.ASSISTANT_PUBLIC_READER_URL = readerEndpoint;
+  globalThis.fetch = async (input, init) => {
+    const endpoint = String(input);
+    if (![readerEndpoint + '/read', readerEndpoint + '/verify-pdf'].includes(endpoint)) throw Error('Unexpected consultation fixture request');
+    const { url } = JSON.parse(String(init?.body));
+    const document = publicDocuments.get(url);
+    if (!document) return Response.json({ code: 'web_http_404' }, { status: 404 });
+    if (endpoint.endsWith('/verify-pdf')) return Response.json({
+      requestedUrl: url, url, bytes: document.original.bytes, sha256: document.original.sha256, etag: null,
+    });
+    return Response.json(document);
+  };
   for (let index = 0; index < 3; index++) {
     const fixture = { enterpriseId: '', userId: '', conversationId: '' }; fixtures.push(fixture);
     await withPlatformTransaction(async tx => {
@@ -111,15 +145,20 @@ after(async () => {
       }
       for (const fixture of fixtures) if (fixture.userId) await tx.execute(sql`update app.users set context_version=context_version+1 where id=${fixture.userId}`);
     });
-  } finally { await closePostgresPool(); }
+  } finally {
+    globalThis.fetch = savedFetch;
+    if (savedReaderEndpoint === undefined) delete process.env.ASSISTANT_PUBLIC_READER_URL;
+    else process.env.ASSISTANT_PUBLIC_READER_URL = savedReaderEndpoint;
+    await closePostgresPool();
+  }
 });
 
 test('actual request uses the bound profile and the original usage/reservation rows', async () => {
   const sent = await chat().send(fixtures[0].conversationId, randomUUID(), content('查一下厂家公开地暖说明，解释条件，不保存、不安排。'));
-  firstRun = String(sent.runId); const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, firstRun);
+  firstRun = String(sent.runId); const lease = await claimJob({ enterpriseId: fixtures[0].enterpriseId, runId: firstRun }); assert.ok(lease); assert.equal(lease.runId, firstRun);
   let calls = 0;
   await processAgentAnswer(lease, { model: async messages => calls++ === 0 ? turn('search_web', { query: '地板 地暖 安装条件', domains: [] }) : turn('final_response', final(sources(messages).find(source => source.kind === 'web')!.citationOptions[0].citationId)),
-    webSearch: async (query: WebQuery) => searchWeb(query, {name:'labelled-synthetic',search:async()=>[{url:'https://maker.example/installation',title:'Synthetic'}]}, async url => ({url,type:'text/html',body:'<main>所选型号应支持地暖，仍须核对实际基层与安装条件。型号支持不证明这个客户家的现场已符合条件；网页不是企业承诺或施工验收。</main>'})) });
+    webSearch: searchInstallation });
   assert.equal((await chat().run(firstRun)).status, 'succeeded'); assert.equal(calls, 2);
   await withTenantTransaction(fixtures[0].enterpriseId, async tx => {
     const run = await one(tx, sql`select policy_snapshot from app.assistant_runs where enterprise_id=${fixtures[0].enterpriseId} and id=${firstRun}`);
@@ -132,7 +171,7 @@ test('actual request uses the bound profile and the original usage/reservation r
 test('follow-up revalidates original Evidence, opens its source and survives persisted reentry without another web read', async () => {
   const key = randomUUID(), question = content('沿刚才的依据，为什么还不能认定我家已经符合安装条件？不保存、不安排。');
   const sent = await chat().send(fixtures[0].conversationId,key,question); followupRun = String(sent.runId);
-  const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, followupRun); let calls = 0;
+  const lease = await claimJob({ enterpriseId: fixtures[0].enterpriseId, runId: followupRun }); assert.ok(lease); assert.equal(lease.runId, followupRun); let calls = 0;
   await processAgentAnswer(lease,{model:async messages=>{ calls++; const source=sources(messages).find(source=>source.kind==='web');assert.ok(source);assert.match(source.sourceId,new RegExp('^W'+firstRun+':'));return turn('final_response',final(source.citationOptions[0].citationId)); },webSearch:async()=>{throw Error('No repeat web read needed');}});
   assert.equal((await chat().run(followupRun)).status,'succeeded'); assert.equal(calls,1);
   const history=await chat().messages(fixtures[0].conversationId), answer=history.items.find(message=>message.authorKind==='assistant')!;
@@ -170,7 +209,7 @@ test('stage and enterprise caps deny the next reservation before a dispatch; mis
 
 test('discovery/read have separate durable receipts; a foreign-run candidate cannot dispatch a read',async()=>{
   const sent=await chat().send(fixtures[0].conversationId,randomUUID(),content('考虑地暖时，木地板和瓷砖怎么选？请查厂家公开说明，结合实际条件解释，不保存、不安排。'));
-  const runId=String(sent.runId),lease=await claimJob();assert.ok(lease);let reads=0,calls=0;
+  const runId=String(sent.runId),lease=await claimJob({ enterpriseId: fixtures[0].enterpriseId, runId });assert.ok(lease);let reads=0,calls=0;
   const original=Buffer.from('<main>所选型号应支持地暖，仍须核对实际基层与安装条件。型号支持不证明这个客户家的现场已符合条件。</main>');
   await processAgentAnswer(lease,{model:async messages=>{
     const turnIndex=calls++;
@@ -180,7 +219,12 @@ test('discovery/read have separate durable receipts; a foreign-run candidate can
     response.segments.push({basis:'advice',text:'可按需求比较：\n1. 先核对产品条件。\n2. 再核对现场资料。',citations:[]});
     return turn('final_response',response);
   },webSearch:query=>searchPublicResearch(query,{name:'labelled-synthetic',search:async()=>[{url:'https://maker.example/installation',title:'合成厂家说明'}]},undefined,undefined,Infinity,{runId,sequence:1200,discoverOnly:true}),
-    webRead:async(query,selected,previous,sequence)=>{reads++;return searchPublicResearch(query,{name:'labelled-synthetic',search:async()=>{throw Error('No repeated search');}},async url=>({version:1,url,title:'合成厂家说明',parser:publicReaderParser,mediaType:'text/html',pages:[{page:1,text:'所选型号应支持地暖，仍须核对实际基层与安装条件。型号支持不证明这个客户家的现场已符合条件。'}],links:[],redirects:[],original:{sha256:createHash('sha256').update(original).digest('hex'),bytes:original.length,base64:original.toString('base64')},egress:'upstream-v0.9.2-resolve-and-pin-proxy',tlsVerification:true}),previous,Infinity,{runId,sequence,selected});}});
+    webRead:async(query,selected,previous,sequence)=>{
+      reads++;
+      return searchPublicResearch(query,null,async url=>publicDocument(url,'合成厂家说明',
+        ['所选型号应支持地暖，仍须核对实际基层与安装条件。型号支持不证明这个客户家的现场已符合条件。'],original),
+        previous,Infinity,{runId,sequence,selected});
+    }});
   assert.equal((await chat().run(runId)).status,'succeeded');assert.equal(calls,3);assert.equal(reads,1);
   assert.match(JSON.stringify(await chat().messages(fixtures[0].conversationId)),/先核对产品条件/);
   await withTenantTransaction(fixtures[0].enterpriseId,async tx=>{
@@ -189,12 +233,11 @@ test('discovery/read have separate durable receipts; a foreign-run candidate can
     assert.equal(snapshot.documents[0].original.base64,original.toString('base64'));
     assert.ok(snapshot.pages[0].hash,'model metadata projection never replaces the authorized original');
     const model=await one(tx,sql`select input_summary from app.assistant_run_steps where enterprise_id=${fixtures[0].enterpriseId} and run_id=${runId} and kind='agent_model' order by step_seq desc limit 1`);
-    const metadata=model!.input_summary as {contentProjection:string;numericProseProtocol:string};
-    assert.equal(metadata.contentProjection,'tool-content-artifact-v2');
-    assert.equal(metadata.numericProseProtocol,'structured-list-marker-v2');
+    const metadata=model!.input_summary as {numericProseProtocol:string};
+    assert.equal(metadata.numericProseProtocol, proseNumberProtocol);
   });
   const next=await chat().send(fixtures[0].conversationId,randomUUID(),content('再核对公开安装条件，不保存。'));
-  const nextLease=await claimJob();assert.ok(nextLease);
+  const nextLease=await claimJob({ enterpriseId: fixtures[0].enterpriseId, runId: String(next.runId) });assert.ok(nextLease);
   await processAgentAnswer(nextLease,{webSearch:async()=>{throw Error('No search');},webRead:async()=>{reads++;throw Error('Foreign candidate');},model:async()=>turn('read_web',{candidateId:`P${runId}:1200:0`})});
   assert.equal((await chat().run(String(next.runId))).status,'failed');assert.equal(reads,1);
   const error=await withTenantTransaction(fixtures[0].enterpriseId,tx=>one(tx,sql`select error_code from app.assistant_runs where enterprise_id=${fixtures[0].enterpriseId} and id=${String(next.runId)}`));
@@ -203,7 +246,7 @@ test('discovery/read have separate durable receipts; a foreign-run candidate can
 
 test('four primary calls leave one accounted final-only PDF citation repair, with the rejected original retained',async()=>{
   const sent=await chat().send(fixtures[0].conversationId,randomUUID(),content('考虑地暖时，木地板和瓷砖怎么选？请查厂家公开说明，结合实际条件解释，不保存、不安排。'));
-  const runId=String(sent.runId),lease=await claimJob();assert.ok(lease);let calls=0,searches=0,numericId='';
+  const runId=String(sent.runId),lease=await claimJob({ enterpriseId: fixtures[0].enterpriseId, runId });assert.ok(lease);let calls=0,searches=0,numericId='';
   const original=Buffer.from('%PDF clearly labelled synthetic two-page original');
   let previous: Parameters<typeof searchPublicResearch>[3];
   await processAgentAnswer(lease,{model:async(messages,_available,_turn,tools)=>{
@@ -221,10 +264,10 @@ test('four primary calls leave one accounted final-only PDF citation repair, wit
   },webSearch:async query=>{
     const result=await searchPublicResearch(query,{name:'labelled-synthetic',search:async()=>[{url:'https://maker.example/install.pdf',title:'合成厂家安装原件'}]},undefined,previous,Infinity,{runId,sequence:1200+searches++*10,discoverOnly:true});
     previous=result.research;return result;
-  },webRead:async(query,selected,state,sequence)=>searchPublicResearch(query,null,async url=>({version:1,url,title:'合成厂家安装原件',parser:publicReaderParser,mediaType:'application/pdf',
-    pages:[{page:1,text:'本页仅说明需要核对具体型号、适用条件和实际基层；厂家资料不证明客户家已满足安装条件。'},
-      {page:2,text:'Moisture limits are 1.5% and 0.3%. Contact temperature maximum 27°C; gradual temperature change 5°C per day.'}],
-    links:[],redirects:[],original:{sha256:createHash('sha256').update(original).digest('hex'),bytes:original.length,base64:original.toString('base64')},egress:'upstream-v0.9.2-resolve-and-pin-proxy',tlsVerification:true}),state,Infinity,{runId,sequence,selected})});
+  },webRead:async(query,selected,state,sequence)=>searchPublicResearch(query,null,async url=>publicDocument(url,'合成厂家安装原件',[
+    '本页仅说明需要核对具体型号、适用条件和实际基层；厂家资料不证明客户家已满足安装条件。',
+    'Moisture limits are 1.5% and 0.3%. Contact temperature maximum 27°C; gradual temperature change 5°C per day.',
+  ],original,'application/pdf'),state,Infinity,{runId,sequence,selected})});
   const result=await chat().run(runId);assert.equal(result.status,'succeeded',JSON.stringify({runId,calls,status:result.status}));assert.equal(calls,5);
   const reentry=JSON.stringify(await chat().messages(fixtures[0].conversationId));assert.match(reentry,/1\.5%/);assert.match(reentry,/仍需核实/);
   await withTenantTransaction(fixtures[0].enterpriseId,async tx=>{
@@ -245,14 +288,13 @@ test('non-adjacent PDF quotes persist separately, reopen after follow-up and rev
   const text='测试专用：铺装前核对具体型号与适用条件。\n'+'中间资料保持完整，仅供原文定位。\n'.repeat(70)+'测试专用：本人现场基层仍须独立核验，厂家说明不等于施工安排或验收。';
   let originRun='',calls=0;
   const execute=async(question:string)=>{
-    const sent=await chat().send(cid,randomUUID(),content(question)),runId=String(sent.runId),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,runId);
+    const sent=await chat().send(cid,randomUUID(),content(question)),runId=String(sent.runId),lease=await claimJob({ enterpriseId: fixtures[0].enterpriseId, runId });assert.ok(lease);assert.equal(lease.runId,runId);
     await processAgentAnswer(lease,{model:async messages=>{
       calls++;const source=sources(messages).find(source=>source.kind==='web');
       return source?turn('final_response',{kind:'synthesis',segments:[{basis:'evidence',text:'资料要求核对具体型号与本人现场基层，不能把厂家说明当作施工安排或验收。',
         citations:[source.citationOptions[0],source.citationOptions.at(-1)!].map(citation=>({citationId:citation.citationId}))}]}):turn('search_web',{query:'合成安装资料',domains:[]});
-    },webSearch:async(query:WebQuery)=>searchPublicResearch(query,{name:'labelled-synthetic',search:async()=>[{url:'https://maker.example/spans.pdf',title:'合成安装原件'}]},async url=>({
-      version:1,url,title:'合成安装原件',parser:publicReaderParser,mediaType:'application/pdf',pages:[{page:1,text}],links:[],redirects:[],
-      original:{sha256:createHash('sha256').update(original).digest('hex'),bytes:original.length,base64:original.toString('base64')},egress:'upstream-v0.9.2-resolve-and-pin-proxy',tlsVerification:true}))});
+    },webSearch:async(query:WebQuery)=>searchPublicResearch(query,{name:'labelled-synthetic',search:async()=>[{url:'https://maker.example/spans.pdf',title:'合成安装原件'}]},
+      async url=>publicDocument(url,'合成安装原件',[text],original,'application/pdf'))});
     const run=await chat().run(runId);assert.equal(run.status,'succeeded');
     const answer=(await new ConversationService(actor()).messages(cid)).items.find(item=>item.id===run.outputMessageId)!;assert.ok(answer.available);assert.equal(answer.citations.length,2);
     for(const [index,citation]of answer.citations.entries()){
@@ -280,7 +322,7 @@ test('non-adjacent PDF quotes persist separately, reopen after follow-up and rev
 
 test('missing observed usage preserves the reservation and stops the next call in the same stage',async()=>{
   const sent=await chat().send(fixtures[0].conversationId,randomUUID(),content('这是独立问题，请给一般选材建议，不保存、不安排。'));
-  const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);let calls=0;
+  const lease=await claimJob({ enterpriseId: fixtures[0].enterpriseId, runId: String(sent.runId) });assert.ok(lease);assert.equal(lease.runId,sent.runId);let calls=0;
   await processAgentAnswer(lease,{model:async()=>{calls++;return turn('final_response',{kind:'synthesis',segments:[{basis:'advice',text:'可先比较清洁习惯和脚感偏好，再核对具体产品的维护要求。',citations:[]}]},null);}});
   const failed=await chat().run(String(sent.runId));assert.equal(failed.status,'failed');assert.equal(calls,1);
   await withTenantTransaction(fixtures[0].enterpriseId,async tx=>{

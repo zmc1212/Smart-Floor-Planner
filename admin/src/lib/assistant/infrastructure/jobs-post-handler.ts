@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { authorized } from '@/lib/assistant/infrastructure/worker-auth';
 import { runAssistantJobsTick, type AssistantJobsTickDependencies } from '@/lib/assistant/infrastructure/jobs-tick';
+import { resolveWorkerDeployment, type WorkerDeployment } from '@/lib/xiaok-v1/worker-runtime-config';
 
 /** Only the clock, environment and non-pilot Assistant jobs may be injected.
  * The four reminder/report workers always keep their production
@@ -10,6 +11,8 @@ import { runAssistantJobsTick, type AssistantJobsTickDependencies } from '@/lib/
 export type AssistantJobsPostDependencies = {
   now?: Date;
   env?: Record<string, string | undefined>;
+  /** Resolves the saved admin switch before the tick runs. */
+  resolveWorkerDeployment?: () => Promise<WorkerDeployment>;
   advanceKnowledgeBatches?: AssistantJobsTickDependencies['advanceKnowledgeBatches'];
   processAssistantJob?: AssistantJobsTickDependencies['processAssistantJob'];
   processAssistantRun?: AssistantJobsTickDependencies['processAssistantRun'];
@@ -32,9 +35,12 @@ export function createAssistantJobsPost(dependencies: AssistantJobsPostDependenc
       if ((await request.text()).trim() && (request.headers.get('content-length') !== '0')) {
         return NextResponse.json({ success: false, code: 'invalid_message', requestId }, { status: 422 });
       }
+      const deployment = await (dependencies.resolveWorkerDeployment
+        ?? (() => resolveWorkerDeployment({ env: dependencies.env })))();
       const data = await runAssistantJobsTick({
         now: dependencies.now,
-        env: dependencies.env,
+        env: deployment.env,
+        deployment,
         advanceKnowledgeBatches: dependencies.advanceKnowledgeBatches,
         processAssistantJob: dependencies.processAssistantJob,
         processAssistantRun: dependencies.processAssistantRun,

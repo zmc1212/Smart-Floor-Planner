@@ -60,8 +60,8 @@ export class RequirementWorkflow {
     if (snapshot.values.proposalId !== proposalId || snapshot.values.digest !== digest) fail('requirement_target_changed');
     return { graph, config, snapshot };
   }
-  async read(conversationId: string) {
-    const current = await this.requirements.read(conversationId);
+  async read(conversationId: string, includeProfile = false) {
+    const current = await this.requirements.read(conversationId, includeProfile);
     if (current.proposal && await this.requirements.workflowEnabled(conversationId)) {
       await this.locked(conversationId, () => this.prepare(conversationId, String(current.proposal!.id), String(current.proposal!.digest)));
     }

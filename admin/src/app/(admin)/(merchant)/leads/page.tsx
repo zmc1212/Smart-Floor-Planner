@@ -2,6 +2,7 @@
 
 import { ReportEntry } from '@/components/design-reports/report-entry';
 import { constructionLeadEntry } from '@/components/construction/lead-entry';
+import { RenovationProfilePanel } from '@/components/assistant/renovation-profile-panel';
 
 import { useCallback, useEffect, useRef, useState, type Key } from 'react';
 import {
@@ -50,6 +51,7 @@ import {
   needsStaffWechatForAssignment,
 } from '@/lib/lead-assignment-feedback';
 import { getLeadSourceLabel } from '@/lib/lead-source-labels';
+import { isEnterpriseManagementRole } from '@/lib/admin-user-roles';
 
 type StaffReference = {
   _id: string;
@@ -2500,6 +2502,11 @@ function LeadsPage() {
                 { key: 'source', label: '来源渠道', children: getLeadSourceLabel(selectedLead.source) },
               ]}
             />
+
+            {!selectedLead.archivedAt && selectedLead.status !== 'closed' && (
+              isEnterpriseManagementRole(currentUser?.role) ||
+              (currentUser?.role === 'designer' && getStaffId(selectedLead.assignedTo) === currentUser._id)
+            ) && <RenovationProfilePanel key={selectedLead._id} leadId={selectedLead._id} />}
 
             <RelatedFloorPlans
               floorPlans={selectedLead.floorPlanIds || []}

@@ -4,6 +4,21 @@ const {LiveConsentController}=require('../packages/assistant/lib/public-live');
 const card={id:'7',versionId:'8',messageId:'20',revision:3,key:'a'.repeat(48),status:'pending_owner',statusLabel:'待你决定',available:true,canDecide:true,canWithdraw:true,alias:'客厅机位',name:'测试工地'};
 const path='/api/public/construction-live/1454/'+card.key+'/media/'+'b'.repeat(43)+'/hls.m3u8';
 function env(){const storage=new Map();global.wx={getStorageSync:k=>storage.get(k),setStorageSync:(k,v)=>storage.set(k,v),removeStorageSync:k=>storage.delete(k)};return storage;}
+function publicLivePage(){
+  const source=fs.readFileSync(require.resolve('../packages/construction/public-live/public-live'),'utf8'),calls=[];let page;
+  new Function('Page','require','wx',source)(definition=>{page=definition;},module=>module.includes('site-font')?{loadSiteFont(){}}:{},{navigateTo:({url})=>calls.push(url)});
+  page.setData=patch=>Object.assign(page.data,patch);return {page,calls};
+}
+
+test('the live page carries the exact public site into the consultation',()=>{
+  const {page,calls}=publicLivePage();
+  page.options={conversationId:'9',enterpriseId:'1454',siteId:'23',versionId:'24'};page.consult();
+  assert.equal(calls[0],'/packages/assistant/chat/chat?conversationId=9&publicSiteId=23&publicVersionId=24');
+  page.options={enterpriseId:'1454'};page.consult();
+  assert.equal(calls[1],'/packages/assistant/chat/chat?publicEnterpriseId=1454');
+  page.options={enterpriseId:'1454',siteId:'23',versionId:'24'};page.consult();
+  assert.equal(calls[2],'/packages/assistant/chat/chat?publicEnterpriseId=1454&publicSiteId=23&publicVersionId=24');
+});
 
 test('opening WebView uses the preview receipt and approval only follows server playback readback',async()=>{
   env();let row={...card,playbackReady:false},refreshes=0;const opens=[],writes=[];
@@ -52,26 +67,78 @@ test('a late owner preview receipt cannot open WebView after the viewer identity
   assert.equal(await opening,false);assert.equal(opens,0);assert.equal(c.pending(),null);
 });
 
-test('camera WebView accepts the exact owner session and rejects a mismatched version',async()=>{
-  const source=fs.readFileSync(require.resolve('../packages/construction/camera/camera'),'utf8');let page,version='8';
-  const calls=[];
-  new Function('Page','require','getApp','wx',source)(definition=>{page=definition;},module=>module.includes('identity-navigation')?
-    {canAccessRoute:()=>false}:{request:async(...args)=>{calls.push(args);return {data:{versionId:version,revision:4,url:'http://127.0.0.1:3019'+path}};}},
-    ()=>({globalData:{token:'synthetic'}}),{});
+function ownerCamera(request) {
+  const source=fs.readFileSync(require.resolve('../packages/construction/camera/camera'),'utf8');
+  const globalData={token:'synthetic'}, calls=[];
+  let page, now=0;
+  new Function('Page','require','getApp','wx','Date',source)(definition=>{page=definition;},module=>module.includes('identity-navigation')?
+    {canAccessRoute:()=>false}:{request:async(...args)=>{calls.push(args);return request(...args);}},
+    ()=>({globalData}),{}, {now:()=>now});
   page.setData=patch=>Object.assign(page.data,patch);
-  page.onLoad({conversationId:'9',liveId:'7',versionId:'8',revision:'4'});page._visible=true;
-  await page.open();
+  page.onLoad({conversationId:'9',liveId:'7',versionId:'8',revision:'4'});
+  return {page,globalData,calls,advance:ms=>{now+=ms;}};
+}
+const ownerSession = (overrides={}) => ({data:{versionId:'8',revision:4,expiresInSeconds:120,url:'http://127.0.0.1:3019'+path,...overrides}});
+
+test('camera WebView accepts the exact owner session and rejects a mismatched version',async()=>{
+  let version='8';
+  const {page,calls}=ownerCamera(()=>ownerSession({versionId:version}));
+  await page.onShow();
   assert.deepEqual(calls[0].slice(0,3),['/miniprogram/assistant/public-live/9/7/webview','POST',{versionId:'8',expectedRevision:4}]);
   assert.match(page.data.src,/^http:\/\/127\.0\.0\.1:3019\/construction-camera#ownerLive=1454\./);
   version='10';await page.open();assert.equal(page.data.src,'');assert.ok(page.data.error);
 });
 
-function publicPlayer(request) {
+test('owner preview retains the WebView on return and rechecks when its session expires or identity changes',async()=>{
+  let denied=false;
+  const {page,calls,globalData,advance}=ownerCamera(()=>{if(denied)throw new Error('forbidden');return ownerSession();});
+  await page.onShow();
+  const first=page.data.src;
+  assert.ok(first);
+  page.onHide();
+  assert.equal(page.data.src,first);
+  await page.onShow();
+  assert.equal(page.data.src,first);
+  assert.equal(calls.length,1);
+
+  page.onHide();advance(120000);await page.onShow();
+  assert.equal(calls.length,2);
+  assert.ok(page.data.src);
+  page.onHide();globalData.token='different';denied=true;await page.onShow();
+  assert.equal(calls.length,3);
+  assert.equal(page.data.src,'');
+  assert.ok(page.data.error);
+});
+
+test('owner preview uses one pending entry across hide/show and cannot mount after exit',async()=>{
+  for(const unload of [false,true]){
+    let resolve;
+    const {page,calls}=ownerCamera(()=>new Promise(r=>{resolve=r;}));
+    const pending=page.onShow();
+    page.onHide();
+    if(unload)page.onUnload();
+    else {await page.onShow();page.onHide();}
+    assert.equal(calls.length,1);
+    resolve(ownerSession());await pending;
+    assert.equal(page.data.src,'');
+    if(!unload){
+      await page.onShow();
+      assert.ok(page.data.src);
+      assert.equal(calls.length,1);
+    }
+  }
+});
+
+function publicPlayer(request, shareMenu = []) {
   const source = fs.readFileSync(require.resolve('../packages/construction/public-live/public-live'), 'utf8');
   let page;
   new Function('Page', 'require', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'wx', source)(
     definition => { page = definition; }, () => ({ request, getBaseUrls: () => ['http://127.0.0.1:3006/api'] }),
-    () => 1, () => {}, () => 1, () => {}, { createVideoContext: () => ({ stop() {}, pause() {} }) },
+    () => 1, () => {}, () => 1, () => {}, {
+      createVideoContext: () => ({ stop() {}, pause() {} }),
+      showShareMenu: options => shareMenu.push({ visible: true, ...options }),
+      hideShareMenu: options => shareMenu.push({ visible: false, ...options }),
+    },
   );
   return Object.assign(page, { options: { enterpriseId: '1454', key: card.key }, epoch: 0, alive: true, visible: true,
     setData(patch) { Object.assign(this.data, patch); } });
@@ -80,6 +147,54 @@ function publicPlayer(request) {
 const playerEvent = (epoch, currentTime) => ({
   currentTarget: { dataset: { playerEpoch: epoch } },
   detail: { currentTime },
+});
+
+test('confirmed public live shares the approved title and cover at the exact anonymous entry, even while paused', async () => {
+  const detail = { key: card.key, versionId: card.versionId, revision: card.revision, name: '测试工地直播' };
+  const shareMenu = [];
+  const page = publicPlayer(async (_, method) => ({ success: true, data: method === 'POST' ? { ...detail, url: path } : detail }), shareMenu);
+  Object.assign(page.options, { conversationId: '19', leadId: '71', siteId: '23', versionId: '24' });
+  const connecting = page.connect();
+  assert.equal(page.data.shareAvailable, false);
+  assert.equal(page.onShareAppMessage().path, '/pages/index/index');
+  await connecting;
+  page.played(playerEvent(page.epoch, 0.25));
+  page.toggle();
+  assert.equal(page.data.state, 'paused');
+  assert.equal(page.data.shareAvailable, true);
+  assert.deepEqual(shareMenu.at(-1), { visible: true, menus: ['shareAppMessage'] });
+  assert.deepEqual(page.onShareAppMessage(), {
+    title: detail.name,
+    path: '/packages/construction/public-live/public-live?enterpriseId=1454&key=' + card.key,
+    imageUrl: '/packages/construction/assets/notebook/public-live-share-cover.jpg',
+  });
+  page.onHide();
+  assert.equal(page.data.shareAvailable, false);
+  assert.equal(page.onShareAppMessage().path, '/pages/index/index');
+});
+
+test('revocation while opening a media session closes sharing and rejects the late player', async () => {
+  const detail = { key: card.key, versionId: card.versionId, revision: card.revision };
+  let resolveSession;
+  const pending = new Promise(resolve => { resolveSession = resolve; });
+  let revoked = false;
+  const shareMenu = [];
+  const page = publicPlayer(async (_, method) => {
+    if (method === 'POST') return pending;
+    return revoked ? { success: false, code: 'public_live_unavailable' } : { success: true, data: detail };
+  }, shareMenu);
+  const connecting = page.connect();
+  await new Promise(setImmediate);
+  assert.equal(page.data.shareAvailable, true);
+  revoked = true;
+  await page.check(page.epoch);
+  resolveSession({ success: true, data: { ...detail, url: path } });
+  await connecting;
+  assert.equal(page.data.state, 'stopped');
+  assert.equal(page.data.src, '');
+  assert.equal(page.data.shareAvailable, false);
+  assert.equal(page.onShareAppMessage().path, '/pages/index/index');
+  assert.deepEqual(shareMenu.at(-1), { visible: false, menus: ['shareAppMessage'] });
 });
 
 test('public 503 and decoder failures permit retry, and playback needs positive time progress', async () => {
@@ -93,6 +208,7 @@ test('public 503 and decoder failures permit retry, and playback needs positive 
   assert.equal(page.data.state, 'failed');
   assert.equal(page.data.error, '暂时无法连接直播，请重试。');
   assert.equal(page.data.src, '');
+  assert.equal(page.data.shareAvailable, true);
   sessionUnavailable = false;
   await page.retry();
   assert.ok(page.data.src.endsWith('/hls.m3u8'));
@@ -157,6 +273,7 @@ test('withdrawal keeps the stopped feedback even if an old player reports an err
   await page.retry();
   assert.equal(page.data.state, 'stopped');
   assert.equal(page.data.error, '直播已停止公开');
+  assert.equal(page.data.shareAvailable, false);
 });
 
 test('lost receipt survives reentry and uses the exact original key/body',async()=>{

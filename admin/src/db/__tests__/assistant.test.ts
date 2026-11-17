@@ -242,6 +242,41 @@ test('A01 entry tokens bind customer/version, forbidden arbitrary enterprise and
   assert.equal((await locate({ ...identity, enterpriseId: undefined }, 'conversation', c)).enterpriseId, a.enterpriseId);
   await assert.rejects(locate({ ...identity, userId: userIds[1] }, 'conversation', c), /assistant_resource_not_found/);
 });
+test('home entry binds the only live project lead and resumes that project conversation', async () => {
+  const identity = { userId: userIds[1], contextVersion: 1, enterpriseId: undefined };
+  const leadIds: string[] = [], projectIds: string[] = [];
+  const createLead = async (name: string) => String((await withTenantTransaction(a.enterpriseId, tx => one(tx, sql`
+    insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+    values(${a.enterpriseId},${userIds[1]},${name},'13800000000','natural') returning id`)))!.id);
+  const createProject = async (leadId: string, name: string) => String((await withTenantTransaction(a.enterpriseId, tx => one(tx, sql`
+    insert into app.construction_projects(enterprise_id,lead_id,name)
+    values(${a.enterpriseId},${leadId},${name}) returning id`)))!.id);
+  try {
+    const lead = await createLead(prefix + ' 唯一项目业主'); leadIds.push(lead);
+    projectIds.push(await createProject(lead, prefix + ' 唯一在建项目'));
+    const entry = await entryContext(identity, {});
+    const actor = await fromEntry(identity, entry.entryToken), bound = (actor.entry || {}) as Row;
+    assert.equal(actor.enterpriseId, a.enterpriseId);
+    assert.deepEqual({ kind: bound.kind, id: bound.id }, { kind: 'lead', id: lead });
+    const c = String((await new ConversationService(actor).create('lead-home-' + crypto.randomUUID())).id);
+    await withTenantTransaction(a.enterpriseId, async tx => {
+      const snapshot = (await one(tx, sql`select entry_snapshot from app.assistant_conversations
+        where enterprise_id=${a.enterpriseId} and id=${c}`))!.entry_snapshot as Row;
+      assert.equal(snapshot.kind, 'lead'); assert.equal(snapshot.id, lead);
+    });
+    assert.equal((await entryContext(identity, {})).resumeConversationId, c);
+    // Without one unambiguous lead/project the home entry stays generic.
+    const second = await createLead(prefix + ' 第二项目业主'); leadIds.push(second);
+    projectIds.push(await createProject(second, prefix + ' 第二在建项目'));
+    const ambiguous = await fromEntry(identity, (await entryContext(identity, {})).entryToken);
+    assert.equal(((ambiguous.entry || {}) as Row).kind, 'identity');
+  } finally {
+    await withTenantTransaction(a.enterpriseId, async tx => {
+      for (const id of projectIds) await tx.execute(sql`delete from app.construction_projects where enterprise_id=${a.enterpriseId} and id=${id}`);
+      for (const id of leadIds) await tx.execute(sql`delete from app.leads where enterprise_id=${a.enterpriseId} and id=${id}`);
+    });
+  }
+});
 test('archive version conflict, input bounds, unknown protocol fields reject without effects', async () => {
   const c = await conversation();
   await assert.rejects(service.archive(c, 100, 'bad-version'), /version_conflict/);

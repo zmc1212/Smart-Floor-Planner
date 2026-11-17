@@ -18,7 +18,7 @@ fail() {
   exit 1
 }
 
-for command in docker unzip sha256sum mktemp flock find sort tail tr mv chmod cmp; do
+for command in docker unzip sha256sum mktemp flock find sort tail tr sed grep mv chmod cmp; do
   command -v "$command" >/dev/null 2>&1 || fail "缺少服务器命令: $command"
 done
 
@@ -92,6 +92,42 @@ current_container_image() {
   if docker container inspect smart-floor-planner-admin >/dev/null 2>&1; then
     docker container inspect smart-floor-planner-admin --format '{{.Config.Image}}'
   fi
+}
+
+camera_network_name() {
+  local env_file="$1" network="${SFP_CAMERA_NETWORK:-}"
+  if [[ -z "$network" && -n "$env_file" && -f "$env_file" ]]; then
+    network="$(sed -n 's/^[[:space:]]*SFP_CAMERA_NETWORK[[:space:]]*=[[:space:]]*//p' "$env_file" \
+      | tail -n 1 | tr -d '\r' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")"
+  fi
+  printf '%s\n' "${network:-sfp-wvp-cloud_default}"
+}
+
+# 旧发布包的 Compose 未声明摄像头外部网络，重建 Admin 后会掉网。
+# 这里只给已运行的 Admin 容器补接网络，不重启摄像头网关、WVP 或 ZLM。
+ensure_camera_network() {
+  local env_file="$1" container=smart-floor-planner-admin network
+  network="$(camera_network_name "$env_file")"
+  if ! docker container inspect "$container" >/dev/null 2>&1; then
+    echo "[WARN] 未找到 Admin 容器，跳过摄像头网络检查。"
+    return 0
+  fi
+  if ! docker network inspect "$network" >/dev/null 2>&1; then
+    echo "[WARN] 摄像头网络 $network 不存在，摄像头可能不可用。"
+    return 0
+  fi
+  if docker container inspect "$container" \
+    --format '{{range $name, $v := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' \
+    | grep -Fxq "$network"; then
+    echo "[OK] Admin 已接入摄像头网络 $network。"
+    return 0
+  fi
+  if docker network connect "$network" "$container"; then
+    echo "[OK] 已为 Admin 补接摄像头网络 $network。"
+  else
+    echo "[WARN] 补接摄像头网络 $network 失败，请手工核查摄像头入口。"
+  fi
+  return 0
 }
 
 show_status() {
@@ -177,6 +213,8 @@ deploy_release() {
   SFP_COMPOSE_PROJECT="$compose_project" \
     "$release_dir/deploy.sh" deploy
 
+  ensure_camera_network "$runtime_env"
+
   echo '[3/4] 原子更新当前/上一版本状态...'
   if [[ -n "$old_version" && "$old_version" != "$version" ]]; then
     write_state previous-version "$old_version"
@@ -221,6 +259,8 @@ rollback_release() {
   SFP_COMPOSE_PROJECT="$compose_project" \
   SFP_TARGET_IMAGE="$target_image" \
     "$target_dir/deploy.sh" rollback
+
+  ensure_camera_network "$runtime_env"
 
   write_state previous-version "$current_version"
   write_state previous-image "$current_image"

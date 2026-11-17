@@ -1,8 +1,8 @@
 /* mpegts.js 1.8.2 playback baseline; no camera/WVP credentials or source URLs. */
 (() => {
   'use strict';
-  const $ = id => document.getElementById(id), video = $('video');
-  let csrf = '', state = null, player = null, intent = 0, active = false, heartbeat = null, controlBusy = false, captureBusy = false, stopPending = Promise.resolve(), recordingTicker = null;
+  const $ = id => document.getElementById(id), video = $('video'), mat = document.querySelector('.video-mat');
+  let csrf = '', state = null, player = null, intent = 0, active = false, livePinned = false, immersiveMode = false, heartbeat = null, controlBusy = false, captureBusy = false, stopPending = Promise.resolve(), recordingTicker = null;
   let viewMode='live',recordings=[],recordingQuery=0,queryBusy=false,viewChange=0,earlier=null;
   let historyQuery = 0, unavailable = false;
   const preferences = new Map();
@@ -21,7 +21,39 @@
     return json.data;
   }
   const selected = () => state?.items.find(c => String(c.binding_id) === $('camera').value);
-  function destroy() { active = false; clearInterval(recordingTicker); recordingTicker = null; if (player) { player.destroy(); player = null; } video.pause(); video.removeAttribute('src'); video.load(); $('stop').disabled = true; }
+  function syncFullscreen() {
+    const exit = $('exit-fullscreen');
+    if (exit) exit.hidden = !(document.fullscreenElement || document.webkitFullscreenElement || immersiveMode);
+  }
+  function leaveFullscreen() {
+    immersiveMode = false;
+    mat?.classList?.remove?.('is-immersive');
+    document.body?.classList?.remove?.('is-immersive');
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        const result = document.exitFullscreen(); if (result?.catch) result.catch(() => {});
+      } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+    } catch { /* Fullscreen may be owned by the host WebView. */ }
+    syncFullscreen();
+  }
+  function enterImmersive() {
+    // Host WebViews (iOS/WeChat) often lack element fullscreen; fill the viewport instead.
+    immersiveMode = true;
+    mat?.classList?.add?.('is-immersive');
+    document.body?.classList?.add?.('is-immersive');
+    syncFullscreen();
+  }
+  function fullscreen() {
+    if (!livePinned) return;
+    if (document.fullscreenElement || document.webkitFullscreenElement || immersiveMode) return leaveFullscreen();
+    const target = mat || video, request = target.requestFullscreen || target.webkitRequestFullscreen;
+    if (!request) return enterImmersive();
+    try {
+      const result = request.call(target);
+      if (result?.catch) result.catch(enterImmersive);
+    } catch { enterImmersive(); }
+  }
+  function destroy() { active = false; livePinned = false; leaveFullscreen(); clearInterval(recordingTicker); recordingTicker = null; if (player) { player.destroy(); player = null; } video.pause(); video.removeAttribute('src'); video.load(); $('stop').disabled = true; $('live-fullscreen').disabled = true; }
   async function stop(quiet = false) {
     intent++; destroy();
     // Drain earlier STOPs before allowing a newer play intent to start.
@@ -99,12 +131,13 @@
     finally{if(g===recordingQuery){queryBusy=false;$('recording').disabled=!recordings.length;capabilities();}}
   }
   async function setView(mode){
-    if(mode==='playback'&&state?.liveOnly)return;
+    if(mode===viewMode||(mode==='playback'&&state?.liveOnly))return;
     if(!await stopForSelection())return;queryBusy=false;viewMode=mode;savePreference('view',mode);
-    const playback=mode==='playback';$('live-actions').hidden=playback;$('live-settings').hidden=playback;$('playback-panel').hidden=!playback;
+    const playback=mode==='playback';video.controls=playback;mat?.classList.toggle('is-playback',playback);$('live-actions').hidden=playback;$('live-settings').hidden=playback;$('playback-panel').hidden=!playback;
     for(const name of ['live','playback']){$(name+'-tab').classList.toggle('secondary',name!==mode);$(name+'-tab').setAttribute('aria-pressed',String(name===mode));}
     document.querySelector('.eyebrow').textContent=playback?'云工地 · 录像回放':'云工地 · 实时画面';
     capabilities();status(playback?'选择日期和录像片段后开始回放。':'请选择摄像头，点击开始播放。');
+    if(!playback)autoPlayLive();
     if(playback)await loadRecordings();
   }
   async function playRecording(){
@@ -140,7 +173,8 @@
       }
     } catch (e) { if (current === state && generation === historyQuery) $('history-status').textContent = message(e); }
   }
-  async function attachStream(stream,generation,live,ownerPreview=false) {
+  async function attachStream(stream,generation,live,onPreviewError) {
+      const ownerPreview = !!onPreviewError;
       const mode = ownerPreview ? 'hls' : $('mode').value, flv = window.mpegts?.getFeatureList().mseLivePlayback;
       if (mode !== 'hls' && flv) {
         player = window.mpegts.createPlayer({ type: 'flv', isLive: live, url: stream.flv }, { enableWorker: false, enableStashBuffer: false, liveBufferLatencyChasing: live });
@@ -151,22 +185,37 @@
         // segment can leave a stalled viewer behind the next playlist update.
         player = new window.Hls({ enableWorker: false, backBufferLength: 15, liveSyncDurationCount: ownerPreview ? 1 : 2 });
         const hls = player;
-        hls.on(window.Hls.Events.ERROR, (_, data) => { if (data.fatal && generation === intent) { void stop(true); status(ownerPreview?'直播暂时无法播放，请重试。':'播放中断，可重新播放或切换播放方式。', true); } });
+        hls.on(window.Hls.Events.ERROR, (_, data) => {
+          if (!data.fatal || generation !== intent) return;
+          if (onPreviewError) onPreviewError();
+          else { void stop(true); status('播放中断，可重新播放或切换播放方式。', true); }
+        });
         hls.loadSource(stream.hls); hls.attachMedia(video); await video.play();
       } else if (mode !== 'flv' && video.canPlayType('application/vnd.apple.mpegurl')) { video.src = stream.hls; await video.play(); }
       else throw Object.assign(new Error(), { code: 'unsupported' });
   }
-  async function play() {
+  const autoplayBlocked = e => e?.name === 'NotAllowedError';
+  async function play(auto = false) {
     const c = selected(); if (!c) return;
-    const generation = ++intent; destroy(); $('play').disabled = true; status('正在连接摄像头…');
+    const generation = ++intent; destroy(); $('play').disabled = true; status(auto ? '正在自动播放现场画面…' : '正在连接摄像头…');
     try {
       await stopPending; if (generation !== intent) return;
       const live = await api('live', { bindingId: String(c.binding_id) }); if (generation !== intent) return;
       await attachStream(live,generation,true);
       if (generation !== intent) return;
-      active = true; $('stop').disabled = false; status('正在接收现场画面…');
-    } catch (e) { if (generation === intent) { console.warn('Camera playback failed', e.name, e.message); await stop(true); if (!unavailable) status(e.code === 'unsupported' ? '当前环境不支持所选方式，请切换播放设置。' : message(e), true); } }
+      active = true; livePinned = true; $('stop').disabled = false; $('live-fullscreen').disabled = false; status('正在接收现场画面…');
+    } catch (e) {
+      if (generation === intent) {
+        console.warn('Camera playback failed', e.name, e.message); await stop(true);
+        if (!unavailable) status(autoplayBlocked(e) ? '已静音待播，请点击「开始播放」观看现场画面。' : e.code === 'unsupported' ? '当前环境不支持所选方式，请切换播放设置。' : message(e), !autoplayBlocked(e));
+      }
+    }
     finally { if (generation === intent || !active) capabilities(); }
+  }
+  // Live is muted, so browsers may start it without a tap; restore the camera.
+  function autoPlayLive() {
+    if (unavailable || !state || viewMode !== 'live' || document.hidden || active || !selected()) return;
+    void play(true);
   }
   async function capture() {
     const c = selected(); if (!c || captureBusy) return; captureBusy = true; capabilities();
@@ -206,6 +255,7 @@
       if (!state) return;
       heartbeat = setInterval(async () => { if (document.hidden) return; try { await api('heartbeat', {}); } catch (e) { invalidateAccess(e); } }, 20000);
       if(readPreference('view')==='playback')await setView('playback');
+      if(viewMode==='live')autoPlayLive();
     } catch (e) { status(message(e), true); $('history-status').textContent = '访问不可用'; }
   }
   function initOwnerPreview(ticket) {
@@ -218,36 +268,58 @@
     const match=/^([1-9]\d{0,18})\.([a-f0-9]{48})\.([A-Za-z0-9_-]{43})$/.exec(ticket);
     if(!match){status('预览入口已失效，请返回咨询重新进入。',true);return;}
     const base='/api/public/construction-live/'+match[1]+'/'+match[2]+'/media/'+match[3];
+    const button=$('play'), watched='已观看当前机位，可以返回咨询继续。', playbackFailure='直播暂时无法播放，请重试。';
     let confirmed=false, reporting=false, retryAfter=0;
+    let connecting=false, connectTimeout;
+    function finishConnecting(){
+      clearTimeout(connectTimeout);connecting=false;button.disabled=false;
+    }
+    function failPreview(generation,text=playbackFailure){
+      if(generation!==intent)return;
+      intent++;destroy();finishConnecting();status(text,true);
+    }
     video.addEventListener('timeupdate',async()=>{
-      if(confirmed||reporting||Date.now()<retryAfter||document.hidden||video.paused||!video.videoWidth||!video.played.length||video.currentTime-video.played.start(0)<0.25)return;
+      if(document.hidden||video.paused||!video.videoWidth||!video.played.length||video.currentTime-video.played.start(0)<0.25)return;
       if(video.getVideoPlaybackQuality&&video.getVideoPlaybackQuality().totalVideoFrames===0)return;
-      reporting=true;
+      if(connecting){
+        finishConnecting();
+        status(confirmed?watched:'正在接收现场画面…');
+      }
+      if(confirmed||reporting||Date.now()<retryAfter)return;
+      const generation=intent;reporting=true;
       try{
         const response=await fetch(base+'/played',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
         if(!response.ok||!(await response.json()).data?.played)throw new Error();
-        confirmed=true;status('已观看当前机位，可以返回咨询继续。');
+        confirmed=true;if(generation===intent)status(watched);
       }catch{retryAfter=Date.now()+1000;}
       finally{reporting=false;}
     });
     async function start(){
-      const generation=++intent;destroy();status('正在连接直播…');
-      try{await attachStream({hls:base+'/hls.m3u8'},generation,true,true);}
-      catch{if(generation===intent)status('请点击开始播放，或返回咨询重新进入。',true);}
+      if(connecting)return;
+      const generation=++intent;
+      connecting=true;button.disabled=true;destroy();status('正在连接直播…');
+      connectTimeout=setTimeout(()=>failPreview(generation),30000);
+      try{await attachStream({hls:base+'/hls.m3u8'},generation,true,()=>failPreview(generation));livePinned=true;$('live-fullscreen').disabled=false;}
+      catch{failPreview(generation,'请点击开始播放，或返回咨询重新进入。');}
     }
-    $('play').disabled=false;$('play').onclick=start;
-    video.addEventListener('error',()=>{status('直播暂时无法播放，请重试。',true);});
-    window.addEventListener('pagehide',()=>{intent++;destroy();});
+    button.onclick=start;
+    video.addEventListener('error',()=>{if(video.error)failPreview(intent);});
+    window.addEventListener('pagehide',()=>{intent++;clearTimeout(connectTimeout);destroy();});
     void start();
   }
   const ownerPreview=new URLSearchParams(location.hash.slice(1)).get('ownerLive');
+  // Live playback is pinned: native controls are not exposed, and platform-initiated pauses resume.
+  video.addEventListener('pause',()=>{if(!livePinned||viewMode!=='live'||document.hidden||video.ended||video.error)return;void video.play().catch(()=>{});});
+  $('live-fullscreen').onclick=fullscreen;$('exit-fullscreen').onclick=leaveFullscreen;
+  document.addEventListener('fullscreenchange',syncFullscreen);document.addEventListener('webkitfullscreenchange',syncFullscreen);
+  syncFullscreen();
   if(ownerPreview!==null){initOwnerPreview(ownerPreview);return;}
-  $('play').onclick = play; $('stop').onclick = () => stop(); $('capture').onclick = capture; $('refresh').onclick = loadHistory;
+  $('play').onclick = () => play(false); $('stop').onclick = () => stop(); $('capture').onclick = capture; $('refresh').onclick = loadHistory;
   if ($('history-jump')) $('history-jump').onclick=()=>$('snapshots-section').scrollIntoView({behavior:'smooth',block:'start'});
   if ($('ptz-toggle')) $('ptz-toggle').onclick=()=>{if($('ptz').hidden)return;$('ptz').open=!$('ptz').open;if($('ptz').open)$('ptz').scrollIntoView({behavior:'smooth',block:'center'});};
   $('ptz').addEventListener('toggle',()=>{if(!$('ptz').open&&state?.canControl)void control('stop');});
   video.addEventListener('timeupdate',()=>{if(!active||video.paused||!(video.currentTime>0))return;const name=viewMode==='playback'?selectedRecording()?.name:selected()?.name;status((viewMode==='playback'?'正在回放':'正在播放')+(name?' · '+name:''));});
-  $('camera').onchange = async () => {savePreference('camera',$('camera').value);restoreDate();if(!await stopForSelection())return;if(viewMode==='playback')await loadRecordings();else{queryBusy=false;capabilities();status('已切换摄像头，请点击开始播放。');} };
+  $('camera').onchange = async () => {savePreference('camera',$('camera').value);restoreDate();if(!await stopForSelection())return;if(viewMode==='playback')await loadRecordings();else{queryBusy=false;capabilities();autoPlayLive();} };
   $('mode').onchange = () => stop(); $('close-preview').onclick = () => $('preview').close();
   $('live-tab').onclick=()=>setView('live');$('playback-tab').onclick=()=>setView('playback');$('return-live').onclick=()=>setView('live');
   $('query-recordings').onclick=async()=>{if(await stopForSelection())await loadRecordings(!!earlier);};$('recording-date').onchange=async()=>{savePreference('date',$('recording-date').value,$('camera').value);if(await stopForSelection())await loadRecordings();};

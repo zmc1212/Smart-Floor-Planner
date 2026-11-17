@@ -23,6 +23,7 @@ import { drawingChecklistReadProtocol } from '../agent/read-tool-input';
 import { checkWebSource, checkWebSources, citationWebSource, parseWebCitationId, type WebSourceChecks } from '../agent/web-evidence';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
+import { renovationLeadId } from '../requirements/renovation-profile';
 import { saveAutomaticRequirements } from '../requirements/automatic';
 import { currentRequirementProposalPending } from '../requirements/current';
 import { requestsDesigner } from '../handoff/intent';
@@ -401,7 +402,18 @@ export class ConversationService {
       const entry=c.entry_snapshot as Row;
       const contentEntry=['reference_content','reference_unavailable'].includes(String(entry.kind));
       const source=entry.kind==='reference_content'?await contentEntrySource(repo.tx,entry as ContentEntry):null;
+      const leadId = renovationLeadId(entry);
+      const hasRequirementSummary = this.actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
+        && !entry.retentionRedacted && !entry.activePublicSite && Boolean(await one(repo.tx, sql`
+          select 1 from app.assistant_requirement_summaries where enterprise_id=${this.actor.enterpriseId}
+            and conversation_id=${conversationId} and status<>'redacted'
+          union all select 1 from app.assistant_renovation_profiles p
+            join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id and l.customer_user_id=p.customer_user_id
+            where p.enterprise_id=${this.actor.enterpriseId} and p.lead_id=${leadId}
+              and p.customer_user_id=${this.actor.principal.userId} and p.shared and l.archived_at is null and l.status<>'closed'
+          limit 1`));
       return { ...conversationDto(c, await currentRequirementProposalPending(repo, c, settings)), ownerAvailable, guidance:contentEntry?null:guidance, latestRun: latest ? runDto(latest) : null,
+        ...(hasRequirementSummary ? { hasRequirementSummary: true } : {}),
         reportContext: await reportContextView(repo.tx, this.actor, c),
         ...(contentEntry?{guidanceOpening:contentGreeting(source),guidanceEnabled:false}:{}),
         ...(preview ? { previewScope: { audience: preview.audience, draftVersionIds: preview.drafts.map(draft => draft.id) } } : {}) };
@@ -582,7 +594,7 @@ export class ConversationService {
         }
         const message = intercepted || await append();
         await recordDelegationOwnerInput(repo.tx, this.actor, c, message);
-        await saveAutomaticRequirements(repo, conversationId);
+        await saveAutomaticRequirements(repo, conversationId, String(message.id));
         if (this.actor.principal.kind === 'user' && requestsDesigner(safe.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'))) {
           if((c.entry_snapshot as Row)?.requirementReviewMode===true && (c.entry_snapshot as Row)?.requirementWorkflow==='langgraph') {
             const proposal=await stageHandoffProposal(repo,c,settings!,'request');
