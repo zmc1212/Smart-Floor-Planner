@@ -1,5 +1,6 @@
 import { specialistDomain } from '@/lib/assistant/specialists/consultation';
 import { electricalAgentId, waterproofAgentId } from '@/lib/assistant/specialists/registry';
+import { isQuestion } from '@/lib/assistant/requirements/guidance';
 import { stageAgentRegistry, type StageAgentIntent, type StageAgentRegistration } from './stage-agent-registry';
 
 const reminderIntent = /提醒|通知|催一下|催办|别忘|到期|到期前|什么时候提醒/u;
@@ -39,7 +40,7 @@ export function classifyStageIntent(question: string): StageAgentIntent | 'clari
  * specialist topics and project status/progress/reminder/todo turns keep the
  * existing specialist/model/fact route. */
 export function isStageKnowledgeQuestion(question: string) {
-  return knowledgeQuestion.test(question) && classifyStageIntent(question) === 'stage_knowledge'
+  return isQuestion(question) && knowledgeQuestion.test(question) && classifyStageIntent(question) === 'stage_knowledge'
     && !isDeepSpecialistQuestion(question);
 }
 

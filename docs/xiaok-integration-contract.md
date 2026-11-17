@@ -103,6 +103,6 @@ V1.1 为独立 `waterproof-specialist@2` 候选与 Workflow revision 4 digest `d
 
 老板收件人由 `app.construction_actor_access` 的跨项目查看权限决定，只接收真实计划过期和真实约定期限例外；同一主题 24 小时内跨项目去重。老板身份不自动获得设计审批、工程验收或项目成员权限。
 
-业主 C01 的阶段问答由 `stage-chat-service.ts` 解析唯一获权项目和当前阶段，经 `completeStageKnowledge` 写入原会话；多项目、无项目或阶段未知时不猜测，深入防水/水电问题继续走原专业 Agent。企业知识未接入时明确“本次未核实企业施工标准”。
+业主 C01 已配置的普通咨询按本轮快照进入原 Agent/Native/RAG 执行器，用户问题沿现有业务工具、来源与权限处理。阶段专用路径及旧执行器回退由 `stage-chat-service.ts` 解析唯一获权项目和当前阶段，经 `completeStageKnowledge` 写入原会话；多项目、无项目或阶段未知时不猜测，深入防水/水电问题继续走原专业 Agent。旧阶段回退只接收已有提问识别认可的问题。企业知识未接入时明确“本次未核实企业施工标准”。[路由合同与采用来源](xiaok-assistant-phase-2.zh-CN.md)。
 
 周报复用 `construction_reports`、`construction_report_versions`、`construction_report_deliveries` 和四角色 binding。真实 Worker 在隔离库生成事实、版本和站内投递；同一周期幂等，修订生成新版本，历史版本和撤权遮蔽沿当前权限。未配置模型时保留 `facts_only`，角色章节和统计仍可用。

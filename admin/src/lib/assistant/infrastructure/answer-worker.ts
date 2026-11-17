@@ -117,12 +117,17 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     const context=await withTenantTransaction(lease.enterpriseId,tx=>runContext(tx,lease));
     const policy = context.run.policy_snapshot as Row;
     if (await tryRenovationProfileRecap(lease, context)) return;
+    // Let a configured consultation interpret the current message through its
+    // saved runtime before stage-template vocabulary can intercept it.
+    const configuredConsultation = context.conversation.purpose === 'customer_consultation'
+      && Boolean(policy.agentRuntime || policy.nativeRag || policy.agent);
     // I7.2: an owner's ordinary stage question is answered from the current
     // project stage inside the original C01 conversation. A visitor watching a
     // public site has no own project: that turn must keep the public-context
     // route so the withdrawn source is revalidated before delivery.
     if (lease.actor.principal.kind === 'user' && context.run.purpose === 'reply'
       && context.run.trigger_kind === 'user_message'
+      && !configuredConsultation
       && !(context.conversation.entry_snapshot as Row).activePublicSite
       && ['customer_consultation', 'construction_followup'].includes(String(context.conversation.purpose))) {
       const userId = lease.actor.principal.userId;

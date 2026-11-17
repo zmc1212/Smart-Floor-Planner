@@ -4,6 +4,15 @@ import { legacyDefaultGuidance as defaultGuidance, guidanceProgress, validateGui
 import { guidanceView } from '../requirements/guidance';
 import { version2DefaultGuidance as detailed, defaultGuidance as current } from '../requirements/guidance-defaults';
 const turns = (...texts: string[]) => texts.map((text, i) => ({ id: String(i + 1), text }));
+test('a surface colour preference keeps the stated home information when style is corrected', async () => {
+  const { chatFirstProgress } = await import('../requirements/guidance');
+  const result = chatFirstProgress(current, turns('我家是套旧房，准备重新装修。', '主要是父母住。',
+    '风格改一下，我更喜欢现代简约，不想要大面积木色。'));
+  assert.equal(result.fields.housing.text, '我家是套旧房');
+  assert.equal(result.fields.housing.sourceMessageId, '1');
+  assert.equal(result.fields.style.text, '我更喜欢现代简约');
+  assert.equal(result.fields.style.sourceMessageId, '3');
+});
 test('P2A.1 confirmation overrides replay at its boundary; later corrections remain unconfirmed', () => {
   const input = turns('旧房90平米，预算还没定');
   const checkpoint = { after: 1, fields: { housing: '90平米旧房', household: '', style: '', budget: '25万元', timeline: '' } };

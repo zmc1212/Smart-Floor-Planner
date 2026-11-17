@@ -733,7 +733,7 @@ test('ordinary LangGraph replies honor the saved guidance switch before provider
           tools: true, probeVersion: 'guidance-test', enterpriseKnowledgeEnabled: !native });
         const chat = new ConversationService({ ...actor, entry: { guidanceVersion: saved.version } });
         const cid = String((await chat.create(randomUUID())).id);
-        const text = '我家是套旧房 打算重新装修';
+        const text = '我家是套旧房，准备重新装修。';
         const body = { version: 1, blocks: [{ type: 'text', text }] };
         const key = randomUUID();
         const sent = await chat.send(cid, key, body);
@@ -759,6 +759,24 @@ test('ordinary LangGraph replies honor the saved guidance switch before provider
           join app.assistant_messages m on m.enterprise_id=q.enterprise_id and m.id=${messages[0].id}
           where q.enterprise_id=${actor.enterpriseId} and q.run_id=${runId}`));
         assert.deepEqual(accounting, { status: 'released', provider_started_at: null, purpose: 'requirements.guidance' });
+        const correction = await chat.send(cid, randomUUID(), { version: 1,
+          blocks: [{ type: 'text', text: '风格改一下，我更喜欢现代简约，不想要大面积木色。' }] });
+        const correctionLease = await claimJob({ enterpriseId: actor.enterpriseId, runId: String(correction.runId) });
+        assert.ok(correctionLease);
+        await processAnswer(correctionLease);
+        const corrected = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`
+          select draft_fields->'housing'->>'text' as housing, draft_fields->'style'->>'text' as style
+          from app.assistant_requirement_summaries where enterprise_id=${actor.enterpriseId}
+            and conversation_id=${cid} order by id desc limit 1`));
+        assert.deepEqual(corrected, { housing: '我家是套旧房', style: '我更喜欢现代简约' });
+        const question = await chat.send(cid, randomUUID(), { version: 1,
+          blocks: [{ type: 'text', text: '厨房收纳有什么建议？' }] });
+        const questionLease = await claimJob({ enterpriseId: actor.enterpriseId, runId: String(question.runId) });
+        assert.ok(questionLease);
+        await processAnswer(questionLease);
+        const questionRun = await chat.run(questionLease.runId);
+        assert.equal(questionRun.errorCode, 'model_unavailable');
+        assert.equal(questionRun.outputMessageId, null);
         if (native) {
           const followup = await chat.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '我们一家三口住。' }] });
           const next = await claimJob({ enterpriseId: actor.enterpriseId, runId: String(followup.runId) });

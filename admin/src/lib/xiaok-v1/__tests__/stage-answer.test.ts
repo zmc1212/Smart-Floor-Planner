@@ -112,6 +112,16 @@ test('only ordinary stage knowledge turns use the deterministic pack', () => {
   assert.equal(isStageKnowledgeQuestion('配电箱回路和线径怎么核对？'), false);
 });
 
+test('renovation plans and preferences stay in the consultation instead of borrowing the current stage', () => {
+  for (const statement of ['我家是套旧房，准备重新装修。', '我准备把房子重新装一下。',
+    '厨房的材料我更喜欢好清洁的。', '父母跟我一起住，施工期间会暂时搬出去。']) {
+    assert.equal(isStageKnowledgeQuestion(statement), false, statement);
+    assert.equal(isStageChatQuestion(statement), false, statement);
+  }
+  for (const question of ['水电阶段需要准备什么？', '开工前，我需要核对哪些事项', '帮我解释一下施工流程'])
+    assert.equal(isStageChatQuestion(question), true, question);
+});
+
 test('preparation wording uses the known stage; actual status and an ambiguous next step stay separate', () => {
   const constructionStageKey = 'design';
   for (const question of ['做设计这一阶段要提前核对哪些事项？', '现在做设计，接下来需要准备什么？', '这阶段要做哪些准备？']) {

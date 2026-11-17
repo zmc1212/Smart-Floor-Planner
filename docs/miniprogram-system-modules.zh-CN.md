@@ -6,7 +6,7 @@
 
 真实聊天控制器和隔离 PostgreSQL 接口覆盖普通发送、后台读取及来源和档案失权。服务专项 24 项、小程序 89 项通过。开发版 `20261118.1` 已通过官方 DevTools 上传，用途说明随正常聊天入口显示。微信公众平台的浏览器访问被站点安全策略拦截，正式审核和发布待完成。[上传回执](../tmp/staff-profile-release-20261118/miniprogram-upload-status.json)。
 
-上传版聊天控制器使用精艺智家获准测试业户连接正式 HTTPS，三句普通聊天完成真实写入和重进，未提交画像确认或共享。后台超级管理员已看到三项自动画像。首句回复偏到水电阶段的问题保留在回执中。Stable DevTools 原生发送此前超时，原生页面发送及真机仍未验证。全量 PostgreSQL 回归保留失败，部分在旧现网源码复现。[正式服务验证](../tmp/staff-profile-release-20261118/production-verification.json)、[原生尝试](../tmp/xiaok-staff-renovation-profile-qa/native.json)。
+上传版聊天控制器使用精艺智家获准测试业户连接正式 HTTPS。后端 `20261118-003` 已修复阶段词抢答普通首句及颜色偏好覆盖房屋的问题。`002` 的 11 轮聊天覆盖厨房/卫生间提问、更正、回顾、阶段读取和重进，并保留房屋投影失败。独立的 `003` 四轮验证后台超级管理员可见正确的房屋、居住、风格和时间。两批均真实写入并重进未确认草稿，没有画像确认或共享。后台房间汇总仍为 Limited：私聊回顾的洗碗机未进入目前仅显示卫生间的单来源字段。本次后端修复无需改动小程序源码。Stable 原生发送此前超时，本次共享验收守卫鉴权未通过，未获取原生控制器。原生页面发送及真机仍未验证，全量 PostgreSQL 回归保留原失败。[正式服务实证与分批记录](../tmp/staff-profile-housing-correction-20261118/production-verification.json)、[原生尝试与资源守卫](../tmp/staff-profile-first-reply-20261118/native-resource-preflight.json)。
 
 **I6.16 防水清单候选（Limited）。** C01 重进读回带来源引用的清单及同一获权 Run。终稿失败后，原登记回执按当前授权显示。Construction 将正式复核回复至原消息，原件读回重验授权。Stable 已使用经 Construction 服务提交的合成现场资料验证读回和复核。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。
 

@@ -1,5 +1,7 @@
 # 小K第二期：需求整理与人工交接
 
+**普通咨询路由（Implemented，正式版本 `20261118-003`）。** 已配置的客户普通咨询先进入本轮快照保存的原执行器，由现有 LangGraph、Native 或 RAG 执行器沿原授权和证据管线处理当前问题。旧阶段回退复用需求引导已有的提问/陈述区分，含「准备」的装修意向陈述保留普通咨询。房屋提取去掉单独的「面积」触发词，颜色偏好不再覆盖房屋信息。定向路由及引导 28/28、需求服务兼容 24/24 通过。获准正式测试业户在 `002` 完成 11 轮自然聊天，覆盖厨房/卫生间问题、更正、回顾及真实阶段读取，该批暴露房屋投影错误。`003` 的 4 轮定向聊天和管理员回读确认房屋、居住、风格和时间正确，全程无需确认或共享。后台房间汇总仍为 Limited：私聊回顾记住的洗碗机未进入当前仅显示卫生间的单来源字段。原生页面发送仍未验证。本次复用项目已有 Agent 执行与上游动态 Agent 模式。[LangGraph 工作流和 Agent 模式](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents)、[正式实证与原始失败](../tmp/staff-profile-housing-correction-20261118/production-verification.json)。
+
 **I6.16 已发布清单候选（Limited）。** Workflow revision 4 显式选择 `waterproof-specialist@2`。清单取本轮引文并绑定发布摘要，托管检索和公开规范现行性分别留状态。混合咨询的模型终稿被拒后，原 C01 仍按授权展示独立登记回执。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。
 
 Native 预读沿本轮授权与原文目录。独立引用标记只解析本轮签发 ID。LangGraph 配额核验排除本次待派发记录，历史未知结果继续保留。
