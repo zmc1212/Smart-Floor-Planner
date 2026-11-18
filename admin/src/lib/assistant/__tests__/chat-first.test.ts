@@ -22,6 +22,14 @@ test('natural corrections retain negation, source ids and separate named rooms',
   assert.match(p.fields.room.text, /客厅保留沙发/); assert.match(p.fields.room.text, /书房保留原书桌/);
   assert.doesNotMatch(p.fields.room.text, /靠窗/);
 });
+test('acknowledges only what the turn captured instead of one fixed prefix', () => {
+  const style = chatFirstProgress(defaultGuidance, turns('想聊聊适合我家的装修风格'));
+  assert.doesNotMatch(style.reply, /^记下了。/); assert.match(style.reply, /风格/);
+  assert.equal(chatFirstProgress(defaultGuidance, turns('你好')).reply, '先聊聊你家的情况吧，新房还是旧房？');
+  const all = chatFirstProgress(defaultGuidance, turns('90平旧房，两个人住，喜欢原木风'));
+  assert.match(all.reply, /房屋情况、居住情况、风格/);
+  assert.match(chatFirstProgress(defaultGuidance, turns('新房')).reply, /^新房好/);
+});
 test('direct human intent never accepts refusal, hypotheticals or quoted requests', () => {
   for (const s of ['找设计师', '帮我找个设计师聊聊', '请设计师接着聊', '转人工']) assert.equal(requestsDesigner(s), true, s);
   for (const s of ['不要找设计师', '如果我要找设计师呢？', '他说“找设计师”', '先继续聊预算']) assert.equal(requestsDesigner(s), false, s);

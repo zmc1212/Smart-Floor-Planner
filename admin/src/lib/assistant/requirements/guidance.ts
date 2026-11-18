@@ -75,6 +75,29 @@ export function guidanceProgress(g: Guidance, messages: Array<{ id: string; text
 /** Five optional topics, replayed from durable customer messages. A topic change
  * suspends prompting until the customer explicitly asks to resume. Statements
  * remain verbatim evidence; they are never promoted to customer approval. */
+type CapturedRequirement = { field: RequirementKey; text: string; deferred?: boolean };
+const capturedLabels: Partial<Record<RequirementKey, string>> = {
+  housing: '房屋情况', household: '居住情况', style: '风格', budget: '预算', timeline: '时间', room: '空间想法',
+};
+/** Acknowledge only what the current turn captured. A fixed "记下了。下一问"
+ * prefix made every turn read the same regardless of what the customer said. */
+function capturedAcknowledgement(captured: CapturedRequirement[]) {
+  if (!captured.length) return '';
+  const unique = [...new Map(captured.map(item => [item.field, item])).values()];
+  if (unique.length > 1) return '好，' + unique.map(item => capturedLabels[item.field] || '你的想法').join('、') + '我都记下了。';
+  const [item] = unique;
+  if (item.deferred) return '没关系，先留着，想好了随时补充。';
+  if (item.field === 'housing') {
+    if (/新房|毛坯/.test(item.text)) return '新房好，发挥空间会大一些。';
+    if (/旧房|二手/.test(item.text)) return '旧房翻新，细节上要多留意一些。';
+  }
+  if (item.field === 'household') return '好，家里人这些情况我会考虑进去。';
+  if (item.field === 'style') return '风格方向记下了，后面可以一起看参考。';
+  if (item.field === 'budget') return '预算按这个范围来把握。';
+  if (item.field === 'timeline') return '时间上我按这个节奏来安排。';
+  if (item.field === 'room') return '这个空间的想法我记下来了。';
+  return '好，我先记下来。';
+}
 export function chatFirstProgress(g: Guidance, messages: Array<{ id: string; text: string }>) {
   const fields = excerptRequirements([]);
   const rooms = new Map<string, { text: string; sourceMessageId: string }>();
@@ -92,9 +115,11 @@ export function chatFirstProgress(g: Guidance, messages: Array<{ id: string; tex
     { field: 'budget', text: '预算有大致想法吗？没想好也没关系。' },
     { field: 'timeline', text: '时间上有什么想法？暂时未定也可以。' },
   ];
-  let paused = false, interrupt = false, lastControl = false;
+  let paused = false, interrupt = false, lastControl = false, captured: CapturedRequirement[] = [];
   for (const message of messages) {
     const text = message.text.trim();
+    captured = [];
+    const turn = captured;
     interrupt = isQuestion(text); lastControl = false;
     if (/^(继续整理|开始整理|继续了解)[。！!\s]*$/.test(text)) { paused = false; lastControl = true; continue; }
     if (/^(先暂停|暂停整理|不想填|先不聊|停止整理)[。！!\s]*$/.test(text)) { paused = true; lastControl = true; continue; }
@@ -105,16 +130,25 @@ export function chatFirstProgress(g: Guidance, messages: Array<{ id: string; tex
     for (const clause of text.split(/[，,。；;\n]/).map(s => s.trim()).filter(Boolean)) {
       if (isQuestion(clause) || referenceOnlyClause(clause)) continue;
       for (const k of requirementKeys) if (facts[k].test(clause)) {
+        const previous = fields[k].text;
         fields[k] = { text: Array.from(clause).slice(0, 1000).join(''), sourceMessageId: message.id, truncated: Array.from(clause).length > 1000 }; matched = true;
+        if (fields[k].text !== previous) turn.push({ field: k, text: fields[k].text });
       }
       const room = clause.match(/(?:主卧|次卧|书房|客厅|卧室|厨房|阳台|卫生间)/)?.[0];
-      if (room) { rooms.set(room, { text: clause, sourceMessageId: message.id }); matched = true; }
+      if (room) {
+        const previous = rooms.get(room)?.text;
+        rooms.set(room, { text: clause, sourceMessageId: message.id }); matched = true;
+        if (clause !== previous) turn.push({ field: 'room', text: clause });
+      }
       else if (/书桌|靠窗|设备|台灯|电脑|办公|保留/.test(clause) && rooms.size === 1) {
-        const name = [...rooms.keys()][0]; rooms.set(name, { text: name + '：' + clause, sourceMessageId: message.id }); matched = true;
+        const name = [...rooms.keys()][0], value = name + '：' + clause, previous = rooms.get(name)?.text;
+        rooms.set(name, { text: value, sourceMessageId: message.id }); matched = true;
+        if (value !== previous) turn.push({ field: 'room', text: value });
       }
     }
     if (!matched && !paused && next && unknown.test(text)) {
       fields[next.field] = { text, sourceMessageId: message.id, truncated: false };
+      turn.push({ field: next.field, text, deferred: true });
     } else if (!matched) paused = true;
     if (/还没想好|暂未确定|不确定|未定/.test(text)) paused = true;
   }
@@ -123,8 +157,11 @@ export function chatFirstProgress(g: Guidance, messages: Array<{ id: string; tex
     fields.room = { text: Array.from(text).slice(0, 1000).join(''), sourceMessageId: values.at(-1)!.sourceMessageId, truncated: text.length > 1000 };
   }
   const next = paused ? undefined : topics.find(q => !fields[q.field]?.text);
+  const acknowledgement = paused ? '' : capturedAcknowledgement(captured);
   return { fields, next, paused, interrupt, lastControl,
-    reply: next ? '记下了。' + next.text : '记下了，你可以继续说想法，也可以随时换个话题。',
+    reply: paused ? '好，先暂停整理。想说的时候告诉我“继续整理”。'
+      : next ? acknowledgement + next.text
+      : acknowledgement + '你可以继续说想法，也可以随时换个话题。',
     recorded: [], pending: [], summaryReady: false, confirmed: [] };
 }
 
