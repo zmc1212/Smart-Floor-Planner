@@ -2368,6 +2368,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   ? '本次没有可用的明确地区。用final_response kind=designers与本resultKey说明可允许定位后重试，或补充房屋所在城市；消息下方会有允许定位的卡片，风格/户型不是必填。不猜城市、不编造设计师或作品。'
                   : !snapshot.count
                   ? '本次没有匹配的公开设计师作品。用final_response kind=designers与本resultKey如实说明本次范围，不编造设计师、作品或可预约时间。'
+                  : !snapshot.cityCode
+                  ? '立即用final_response kind=designers与本resultKey提交简短说明（可说明找到几位）；本次没有可用城市，不要声称按客户位置或同城筛选，服务端会注明未按城市筛选。不承诺价格、工期、档期或预约。'
                   : '立即用final_response kind=designers与本resultKey提交简短说明（可说明找到几位），服务端展示真实公开作品。不承诺价格、工期、档期或预约；同小区不代表同户型。' }) };
             });
           }
@@ -2828,6 +2830,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         const snapshot = step.private_checkpoint as DesignerToolSnapshot;
         const items = snapshot.needContext ? [] : await revalidateDesignerSnapshot(tx, lease.actor, snapshot);
         const scope = [snapshot.style, snapshot.layout].filter(Boolean).join('、') || '当前方向';
+        const cityNote = !snapshot.needContext && !snapshot.cityCode
+          ? '\n本次没有按城市筛选；告诉我房屋所在城市，可以看同城的公开作品。' : '';
         const text = snapshot.needContext
           ? '暂未获取到可用位置。点下面的「允许定位并查看设计师」授权后重试，或直接告诉我房屋所在城市；风格和户型可以慢慢聊。'
           : !items.length
@@ -2842,7 +2846,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         for (const ref of initial.mediaRefs) if (!await resolveAgentImage(tx, lease.enterpriseId, context.conversation, ref)) fail('context_changed');
         for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
         const message = await appendMessage(tx, lease.actor, String(context.conversation.id), { author: 'assistant', runId: lease.runId,
-          purpose: 'agent.reply', content: { version: 1, blocks: [{ type: 'text', text: text + (text.includes(designerNotice) ? '' : '\n' + designerNotice) }, ...receiptBlocks] } });
+          purpose: 'agent.reply', content: { version: 1, blocks: [{ type: 'text', text: text + cityNote + (text.includes(designerNotice) ? '' : '\n' + designerNotice) }, ...receiptBlocks] } });
         // designerMessageProjection rebuilds the client cards and the needContext
         // discovery entry from this fixed step. A missing city or a located empty
         // result must persist it too, or the reply would point at the location

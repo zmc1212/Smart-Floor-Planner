@@ -15,7 +15,7 @@ export const designerNotice = '作品仅供风格/户型与服务方向参考；
 const uncertain = /[？?]|不确定|没想好|不喜欢|不要|不考虑|不是|不在|不做|不想/;
 const negation = /不确定|没想好|不喜欢|不要|不考虑|不是|不在|不做|不想/;
 
-export type DesignerQuery = { cityCode: string; style: string; layout: string };
+export type DesignerQuery = { cityCode?: string; style: string; layout: string };
 export type DesignerCard = {
   authorId: string; authorName: string; professionalTitle: string | null; experienceLabel: string;
   layoutSpecialties: string[]; portraitAvailable: boolean; defaultAvatar: PortfolioDefaultAvatar;
@@ -67,8 +67,14 @@ export function resolveDesignerQuery(input: { memoryHousing?: string; memoryStyl
   if (modelQuery && known.some(value => modelQuery.includes(value) && !corpus.includes(value))) return null;
   const styleMatches = STYLE_OPTIONS.filter(option => option !== '其他' && corpus.includes(option));
   const layoutMatches = LAYOUT_OPTIONS.filter(option => option !== '其他' && corpus.includes(option));
-  if (!region || styleMatches.length > 1 || layoutMatches.length > 1) return null;
-  return { cityCode: region.cityCode, style: styleMatches[0] || '', layout: layoutMatches[0] || '' };
+  if (styleMatches.length > 1 || layoutMatches.length > 1) return null;
+  if (region) return { cityCode: region.cityCode, style: styleMatches[0] || '', layout: layoutMatches[0] || '' };
+  // No city anywhere in this consultation: instead of dead-ending on location,
+  // fall back to the enterprise-wide catalogue. A city that was mentioned but
+  // has no resolvable, non-negated reading still asks for clarification first.
+  if ([input.memoryHousing || '', trigger, ...(input.conversationTexts || [])]
+    .some(text => CITY_OPTIONS.some(option => text.includes(option.label.replace(/市$/, ''))))) return null;
+  return { style: styleMatches[0] || '', layout: layoutMatches[0] || '' };
 }
 
 function servesCity(candidate: Candidate, cityCode: string) {
@@ -163,9 +169,9 @@ export async function recommendDesigners(tx: PostgresTransaction, actor: ActorCo
   });
   if (!query) return { items: [], notice: designerNotice, needContext: true, requestMessageIds: request.requestMessageIds };
   const candidates = (await portfolioCandidates(tx, actor.enterpriseId, { city: query.cityCode, style: query.style || undefined, layout: query.layout || undefined, recommend: true }))
-    .filter(candidate => servesCity(candidate, query.cityCode));
+    .filter(candidate => query.cityCode ? servesCity(candidate, query.cityCode) : true);
   const items = matchDesigners(candidates, query).map(({ candidate, reason, match }) => card(candidate, reason, match));
-  return { items, notice: designerNotice, cityCode: query.cityCode, style: query.style, layout: query.layout, requestMessageIds: request.requestMessageIds };
+  return { items, notice: designerNotice, ...(query.cityCode ? { cityCode: query.cityCode } : {}), style: query.style, layout: query.layout, requestMessageIds: request.requestMessageIds };
 }
 
 export type DesignerSnapshot = {

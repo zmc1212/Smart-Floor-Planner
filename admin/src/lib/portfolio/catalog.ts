@@ -60,6 +60,20 @@ export class PortfolioCatalog {
           conversationTexts: earlier.map(message => (message.content as { blocks?: Array<{ text?: string }> }).blocks?.map(block => block.text || '').join(' ') || '') });
       });
       if (!context) return { items: [], needContext: true, notice: '暂未获取到可用位置。可以允许定位后重试，或在对话里告诉我房屋所在城市；风格和户型可以慢慢聊。' };
+      if (!context.cityCode) {
+        // The consultation never named a city: browse the enterprise-wide
+        // catalogue and say so, instead of dead-ending on location.
+        return this.authorized(async tx => {
+          const candidates = (await portfolioCandidates(tx, this.actor.enterpriseId, { style: context.style || undefined, layout: context.layout || undefined, recommend: true }));
+          const items = matchDesigners(candidates, { community: null, style: context.style, layout: context.layout }).map(({ candidate, reason, match }) => ({
+            authorId: candidate.work.authorId, authorName: candidate.work.authorName, professionalTitle: candidate.professional?.title ?? null,
+            experienceLabel: candidate.professional?.experienceLabel ?? '', layoutSpecialties: candidate.profile.layoutSpecialties,
+            portraitAvailable: candidate.portraitAvailable, defaultAvatar: candidate.profile.defaultAvatar ?? DEFAULT_PORTFOLIO_AVATAR,
+            work: candidate.work, reason, match,
+          }));
+          return { items, notice: recommendationNotice + '本次没有按城市筛选；告诉我房屋所在城市，可以看同城的公开作品。' };
+        });
+      }
       return this.recommend(context);
     }
     const city = cityCode(input.cityCode);

@@ -65,6 +65,23 @@ test('后续按风格找作品时复用同一会话里已说过的城市', () =>
   // 最新提到的城市如果是假设或否定，先澄清，不回到更早的城市。
   assert.equal(resolveDesignerQuery({ triggerText: '我比较喜欢原木风，有没有合适的作品？',
     conversationTexts: ['如果我人在北京朝阳区，那边有可以看的工地吗', ...earlier] }), null);
-  assert.deepEqual(resolveDesignerQuery({ triggerText: '我比较喜欢原木风，有没有合适的作品？', conversationTexts: ['我比较喜欢原木风'] }), null);
+  // 整个会话从未提过城市：不再死在定位上，改为企业全量兜底（不带 cityCode）。
+  assert.deepEqual(resolveDesignerQuery({ triggerText: '我比较喜欢原木风，有没有合适的作品？', conversationTexts: ['我比较喜欢原木风'] }),
+    { style: '原木风', layout: '' });
   assert.equal(resolveDesignerQuery({ memoryHousing: '杭州', conversationTexts: earlier })?.cityCode, '330100');
+});
+
+test('无城市时兜底为企业全量公开作品，否定与含糊城市仍先澄清', () => {
+  // 客户没说过任何城市、没给定位：按风格/户型不限城市推荐（国风不在分类里也兜底）。
+  assert.deepEqual(resolveDesignerQuery({ triggerText: '推荐一个国风设计师' }), { style: '', layout: '' });
+  assert.deepEqual(resolveDesignerQuery({ triggerText: '有没有擅长三居的设计师作品？' }), { style: '', layout: '三居' });
+  assert.deepEqual(resolveDesignerQuery({ triggerText: '随便看看设计师作品' }), { style: '', layout: '' });
+  // 提过但含糊的城市仍先澄清，不兜底。
+  assert.equal(resolveDesignerQuery({ triggerText: '推荐一个设计师', conversationTexts: ['如果我人在北京朝阳区呢'] }), null);
+  // 否定找设计师仍拒绝。
+  assert.equal(resolveDesignerQuery({ triggerText: '不用再找设计师了' }), null);
+  // 多个风格歧义仍澄清。
+  assert.equal(resolveDesignerQuery({ triggerText: '原木风和轻奢都可以，推荐一下' }), null);
+  // 模型查询引入会话里没出现过的已知风格仍拒绝（防编造）。
+  assert.equal(resolveDesignerQuery({ triggerText: '推荐一个设计师', input: { query: '新中式设计师' } }), null);
 });

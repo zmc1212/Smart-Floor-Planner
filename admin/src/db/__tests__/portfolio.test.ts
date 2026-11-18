@@ -216,9 +216,11 @@ test('optional map authorization never hides bound communities, draft selections
     await withTenantTransaction(tenants[0], tx => tx.execute(sql`update app.portfolio_communities set provider=${String(original!.provider)},provider_poi_id=${original!.provider_poi_id},license_valid_until=${original!.license_valid_until} where enterprise_id=${tenants[0]} and id=${communityId}`));
   }
 });
-test('P2C.2 automatic recommendations require unambiguous current city/style and never guess from a negative preference', async () => {
+test('P2C.2 automatic recommendations fall back to the enterprise-wide catalogue when no city was ever named, and clarify ambiguous/negative ones', async () => {
   const catalog = new PortfolioCatalog(customers[0], conversations[0]);
-  assert.equal((await catalog.recommend()).needContext, true);
+  const fallback = await catalog.recommend();
+  assert.notEqual(fallback.needContext, true); assert.ok(fallback.items.length > 0);
+  assert.ok(fallback.notice.includes('没有按城市筛选'));
   const setFacts = (housing: string, style: string) => withTenantTransaction(tenants[0], tx => tx.execute(sql`update app.assistant_conversations
     set entry_snapshot=jsonb_set(entry_snapshot,'{agentMemory}',${JSON.stringify({ version: 1, facts: [{ field: 'housing', value: housing, status: 'current' }, { field: 'style', value: style, status: 'current' }] })}::jsonb)
     where enterprise_id=${tenants[0]} and id=${conversations[0]}`));
@@ -234,7 +236,8 @@ test('location-backed recommendations persist without spoken city, keep coordina
   const dependencies = { config: async () => ({ key: 'synthetic', signingKey: '', license: '', validUntil: '', dailyLimit: 100 }),
     resolve: async () => { lookups++; return { cityCode: '330100', cityName: '杭州市', district: '西湖区', source: 'wechat_location' as const, resolvedAt: new Date().toISOString() }; } };
   const location = new LocationService(customers[0], cid, dependencies), point = { latitude: 30.25, longitude: 120.13, coordinateSystem: 'gcj02' };
-  assert.equal((await new PortfolioCatalog(customers[0], cid).recommend()).needContext, true);
+  const beforeLocate = await new PortfolioCatalog(customers[0], cid).recommend();
+  assert.notEqual(beforeLocate.needContext, true); assert.ok(beforeLocate.notice.includes('没有按城市筛选'));
   await location.locate(point);
   assert.equal((await new LocationService(customers[0], cid).read()).region?.cityCode, '330100');
   const result = await new PortfolioCatalog(customers[0], cid).recommend(); assert.ok(result.items.length > 0); assert.ok(result.items.every(i => i.work.cityCode === '330100'));
@@ -245,7 +248,8 @@ test('location-backed recommendations persist without spoken city, keep coordina
   await assert.rejects(new LocationService(other, cid, dependencies).locate(point)); assert.equal(lookups, 1);
   await location.locate(point); await location.locate(point); await assert.rejects(location.locate(point), /location_rate_limited/); assert.equal(lookups, 3);
   await location.clear(); await location.clear(); assert.equal((await location.read()).region, null);
-  assert.equal((await new PortfolioCatalog(customers[0], cid).recommend()).needContext, true);
+  const afterClear = await new PortfolioCatalog(customers[0], cid).recommend();
+  assert.notEqual(afterClear.needContext, true); assert.ok(afterClear.notice.includes('没有按城市筛选'));
 });
 
 test('P2C.2 explicit preferences persist once, retain correction lineage and reject stale versions/other customers', async () => {
