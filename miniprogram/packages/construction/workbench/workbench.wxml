@@ -26,6 +26,15 @@
         </view>
         <text wx:if="{{model.hasMoreProjects}}" class="workbench-meta summary-note">以上汇总当前简报中的 {{model.items.length}} 个工地。</text>
         <text wx:if="{{model.unverified}}" class="workbench-meta summary-note">部分工地进度待核实。</text>
+        <view wx:if="{{model.pendingReport}}" class="workbench-paper manager-draft boss-pending">
+          <text class="workbench-fabric">待审核上报</text>
+          <view class="record-copy">
+            <text class="record-title draft-title">{{model.pendingReport.title}}</text>
+            <text class="workbench-meta">{{model.pendingReport.projectName}} · {{model.pendingReport.authorName}} · {{model.pendingReport.time}}</text>
+            <text wx:if="{{model.pendingReport.photoCount || model.pendingReport.hasVoice}}" class="workbench-meta">{{model.pendingReport.photoCount ? '照片 ' + model.pendingReport.photoCount + ' 张' : ''}}{{model.pendingReport.photoCount && model.pendingReport.hasVoice ? ' · ' : ''}}{{model.pendingReport.hasVoice ? '语音 1 段' : ''}}</text>
+          </view>
+          <button class="workbench-primary" data-project="{{model.pendingReport.projectId}}" data-record="{{model.pendingReport.recordId}}" bindtap="openApproval">审核上报<view class="workbench-chevron" /></button>
+        </view>
         <view class="workbench-section boss-exceptions">
           <text class="workbench-fabric">优先处理</text>
           <view wx:for="{{model.exceptions}}" wx:key="key" class="workbench-paper exception-card">
@@ -54,13 +63,22 @@
             </picker>
           </view>
           <block wx:if="{{model.view === 'worker'}}">
-            <view class="workbench-paper worker-task">
+            <view wx:if="{{model.task}}" class="workbench-paper worker-task">
               <text class="workbench-tag pending">今日任务</text>
-              <button wx:if="{{model.task}}" class="workbench-row workbench-issue-row" bindtap="openTask">
+              <button class="workbench-row workbench-issue-row" bindtap="openTask">
                 <text class="row-title">{{model.task.title}}</text><text class="workbench-tag {{model.task.issueId ? 'pending' : 'done'}}">{{model.task.label}}</text><view class="workbench-chevron" />
               </button>
-              <text wx:else class="workbench-meta workbench-empty">暂无分配的任务</text>
             </view>
+
+            <view class="workbench-paper today-summary">
+              <text class="workbench-fabric summary-fabric">今日汇总</text>
+              <view class="summary-grid">
+                <view><text class="summary-value">{{todaySummary.total}}</text><text>今日上报</text></view>
+                <view><text class="summary-value pending-text">{{todaySummary.pending}}</text><text>待审核</text></view>
+                <view><text class="summary-value done-text">{{todaySummary.approved}}</text><text>审核通过</text></view>
+              </view>
+            </view>
+
             <view wx:if="{{model.canCapture}}" class="workbench-section capture-section">
               <text class="workbench-section-title">现场上报</text>
               <view class="capture-actions">
@@ -68,21 +86,48 @@
                 <button class="workbench-primary" data-action="voice" bindtap="capture"><image src="../assets/notebook/capture-mic.png" mode="aspectFit" />说一句</button>
               </view>
             </view>
-            <view class="workbench-section">
-              <text class="workbench-fabric">最近提交</text>
-              <button wx:if="{{model.receipt}}" class="workbench-paper worker-receipt" data-record="{{model.receipt.recordId}}" bindtap="openRecord">
-                <image wx:if="{{photo}}" class="receipt-photo" src="{{photo}}" mode="aspectFill" />
-                <view class="record-copy">
-                  <text class="record-title">{{model.receipt.title}}</text><text class="workbench-meta">{{model.receipt.time}}</text>
-                  <view class="receipt-status"><view class="workbench-tag done"><image src="../assets/notebook/capture-received.png" mode="aspectFit" />已收到</view><text class="workbench-meta">{{model.receipt.label}}</text></view>
-                </view><view class="workbench-chevron" />
+            <text wx:else class="workbench-meta capture-paused">当前工地已暂停上报，请联系施工经理。</text>
+
+            <view class="filter-bar">
+              <button class="filter-chip {{reportRange.key === 'today' ? 'active' : ''}}" data-key="today" bindtap="selectRange">今天</button>
+              <button class="filter-chip {{reportRange.key === 'yesterday' ? 'active' : ''}}" data-key="yesterday" bindtap="selectRange">昨天</button>
+              <button class="filter-chip {{reportRange.key === 'week' ? 'active' : ''}}" data-key="week" bindtap="selectRange">近7天</button>
+              <button class="filter-chip calendar-chip {{reportRange.key === 'custom' ? 'active' : ''}}" bindtap="openCalendar">
+                <view class="calendar-glyph" aria-hidden="true"></view>日历
               </button>
-              <view wx:else class="workbench-paper workbench-state empty-fabric">暂无现场上报回执</view>
             </view>
+
+            <view class="workbench-paper report-list">
+              <view class="report-list-heading">
+                <text class="workbench-fabric">上报记录</text>
+                <text class="workbench-meta">{{reportRange.label}}</text>
+              </view>
+              <view wx:if="{{reportLoading}}" class="workbench-state">正在读取上报…</view>
+              <view wx:elif="{{reportError}}" class="workbench-state" role="alert"><text>{{reportError}}</text><button class="workbench-plain" bindtap="retry">重新读取</button></view>
+              <view wx:elif="{{!reports.length}}" class="workbench-state">{{reportRange.key === 'today' ? '今天还没有上报' : '这段时间还没有上报'}}</view>
+              <block wx:else>
+                <button wx:for="{{reports}}" wx:key="recordId" class="report-row" data-record="{{item.recordId}}" bindtap="openRecord">
+                  <view class="report-copy">
+                    <text class="record-title">{{item.title}}</text>
+                    <text class="workbench-meta">{{item.meta}}</text>
+                    <text wx:if="{{item.statusClass === 'done' && item.approvedByName}}" class="workbench-meta">审核人 {{item.approvedByName}}</text>
+                    <text wx:if="{{item.statusClass === 'returned' && item.returnShort}}" class="return-hint">退回：{{item.returnShort}}</text>
+                  </view>
+                  <view class="report-status">
+                    <text class="workbench-tag {{item.statusClass}}">{{item.statusLabel}}</text>
+                    <view class="workbench-chevron" />
+                  </view>
+                </button>
+              </block>
+            </view>
+
+            <button class="workbench-row workbench-link" bindtap="openReports">
+              <image src="../assets/notebook/file.png" mode="aspectFit" /><text class="row-title">工地日报与周报</text><view class="workbench-chevron" />
+            </button>
           </block>
           <block wx:elif="{{model.view === 'manager'}}">
             <view class="workbench-section">
-              <text class="workbench-fabric">待核对发布</text>
+              <text class="workbench-fabric">待审核上报</text>
               <view wx:if="{{model.draft}}" class="workbench-paper manager-draft">
                 <view class="draft-source">
                   <view class="record-copy">
@@ -92,9 +137,9 @@
                   </view>
                   <image wx:if="{{photo}}" class="draft-photo" src="{{photo}}" mode="aspectFill" />
                 </view>
-                <button class="workbench-primary" data-record="{{model.draft.recordId}}" bindtap="openRecord">核对记录<view class="workbench-chevron" /></button>
+                <button class="workbench-primary" data-project="{{model.project.id}}" data-record="{{model.draft.recordId}}" bindtap="openApproval">审核上报<view class="workbench-chevron" /></button>
               </view>
-              <view wx:else class="workbench-paper workbench-state empty-fabric">暂无待核对记录</view>
+              <view wx:else class="workbench-paper workbench-state empty-fabric">暂无待审核上报</view>
             </view>
             <view class="workbench-paper workbench-section manager-review">
               <text class="workbench-section-title">整改复查</text>
@@ -105,6 +150,19 @@
             <button class="workbench-row workbench-link" bindtap="openProject">查看工地<view class="workbench-chevron" /></button>
           </block>
           <block wx:else>
+            <view wx:if="{{model.pendingReport}}" class="workbench-section">
+              <text class="workbench-fabric">待审核上报</text>
+              <view class="workbench-paper manager-draft">
+                <view class="draft-source">
+                  <view class="record-copy">
+                    <text class="record-title draft-title">{{model.pendingReport.title}}</text>
+                    <text class="workbench-meta">{{model.pendingReport.authorName}} · {{model.pendingReport.time}}</text>
+                    <text wx:if="{{model.pendingReport.photoCount || model.pendingReport.hasVoice}}" class="workbench-meta">{{model.pendingReport.photoCount ? '照片 ' + model.pendingReport.photoCount + ' 张' : ''}}{{model.pendingReport.photoCount && model.pendingReport.hasVoice ? ' · ' : ''}}{{model.pendingReport.hasVoice ? '语音 1 段' : ''}}</text>
+                  </view>
+                </view>
+                <button class="workbench-primary" data-project="{{model.pendingReport.projectId}}" data-record="{{model.pendingReport.recordId}}" bindtap="openApproval">审核上报<view class="workbench-chevron" /></button>
+              </view>
+            </view>
             <view class="workbench-section">
               <text class="workbench-fabric">待我答复</text>
               <view wx:if="{{model.reply.length}}" class="workbench-paper designer-reply">
@@ -131,4 +189,91 @@
       </block>
     </view>
   </scroll-view>
+
+  <view wx:if="{{showCalendar}}" class="overlay is-open" catchtouchmove="noop">
+    <view class="sheet calendar-sheet">
+      <view class="sheet-tag-row">
+        <text class="sheet-fabric">选择日期</text>
+        <button class="text-action" bindtap="resetCalendar">重置</button>
+      </view>
+      <view class="calendar-quick">
+        <button class="filter-chip" data-key="today" bindtap="pickCalendarQuick">今天</button>
+        <button class="filter-chip" data-key="yesterday" bindtap="pickCalendarQuick">昨天</button>
+        <button class="filter-chip" data-key="week" bindtap="pickCalendarQuick">近7天</button>
+        <button class="filter-chip" data-key="month" bindtap="pickCalendarQuick">本月</button>
+      </view>
+      <view class="calendar-month">
+        <button class="calendar-arrow" bindtap="calendarPrev" aria-label="上个月">‹</button>
+        <text>{{calendar.monthLabel}}</text>
+        <button class="calendar-arrow" bindtap="calendarNext" aria-label="下个月">›</button>
+      </view>
+      <view class="calendar-weekdays">
+        <text wx:for="{{['一','二','三','四','五','六','日']}}" wx:key="*this">{{item}}</text>
+      </view>
+      <view class="calendar-weeks">
+        <view wx:for="{{calendar.weeks}}" wx:key="index" wx:for-item="week" wx:for-index="weekIndex" class="calendar-week">
+          <view wx:for="{{week}}" wx:key="key" wx:for-item="day"
+            class="calendar-day {{day.disabled ? 'disabled' : ''}} {{day.inRange ? 'in-range' : ''}} {{day.start || day.end ? 'range-end' : ''}} {{day.today ? 'today' : ''}}"
+            data-date="{{day.date}}" bindtap="pickCalendar">
+            <text>{{day.day}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="calendar-summary">
+        <text>最多可查近3个月</text>
+        <text>{{calendar.rangeLabel}}</text>
+      </view>
+      <button class="primary" bindtap="applyCalendar">查看这段时间的记录</button>
+    </view>
+  </view>
+
+  <view wx:if="{{showDetail}}" class="overlay is-open" catchtouchmove="noop">
+    <view class="sheet detail-sheet">
+      <view class="detail-heading">
+        <text class="sheet-fabric">上报详情</text>
+        <button class="detail-close" bindtap="closeDetail" aria-label="关闭">×</button>
+      </view>
+      <scroll-view class="detail-scroll" scroll-y enhanced show-scrollbar="{{false}}">
+        <view wx:if="{{detailLoading}}" class="detail-state">正在读取上报…</view>
+        <view wx:elif="{{detailError}}" class="detail-state" role="alert"><text>{{detailError}}</text><button class="text-action" bindtap="closeDetail">关闭</button></view>
+        <block wx:elif="{{detail}}">
+          <view class="paper detail-status">
+            <view class="detail-status-copy">
+              <text class="workbench-tag {{detail.statusClass}}">{{detail.statusLabel}}</text>
+              <text wx:if="{{detail.approvedByName}}" class="workbench-meta">审核人 {{detail.approvedByName}} · {{detail.approvedAt}}</text>
+              <text wx:elif="{{detail.statusClass === 'pending'}}" class="workbench-meta">等待施工经理、设计师或老板审核</text>
+            </view>
+            <view class="detail-check {{detail.statusClass}}">✓</view>
+          </view>
+          <text class="detail-title">{{detail.title}}</text>
+          <text class="workbench-meta detail-meta">{{detail.time}} · {{model.project.name}}</text>
+          <view class="detail-stages">
+            <text wx:if="{{detail.stageText}}" class="stage-pill">{{detail.stageText}}</text>
+            <text class="workbench-meta">本次上报阶段</text>
+          </view>
+          <view wx:if="{{detailPhotos.length}}" class="detail-photos">
+            <image wx:for="{{detailPhotos}}" wx:key="id" src="{{item.path}}" mode="aspectFill" data-path="{{item.path}}" bindtap="previewDetail" />
+          </view>
+          <view wx:if="{{detail.speech}}" class="detail-voice" bindtap="playDetailVoice">
+            <image src="../assets/notebook/capture-mic.png" mode="aspectFit" />
+            <text>语音 {{detail.speechSeconds}}秒</text>
+            <view class="detail-play {{detailPlaying ? 'playing' : ''}}" aria-hidden="true"></view>
+          </view>
+          <view wx:if="{{detail.reviewRequirements}}" class="paper return-paper">
+            <text class="workbench-fabric">需补充</text>
+            <text class="detail-text">{{detail.reviewRequirements}}</text>
+            <button class="primary" bindtap="openDetailRework">按退回要求补充</button>
+          </view>
+          <view class="paper detail-content">
+            <text class="workbench-fabric">上报内容</text>
+            <view wx:if="{{detail.completed}}" class="detail-row"><text class="detail-label">本次完成</text><text class="detail-text">{{detail.completed}}</text></view>
+            <view wx:if="{{detail.pending}}" class="detail-row"><text class="detail-label">尚未完成</text><text class="detail-text">{{detail.pending}}</text></view>
+            <view wx:if="{{detail.coordination}}" class="detail-row"><text class="detail-label">待沟通</text><text class="detail-text">{{detail.coordination}}</text></view>
+            <view wx:if="{{detail.note}}" class="detail-row"><text class="detail-label">补充说明</text><text class="detail-text">{{detail.note}}</text></view>
+          </view>
+          <button class="text-action detail-report-link" bindtap="openReports">查看工地日报与周报</button>
+        </block>
+      </scroll-view>
+    </view>
+  </view>
 </view>

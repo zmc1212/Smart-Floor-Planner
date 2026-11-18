@@ -6,6 +6,7 @@ import { constructionAccess } from './service';
 import { constructionBrief } from './brief';
 import { readStageSettings } from './stages-store';
 import { currentRecord, projectSiteIssues, siteIssueTitle, type IssueView } from './site-issues';
+import { latestPendingReport, parseReportRange, workerReportHistory, workerTodaySummary } from './workbench-reports';
 import type { ConstructionActor } from './contracts';
 
 type Project = { id: string; name: string; role: 'worker' | 'manager' | 'observer' | 'designer';
@@ -42,7 +43,8 @@ async function recordCard(tx: PostgresTransaction, actor: ConstructionActor, pro
     status: record.status, photoId: source?.media[0]?.id || null, photoCount: source?.media.length || 0, hasVoice: record.hasVoice };
 }
 
-export function constructionWorkbench(actor: ConstructionActor, staffRole: string, selection?: string) {
+export function constructionWorkbench(actor: ConstructionActor, staffRole: string, selection?: string,
+  range?: { from?: string | null; to?: string | null }) {
   if (!['construction_staff', 'designer', 'enterprise_admin'].includes(staffRole)) fail('construction_forbidden', 403);
   const requested = selection === undefined ? null : id(selection);
   return withTenantTransaction(actor.enterpriseId, async tx => {
@@ -55,7 +57,8 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
         from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
         where p.enterprise_id=${eid} and p.status<>'archived' and l.archived_at is null order by p.id desc limit 21 for share of p,l`);
       const enterprise = await one(tx, sql`select name from app.enterprises where id=${eid}`);
-      return { view: 'boss', enterpriseName: String(enterprise?.name || ''), ...(await constructionBrief(tx, eid, projects, stages, true)) };
+      return { view: 'boss', enterpriseName: String(enterprise?.name || ''), pendingReport: await latestPendingReport(tx, eid),
+        ...(await constructionBrief(tx, eid, projects, stages, true)) };
     }
 
     // The role shown to a construction employee is the live membership of
@@ -72,9 +75,10 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
     if (requested && !project) fail('construction_not_found', 404);
     const defaultView = staffRole === 'designer' ? 'designer' : 'worker';
     const choices = projects.map(({ id, name }) => ({ id, name }));
-    if (!project) return { view: defaultView, choices, project: null };
+    const stageChoices = stages.map(({ key, name }) => ({ key, name }));
+    if (!project) return { view: defaultView, choices, project: null, stages: stageChoices };
     const stageName = stages.find(stage => stage.key === project.stageKey)?.name || '阶段待标记';
-    const scope = { choices, project: { id: project.id, name: project.name, status: project.status, stageName } };
+    const scope = { choices, stages: stageChoices, project: { id: project.id, name: project.name, status: project.status, stageName } };
     if (project.role === 'observer') return { view: 'worker', ...scope, canCapture: false };
 
     const issues = await projectSiteIssues(tx, eid, project.id, null);
@@ -82,17 +86,23 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
     const mine = active.filter(issue => issue.ownerId === actor.adminId);
     if (project.role === 'designer') return { view: 'designer', ...scope,
       reply: mine.filter(issue => awaitingOwner.has(issue.status)).slice(0, 3).map(issueCard),
-      changes: mine.filter(issue => issue.designRelated && awaitingReview.has(issue.status)).slice(0, 3).map(issueCard) };
+      changes: mine.filter(issue => issue.designRelated && awaitingReview.has(issue.status)).slice(0, 3).map(issueCard),
+      pendingReport: await latestPendingReport(tx, eid, project.id) };
     if (project.role === 'manager') {
       const issue = active.find(issue => issue.classification === 'awaiting_review');
       return { view: 'manager', ...scope, draft: await recordCard(tx, actor, project.id, 'draft'),
-        review: issue ? issueCard(issue) : await recordCard(tx, actor, project.id, 'rework') };
+        review: issue ? issueCard(issue) : await recordCard(tx, actor, project.id, 'rework'),
+        pendingReport: await latestPendingReport(tx, eid, project.id) };
     }
     const task = mine.find(issue => issue.sourceKind !== 'need' && awaitingOwner.has(issue.status));
     const settings = await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`);
+    const reportRange = parseReportRange(range?.from, range?.to);
+    const reports = await workerReportHistory(tx, actor, project.id, reportRange);
     return { view: 'worker', ...scope, canCapture: project.status === 'active' && assistantWritesEnabled(settings),
       task: task ? issueCard(task) : project.assigned && project.stageKey && project.status === 'active'
         ? { title: stageName, label: '进行中' } : null,
-      receipt: await recordCard(tx, actor, project.id, 'capture') };
+      receipt: await recordCard(tx, actor, project.id, 'capture'),
+      reports: { from: reportRange.from, to: reportRange.to, items: reports },
+      todaySummary: await workerTodaySummary(tx, actor, project.id) };
   });
 }

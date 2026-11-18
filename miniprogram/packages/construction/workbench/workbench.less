@@ -80,8 +80,87 @@ button.exception-link { justify-content:flex-end; min-height:44px; margin-top:7p
 .boss-links .workbench-row { flex:1; min-width:0; justify-content:center; font-size:14px; }
 .boss-links .workbench-row + .workbench-row { border-left:1px solid #c7d1be; }
 
+.today-summary { padding-top:34px; margin-bottom:14px; }
+.summary-fabric { top:-7px; }
+.summary-grid { display:flex; align-items:center; }
+.summary-grid > view { flex:1; min-width:0; text-align:center; font-size:13px; line-height:1.4; }
+.summary-grid > view + view { border-left:1px solid #adbea5; }
+.summary-value { display:block; font-size:30px; font-weight:650; line-height:1.05; margin-bottom:3px; }
+.pending-text { color:#9c6a1f; }
+.done-text { color:#14552e; }
+.capture-paused { display:block; margin:8px 0 12px; }
+.filter-bar { display:flex; gap:6px; margin:10px 0 14px; }
+button.filter-chip { flex:1; min-width:0; min-height:42px; display:flex; align-items:center; justify-content:center; gap:4px; padding:0 8px; border:1px solid #a3b59d; border-radius:21px; background:#fbf8ef; color:#235a46; font-size:14px; line-height:1.35; white-space:nowrap; }
+button.filter-chip.active { border-color:#00513c; background:#00513c; color:#fffdf0; }
+.calendar-glyph { position:relative; width:14px; height:14px; flex:none; border:1.5px solid currentColor; border-radius:3px; }
+.calendar-glyph::before { content:''; position:absolute; left:2px; right:2px; top:4px; height:1px; background:currentColor; }
+.calendar-glyph::after { content:''; position:absolute; left:3px; top:-2px; width:1.5px; height:4px; background:currentColor; box-shadow:5px 0 0 currentColor; }
+.report-list { padding-top:40px; padding-bottom:4px; }
+.report-list-heading { display:flex; align-items:center; justify-content:flex-end; min-height:26px; padding-bottom:4px; border-bottom:1px solid #d5dbcc; }
+button.report-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; padding:11px 0; text-align:left; border-bottom:1px solid #d5dbcc; }
+button.report-row:last-child { border-bottom:0; }
+.report-copy { flex:1; min-width:0; }
+.report-copy .workbench-meta { margin-top:2px; }
+.report-status { flex:none; display:flex; align-items:center; gap:4px; }
+.return-hint { display:block; margin-top:3px; color:#8f2e24; font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
+.workbench-tag.returned { background:#ecc6b7; color:#8f2e24; }
+.workbench-tag.withdrawn { background:#e3e5dc; color:#6b7a6e; }
+.boss-pending { padding-top:38px; margin:14px 0 18px; }
+.boss-pending .record-copy { margin-bottom:10px; }
+
+.sheet { position:relative; }
+.sheet-fabric { position:absolute; z-index:2; top:-13px; left:20px; padding:4px 12px; background:linear-gradient(108deg,#14503a,#053c2e 75%,#1b5842); color:#fffdf0; font:900 17px/1.45 'Site Serif','Songti SC',SimSun,serif; border:1px solid #164d3b; outline:1px dashed #bfd1b580; outline-offset:-4px; box-shadow:0 2px 3px #29452933; transform:rotate(-5deg); }
+.calendar-sheet { padding-top:38px; max-height:88vh; }
+.sheet-tag-row { display:flex; align-items:center; justify-content:flex-end; min-height:30px; margin-bottom:4px; }
+.calendar-quick { display:flex; gap:7px; margin:8px 0 14px; }
+.calendar-quick .filter-chip { flex:1; min-height:38px; font-size:13px; }
+.calendar-month { display:flex; align-items:center; justify-content:space-between; margin:4px 0 8px; font:900 17px/1.4 'Site Serif','Songti SC',SimSun,serif; }
+button.calendar-arrow { width:44px !important; min-height:44px; display:flex; align-items:center; justify-content:center; font-size:26px; color:#205a43; }
+.calendar-weekdays { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:2px; color:#526c60; font-size:12px; }
+.calendar-weekdays text { text-align:center; line-height:28px; }
+.calendar-week { display:grid; grid-template-columns:repeat(7,1fr); }
+.calendar-day { height:44px; display:flex; align-items:center; justify-content:center; border-radius:50%; color:#073c30; font-size:13px; }
+.calendar-day.in-range { background:#e4f0df; border-radius:0; }
+.calendar-day.range-end { background:#00513c; color:#fffdf0; border-radius:50%; }
+.calendar-day.today { border:1px solid #00513c; }
+.calendar-day.disabled { color:#b9c4b8; }
+.calendar-summary { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:10px 0 14px; color:#526c60; font-size:12px; line-height:1.5; }
+
+.detail-sheet { padding:32px 20px calc(18px + env(safe-area-inset-bottom)); max-height:92vh; display:flex; flex-direction:column; }
+.detail-heading { display:flex; align-items:center; justify-content:flex-end; min-height:32px; margin-bottom:6px; }
+button.detail-close { width:40px !important; min-height:40px; display:flex; align-items:center; justify-content:center; font-size:26px; color:#205a43; }
+.detail-scroll { flex:1; min-height:0; max-height:calc(92vh - 90px); }
+.detail-state { padding:20px 6px; font-size:15px; line-height:1.6; }
+.detail-status { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:14px; padding-bottom:12px; margin-bottom:16px; }
+.detail-status-copy { flex:1; min-width:0; }
+.detail-status-copy .workbench-tag { margin-bottom:5px; }
+.detail-check { flex:none; width:30px; height:30px; display:flex; align-items:center; justify-content:center; border:1.5px solid #14552e; border-radius:50%; color:#14552e; font-size:16px; }
+.detail-check.returned { border-color:#8f2e24; color:#8f2e24; }
+.detail-check.pending { border-color:#9c6a1f; color:#9c6a1f; }
+.detail-title { display:block; font:900 24px/1.35 'Site Serif','Songti SC',SimSun,serif; overflow-wrap:anywhere; }
+.detail-meta { margin:4px 0 10px; }
+.detail-stages { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+.stage-pill { display:inline-block; padding:3px 10px; border-radius:4px; background:#e4f0df; color:#14552e; font-size:13px; line-height:1.45; }
+.detail-photos { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin-bottom:14px; }
+.detail-photos image { width:100%; aspect-ratio:1; border-radius:4px; background:#e4e7da; }
+.detail-voice { display:flex; align-items:center; gap:10px; min-height:52px; padding:6px 12px; margin-bottom:14px; background:#f7f3e7; border-radius:6px; font-size:15px; }
+.detail-voice image { width:24px; height:24px; }
+.detail-voice text { flex:1; }
+.detail-play { width:0; height:0; border-top:7px solid transparent; border-bottom:7px solid transparent; border-left:11px solid #205a43; }
+.detail-play.playing { width:10px; height:12px; border:0; background:linear-gradient(90deg,#205a43 0 35%,transparent 35% 65%,#205a43 65% 100%); }
+.return-paper { padding-top:36px; }
+.return-paper .detail-text { display:block; margin:8px 0 12px; }
+.detail-content { padding-top:38px; }
+.detail-row { display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px dashed #d5dbcc; }
+.detail-row:last-child { border-bottom:0; }
+.detail-label { flex:none; width:68px; color:#526c60; font-size:12px; line-height:1.65; }
+.detail-text { flex:1; min-width:0; color:#073c30; font-size:15px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+button.detail-report-link { width:100%; justify-content:center; color:#205a43; font-size:14px; }
+
 @media (max-width:360px) {
   .workbench-nav,.workbench-content { padding-left:28px; padding-right:13px; }
   .workbench-title { font-size:29px; }
   .workbench-paper { padding-left:11px; padding-right:11px; }
+  .filter-chip { font-size:13px; padding:0 5px; }
+  .detail-sheet { padding-left:14px; padding-right:14px; }
 }

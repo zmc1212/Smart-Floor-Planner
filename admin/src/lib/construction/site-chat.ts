@@ -39,9 +39,10 @@ export async function recordVersion(tx: PostgresTransaction, eid: string, record
     ${JSON.stringify(siteDto({ data: record.data, roomId: record.room_id, status: record.status, audience: record.audience,
       roomName: record.room_name_snapshot, publishedCustomerId: record.published_customer_id, reason: record.withdrawal_reason, sourceMessageId: record.source_message_id,
       recordId: record.id, originalRecordId: record.original_record_id || record.id, resubmissionOfId: record.resubmission_of_id,
-      reviewRequirements: record.review_requirements, returnedBy: record.returned_by, returnedAt: record.returned_at }))}::jsonb)`);
+      stages: record.stage_snapshot || [], reviewRequirements: record.review_requirements, returnedBy: record.returned_by, returnedAt: record.returned_at }))}::jsonb)`);
 }
-type SitePermission = { manage: boolean; write: boolean; recordWrite: boolean; collaboration: boolean; executionOnly: boolean };
+type SitePermission = { manage: boolean; reviewRecords: boolean; canPublishCustomer: boolean;
+  write: boolean; recordWrite: boolean; collaboration: boolean; executionOnly: boolean };
 export class SiteChatService {
   readonly actor: ActorContext;
   constructor(readonly staff: ConstructionActor, private transaction?: PostgresTransaction) { this.actor = siteActor(staff); }
@@ -78,10 +79,15 @@ export class SiteChatService {
         where p.enterprise_id=${eid} and p.id=${projectId} for share of p,l`))!;
       const member = await one(tx, sql`select role from app.construction_members where enterprise_id=${eid} and project_id=${projectId} and admin_id=${a.adminId} and active for share`);
       const collaboration = collaborationEnabled(eid);
-      const permission = { manage: (!collaboration && owner) || member?.role === 'manager', collaboration,
+      const manage = (!collaboration && owner) || member?.role === 'manager';
+      const permission = { manage, collaboration,
+        // Report approval is project-manager, project-designer or enterprise-owner.
+        // Only the manager/owner may also publish an approved record to the customer.
+        reviewRecords: owner || manage || member?.role === 'designer',
+        canPublishCustomer: owner || manage,
         executionOnly: collaboration && (member?.role === 'worker' || member?.role === 'observer'),
         recordWrite: !collaboration || ['worker', 'manager'].includes(String(member?.role)),
-        write: ((!collaboration && owner) || (!!member && member.role !== 'observer')) && p.status === 'active' && assistantWritesEnabled(settings) };
+        write: (owner || (!!member && member.role !== 'observer')) && p.status === 'active' && assistantWritesEnabled(settings) };
       if (write && (!permission.write || p.status !== 'active')) fail('construction_forbidden', 403);
       return fn(tx, c, p, permission);
     };
@@ -149,18 +155,20 @@ export class SiteChatService {
         const media = await rows(tx, sql`select a.id,a.width,a.height,a.byte_size from app.construction_site_attachments x join app.construction_site_media a
           on a.enterprise_id=x.enterprise_id and a.project_id=x.project_id and a.id=x.media_id
           where x.enterprise_id=${eid} and x.project_id=${projectId} and x.record_id=${String(record.id)} and a.deleted_at is null order by x.position`);
-        const canAct = permission.write && permission.recordWrite && (permission.manage || String(record.author_id) === this.staff.adminId);
+        const author = String(record.author_id) === this.staff.adminId;
+        const canAct = permission.write && permission.recordWrite && (permission.manage || author);
         const canEdit = canAct && record.status !== 'changes_requested';
+        const canReview = permission.write && permission.reviewRecords;
         const captured = await capturedRecord(tx, eid, projectId, String(record.id));
         const speech = await one(tx, sql`select id::text,duration_ms,transcript from app.assistant_speech_assets
           where enterprise_id=${eid} and conversation_id=${String(c.id)} and message_id=${String(message.id)} and deleted_at is null`);
         items.push({ message, issue: issues.find(i => i.recordId === String(record.id)) || null,
-          record: { ...record, captured, speech, canEdit, canPublish: canEdit && (permission.manage || (!permission.collaboration && !captured && !record.resubmission_of_id)),
+          record: { ...record, captured, speech, canEdit, canPublish: canReview && record.status === 'draft',
             ...(permission.collaboration ? { sync: record.status !== 'organizing' ? 'succeeded'
               : ['failed', 'cancelled'].includes(String(record.run_status)) ? 'failed' : record.run_status ? 'processing' : 'pending' } : {}),
-            canRequestChanges: permission.write && permission.manage && ['draft','published'].includes(String(record.status)),
-            canResubmit: permission.write && String(record.author_id) === this.staff.adminId && record.status === 'changes_requested' && !record.resubmitted_record_id,
-            resubmittedRecordId: record.resubmitted_record_id || null, canPublishCustomer: permission.manage, media } });
+            canRequestChanges: canReview && ['draft','published'].includes(String(record.status)),
+            canResubmit: permission.write && author && record.status === 'changes_requested' && !record.resubmitted_record_id,
+            resubmittedRecordId: record.resubmitted_record_id || null, canPublishCustomer: permission.canPublishCustomer, media } });
       }
       if (focus && beforeSeq === '9223372036854775807') {
         const assets = new Map<string, Row>();
@@ -215,12 +223,14 @@ export class SiteChatService {
     });
   }
   send(projectId: string, body: Row, requestKey: string) {
-    object(body, ['text', 'mediaIds', 'versions', 'speech', 'capture', 'recording']); key(requestKey);
+    object(body, ['text', 'mediaIds', 'versions', 'speech', 'capture', 'recording', 'stageKeys']); key(requestKey);
     const versions = parseSiteVersions(body.versions);
     const raw = text(body.text, 4000, false), mediaIds = body.mediaIds;
     const capture = body.capture === undefined ? null : captureInput(body.capture);
     if (capture && body.speech !== undefined) fail('invalid_construction', 422);
-    if (!Array.isArray(mediaIds) || mediaIds.length > 4 || new Set(mediaIds).size !== mediaIds.length
+    if (body.stageKeys !== undefined && (!capture || !Array.isArray(body.stageKeys) || body.stageKeys.length > 10
+      || new Set(body.stageKeys).size !== body.stageKeys.length || body.stageKeys.some(value => typeof value !== 'string'))) fail('invalid_construction', 422);
+    if (!Array.isArray(mediaIds) || mediaIds.length > 9 || new Set(mediaIds).size !== mediaIds.length
       || (!body.capture && (!raw && !mediaIds.length || body.recording !== undefined))) fail('invalid_construction', 422);
     mediaIds.forEach(id);
     return this.scope(projectId, true, async (tx, c, _p, permission) => {
@@ -366,10 +376,12 @@ export class SiteChatService {
     object(body, allowed[action]); version(body.expectedVersion);
     return this.scope(projectId, true, (tx, c, p, permission) => idempotent(tx, this.actor, `site:${projectId}:${recordId}:${action}`, requestKey, body, async () => {
       const eid = this.staff.enterpriseId;
-      if (!permission.recordWrite) fail('construction_forbidden', 403);
+      const reviewAction = ['publish', 'request_changes'].includes(action);
+      if (!permission.recordWrite && !(reviewAction && permission.reviewRecords)) fail('construction_forbidden', 403);
       let scheduleCompletion;
       const r = await one(tx, sql`select * from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId} and id=${recordId} for update`);
-      if (!r || (!permission.manage && String(r.author_id) !== this.staff.adminId)) fail('construction_forbidden', 403);
+      if (!r || (!permission.manage && String(r.author_id) !== this.staff.adminId
+        && !(reviewAction && permission.reviewRecords))) fail('construction_forbidden', 403);
       if (Number(r.version) !== body.expectedVersion) fail('version_conflict');
       if (action === 'resubmit') {
         if (String(r.author_id) !== this.staff.adminId) fail('construction_forbidden', 403);
@@ -392,8 +404,8 @@ export class SiteChatService {
           content: { version: 1, blocks: [{ type: 'text', text: raw || '按要求补拍现场照片。' }] } });
         const run = await newRun(tx, this.actor, c, (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!, String(message.id), undefined,
           { kind: 'user_message', messageId: String(message.id) }, 'site.record');
-        const child = (await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,run_id,resubmission_of_id,original_record_id,review_requirements,returned_by,returned_at,room_id,room_name_snapshot)
-          values(${eid},${projectId},${String(c.id)},${String(message.id)},${this.staff.adminId},${String(run.runId)},${recordId},${originalId},${String(r.review_requirements)},${String(r.returned_by)},${r.returned_at},${r.room_id ?? null},${String(r.room_name_snapshot || '')}) returning *`))!;
+        const child = (await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,run_id,resubmission_of_id,original_record_id,review_requirements,returned_by,returned_at,room_id,room_name_snapshot,stage_snapshot)
+          values(${eid},${projectId},${String(c.id)},${String(message.id)},${this.staff.adminId},${String(run.runId)},${recordId},${originalId},${String(r.review_requirements)},${String(r.returned_by)},${r.returned_at},${r.room_id ?? null},${String(r.room_name_snapshot || '')},${JSON.stringify(r.stage_snapshot || [])}::jsonb) returning *`))!;
         for (const [i, mid] of mediaIds.entries()) await tx.execute(sql`insert into app.construction_site_attachments(enterprise_id,project_id,record_id,media_id,position) values(${eid},${projectId},${String(child.id)},${mid},${i})`);
         const parent = (await one(tx, sql`update app.construction_site_records set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${recordId} returning *`))!;
         await recordVersion(tx, eid, parent, this.staff.adminId, 'resubmit');
@@ -420,7 +432,7 @@ export class SiteChatService {
       }
       if (r.run_id) await cancelRuns(tx, this.actor, String(c.id), String(r.run_id));
       if (action === 'request_changes') {
-        if (!permission.manage) fail('construction_forbidden', 403);
+        if (!permission.reviewRecords) fail('construction_forbidden', 403);
         if (!['draft','published'].includes(String(r.status))) fail('site_rework_state_conflict');
         const requirements = text(body.requirements, 1000);
         await tx.execute(sql`update app.construction_site_records set status='changes_requested',review_requirements=${requirements},returned_by=${this.staff.adminId},returned_at=now(),
@@ -432,14 +444,13 @@ export class SiteChatService {
         // A correction immediately revokes the previous publication; it requires a new explicit review.
         await tx.execute(sql`update app.construction_site_records set data=${JSON.stringify(data)}::jsonb,room_id=${data.roomId},room_name_snapshot=${String(room?.name || '')},status='draft',audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null,withdrawal_reason='' where enterprise_id=${eid} and id=${recordId}`);
       } else if (action === 'publish') {
-        if (!permission.manage && (permission.collaboration || await capturedRecord(tx, eid, projectId, recordId))) fail('construction_forbidden', 403);
+        if (!permission.reviewRecords) fail('construction_forbidden', 403);
         if (body.scheduleCompletion !== undefined) {
           if (!permission.collaboration || !permission.manage) fail('construction_forbidden', 403);
           scheduleCompletion = await confirmScheduleCompletion(tx, eid, p, r, body.scheduleCompletion);
         }
-        if (r.resubmission_of_id && !permission.manage) fail('construction_forbidden', 403);
         if (r.status !== 'draft' || !r.source_message_id || !['internal', 'customer'].includes(String(body.audience))) fail('context_changed');
-        if (body.audience === 'customer' && (!permission.manage || !p.customer_access || !p.customer_user_id || p.archived_at)) fail('construction_forbidden', 403);
+        if (body.audience === 'customer' && (!permission.canPublishCustomer || !p.customer_access || !p.customer_user_id || p.archived_at)) fail('construction_forbidden', 403);
         const data = siteDraft(r.data);
         if (![data.completed, data.pending, data.coordination, data.note].some(Boolean)) fail('site_review_required', 422);
         if (data.roomId && !await one(tx, sql`select id from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} and id=${data.roomId} and name=${String(r.room_name_snapshot)}`)) fail('context_changed');

@@ -8,6 +8,8 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { SiteChatService } from '@/lib/construction/site-chat';
+import { constructionWorkbench } from '@/lib/construction/workbench';
+import { shanghaiToday } from '@/lib/construction/workbench-reports';
 import { siteChatHttp } from '@/lib/construction/site-http';
 import { processSiteRecord } from '@/lib/construction/site-worker';
 import { AiProviderError } from '@/lib/ai/provider-types';
@@ -154,9 +156,11 @@ test('explicit watch uses the original private chat with a real receipt and visi
   const history = await privateChat.messages(cid); assert.ok((history.items as Row[]).some(m => m.siteWatch));
   const count = await withTenantTransaction(eids[0], tx => one(tx, sql`select count(*) n from app.construction_watches where enterprise_id=${eids[0]} and active`)); assert.equal(Number(count!.n), 1);
 });
-test('internal publication never opens the source chat or notifies the homeowner; worker cannot select the customer audience', async () => {
-  await assert.rejects(site().mutate(pid, rid, 'publish', { expectedVersion: (await record()).version, audience: 'customer' }, randomUUID()));
-  await site().mutate(pid, rid, 'publish', { expectedVersion: (await record()).version, audience: 'internal' }, randomUUID());
+test('internal publication never opens the source chat or notifies the homeowner; workers cannot approve their own report', async () => {
+  const version = (await record()).version;
+  await assert.rejects(site().mutate(pid, rid, 'publish', { expectedVersion: version, audience: 'customer' }, randomUUID()), { code: 'construction_forbidden' });
+  await assert.rejects(site().mutate(pid, rid, 'publish', { expectedVersion: version, audience: 'internal' }, randomUUID()), { code: 'construction_forbidden' });
+  await boss().mutate(pid, rid, 'publish', { expectedVersion: version, audience: 'internal' }, randomUUID());
   assert.ok(!(await privateChat.messages(cid)).items.some((m: Row) => m.siteRecord));
 });
 test('manager publication exposes only this reviewed version and associated photos, and reentry does not duplicate delivery', async () => {
@@ -225,7 +229,7 @@ test('manager returns require instructions; new-photo resubmissions retain the o
     const request = { expectedVersion, requirements };
     await assert.rejects(site().mutate(pid, currentId, 'request_changes', request, randomUUID()), { code: 'construction_forbidden' });
     await assert.rejects(manager.mutate(pid, currentId, 'request_changes', { expectedVersion, requirements: '   ' }, randomUUID()));
-    await assert.rejects(site(0, 1).mutate(pid, currentId, 'request_changes', request, randomUUID()), { code: 'construction_forbidden' });
+    await assert.rejects(site(0, 2).mutate(pid, currentId, 'request_changes', request, randomUUID()), { code: 'construction_forbidden' });
     const returnKey = randomUUID(), returned = await manager.mutate(pid, currentId, 'request_changes', request, returnKey);
     assert.deepEqual(await manager.mutate(pid, currentId, 'request_changes', request, returnKey), returned);
     assert.equal(returned.status, 'changes_requested');
@@ -315,6 +319,29 @@ test('cancel survives private-chat human mode; no later publication is delivered
   const active = await withTenantTransaction(eids[0], tx => one(tx, sql`select count(*) n from app.construction_watches where enterprise_id=${eids[0]} and active`)); assert.equal(Number(active!.n), 0);
   await withTenantTransaction(eids[0], tx => tx.execute(sql`update app.assistant_conversations set mode='ai' where enterprise_id=${eids[0]} and id=${cid}`));
 });
+test('worker workbench returns own report history with stage snapshot, nine photos and today summary', async () => {
+  const mediaIds: string[] = [];
+  for (let index = 0; index < 9; index += 1) {
+    mediaIds.push(String((await site().upload(pid, randomUUID(), await sharp({ create: { width: 24, height: 24, channels: 3, background: '#123456' } }).png().toBuffer())).id));
+  }
+  const sent = await site().send(pid, { text: '九张照片现场记录', mediaIds, capture: { kind: 'free' }, stageKeys: ['utilities'] }, randomUUID());
+  const stored = await withTenantTransaction(eids[0], tx => one(tx, sql`select stage_snapshot from app.construction_site_records
+    where enterprise_id=${eids[0]} and id=${sent.recordId}`));
+  assert.deepEqual(stored!.stage_snapshot, [{ key: 'utilities', name: '水电' }]);
+  const today = shanghaiToday();
+  const data = await constructionWorkbench(actor(), 'construction_staff', pid, { from: today, to: today }) as {
+    reports: { items: Row[] }; todaySummary: Row;
+  };
+  const history = data.reports.items.find(item => String(item.recordId) === String(sent.recordId))!;
+  assert.ok(history);
+  assert.equal(history.photoCount, 9);
+  assert.equal(history.status, 'pending');
+  assert.deepEqual(history.stages, [{ key: 'utilities', name: '水电' }]);
+  assert.ok(Number(data.todaySummary.total) >= 1);
+  const past = await constructionWorkbench(actor(), 'construction_staff', pid, { from: '2000-01-01', to: '2000-01-02' }) as { reports: { items: Row[] } };
+  assert.equal(past.reports.items.some(item => String(item.recordId) === String(sent.recordId)), false);
+});
+
 test('six domain tables force tenant RLS and pure contracts reject invalid room IDs and non-direct watch language', async () => {
   const result = await withPlatformTransaction(tx => rows(tx, sql`select relrowsecurity,relforcerowsecurity from pg_class where relnamespace='app'::regnamespace and relname in ('construction_chats','construction_site_records','construction_site_media','construction_site_record_versions','construction_site_attachments','construction_watches')`));
   assert.equal(result.length, 6); assert.ok(result.every(r => r.relrowsecurity && r.relforcerowsecurity));

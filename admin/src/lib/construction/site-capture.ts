@@ -6,6 +6,8 @@ import { appendMessage, newRun } from '@/lib/assistant/core/conversation';
 import { maxSpeechBytes, speechAudio } from '@/lib/assistant/speech/audio';
 import { speechConfigurationHash } from '@/lib/assistant/speech/local';
 import { object } from './contracts';
+import { readStageSettings } from './stages-store';
+import type { ConstructionStage } from './stages';
 import type { SiteDraft } from './site-contract';
 
 // Shortcuts describe an explicit selection; they never advance the project stage.
@@ -33,6 +35,16 @@ export function captureAudio(value: unknown) {
   const bytes = Buffer.from(value, 'base64');
   return { ...speechAudio(bytes), bytes };
 }
+/** The worker picks one or more configured stages; the record keeps a name
+ * snapshot so history stays readable after the enterprise renames a stage. */
+export function stageSelection(value: unknown, stages: ConstructionStage[]) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 10 || new Set(value).size !== value.length
+    || value.some(key => typeof key !== 'string')) fail('invalid_construction', 422);
+  const selected = value.map(key => stages.find(stage => stage.key === key));
+  if (selected.some(stage => !stage)) fail('invalid_construction', 422);
+  return selected.map(stage => ({ key: stage!.key, name: stage!.name }));
+}
 export async function capturedRecord(tx: PostgresTransaction, eid: string, projectId: string, recordId: string) {
   return !!await one(tx, sql`select record_id from app.construction_site_record_versions where enterprise_id=${eid}
     and project_id=${projectId} and record_id=${recordId} and snapshot ? 'capture' limit 1`);
@@ -58,6 +70,8 @@ export async function saveSiteCapture(tx: PostgresTransaction, actor: ActorConte
   if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);
   const eid = actor.enterpriseId, selection = captureInput(body.capture), audio = captureAudio(body.recording);
   const raw = String(body.text || '').trim(), mediaIds = body.mediaIds as string[];
+  const stages = (await readStageSettings(tx, eid)).stages;
+  const stageSnapshot = stageSelection(body.stageKeys, stages);
   if (body.speech !== undefined || selection.kind === 'quick' && audio || selection.kind === 'free' && !raw && !audio && !mediaIds.length) fail('invalid_construction', 422);
   if (audio && Number((await one(tx, sql`select count(*) n from app.assistant_speech_assets where enterprise_id=${eid} and conversation_id=${String(c.id)}`))!.n) >= 20) fail('speech_limit', 422);
   const draft: SiteDraft = { title: '现场施工进展', roomId: null, completed: '', pending: '', coordination: '', note: raw };
@@ -77,8 +91,8 @@ export async function saveSiteCapture(tx: PostgresTransaction, actor: ActorConte
   const blocks = original ? [{ type: 'text' as const, text: original }] : [{ type: 'notice' as const, code: audio ? 'site_recording' : 'site_photos',
     fallbackText: audio ? `语音上报 · ${Math.ceil(audio.durationMs / 1000)}秒` : `现场照片 · ${mediaIds.length}张` }];
   const message = await appendMessage(tx, actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: 'site.source', content: { version: 1, blocks } });
-  const r = (await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,status,data,room_id,room_name_snapshot)
-    values(${eid},${projectId},${String(c.id)},${String(message.id)},${actor.principal.adminId},${selection.kind === 'quick' ? 'draft' : 'organizing'},${JSON.stringify(draft)}::jsonb,${draft.roomId},${roomName}) returning *`))!;
+  const r = (await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,status,data,room_id,room_name_snapshot,stage_snapshot)
+    values(${eid},${projectId},${String(c.id)},${String(message.id)},${actor.principal.adminId},${selection.kind === 'quick' ? 'draft' : 'organizing'},${JSON.stringify(draft)}::jsonb,${draft.roomId},${roomName},${JSON.stringify(stageSnapshot)}::jsonb) returning *`))!;
   for (let i = 0; i < mediaIds.length; i++) await tx.execute(sql`insert into app.construction_site_attachments(enterprise_id,project_id,record_id,media_id,position)
     values(${eid},${projectId},${String(r.id)},${mediaIds[i]},${i})`);
   let speechId: string | null = null;
@@ -88,11 +102,11 @@ export async function saveSiteCapture(tx: PostgresTransaction, actor: ActorConte
     speechId = String(a.id);
   }
   await tx.execute(sql`insert into app.construction_site_record_versions(enterprise_id,project_id,record_id,version,actor_id,action,snapshot)
-    values(${eid},${projectId},${String(r.id)},1,${actor.principal.adminId},'submitted',${JSON.stringify({ data: draft, roomId: draft.roomId, roomName, status: r.status, audience: 'internal', sourceMessageId: String(message.id), capture: selection })}::jsonb)`);
+    values(${eid},${projectId},${String(r.id)},1,${actor.principal.adminId},'submitted',${JSON.stringify({ data: draft, roomId: draft.roomId, roomName, status: r.status, audience: 'internal', sourceMessageId: String(message.id), capture: selection, stages: stageSnapshot })}::jsonb)`);
   await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
     values(${eid},'construction.record.captured.v1','construction_site_record',${String(r.id)},1,${JSON.stringify(actor.principal)}::jsonb,${requestKey},
-    ${JSON.stringify({ projectId, recordId: String(r.id), messageId: String(message.id), selection, speechId, mediaIds })}::jsonb)`);
+    ${JSON.stringify({ projectId, recordId: String(r.id), messageId: String(message.id), selection, stages: stageSnapshot, speechId, mediaIds })}::jsonb)`);
   const run = selection.kind === 'free' ? await scheduleCapturedRecord(tx, actor, c, r) : { runId: null, status: 'draft' };
   return { conversationId: String(c.id), messageId: String(message.id), recordId: String(r.id), runId: run.runId,
-    status: 'received', organizationStatus: run.status, requestKey, speechId, mediaIds };
+    status: 'received', organizationStatus: run.status, requestKey, speechId, mediaIds, stages: stageSnapshot };
 }

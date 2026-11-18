@@ -10,6 +10,15 @@ function workbenchTabs() {
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', icon: 'mine', tab: true },
   ].map(item => ({ ...item, iconPath: './assets/notebook-' + item.icon + '.png', selectedIconPath: './assets/notebook-' + item.icon + '-active.png' }));
 }
+/** Workers get a two-tab site tool; XiaoK remains on the designer/owner shells. */
+function workerTabs() {
+  return [
+    { key: 'site', capability: 'construction.projects', pagePath: '/pages/index/index', staffView: 'workbench', text: '工地', tab: true,
+      iconPath: './assets/notebook-home.png', selectedIconPath: './assets/notebook-home-active.png' },
+    { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true,
+      iconPath: './assets/notebook-mine.png', selectedIconPath: './assets/notebook-mine-active.png' },
+  ];
+}
 
 // Only expose destinations with an executable route and a matching server capability.
 const ROLE_ITEMS = {
@@ -32,7 +41,7 @@ const ROLE_ITEMS = {
     { key: 'earnings', capability: 'staff.earnings', pagePath: '/packages/enterprise/staff-earnings/staff-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
-  construction_staff: workbenchTabs(),
+  construction_staff: workerTabs(),
   enterprise_admin: workbenchTabs(),
   platform_admin: [
     { key: 'devices', capability: 'platform.devices', pagePath: '/packages/platform/devices/devices', text: '设备', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
@@ -88,6 +97,7 @@ Component({
     selected: 0,
     suppressed: false,
     customerNavigation: false, staffNavigation: false, keyboardHidden: false,
+    twoTabs: false,
     compactMeasureTab: true,
     badgeUnavailable: false,
     badgeUnavailableText: '',
@@ -191,6 +201,7 @@ Component({
         list,
         customerNavigation,
         staffNavigation,
+        twoTabs: staffNavigation && list.filter(item => item.visible).length === 2,
         suppressed: list.length === 0 || customerNavigation,
         compactMeasureTab: list.some((item) => item.center) && list.filter((item) => item.visible).length === 4,
         selected: index >= 0 && list[index].visible ? index : staffNavigation ? -1 : this.data.selected,

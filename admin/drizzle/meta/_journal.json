@@ -953,6 +953,13 @@
       "when": 1797148800000,
       "tag": "0139_assistant_acquisition_config",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1797235200000,
+      "tag": "0140_construction_worker_reports",
+      "breakpoints": true
     }
   ]
 }

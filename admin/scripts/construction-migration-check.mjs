@@ -7,6 +7,9 @@ const root = path.resolve(import.meta.dirname, '..'); nextEnv.loadEnvConfig(root
 const isolated = JSON.parse(fs.readFileSync(path.resolve(root, '../tmp/xiaok-vector/connection.private.json'), 'utf8')).DATABASE_URL;
 const tables = ['construction_projects','construction_members','construction_rooms','construction_plans','construction_visits','construction_audits','construction_links','construction_stage_settings','construction_stage_assignments','construction_chats','construction_site_media','construction_site_records','construction_site_record_versions','construction_site_attachments','construction_watches','construction_service_orders','construction_service_order_quotes','construction_service_order_points','construction_service_order_repairs','construction_service_order_extensions'];
 tables.push('construction_public_sites','construction_public_versions','construction_public_sources','construction_public_media','construction_public_audits');
+// 0140 is verified by its resulting schema columns/constraint below. The local
+// development ledger still has the pre-existing 0138/0139 ownership gap, so
+// 0140 is applied idempotently without a ledger row until that gap is resolved.
 const migrations = ['0073_construction_planning','0074_construction_context_retention','0075_construction_resource_cleanup','0077_construction_stages','0080_construction_staff','0081_construction_identity_scope','0082_construction_staff_role','0083_construction_shared_chat','0084_construction_public_sites','0100_construction_service_orders','0101_construction_service_lifecycle'].map(tag => ({ tag, hash: createHash('sha256').update(fs.readFileSync(path.resolve(root,'drizzle',tag+'.sql'))).digest('hex') }));
 for (const [target, connectionString, database, port] of [['development',process.env.DATABASE_URL,'/smart_floor_planner','5432'], ['evaluation',isolated,'/xiaok_embedding_eval','55432']]) {
   const url = new URL(connectionString);
@@ -29,6 +32,10 @@ for (const [target, connectionString, database, port] of [['development',process
     if (shared.length !== 1 || shared[0].pronargs !== 5) throw Error('Shared project session guard missing');
     const purpose = (await pool.query("select pg_get_constraintdef(oid) definition from pg_constraint where conrelid='app.assistant_conversations'::regclass and conname='assistant_conversations_purpose_check'")).rows[0];
     if (!purpose?.definition.includes('project_collaboration')) throw Error('Shared project purpose missing');
-    console.log(JSON.stringify({ target, hashesVerified: true, forcedRlsTables: tables.length, stageColumnsVerified: true, employeeColumnsVerified: true, legacyRecordsRetained: true, migrations: migrations.map(m=>m.tag) }));
+    const workerReportColumn = (await pool.query("select column_name from information_schema.columns where table_schema='app' and table_name='construction_site_records' and column_name='stage_snapshot'")).rows;
+    if (workerReportColumn.length !== 1) throw Error('Worker report stage snapshot column missing');
+    const attachmentPosition = (await pool.query("select pg_get_constraintdef(oid) definition from pg_constraint where conrelid='app.construction_site_attachments'::regclass and conname='construction_site_attachments_position_check'")).rows[0];
+    if (!attachmentPosition?.definition.includes('<= 8')) throw Error('Worker report photo position limit missing');
+    console.log(JSON.stringify({ target, hashesVerified: true, forcedRlsTables: tables.length, stageColumnsVerified: true, employeeColumnsVerified: true, workerReportColumnsVerified: true, legacyRecordsRetained: true, migrations: migrations.map(m=>m.tag) }));
   } finally { await pool.end(); }
 }

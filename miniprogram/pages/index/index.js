@@ -215,7 +215,14 @@ Page({
       quickTools: QUICK_TOOLS,
       roleWorkbenchRole: this.getRoleWorkbenchRole(),
     }, () => {
-      if (this.data.roleWorkbenchRole) return;
+      if (this.data.roleWorkbenchRole) {
+        // Workers use only the site tool; never restore a designer/owner XiaoK tab.
+        if (this.data.roleWorkbenchRole === 'construction_staff') {
+          getApp().globalData.siteWorkbenchTab = 'workbench';
+          this.setData({ siteWorkbenchTab: 'workbench' });
+        }
+        return;
+      }
       this.syncHomeDashboard();
       this.fetchHomeDashboard();
     });
@@ -236,8 +243,10 @@ Page({
 
     const roleWorkbenchRole = this.getRoleWorkbenchRole();
     if (roleWorkbenchRole) {
+      const siteWorkbenchTab = roleWorkbenchRole === 'construction_staff' ? 'workbench' : (app.globalData.siteWorkbenchTab || 'workbench');
+      if (roleWorkbenchRole === 'construction_staff') app.globalData.siteWorkbenchTab = 'workbench';
       this.setData({ roleWorkbenchRole, userInfo, isStaff: roleWorkbenchRole !== 'customer', customerTab: app.globalData.customerTab || 'xiaok',
-        siteWorkbenchTab: app.globalData.siteWorkbenchTab || 'workbench' }, () => this.syncTabBar());
+        siteWorkbenchTab }, () => this.syncTabBar());
       return;
     }
 

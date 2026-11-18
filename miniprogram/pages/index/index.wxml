@@ -6,7 +6,10 @@
     <owner-site-home id="owner-site-home" wx:if="{{customerTab === 'service'}}" />
     <customer-nav id="customer-nav" />
   </block>
-  <block wx:elif="{{roleWorkbenchRole === 'designer' || roleWorkbenchRole === 'construction_staff' || roleWorkbenchRole === 'enterprise_admin'}}">
+  <block wx:elif="{{roleWorkbenchRole === 'construction_staff'}}">
+    <site-workbench id="site-workbench" role="construction_staff" />
+  </block>
+  <block wx:elif="{{roleWorkbenchRole === 'designer' || roleWorkbenchRole === 'enterprise_admin'}}">
     <site-workbench id="site-workbench" wx:if="{{siteWorkbenchTab === 'workbench'}}" role="{{roleWorkbenchRole}}" />
     <xiaok-chat wx:else active="{{true}}" staff-tab="{{true}}" />
   </block>

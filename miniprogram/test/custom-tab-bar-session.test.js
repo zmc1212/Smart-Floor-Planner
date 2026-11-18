@@ -89,13 +89,23 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['promotion', 'progress', 'earnings', 'mine']);
 
-    for (const role of ['designer', 'construction_staff', 'enterprise_admin']) {
+    for (const role of ['designer', 'enterprise_admin']) {
       globalData.bootstrap = { current: { role, capabilities: ['construction.projects', 'account'] } };
       definition.methods.syncSelected.call(component);
       assert.deepEqual(component.data.list.map(item => item.text), ['小K', '工作台', '我的']);
       assert.equal(component.data.staffNavigation, true);
       assert.equal(component.data.selected, 2);
+      assert.equal(component.data.twoTabs, false);
     }
+
+    globalData.bootstrap = { current: { role: 'construction_staff', capabilities: ['construction.projects', 'account'] } };
+    definition.methods.syncSelected.call(component);
+    assert.deepEqual(component.data.list.map(item => item.text), ['工地', '我的']);
+    assert.deepEqual(component.data.list.map(item => item.key), ['site', 'mine']);
+    assert.equal(component.data.list.some(item => item.key === 'xiaok'), false);
+    assert.equal(component.data.staffNavigation, true);
+    assert.equal(component.data.selected, 1);
+    assert.equal(component.data.twoTabs, true);
 
     globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'account'] } };
     definition.methods.syncSelected.call(component);

@@ -109,6 +109,21 @@ test('a reconnect arriving during an offline check schedules one fresh authorize
   assert.equal(f.calls.length, 1); assert.equal(f.view.captureQueue[0].received, true);
 });
 
+test('worker reports keep up to nine photos and require at least one configured stage', async () => {
+  const f = await fixture();
+  for (let index = 0; index < 10; index += 1) await f.capture.addFile('/photo-' + index, 'photo');
+  assert.equal(f.view.capturePhotos.length, 9);
+  f.capture.requireStages = true;
+  f.capture.input('客厅线管铺完。');
+  assert.equal(f.capture.submit(), false);
+  assert.match(f.view.captureError, /施工阶段/);
+  f.capture.stages(['utilities', 'masonry_carpentry']);
+  assert.equal(f.capture.submit(), true);
+  await drained(f.capture);
+  assert.deepEqual(f.calls[0].body.stageKeys, ['utilities', 'masonry_carpentry']);
+  assert.equal(f.calls[0].body.mediaIds.length, 9);
+});
+
 test('an expired login prevents writes but retains local originals for the same identity to sign in again', async () => {
   const f = await fixture(); f.offline = true; await f.capture.addFile('/photo', 'photo'); f.capture.submit(); await drained(f.capture);
   f.offline = false; f.expired = true; await f.capture.flush(); assert.equal(f.site.state.fatalStatus, 401); assert.equal(f.site.state.write, false); assert.equal(f.calls.length, 0);

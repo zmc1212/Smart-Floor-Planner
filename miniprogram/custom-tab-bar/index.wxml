@@ -1,4 +1,4 @@
-<view wx:if="{{!suppressed && !keyboardHidden}}" class="tabbar-shell {{staffNavigation ? 'staff-notebook-tabs' : ''}}">
+<view wx:if="{{!suppressed && !keyboardHidden}}" class="tabbar-shell {{staffNavigation ? 'staff-notebook-tabs' : ''}} {{twoTabs ? 'two-tabs' : ''}}">
   <view wx:if="{{badgeUnavailable}}" class="tabbar-badge-error">{{badgeUnavailableText}}</view>
   <view class="tabbar">
     <view

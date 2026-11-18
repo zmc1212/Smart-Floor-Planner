@@ -247,4 +247,4 @@ class SiteClient {
     }
   }
 }
-module.exports = { SiteClient, decorate, errorText, key, siteMessageTime };
+module.exports = { SiteClient, decorate, errorText, key, siteMessageTime, uploadSiteMedia: upload };

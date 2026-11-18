@@ -1,0 +1,91 @@
+<view class="report-page">
+  <view class="book-spine" aria-hidden="true">
+    <view class="book-stitch" style="top:84px" />
+    <view class="book-stitch" style="top:37%" />
+    <view class="book-stitch" style="top:65%" />
+    <view class="book-stitch" style="bottom:28px" />
+  </view>
+
+  <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px">
+    <button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png" /></button>
+    <text class="book-nav-title">现场上报</text>
+  </view>
+
+  <view class="report-scroll">
+    <view class="report-content">
+      <view wx:if="{{loading}}" class="state">正在读取工地…</view>
+      <view wx:elif="{{error}}" class="state" role="alert">
+        <text>{{error}}</text>
+        <button class="primary" bindtap="back">返回工地</button>
+      </view>
+      <block wx:else>
+        <view class="project-line">
+          <text class="project-name">{{project.name}} · {{project.stageName}}</text>
+        </view>
+
+        <view class="paper stage-paper">
+          <view class="stage-heading">
+            <view class="fabric stage-fabric">阶段</view>
+            <text class="stage-title">施工阶段（可多选）</text>
+            <text class="stage-source">来自企业施工节点配置</text>
+          </view>
+          <view class="stage-chips">
+            <view wx:for="{{stageChips}}" wx:key="key" class="stage-chip {{item.selected ? 'selected' : ''}}" data-key="{{item.key}}" bindtap="toggleStage">{{item.name}}</view>
+          </view>
+          <text class="helper">可多选，按本次上报实际涉及的施工阶段选择</text>
+        </view>
+
+        <view class="paper photo-paper">
+          <view class="paper-heading">
+            <view class="fabric">现场照片</view>
+            <text class="paper-limit">最多9张</text>
+          </view>
+          <view class="photo-wall">
+            <view wx:for="{{photos}}" wx:key="id" class="photo-cell">
+              <image src="{{item.path}}" mode="aspectFill" data-path="{{item.path}}" bindtap="previewPhoto" />
+              <button class="photo-remove" data-id="{{item.id}}" catchtap="removePhoto" aria-label="删除照片">×</button>
+            </view>
+            <view wx:if="{{photos.length < maxPhotos}}" class="photo-add" bindtap="addPhotos" aria-label="添加照片">
+              <image src="../assets/notebook/capture-camera.png" mode="aspectFit" />
+              <text>添加照片</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="paper voice-paper">
+          <view class="paper-heading"><view class="fabric">语音说明（选填）</view></view>
+          <view wx:if="{{voice}}" class="voice-row recorded">
+            <image class="voice-icon" src="../assets/notebook/capture-mic.png" mode="aspectFit" />
+            <text class="voice-label">语音 {{voice.durationSeconds || 0}}秒</text>
+            <button class="text-action" bindtap="playVoice">{{voicePlaying ? '停止' : '回听'}}</button>
+            <button class="text-action voice-remove" bindtap="removeVoice">删除</button>
+          </view>
+          <view wx:else class="voice-row" bindtap="toggleRecord">
+            <image class="voice-icon" src="../assets/notebook/capture-mic.png" mode="aspectFit" />
+            <text class="voice-label">{{recording ? '录音中 ' + recordSeconds + '秒 · 点击结束' : '点击录音'}}</text>
+            <text class="voice-limit">最长60秒</text>
+          </view>
+        </view>
+
+        <view class="paper text-paper">
+          <view class="paper-heading"><view class="fabric">文字说明（选填）</view></view>
+          <textarea class="report-textarea" value="{{text}}" maxlength="4000" placeholder="补充说明，例如：客厅东墙线管已铺完，等待验收" bindinput="onTextInput" adjust-position="{{true}}" show-confirm-bar="{{false}}" />
+          <text class="text-count">{{textLength}}/4000</text>
+        </view>
+
+        <view wx:if="{{captureError}}" class="feedback" role="alert">
+          <text>{{captureError}}</text>
+          <button wx:if="{{queue.length}}" class="outline" bindtap="retryUpload" disabled="{{sending}}">重试上传</button>
+        </view>
+        <view wx:if="{{queue.length}}" class="queue-row">
+          <text>{{sending ? '正在提交…' : '待提交 ' + queue.length + ' 条…'}}</text>
+        </view>
+        <text class="submit-helper">提交后进入待审核，由施工经理、设计师或老板审核通过</text>
+      </block>
+    </view>
+  </view>
+
+  <view class="report-footer">
+    <button class="primary submit-button" bindtap="submit" loading="{{submitting}}" disabled="{{loading || submitting}}">提交审核</button>
+  </view>
+</view>

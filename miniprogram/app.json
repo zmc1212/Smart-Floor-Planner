@@ -9,7 +9,7 @@
   "subPackages": [
     {
       "root": "packages/construction",
-      "pages": ["projects/projects", "brief/brief", "chat/chat", "public-sites/public-sites", "public-site/public-site", "public-live/public-live", "camera/camera", "family/family", "live-authorization/live-authorization"]
+      "pages": ["projects/projects", "brief/brief", "chat/chat", "report/report", "public-sites/public-sites", "public-site/public-site", "public-live/public-live", "camera/camera", "family/family", "live-authorization/live-authorization"]
     },
     {
       "root": "packages/assistant",

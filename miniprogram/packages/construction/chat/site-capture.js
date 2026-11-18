@@ -1,6 +1,6 @@
 const { key, errorText, siteMessageTime } = require('./site-client');
 const clone = value => JSON.parse(JSON.stringify(value));
-const emptyDraft = () => ({ text: '', photos: [], voice: null, quick: { workId: '', roomId: '', location: null, progress: '' } });
+const emptyDraft = () => ({ text: '', photos: [], voice: null, stageKeys: [], quick: { workId: '', roomId: '', location: null, progress: '' } });
 const fileCall = (name, options) => new Promise((resolve, reject) => wx.getFileSystemManager()[name]({ ...options, success: resolve, fail: reject }));
 const nativeFiles = {
   async save(source, kind) {
@@ -21,7 +21,7 @@ const labels = { done: '做完了', partial: '做了一部分', not_started: '�
 
 /** Local originals + one immutable send key per record. Remote records remain the shared service's authority. */
 class SiteCapture {
-  constructor({ site, emit, files = nativeFiles }) { Object.assign(this, { site, emit, files }); this.epoch = 0; }
+  constructor({ site, emit, files = nativeFiles, requireStages = false }) { Object.assign(this, { site, emit, files, requireStages }); this.epoch = 0; }
   valid(epoch = this.epoch) { return this.visible && epoch === this.epoch && this.site.current(this.siteEpoch); }
   show() {
     this.visible = true; ++this.epoch; this.siteEpoch = this.site.epoch;
@@ -29,6 +29,8 @@ class SiteCapture {
     try {
       const saved = this.site.storage.get(this.storageKey);
       this.value = saved && saved.version === 1 ? clone(saved) : { version: 1, draft: emptyDraft(), queue: [] };
+      this.value.draft = { ...emptyDraft(), ...(this.value.draft || {}) };
+      if (!Array.isArray(this.value.draft.stageKeys)) this.value.draft.stageKeys = [];
       this.render(); this.accepted(this.site.state.items);
     } catch (_) { this.value = null; this.emit({ captureError: '本机记录暂时无法读取，请重进后再试。' }); }
   }
@@ -54,9 +56,10 @@ class SiteCapture {
   }
   input(text) { return this.writeDraft({ text }); }
   choose(patch) { return this.writeDraft({ quick: { ...this.value.draft.quick, ...patch } }); }
+  stages(keys) { return this.writeDraft({ stageKeys: Array.isArray(keys) ? [...keys] : [] }); }
   async addFile(source, kind, durationMs = 0) {
     if (!this.valid() || !this.value || this.saving || this.site.state.fatal) return;
-    if (kind === 'photo' && this.value.draft.photos.length >= 4 || kind === 'voice' && this.value.draft.voice) return;
+    if (kind === 'photo' && this.value.draft.photos.length >= 9 || kind === 'voice' && this.value.draft.voice) return;
     const epoch = this.epoch; this.saving = true; this.emit({ captureSaving: true, captureError: '' });
     let path;
     try {
@@ -78,12 +81,13 @@ class SiteCapture {
     const d = this.value.draft, selection = d.quick;
     if (quick && (!selection.workId || !selection.progress || selection.roomId === '')) { this.emit({ captureError: '请选择工作、部位和进度。' }); return false; }
     if (quick && d.voice) { this.emit({ captureError: '当前有一段录音，请先发送这条材料，再选择常用工作。' }); return false; }
+    if (!quick && this.requireStages && (!Array.isArray(d.stageKeys) || !d.stageKeys.length)) { this.emit({ captureError: '请选择本次上报涉及的施工阶段。' }); return false; }
     if (!quick && !d.text.trim() && !d.photos.length && !d.voice) return false;
     if (this.value.queue.length >= 20) { this.emit({ captureError: '待上传记录较多，请先联网续传。' }); return false; }
     const capture = quick ? { kind: 'quick', ...selection } : { kind: 'free' };
     const room = this.site.state.rooms?.find(r => r.id === selection.roomId);
     const work = this.site.state.quickWorks?.find(w => w.id === selection.workId);
-    const entry = { key: key(), createdAt: new Date().toISOString(), text: d.text.trim(), photos: clone(d.photos), voice: d.voice && clone(d.voice), capture,
+    const entry = { key: key(), createdAt: new Date().toISOString(), text: d.text.trim(), photos: clone(d.photos), voice: d.voice && clone(d.voice), stageKeys: clone(d.stageKeys || []), capture,
       displayText: quick ? `${room?.name || (selection.location === 'whole' ? '全屋' : '部位待核对')} · ${work?.label || ''} · ${labels[selection.progress]}${d.text.trim() ? '\n' + d.text.trim() : ''}` : d.text.trim(), dispatched: false };
     try {
       this.persist({ ...this.value, draft: emptyDraft(), queue: [...this.value.queue, entry] });
@@ -138,7 +142,8 @@ class SiteCapture {
               if (!/^[1-9]\d*$/.test(String(upload?.id))) throw Error('invalid_upload_receipt');
               const photos = clone(e.photos); photos[i].mediaId = String(upload.id); e = this.update(e.key, { photos });
             }
-            if (!e.body) e = this.update(e.key, { body: { text: e.text, mediaIds: e.photos.map(p => p.mediaId), capture: e.capture } });
+            if (!e.body) e = this.update(e.key, { body: { text: e.text, mediaIds: e.photos.map(p => p.mediaId), capture: e.capture,
+              ...(e.stageKeys?.length ? { stageKeys: e.stageKeys } : {}) } });
             const body = clone(e.body);
             if (e.voice) body.recording = await this.files.read(e.voice.path);
             if (!this.valid(epoch)) return;

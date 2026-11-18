@@ -46,7 +46,9 @@ export async function processSiteRecord(lease: Lease, model?: Model, transcribe 
       const media = await rows(tx, sql`select m.id::text,m.source_hash,m.mime_type,m.data from app.construction_site_attachments x join app.construction_site_media m on m.enterprise_id=x.enterprise_id and m.project_id=x.project_id and m.id=x.media_id
         where x.enterprise_id=${lease.enterpriseId} and x.project_id=${String(r.project_id)} and x.record_id=${String(r.id)} and m.deleted_at is null order by x.position`);
       const config = agentConfig((context.run.policy_snapshot as Row).agent);
-      const images = config?.imageInput ? media.map(m => ({ type: 'image' as const, mediaId: String(m.id), hash: String(m.source_hash), mimeType: 'image/jpeg' as const, data: (m.data as Buffer).toString('base64') })) : [];
+      // Human review keeps every original photo; the organizer reads at most
+      // four to bound image tokens and latency.
+      const images = config?.imageInput ? media.slice(0, 4).map(m => ({ type: 'image' as const, mediaId: String(m.id), hash: String(m.source_hash), mimeType: 'image/jpeg' as const, data: (m.data as Buffer).toString('base64') })) : [];
       const messages: ModelMessage[] = [{ role: 'system', content: [{ type: 'text', text: siteDraftPrompt }] }, { role: 'user', content: [
         { type: 'text', text: JSON.stringify({ rooms, originalText: [safeText(source.content as Parameters<typeof safeText>[0]), speech?.transcript].filter(Boolean).join('\n'), photoCount: media.length,
           imageInput: !!images.length, instruction: images.length ? '照片仅辅助辨认部位；事实以原话为准。' : '没有提供图片像素，不可描述照片内容。' }) }, ...images] }];

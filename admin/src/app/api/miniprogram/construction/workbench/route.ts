@@ -16,9 +16,14 @@ export async function GET(request: NextRequest) {
     if (actor.mode !== 'staff' || !actor.staff?._id || !actor.enterpriseId) fail('construction_forbidden', 403);
     if (token.source === 'password' && actor.staff.mustChangePassword) fail('construction_password_required', 403);
     const query = [...request.nextUrl.searchParams.entries()];
-    if (query.length > 1 || query.some(([name]) => name !== 'projectId')) fail('invalid_construction', 422);
+    if (query.some(([name]) => !['projectId', 'from', 'to'].includes(name))
+      || new Set(query.map(([name]) => name)).size !== query.length) fail('invalid_construction', 422);
+    const projectId = request.nextUrl.searchParams.get('projectId') || undefined;
+    const from = request.nextUrl.searchParams.get('from'), to = request.nextUrl.searchParams.get('to');
+    if ((from || to) && (!projectId || !from || !to)) fail('invalid_construction', 422);
     const data = await constructionWorkbench({ enterpriseId: actor.enterpriseId, adminId: actor.staff._id,
-      miniProgramUserId: actor.user._id, miniProgramContextVersion: token.contextVersion }, actor.staff.role, query[0]?.[1]);
+      miniProgramUserId: actor.user._id, miniProgramContextVersion: token.contextVersion }, actor.staff.role, projectId,
+      from && to ? { from, to } : undefined);
     return NextResponse.json({ success: true, data }, { headers });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof AssistantError ? error.code : 'construction_unavailable' },
