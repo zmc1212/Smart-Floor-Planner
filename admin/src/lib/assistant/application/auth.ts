@@ -11,6 +11,7 @@ import { readContentEntry, contentEntrySource, contentChannel, contentGreeting, 
 import { readPortfolioEntry, portfolioEntrySource, type PortfolioEntry } from '@/lib/portfolio/entry';
 import { acquisitionEntryView } from '../acquisition/config';
 import { readAcquisitionSettings } from '../acquisition/settings';
+import { latestCustomerReportContext } from '@/lib/construction/report-reference';
 import { fastGPTAgentV2Presentation } from '../fastgpt/agent-v2/config';
 import { developmentReviewEnabled } from '../agent/review-runtime';
 import { getJwtSecret } from '@/lib/jwt-secret';
@@ -149,20 +150,28 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
       if (activeLeads.length === 1) basis.renovationLeadId = activeLeads[0].id;
     }
     if (portfolioEntry && !await portfolioEntrySource(tx, portfolioEntry)) fail('portfolio_not_found', 404);
+    // A home entry with exactly one live project binds its newest published
+    // report so "今天工地做了什么" answers from the same facts the 工地 page
+    // shows. Ambiguous projects and unresolved grants stay unbound.
+    if (!basis.reportContext && basis.kind === 'lead' && !Object.keys(body).length) {
+      const boundReport = await latestCustomerReportContext(tx, actor, String(basis.id));
+      if (boundReport) basis.reportContext = boundReport;
+    }
     const reference=contentEntry?await contentEntrySource(tx,contentEntry):null;
     if(contentEntry&&!reference)basis={kind:'reference_unavailable',enterpriseId};
     else if(contentEntry){
       try{basis.channel=await contentChannel(tx,enterpriseId!,contentEntry.channelCode);}catch{basis={kind:'reference_unavailable',enterpriseId};}
     }
-    // A public company entry conveys no project/customer grant. Resume only the
-    // visitor's own unambiguous open consultation; a project-bound home entry
-    // resumes only consultations created from that same lead.
+    // A public company entry conveys no project/customer grant. Resume the
+    // visitor's own latest open consultation so returning to the chat continues
+    // where they left off; a project-bound home entry resumes only consultations
+    // created from that same lead.
     const ids = body.publicEnterpriseId || !Object.keys(body).length ? await rows<{id:string}>(tx, sql`select c.id::text from app.assistant_conversations c
       join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
       where c.enterprise_id=${enterpriseId!} and c.purpose='customer_consultation' and c.status='open'
         and p.user_id=${identity.userId} and p.status='active' and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false)
         ${basis.kind === 'lead' ? sql`and c.entry_snapshot->>'kind'='lead' and c.entry_snapshot->>'id'=${String(basis.id)}` : sql``}
-        order by c.id desc limit 2`) : [];
+        order by c.id desc limit 1`) : [];
     const eligibleLeads = assistantWritesEnabled(settings) && !developmentReviewEnabled(enterpriseId!)
       && ['lead', 'identity'].includes(String(basis.kind))
       ? await rows<{ id: string }>(tx, sql`select id::text from app.leads
@@ -172,7 +181,7 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
       : [];
     const staffProfileLeadId = eligibleLeads.length === 1 &&
       (basis.kind !== 'lead' || eligibleLeads[0].id === basis.id) ? eligibleLeads[0].id : null;
-    return { enterprise, settings, reference, resumeConversationId: ids.length === 1 ? ids[0].id : null, staffProfileLeadId, acquisition };
+    return { enterprise, settings, reference, resumeConversationId: ids.length ? ids[0].id : null, staffProfileLeadId, acquisition };
   });
   const guidance = configuredGuidance(settings?.guidance_config);
   const guidanceVersion = Number(settings?.version || 1);
