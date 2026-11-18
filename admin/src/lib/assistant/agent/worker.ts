@@ -2843,13 +2843,18 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
         const message = await appendMessage(tx, lease.actor, String(context.conversation.id), { author: 'assistant', runId: lease.runId,
           purpose: 'agent.reply', content: { version: 1, blocks: [{ type: 'text', text: text + (text.includes(designerNotice) ? '' : '\n' + designerNotice) }, ...receiptBlocks] } });
-        if (!snapshot.needContext && items.length) {
-          const saved: DesignerSnapshot = { ...(snapshot.cityCode ? { cityCode: snapshot.cityCode } : {}),
-            ...(snapshot.style ? { style: snapshot.style } : {}), ...(snapshot.layout ? { layout: snapshot.layout } : {}),
-            communityId: snapshot.communityId ?? null, items: items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })) };
+        // designerMessageProjection rebuilds the client cards and the needContext
+        // discovery entry from this fixed step. A missing city or a located empty
+        // result must persist it too, or the reply would point at the location
+        // card the client never renders.
+        if (snapshot.needContext || items.length) {
+          const saved: DesignerToolSnapshot = snapshot.needContext ? { communityId: null, needContext: true }
+            : { ...(snapshot.cityCode ? { cityCode: snapshot.cityCode } : {}),
+                ...(snapshot.style ? { style: snapshot.style } : {}), ...(snapshot.layout ? { layout: snapshot.layout } : {}),
+                communityId: snapshot.communityId ?? null, items: items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })) };
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint,input_summary)
             values(${lease.enterpriseId},${lease.runId},2000,'agent_designer_result','succeeded',${JSON.stringify(saved)}::jsonb,
-              ${JSON.stringify({ protocol: agentDesignerProtocol, triggerMessageId: String(initial.trigger.id), count: items.length })}::jsonb)`);
+              ${JSON.stringify({ protocol: agentDesignerProtocol, triggerMessageId: String(initial.trigger.id), count: items.length, needContext: snapshot.needContext === true })}::jsonb)`);
         }
         await tx.execute(sql`update app.assistant_jobs set status='succeeded',lease_token=null,lease_expires_at=null,updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
         await tx.execute(sql`update app.assistant_runs set status='succeeded',output_message_id=${String(message.id)},completed_at=now(),updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);

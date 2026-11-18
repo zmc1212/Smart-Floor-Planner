@@ -173,7 +173,7 @@ Qwen10730原稿先称无法确认公司采用，复述有据的5–35℃/85%，�
 <!-- /xiaok-nearby-city-current -->
 
 <!-- xiaok-style-recommendations-current -->
-**V1-04按风格推荐公开设计师：有界Implemented，整版仍Limited。** C01复用原设计师/作品服务，严格过滤主/辅助风格、城市、公开版本/许可及有效作者。`recommendDesigners`现将本轮原话、最近十条本会话用户原话与紧接着的上次成功推荐查询原话核对；最新城市有歧义或否定时仍先澄清，不回退更早城市。其他咨询、没有该查询的回复或中间插话不承接偏好。私有`requestMessageIds`保留出处，不自动保存需求、建线索、联系、预约或改归属；卡片、作品及图片重进仍核当前公开权限和版本。设计师工具未取得城市时，消息投影返回`designerDiscovery.needContext`，由小程序在消息下方展示可点击的定位卡片；区县已明确但无匹配作品时返回可操作的暂无作品卡片，不再只提示一个不存在的按钮。
+**V1-04按风格推荐公开设计师：有界Implemented，整版仍Limited。** C01复用原设计师/作品服务，严格过滤主/辅助风格、城市、公开版本/许可及有效作者。`recommendDesigners`现将本轮原话、最近十条本会话用户原话与紧接着的上次成功推荐查询原话核对；最新城市有歧义或否定时仍先澄清，不回退更早城市。其他咨询、没有该查询的回复或中间插话不承接偏好。私有`requestMessageIds`保留出处，不自动保存需求、建线索、联系、预约或改归属；卡片、作品及图片重进仍核当前公开权限和版本。设计师工具未取得城市时，消息投影返回`designerDiscovery.needContext`，由小程序在消息下方展示可点击的定位卡片；区县已明确但无匹配作品时返回可操作的暂无作品卡片，不再只提示一个不存在的按钮。2026-11-18修复：LangGraph worker此前仅在推荐有结果时写入固定step 2000（`agent_designer_result`），needContext与已定位空结果没有该step，`designerMessageProjection`恒返回null，`designerDiscovery`从未到达客户端，线上回复文案指向的定位卡片实际不渲染（推荐设计师线上不可兜底的真实原因）。现worker在needContext（checkpoint `{needContext:true}`）与已定位空结果（`items:[]`）时同样写入step 2000，投影测试覆盖两种快照；修复当前仅在工作区，生产未部署。
 
 固定配置模型证据保留10645缺上下文原失败、杭州10643首稿成功、修复后成都10652及首次撤回后无匹配10656。成功前缀只作工程复用，不算新模型通过。实际发布/读回、主/辅助风格、无匹配、草稿排除、其他客户/租户拒绝、三项上下文边界、版本替换和作者失效通过；定向6/lint通过，types仍57旧/涉及0。Stable390x844四组通过、6页已审，1509绑定drift[]；资源/配置恢复、队列0。UI沿批准C01手账、D01重新设计README和D02 v5，无标记/样式/素材改动。[证据](../tmp/v1-style-recommendations-20261106/assessment.json)。实际10调用49868/664输入/输出tokens，实费未知、0新unknown；驱动准备与原生超时失败保留。仅1454合成夹具，不称真机/完整宿主/真实微信/第三方web-view或生产通过。
 <!-- /xiaok-style-recommendations-current -->

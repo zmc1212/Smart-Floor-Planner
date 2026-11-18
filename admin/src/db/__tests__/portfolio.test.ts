@@ -537,6 +537,38 @@ test('agent designer projection drops withdrawn, replaced, disabled and expired 
   finally { Date.now = now; }
 });
 
+test('needContext and located-empty designer results project the discovery entry for the location card', async () => {
+  const createReply = async (checkpoint: Row) => await withTenantTransaction(tenants[0], async tx => {
+    const seq = await one(tx, sql`select coalesce(max(seq),0) as n from app.assistant_messages where enterprise_id=${tenants[0]} and conversation_id=${conversations[0]}`);
+    const trigger = await one(tx, sql`insert into app.assistant_messages(enterprise_id,conversation_id,seq,author_kind,user_id,content)
+      values(${tenants[0]},${conversations[0]},${Number(seq!.n) + 1},'user',${users[0]},${JSON.stringify({ version: 1, blocks: [{ type: 'text', text: '推荐一个国风设计师' }] })}::jsonb) returning id`);
+    const run = await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,policy_snapshot,context_revision,knowledge_epoch,status,started_at)
+      values(${tenants[0]},${conversations[0]},'user_message',${String(trigger!.id)},'{}'::jsonb,1,1,'running',now()) returning id`);
+    const output = await one(tx, sql`insert into app.assistant_messages(enterprise_id,conversation_id,seq,author_kind,content,run_id)
+      values(${tenants[0]},${conversations[0]},${Number(seq!.n) + 2},'assistant',${JSON.stringify({ version: 1, blocks: [{ type: 'text', text: '暂未获取到可用位置。' }] })}::jsonb,${String(run!.id)}) returning id`);
+    await tx.execute(sql`update app.assistant_runs set output_message_id=${String(output!.id)},status='succeeded',completed_at=now() where enterprise_id=${tenants[0]} and id=${String(run!.id)}`);
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
+      values(${tenants[0]},${String(run!.id)},2000,'agent_designer_result','designers.search.v1',1,'succeeded',${JSON.stringify(checkpoint)}::jsonb)`);
+    return String(output!.id);
+  });
+  const projection = async (messageId: string) => await withTenantTransaction(tenants[0], async tx => {
+    const conversation = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${tenants[0]} and id=${conversations[0]}`))!;
+    const message = (await one(tx, sql`select * from app.assistant_messages where enterprise_id=${tenants[0]} and id=${messageId}`))!;
+    return await projectMessage(tx, customers[0], conversation, message) as Row & {
+      available: boolean; designerRecommendation: Row | null; designerDiscovery: { needContext: boolean } | null };
+  });
+  const needContextId = await createReply({ communityId: null, needContext: true });
+  let projected = await projection(needContextId);
+  assert.equal(projected.available, true);
+  assert.equal(projected.designerRecommendation, null);
+  assert.deepEqual(projected.designerDiscovery, { needContext: true });
+  const emptyId = await createReply({ cityCode: '330100', style: '原木风', layout: '', communityId: null, items: [] });
+  projected = await projection(emptyId);
+  assert.equal(projected.available, true);
+  assert.equal(projected.designerRecommendation, null);
+  assert.deepEqual(projected.designerDiscovery, { needContext: false });
+});
+
 test('versioned work contacts expose only consented channels and revoke QR, actor and consultation access', async () => {
   const eid = tenants[0];
   const author = await withPlatformTransaction(tx => one(tx, sql`insert into app.admin_users
