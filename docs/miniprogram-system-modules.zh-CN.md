@@ -745,7 +745,7 @@ P2S 第一批 C01/C02/S01/U01 的聊天与接待主链路 **Implemented**，自�
 
 小K回答服务的60题企业知识快照实跑与修复已完成，正式A10仍 **Limited / 待业务审核**。修复了“能否确定最终总价”的多轮追问和冒充管理员索取系统提示时误返无关公开资料的问题；保持已有依据不足状态、租户/参与者/引用权限及PPT第5页设计源，不改小程序标记、样式、素材或导航。汇总38题grounded/22题insufficient_evidence，38条引用来源核对无不匹配；19题回归、最终3题及内部权限2项探针通过。原超时一题获准复测成功，原未知结果/费用审计仍保留。详情与审核包见 [一期11.3节](./xiaok-assistant-phase-1.zh-CN.md#113-当前60题实跑与修复证据)。本次在隔离企业调用真实服务/模型，不是微信登录或原生渲染验收；双语还原台账不变，用户手工截图仍待提供。
 
-当前开发API为`http://192.168.10.32:3006/api`（`ACTIVE_API_ENVIRONMENT=local`），与`miniprogram/utils/api.js`一致，无跨环境回退。本机Next.js后端通过受维护的SSH隧道连接已批准的远端开发库，连接边界见远端开发记录。自动验收登录测试账号并切换对应身份；体验/正式发布前显式改回production。原生DevTools截图由Codex自动获取，无法覆盖的真机项目单独记为未验证。
+仓库中的小程序默认选择生产 API `https://smartfloor.zlyun168.com/api`。在微信开发者工具中，可将本地存储 `sfp:apiEnvironmentOverride` 设为 `local`，使用 `http://192.168.10.32:3006/api`。每次请求仅解析一个已配置的地址。无效覆盖值使用构建默认值，显式传入未配置的环境会报错，真机使用构建配置。本机 Next.js 服务沿现有受管 SSH 隧道访问已批准的远端开发库。[远端开发](./remote-development.zh-CN.md)。
 
 真机网络续修（2026-10-27）：源码local API已改为当前WLAN地址`192.168.10.32`。旧`192.168.10.111`属于已断开的有线网卡（Deprecated）；Windows/DevTools仍可访问该本机保留地址，所以模拟器通过不能证明手机可达。用户报告的`request:fail -109:net::ERR_ADDRESS_UNREACHABLE`／`errno:600001`发生在HTTP之前，不会产生对应的登录handler错误日志。已从获准远端电脑192.168.10.54直接无代理请求：旧地址连接超时，新地址到达当前Next.js服务，`X-Request-Id`与`admin/.next/dev/logs/next-development.log`对应。空请求体诊断按预期返回400，证明网络到达，不代表认证成功。环境/登录相关检查11/11通过。继续显式选择local、无跨环境回退；生产URL、路由、凭据、权限和批准的登录界面均未改变。地址变化后须重新编译/加载开发包；局域网访问要求手机与电脑处于同一LAN。网络证据：`tmp/login-recovery-20261027/device-network/`；重编译包的真机登录仍为未验证。 官方Stable CLI预览编译亦已成功，已生成包含最新地址的私有开发二维码`tmp/login-recovery-20261027/device-network/preview-qr.jpg`；编译前后API/测试绑定源码无漂移。这是开发预览包，无生产部署。
 
@@ -971,6 +971,8 @@ C01 `packages/assistant/chat/chat` 展示防水专业回答、有据检查清单
 ### 小K工地工作台
 
 已签名施工员工、设计师和企业负责人在 `pages/index/index` 使用[批准的四张工作台稿](../design-references/site-role-workbenches-20261117/)。三端底栏为「小K／工作台／我的」。「小K」在首页打开该角色原有的私人跟进。现场顾问沿用量房工作台，业主继续使用单独批准的「我家工地」。
+
+获权的 AI 设计动作从工作台和线索详情进入。`pages/ai-design/ai-design` 保留原生注册，供 `wx.switchTab` 带入户型和房间上下文。
 
 | 视图 | 数据与动作 |
 | --- | --- |

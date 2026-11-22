@@ -16,6 +16,7 @@ miniprogram/packages/surveying/utils/surveyCanvasRenderer.js text eol=lf
 miniprogram/packages/surveying/utils/surveyDimensionPlan.js text eol=lf
 miniprogram/packages/surveying/utils/surveyWallGraph.js text eol=lf
 miniprogram/packages/surveying/utils/surveyWallSolidPlan.js text eol=lf
+miniprogram/test/fixtures/survey-kernel-baseline/expected-audit.json text eol=lf
 
 # Keep the edited report/source entries at their verified packaged byte sizes.
 miniprogram/packages/assistant/chat/chat-definition.js text eol=lf

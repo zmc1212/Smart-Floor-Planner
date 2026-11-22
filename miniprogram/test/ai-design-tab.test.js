@@ -37,11 +37,36 @@ const aiDesignPageConfig = JSON.parse(fs.readFileSync(
   path.join(miniRoot, 'pages', 'ai-design', 'ai-design.json'),
   'utf8'
 ));
-const { normalizeAIDesignContext, shouldOpenSchemeStudio, buildSchemeStudioUrl } = require('../utils/aiDesignNavigation.js');
+const {
+  AI_DESIGN_TAB_URL,
+  buildSchemeStudioUrl,
+  consumeAIDesignContext,
+  normalizeAIDesignContext,
+  openAIDesignTab,
+  openSchemeStudio,
+  shouldOpenSchemeStudio,
+} = require('../utils/aiDesignNavigation.js');
 const { canAccessAIDesign } = require('../utils/aiDesignAccess.js');
+const { canAccessRoute } = require('../utils/identity-navigation');
 
-test('Design replaces Inspiration as the primary immersive design tab', () => {
-  const tab = appConfig.tabBar.list.find((item) => item.pagePath === 'pages/ai-design/ai-design');
+function withNavigation(globalData, verify) {
+  const previous = { getApp: global.getApp, Page: global.Page, wx: global.wx };
+  const routes = [];
+  global.getApp = () => ({ globalData });
+  global.wx = {
+    switchTab: ({ url }) => routes.push({ method: 'switchTab', url }),
+    navigateTo: ({ url }) => routes.push({ method: 'navigateTo', url }),
+    showToast() {},
+  };
+  try {
+    verify(routes);
+  } finally {
+    Object.assign(global, previous);
+  }
+}
+
+test('an authorized designer can open the registered Design page with a selected room', () => {
+  const tab = appConfig.tabBar.list.find((item) => '/' + item.pagePath === AI_DESIGN_TAB_URL);
 
   assert.ok(tab);
   assert.equal(tab.text, '设计');
@@ -52,12 +77,17 @@ test('Design replaces Inspiration as the primary immersive design tab', () => {
     false
   );
 
-  assert.match(customTabSource, /key: 'design'/);
-  assert.match(customTabSource, /pagePath: '\/pages\/ai-design\/ai-design'/);
-  assert.match(customTabSource, /text: '设计'/);
-  assert.match(customTabSource, /this\.setData\(\{ selected: index \}\)/);
-  assert.match(customTabSource, /fail: \(\) => this\.syncSelected\(\)/);
-  assert.doesNotMatch(customTabSource, /key: 'inspiration'/);
+  const userInfo = { role: 'staff', staffRole: 'designer', enterpriseId: '42' };
+  const bootstrap = { current: { role: 'designer', capabilities: ['construction.projects', 'staff.design', 'account'] } };
+  assert.equal(canAccessRoute(AI_DESIGN_TAB_URL, bootstrap), true);
+  withNavigation({ userInfo, bootstrap }, routes => {
+    assert.equal(openAIDesignTab({ floorPlanId: '123', roomId: '456' }), true);
+    assert.deepEqual(routes, [{ method: 'switchTab', url: AI_DESIGN_TAB_URL }]);
+    assert.deepEqual(consumeAIDesignContext(), {
+      floorPlanId: '123', roomId: '456', targetScope: 'single_room',
+    });
+    assert.equal(consumeAIDesignContext(), null);
+  });
 
   for (const filename of ['tab-ai.png', 'tab-ai-active.png']) {
     const bytes = fs.readFileSync(path.join(miniRoot, 'images', 'mine-icons', filename));
@@ -157,21 +187,37 @@ test('Design hero actions keep new-round and continuation routes distinct', () =
   );
 });
 
-test('standalone channel promoters cannot open or preload enterprise AI design', () => {
-  assert.equal(canAccessAIDesign({ role: 'staff', staffRole: 'salesperson', enterpriseId: '' }), false);
+test('standalone channel promoters cannot open or load enterprise AI design', () => {
+  const userInfo = { role: 'staff', staffRole: 'salesperson', enterpriseId: '' };
+  const bootstrap = { current: { role: 'salesperson', capabilities: ['promotion.records', 'account'] } };
+  assert.equal(canAccessAIDesign(userInfo), false);
   assert.equal(canAccessAIDesign({ role: 'staff', staffRole: 'salesperson', enterpriseId: '42' }), true);
   assert.equal(canAccessAIDesign({ role: 'user', enterpriseId: '42' }), false);
-  assert.match(customTabSource, /capability: 'staff\.design'/);
-  assert.match(customTabSource, /capabilities\.includes\(item\.capability\)/);
-  assert.match(customTabSource, /compactMeasureTab: list\.some\(\(item\) => item\.center\)/);
-  assert.match(customTabWxml, /wx:if="\{\{item\.visible !== false\}\}"/);
-  assert.match(customTabWxml, /center-icon-compact/);
-  assert.match(customTabWxml, /center-image-compact/);
-  assert.match(
-    customTabWxss,
-    /\.center-icon-compact\s*\{[\s\S]*?top:\s*-24rpx;[\s\S]*?width:\s*112rpx;[\s\S]*?height:\s*112rpx;/
-  );
-  assert.match(customTabWxss, /\.center-image-compact\s*\{[\s\S]*?width:\s*112rpx;[\s\S]*?height:\s*112rpx;/);
-  assert.match(aiDesignPageSource, /if \(!canAccessAIDesign\(\)\)/);
+  assert.equal(canAccessRoute(AI_DESIGN_TAB_URL, bootstrap), false);
+
+  withNavigation({ userInfo, bootstrap }, routes => {
+    assert.equal(openAIDesignTab({ floorPlanId: '123' }), false);
+    assert.equal(openSchemeStudio({ leadId: '42' }), false);
+    assert.deepEqual(routes, []);
+    assert.equal(consumeAIDesignContext(), null);
+
+    let page;
+    const filename = require.resolve('../pages/ai-design/ai-design');
+    global.Page = definition => { page = definition; };
+    try {
+      require(filename);
+      const instance = {
+        ...page,
+        data: { ...page.data },
+        setData(update) { Object.assign(this.data, update); },
+        loadData() { assert.fail('AI Design loaded data for a standalone promoter'); },
+      };
+      instance.onShow();
+      assert.equal(instance.recentPageVisible, false);
+      assert.deepEqual(routes, [{ method: 'switchTab', url: '/pages/index/index' }]);
+    } finally {
+      delete require.cache[filename];
+    }
+  });
   aiWorkflowPageSources.forEach((source) => assert.match(source, /if \(!canAccessAIDesign\(\)\)/));
 });

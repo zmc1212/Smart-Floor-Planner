@@ -63,7 +63,7 @@ legacy-kernel
 
 审计扫描 `miniprogram/`、`admin/src/`、`admin/scripts/`、`surveying-h5/` 和仓库
 `scripts/` 下的 JS/TS 源码。Phase 0 完成时发现 40 个 façade 消费者；Phase 1 新增一个
-测试专用双跑合同后，当前机器审计为 41 个：
+测试专用双跑合同后，当时的审计记录为 41 个：
 
 | 分类 | 数量 | 关键边界 |
 | --- | ---: | --- |
@@ -111,9 +111,13 @@ editor 直连节点是 `survey/snap/snap-engine.js`。四个疑似死内部模�
 
 完整调用方路径、每个调用方使用的 façade 导出、未解析旧路径、模块节点和 39 条边均保存在
 `expected-audit.json`。当源码增删调用或更改导出胜出层时，审计命令会失败。
+编辑器自动保存回归通过 façade 的 `createSurveyDraft` 构造草稿，审计将该文件归类为
+`test-only` 调用方。
 
-Admin 镜像审计覆盖 30 对文件：29 对必须字节相同，
-`surveyCanvasRenderer.js` 允许仅存在已批准的 Admin `require` 路径重写。建立基线时 30 对全部匹配。
+Phase 0 的 Admin 镜像审计覆盖 30 对文件：29 对要求字节相同，
+其中 `surveyCanvasRenderer.js` 允许仅存在已批准的 Admin `require` 路径重写。
+当前镜像范围以 `admin/src/lib/survey-runtime/source-manifest.json` 为准。
+镜像清单的 SHA-256 与审计快照均以仓库中固定的 LF 字节为准。
 
 ## 4. 代表性 graph fixture
 

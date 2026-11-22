@@ -2137,6 +2137,22 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/surveying-editor-autosave.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "createSurveyDraft"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/surveying-editor-closure-action.test.js",
         "classification": "test-only",
         "binding": "direct-require",

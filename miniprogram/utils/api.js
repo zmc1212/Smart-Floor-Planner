@@ -11,11 +11,15 @@ const ACTIVE_API_ENVIRONMENT = 'production';
 // 仅在开发者工具中允许用本地存储临时覆盖目标环境，真机与线上包始终使用上方配置。
 const API_ENV_OVERRIDE_KEY = 'sfp:apiEnvironmentOverride';
 
+function isApiEnvironment(value) {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(API_BASE_URLS, value);
+}
+
 function resolveActiveEnvironment() {
   try {
     if (typeof wx === 'undefined' || wx.getSystemInfoSync().platform !== 'devtools') return ACTIVE_API_ENVIRONMENT;
     const override = wx.getStorageSync(API_ENV_OVERRIDE_KEY);
-    return API_BASE_URLS[override] ? override : ACTIVE_API_ENVIRONMENT;
+    return isApiEnvironment(override) ? override : ACTIVE_API_ENVIRONMENT;
   } catch {
     return ACTIVE_API_ENVIRONMENT;
   }
@@ -58,7 +62,7 @@ function normalizeBaseUrl(baseUrl) {
 }
 
 function getBaseUrls(environment = resolveActiveEnvironment()) {
-  const baseUrl = normalizeBaseUrl(API_BASE_URLS[environment]);
+  const baseUrl = isApiEnvironment(environment) ? normalizeBaseUrl(API_BASE_URLS[environment]) : '';
 
   if (!baseUrl) {
     throw new Error(`Unknown Mini Program API environment: ${environment}`);
