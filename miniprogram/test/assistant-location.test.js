@@ -23,10 +23,18 @@ test('the composer send reaches the controller directly and location stays off t
   } finally { global.getApp = previousApp; }
 });
 function fixture(setting, fix = { latitude: 30.25, longitude: 120.13 }) {
-  const calls = []; let session = 'synthetic-a', saved = null, fixes = 0;
-  global.wx = { getSetting: ({ success }) => success({ authSetting: setting }), getLocation: ({ type, success, fail }) => { fixes++; assert.equal(type, 'gcj02'); fix.errMsg ? fail(fix) : success(fix); } };
+  const calls = [], saved = new Map(); let session = 'synthetic-a', fixes = 0;
+  global.wx = { getSetting: ({ success }) => success({ authSetting: setting }), getLocation: ({ type, success, fail }) => {
+    fixes++; assert.equal(type, 'gcj02');
+    if (fix.errMsg) return fail(fix);
+    setting['scope.userLocation'] = true;
+    success(fix);
+  } };
   const controller = new NearbyLocationController({ identity: () => session, client: { read: async (path, body, headers, method = 'GET') => {
-    calls.push({ path, body, headers, method }); if (method === 'DELETE') saved = null; if (method === 'POST') saved = region(); return { region: saved };
+    calls.push({ path, body, headers, method });
+    if (method === 'DELETE') saved.delete(path);
+    if (method === 'POST') saved.set(path, region());
+    return { region: saved.get(path) || null };
   } } });
   return { controller, calls, fixes: () => fixes, session: value => { session = value; } };
 }
@@ -82,6 +90,72 @@ test('an ungranted or failing location latches its cleanup; explicit permission 
     const recovered = await broken.controller.ensure('11', true);
     assert.ok(recovered.region);
     assert.equal(broken.controller.denied, null, 'a successful fix clears the latch');
+  } finally { global.wx = old; }
+});
+
+test('the denial cache is scoped to the conversation and a changed permission bypasses it', async () => {
+  const old = global.wx;
+  try {
+    const setting = {}, f = fixture(setting);
+    await f.controller.ensure('11');
+    f.controller.clear();
+    await f.controller.ensure('11');
+    await f.controller.ensure('12');
+    assert.deepEqual(f.calls.filter(c => c.method === 'DELETE').map(c => c.path), [
+      '/conversations/11/location', '/conversations/12/location',
+    ]);
+    setting['scope.userLocation'] = true;
+    assert.ok((await f.controller.ensure('12')).region);
+    assert.equal(f.fixes(), 1);
+  } finally { global.wx = old; }
+});
+
+test('an explicit permission tap during a passive setting check gets the permission flow', async () => {
+  const old = global.wx;
+  try {
+    const setting = {}, f = fixture(setting);
+    let resolve;
+    global.wx.getSetting = ({ success }) => { resolve = success; };
+    const passive = f.controller.ensure('11');
+    const explicit = f.controller.ensure('11', true);
+    resolve({ authSetting: setting });
+    const results = await Promise.all([passive, explicit]);
+    assert.ok(results[0].region && results[1].region);
+    assert.equal(f.fixes(), 1);
+    assert.deepEqual(f.calls.map(call => call.method), ['POST']);
+  } finally { global.wx = old; }
+});
+
+test('a known empty conversation reuses granted location without requesting permission on entry', async () => {
+  const old = global.wx;
+  try {
+    const setting = {}, f = fixture(setting);
+    await f.controller.ensure('11', false, true);
+    assert.equal(f.fixes(), 0);
+    assert.deepEqual(f.calls, []);
+    setting['scope.userLocation'] = true;
+    assert.ok((await f.controller.ensure('11', false, true)).region);
+    assert.deepEqual(f.calls.map(call => call.method), ['POST']);
+  } finally { global.wx = old; }
+});
+
+test('a deferred or superseded lookup does not clear an existing location', async () => {
+  const old = global.wx;
+  try {
+    const f = fixture({ 'scope.userLocation': true });
+    let superseded = false, deletes = 0, posts = 0;
+    f.controller.client.read = async (_path, _body, _headers, method) => {
+      if (method === 'DELETE') deletes++;
+      if (method !== 'POST') return { region: null };
+      posts++;
+      if (superseded) throw { statusCode: 409, code: 'context_changed' };
+      return { region: null, deferred: true };
+    };
+    assert.deepEqual(await f.controller.ensure('11'), { region: null, deferred: true });
+    superseded = true;
+    assert.equal((await f.controller.ensure('11', true)).blocked, true);
+    assert.equal(posts, 2);
+    assert.equal(deletes, 0);
   } finally { global.wx = old; }
 });
 test('reentry reuses a recent server region; switching identity while acquiring discards late location', async () => {

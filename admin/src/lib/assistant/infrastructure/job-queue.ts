@@ -18,6 +18,7 @@ import { explicitHumanHandoffRequested } from '../agent/read-tool-input';
 import { explicitNeedWriteStatement } from '../agent/memory';
 import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 import { assertKnowledgePolicy, runKnowledgeEnabled } from '../knowledge-policy';
+import { assertRunLocationCurrent } from '../location/run-context';
 
 export const workerTiming = { providerMs: 90000, leaseMs: 150000, requestMs: 180000, heartbeatMs: 30000 };
 export type Lease = { enterpriseId: string; jobId: string; runId: string; token: string; actor: ActorContext };
@@ -47,6 +48,8 @@ async function authorized(repo: AssistantRepository, run: Row) {
   const configuredAgent = agentConfig((run.policy_snapshot as Row).agent);
   const reportVersion = (run.policy_snapshot as Row).reportContextVersion;
   if (!scheduledReport && reportVersion !== undefined && reportContext(c.entry_snapshot).revision !== reportVersion) fail('context_changed');
+  if (c.purpose === 'customer_consultation' && run.purpose === 'reply')
+    await assertRunLocationCurrent(repo.tx, repo.actor.enterpriseId, run, c.entry_snapshot);
   if (configuredAgent && agentCapabilityFingerprint(configuredAgent) !== agentCapabilityFingerprint(agentConfig(settings!.agent_config))) fail('context_changed');
   if (!localReport) await validatePreviewSnapshot(repo.tx,repo.actor,c);
   return c;

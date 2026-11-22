@@ -10,6 +10,7 @@ import { publicCandidates, selectPublicCandidates } from '@/lib/construction/pub
 import { publicContextStatus, type PublicContextRef } from '@/lib/construction/public-projections';
 import { readMemory } from './memory';
 import { recommendationRegion } from '../location/region';
+import { recordRunLocationUse } from '../location/run-context';
 import type { RagChatMessage } from '../fastgpt/native-rag';
 
 /** Shared V2-surface `recommend_designers`/`recommend_public_sites`. Both the
@@ -113,7 +114,7 @@ export function dialogueDesignerRecommendation(rt: RecommendToolRuntime) {
         return { receipt: saved && saved.status === 'ready' && saved.tool === 'recommend_designers'
           ? saved : designerRecommendationReceipt(snapshot.items.length, false) };
       }
-      const recommendation = await recommendDesigners(tx, rt.lease.actor, current.conversation);
+      const recommendation = await recommendDesigners(tx, rt.lease.actor, current.conversation, {}, { runId: rt.lease.runId });
       const items = recommendation.needContext ? [] : recommendation.items;
       const receipt = designerRecommendationReceipt(items.length, !!recommendation.needContext);
       if (items.length) {
@@ -178,6 +179,7 @@ export function dialoguePublicSitesRecommendation(rt: RecommendToolRuntime) {
       const question = (rt.messages.at(-1)?.content || '').replace(/[？?]/g, '');
       const region = recommendationRegion(current.conversation.entry_snapshot, housing, question);
       if (!region) return publicSitesNeedRegionReceipt();
+      if (region.source === 'wechat_location') await recordRunLocationUse(tx, rt.lease.enterpriseId, rt.lease.runId, current.conversation.entry_snapshot);
       const selected = selectPublicCandidates(await publicCandidates(tx, rt.lease.enterpriseId, region.cityCode), region.district);
       const items = selected.items.slice(0, 3);
       const receipt = nearbyPublicSitesReceipt(region, items, selected.districtFallback);

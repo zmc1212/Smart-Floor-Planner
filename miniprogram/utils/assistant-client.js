@@ -176,6 +176,8 @@ class AssistantClient {
       if (slot.startsWith('followup:') && !validFollowupReceipt(pending, data, slot)) throw { code: 'invalid_response' };
       if (slot.startsWith('send:') || slot.startsWith('retry:')) {
         if ((!data.runId && !(slot.startsWith('send:') && data.status === 'succeeded' && data.messageId)) || !data.conversationId) throw { code: 'invalid_response' };
+        if (slot.startsWith('send:') && pending.path.startsWith('/conversations/')
+          && (!/^[1-9]\d*$/.test(String(data.messageId)) || data.conversationId !== slot.slice(5))) throw { code: 'invalid_response' };
       } else if ((slot === 'create' || slot.startsWith('portfolio-create:')) && !data.id) throw { code: 'invalid_response' };
       else if (slot.startsWith('requirements:') && (!data.id || !data.version || !['draft', 'confirmed', 'redacted'].includes(data.status))) throw { code: 'invalid_response' };
       else if ((slot.startsWith('media:') || slot.startsWith('media-formal:')) && (!data.id || !data.conversationId)) throw { code: 'invalid_response' };

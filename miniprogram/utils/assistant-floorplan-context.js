@@ -16,7 +16,7 @@ class FloorplanContextController {
     const same = this.id === id && this.session === this.identity();
     const epoch = ++this.epoch; this.id = id; this.session = this.identity();
     if (!same) { this.version = 0; this.selected = null; this.items = []; this.emit(initialContext()); }
-    this.emit({ contextLoading: true, contextDetail: null });
+    this.emit({ contextLoading: true, contextPending: this.client.pending.has('floorplan-context:' + id), contextDetail: null });
     const flight = (async () => {
       try {
         const data = await this.client.read('/conversations/' + id + '/floorplan-context');

@@ -77,16 +77,20 @@ const initial = () => ({
 
 class ChatController {
   constructor({ emit, client = new AssistantClient(), identity = () => '', schedule = setTimeout, unschedule = clearTimeout, referenceImage = async value => value,
-    resumeConversationId = '', onResumeInvalid = null }) {
+    resumeConversationId = '', onResumeInvalid = null, prepareFirstSend = null }) {
     this.emit = emit; this.client = client; this.identity = identity;
     this.schedule = schedule; this.unschedule = unschedule;
     this.referenceImage = referenceImage;
+    this.prepareFirstSend = prepareFirstSend;
     this.resumeConversationId = String(resumeConversationId || ''); this.onResumeInvalid = onResumeInvalid;
     this.state = initial(); this.epoch = 0; this.visible = false; this.hidden = false; this.ready = false;
     this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false;
   }
 
-  resetWindow() { this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false; this.olderFloor = ''; }
+  resetWindow() {
+    this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false; this.olderFloor = '';
+    this.createdAwaitingDetail = null; this.firstSendConversation = null; this.acceptedMessage = null;
+  }
   hasPublicWindow() { return this.rawMessages?.some(hasPublicSource) || this.state.messages.some(hasPublicSource); }
 
   set(patch) { Object.assign(this.state, patch); this.emit(patch); }
@@ -299,6 +303,7 @@ class ChatController {
     }
     const sameQuestion = this.conversationId === id && this.state.guidance?.questionKey === conversation.guidance?.questionKey;
     this.conversationId = id;
+    if (this.createdAwaitingDetail?.id === id) this.createdAwaitingDetail = null;
     const pendingMessage = this.client.pending.get('send:' + id), pendingHandoff = this.client.pending.get('handoff:' + id);
     if (pendingMessage) this.set({ pendingSend: true, pendingText: pendingMessage.body.content.blocks[0].text, draft: pendingMessage.body.content.blocks[0].text });
     if (pendingHandoff) this.set({ pendingAction: 'handoff:' + pendingHandoff.body.action });
@@ -416,7 +421,11 @@ class ChatController {
     const owner = this.citationMessageId && window.messages.find(message => message.id === this.citationMessageId);
     const revokedCitation = owner && owner.available === false;
     if (revokedCitation) this.citationRequest = (this.citationRequest || 0) + 1;
+    const accepted = this.acceptedMessage;
+    const projected = accepted && accepted.conversationId === this.conversationId && window.messages.some(message => message.id === accepted.id);
+    if (projected) this.acceptedMessage = null;
     const patch = { messages: window.messages, messageCursor: window.messageCursor,
+      ...(projected ? { pendingText: '', sending: false } : {}),
       ...(revokedCitation ? { citation: null, citationLoading: false } : {}) };
     Object.assign(this.state, patch);
     this.emit(pureAppend ? { ...patch, messagesAppendFrom: from } : patch);
@@ -452,7 +461,8 @@ class ChatController {
   }
 
   input(value) {
-    if (!this.state.pendingSend && !this.state.busy) this.set({ draft: String(value).slice(0, this.state.maxChars), pendingText: '' });
+    if (!this.state.pendingSend && !this.state.busy) this.set({ draft: String(value).slice(0, this.state.maxChars),
+      ...(this.acceptedMessage ? {} : { pendingText: '' }) });
   }
 
   send() {
@@ -462,16 +472,13 @@ class ChatController {
   }
 
   async handoffConversation() {
-    if (this.state.busy || this.state.pendingSend || this.state.pendingAction || this.state.loading || this.state.fatal || !this.state.canSend) return null;
-    if (this.conversationId) return this.conversationId;
-    const epoch = this.epoch, noticeWasShown = this.state.staffProfileCapture; this.set({ busy: true });
+    const epoch = this.epoch;
+    if (!this.valid(epoch) || this.state.busy || this.state.pendingSend || this.state.pendingAction || this.state.loading || this.state.fatal || !this.state.canSend) return null;
+    if (this.conversationId && !this.createdAwaitingDetail) return this.conversationId;
+    const noticeWasShown = this.state.staffProfileCapture;
+    this.set({ busy: true });
     try {
-      const entry = await this.ensureEntry();
-      if (!entry || !this.valid(epoch)) return null;
-      const c = await this.createConsultation(entry, noticeWasShown);
-      if (!this.valid(epoch)) return null;
-      await this.adoptConversation(c, epoch);
-      return this.conversationId;
+      return await this.ensureConversation(epoch, noticeWasShown);
     } catch (error) { this.fail(error, epoch); return null; }
     finally { this.setIf(epoch, { busy: false }); }
   }
@@ -480,8 +487,9 @@ class ChatController {
     if (this.state.busy || this.state.pendingSend || (this.state.pendingAction && this.state.pendingAction !== 'handoff:' + action)) return false;
     this.set({ handoffBusy: true });
     try {
-      const id = this.conversationId || await this.handoffConversation();
-      if (!id) return false;
+      const scope = this.epoch;
+      const id = this.conversationId && !this.createdAwaitingDetail ? this.conversationId : await this.handoffConversation();
+      if (!id || !this.valid(scope) || this.conversationId !== id) return false;
       const epoch = ++this.epoch;
       this.unschedule(this.timer);
       this.set({ busy: true, error: '' });
@@ -536,27 +544,38 @@ class ChatController {
     return this.send();
   }
 
-  // The create receipt is a plain conversation DTO without `reportContext`.
-  // When the entry binds a report (a follow-up lead), the send mutation must
-  // echo the authoritative reportContext version, which only the conversation
-  // detail carries; sending straight from the DTO is rejected as
-  // context_changed. Read the detail once before handing the conversation to
-  // the composer.
-  async adoptConversation(created, epoch) {
-    this.conversationId = created.id;
-    const detail = await this.client.read(`/conversations/${created.id}`).catch(() => null);
-    if (!this.valid(epoch)) return;
-    this.set({ conversation: detail || created });
+  async ensureConversation(epoch, noticeWasShown) {
+    if (!this.conversationId) {
+      const entry = await this.ensureEntry();
+      if (!entry || !this.valid(epoch)) return null;
+      const created = await this.createConsultation(entry, noticeWasShown);
+      if (!this.valid(epoch)) return null;
+      this.conversationId = created.id;
+      this.createdAwaitingDetail = created;
+      this.firstSendConversation = { id: created.id, emptyLocation: created.hasLocationContext === false };
+    }
+    const id = this.conversationId, created = this.createdAwaitingDetail;
+    if (!created) return id;
+    // Only a receipt that explicitly reports no binding can skip the detail.
+    // Keep the created ID on a transient failure so retry can read it again.
+    const detail = created.reportContextRequired === false ? created : await this.client.read(`/conversations/${id}`);
+    if (!this.valid(epoch) || this.conversationId !== id) return null;
+    if (detail.id !== id) throw { code: 'invalid_response' };
+    this.createdAwaitingDetail = null;
+    this.set({ conversation: detail });
+    return id;
   }
 
   async sendMessage() {
     const s = this.state;
-    if (!this.visible || s.busy || s.loading || s.fatal || s.pendingAction) return;
+    const epoch = this.epoch;
+    if (!this.visible || !this.valid(epoch) || s.busy || s.loading || s.fatal || s.pendingAction || this.acceptedMessage
+      || this.client.pending?.has(`floorplan-context:${this.conversationId}`)) return;
     if (!s.pendingSend && (!s.canSend || (this.operationalDraft == null && (s.generating || s.uncertainRun)) || (s.conversation && (s.conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(s.conversation.mode))))) return;
     const text = s.pendingText || s.draft.trim();
     if (!text || text.length > s.maxChars) return;
-    const epoch = this.epoch, noticeWasShown = s.staffProfileCapture;
-    let committed = false;
+    const noticeWasShown = s.staffProfileCapture;
+    let submitted = false, committed = false;
     // `sending` keeps the approved conversation view (pending bubble and run
     // state) in place until the authoritative projection of this send is
     // applied. The pending bubble is rendered immediately so a send never
@@ -565,14 +584,16 @@ class ChatController {
     // already left.
     this.set({ busy: true, error: '', pendingText: text, sending: true });
     try {
-      if (!this.conversationId) {
-        const entry = await this.ensureEntry();
-        if (!this.valid(epoch) || !entry) return;
-        const created = await this.createConsultation(entry, noticeWasShown);
-        if (!this.valid(epoch)) return;
-        await this.adoptConversation(created, epoch);
+      const id = await this.ensureConversation(epoch, noticeWasShown);
+      if (!id || !this.valid(epoch) || this.conversationId !== id) return;
+      if (this.firstSendConversation?.id === id) {
+        await this.prepareFirstSend?.(id, this.firstSendConversation.emptyLocation);
+        if (!this.valid(epoch) || this.conversationId !== id) return;
+        this.firstSendConversation = null;
       }
-      const result = await this.client.mutate(`send:${this.conversationId}`, `/conversations/${this.conversationId}/messages`, {
+      if (this.client.pending?.has(`floorplan-context:${id}`)) return;
+      submitted = true;
+      const result = await this.client.mutate(`send:${id}`, `/conversations/${id}/messages`, {
         content: { version: 1, blocks: [{ type: 'text', text }],
           ...(s.conversation?.mode === 'ai' && s.conversation.reportContext?.selected ? { reportContextVersion: s.conversation.reportContext.version } : {}) },
         ...(this.speechInput ? { speech: this.speechInput } : {}),
@@ -580,21 +601,22 @@ class ChatController {
       if (!this.valid(epoch)) return;
       committed = true;
       this.speechInput = null;
-      this.set({ draft: this.operationalDraft == null ? '' : this.operationalDraft, pendingSend: false });
+      const messageId = String(result.messageId);
+      const projected = s.messages.some(message => message.id === messageId);
+      if (!projected) this.acceptedMessage = { conversationId: id, id: messageId };
+      this.set({ draft: this.operationalDraft == null ? '' : this.operationalDraft, pendingSend: false,
+        ...(projected ? { pendingText: '', sending: false } : {}) });
       this.operationalDraft = null;
       this.applyRun({ ...result, id: result.runId });
-      await this.snapshot(this.conversationId, epoch);
-      // The pending bubble stays until the authoritative window of this send
-      // has been applied, so the accepted message never blinks out between
-      // the write and its render.
-      this.setIf(epoch, { pendingText: '' });
+      await this.snapshot(id, epoch);
     } catch (error) {
       if (this.valid(epoch)) {
-        this.set({ pendingSend: !committed && uncertain(error), ...(committed ? { pendingText: '' } : {}) });
+        const unknown = submitted && !committed && uncertain(error);
+        this.set({ pendingSend: unknown });
         this.fail(error, epoch);
-        if (!committed && uncertain(error)) this.set({ error: '发送结果尚未确认。点“确认发送结果”会核对同一条消息，不会重复提交。' });
+        if (unknown && this.valid(epoch)) this.set({ error: '发送结果尚未确认。点“确认发送结果”会核对同一条消息，不会重复提交。' });
       }
-    } finally { this.setIf(epoch, { busy: false, sending: false }); }
+    } finally { this.setIf(epoch, { busy: false, sending: !!this.acceptedMessage }); }
   }
 
   createConsultation(entry, noticeWasShown) {
@@ -608,7 +630,7 @@ class ChatController {
     const epoch = ++this.epoch;
     this.conversationId = id;
     this.resetWindow();
-    this.set({ loading: true, messages: [], conversation: null, run: null, draft: '', error: '', fatal: false, citation: null, shareReferenceEntry: '' });
+    this.set({ loading: true, messages: [], conversation: null, run: null, draft: '', pendingText: '', sending: false, error: '', fatal: false, citation: null, shareReferenceEntry: '' });
     try { await this.snapshot(id, epoch); this.setIf(epoch, { loading: false }); }
     catch (error) { this.fail(error, epoch, true); }
   }
@@ -619,7 +641,7 @@ class ChatController {
     this.startedNew = true;
     this.resetWindow();
     // Preserve the validated enterprise when arriving from an old conversation.
-    this.set({ conversation: null, readOnly: false, messages: [], messageCursor: null, draft: '', pendingText: '', loading: false, error: '', fatal: false });
+    this.set({ conversation: null, readOnly: false, messages: [], messageCursor: null, draft: '', pendingText: '', sending: false, loading: false, error: '', fatal: false });
     this.set({ welcomeText: this.entry && this.entry.guidanceOpening || WELCOME, guidanceEnabled: !!(this.entry && this.entry.guidanceEnabled), guidance: this.entry && this.entry.guidance || null });
     this.applyRun(null);
     return this.refresh();
@@ -731,7 +753,7 @@ class ChatController {
     } finally { this.setIf(epoch, { contactLoading: false }); }
   }
   cancelSiteWatch(messageId) {
-    if (!this.visible || this.state.busy || this.state.pendingSend || this.state.pendingAction || this.state.loading || this.state.fatal) return;
+    if (!this.visible || this.state.sending || this.state.busy || this.state.pendingSend || this.state.pendingAction || this.state.loading || this.state.fatal) return;
     const watch = this.state.messages.find(m => m.id === String(messageId) && m.available !== false)?.siteWatch;
     if (!watch || !watch.cancelText) return;
     this.operationalDraft = this.state.draft;

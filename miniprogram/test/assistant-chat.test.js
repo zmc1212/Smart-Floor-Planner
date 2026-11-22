@@ -139,6 +139,80 @@ test('a bound-entry conversation reads its report context before the first send'
   f.controller.dispose();
 });
 
+test('a pending first detail cannot submit a draft after identity change or disposal', async () => {
+  for (const invalidate of [f => f.identity('customer-B'), f => f.controller.dispose()]) {
+    const f = fixture(), reading = deferred(), detail = deferred();
+    await f.controller.show({});
+    f.intercept(call => {
+      if (call.url !== '/conversations/11' || call.method !== 'GET') return;
+      reading.resolve();
+      return detail.promise;
+    });
+    f.controller.input('这套房要先做什么');
+    const send = f.controller.send();
+    await reading.promise;
+    invalidate(f);
+    detail.resolve({ success: true, data: f.db.conversation });
+    await send;
+    assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 0);
+    f.controller.dispose();
+  }
+});
+
+test('a failed first report detail keeps the draft and reads the same conversation again', async () => {
+  const f = fixture();
+  await f.controller.show({});
+  f.db.conversation.reportContext = { selected: { reportId: '71' }, version: 3 };
+  let firstRead = true;
+  f.intercept(call => {
+    if (call.url === '/conversations' && call.method === 'POST') {
+      const { reportContext, ...receipt } = f.db.conversation;
+      return { success: true, data: { ...receipt, reportContextRequired: true } };
+    }
+    if (call.url === '/conversations/11' && call.method === 'GET' && firstRead) {
+      firstRead = false;
+      throw { statusCode: 503 };
+    }
+  });
+  const text = '这份日报里有哪些事项要核对';
+  f.controller.input(text);
+  await f.controller.send();
+  assert.equal(f.controller.state.draft, text);
+  assert.equal(f.controller.state.pendingSend, false);
+  assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 0);
+  await f.controller.send();
+  assert.equal(f.calls.filter(call => call.method === 'POST' && call.url === '/conversations').length, 1);
+  const writes = f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages'));
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].body.content.reportContextVersion, 3);
+  assert.equal(f.controller.state.messages[0].blocks[0].text, text);
+});
+
+test('an unbound first send shows its bubble while preparing the authorized location', async () => {
+  const f = fixture(), preparing = deferred(), location = deferred();
+  await f.controller.show({});
+  f.intercept(call => {
+    if (call.url === '/conversations' && call.method === 'POST')
+      return { success: true, data: { ...f.db.conversation, reportContextRequired: false, hasLocationContext: false } };
+  });
+  f.controller.prepareFirstSend = async (cid, empty) => {
+    assert.equal(cid, '11');
+    assert.equal(empty, true);
+    preparing.resolve();
+    await location.promise;
+  };
+  const text = '附近有哪些在建工地';
+  f.controller.input(text);
+  const send = f.controller.send();
+  assert.equal(f.controller.state.pendingText, text);
+  await preparing.promise;
+  assert.equal(f.calls.filter(call => call.url === '/conversations/11').length, 0);
+  assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 0);
+  location.resolve();
+  await send;
+  assert.equal(f.controller.state.messages[0].blocks[0].text, text);
+});
+
 test('a service consultation records the welcome notice through an ordinary chat send', async () => {
   const f = fixture();
   f.db.entry.staffProfileCapture = true;
@@ -190,6 +264,11 @@ test('a second topic tap while the first send is in flight cannot replace or dup
 test('the pending bubble stays visible from the tap until the send is projected', async () => {
   const f = fixture(); await f.controller.show({});
   const page = promptPage(f), text = page.data.topics[0].text, projected = deferred(), projecting = deferred();
+  const emit = page.controller.emit;
+  page.controller.emit = patch => {
+    emit(patch);
+    if (patch.messages?.some(message => message.id === '21')) assert.equal(page.data.pendingText, '');
+  };
   page.controller.input(text);
   const welcome = () => !page.data.reportQuestion.selected && !page.data.sending && !page.data.messages.length
     && !page.data.pendingText && !page.data.loading && (!page.data.fatal || page.data.needsLogin);
@@ -214,6 +293,37 @@ test('the pending bubble stays visible from the tap until the send is projected'
   assert.equal(page.data.messages[0].blocks[0].text, text);
   assert.equal(page.data.sending, false);
   assert.equal(welcome(), false);
+});
+
+test('a superseded send snapshot keeps the acknowledged bubble until the newer read arrives', async () => {
+  const f = fixture(), firstWindow = deferred(), nextWindow = deferred(), firstRead = deferred(), nextRead = deferred();
+  await f.controller.show({});
+  let reads = 0;
+  f.intercept(async call => {
+    if (call.method !== 'GET' || !call.url.endsWith('/messages')) return;
+    const first = ++reads === 1;
+    (first ? firstRead : nextRead).resolve();
+    await (first ? firstWindow : nextWindow).promise;
+  });
+  const text = '贴砖前怎么验收';
+  f.controller.input(text);
+  const send = f.controller.send();
+  await firstRead.promise;
+  f.db.conversation.latestRun.status = 'succeeded';
+  const poll = f.controller.poll();
+  await nextRead.promise;
+  firstWindow.resolve();
+  await send;
+  assert.equal(f.controller.state.messages.length, 0);
+  assert.equal(f.controller.state.pendingText, text);
+  assert.equal(f.controller.state.sending, true);
+  await f.controller.send();
+  assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 1);
+  nextWindow.resolve();
+  await poll;
+  assert.equal(f.controller.state.messages[0].id, '21');
+  assert.equal(f.controller.state.pendingText, '');
+  assert.equal(f.controller.state.sending, false);
 });
 
 test('welcome shortcuts preserve blocked drafts and use the existing login action', async () => {
@@ -372,6 +482,13 @@ test('committed send followed by history outage stays sent, not an ambiguous dra
   assert.equal(f.controller.state.pendingSend, false);
   assert.equal(f.controller.state.draft, '');
   assert.equal(f.controller.state.generating, true);
+  assert.equal(f.controller.state.pendingText, '问题');
+  assert.equal(f.controller.state.sending, true);
+  f.intercept(null);
+  await f.controller.refresh();
+  assert.equal(f.controller.state.pendingText, '');
+  assert.equal(f.controller.state.messages[0].id, '21');
+  assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 1);
   f.controller.dispose();
 });
 
@@ -405,10 +522,12 @@ test('backgrounding pauses polls while a pending send still settles once before 
   f.controller.hide(); assert.equal(f.timers.size, 0);
   const show = f.controller.show();
   f.db.conversation.latestRun = { id: '41', status: 'running', nextPollMs: 1500 };
-  gate.resolve({ success: true, data: { runId: '41', conversationId: '11', status: 'queued' } });
+  f.db.items = [message('21', '1', '材料问题')];
+  gate.resolve({ success: true, data: { runId: '41', conversationId: '11', messageId: '21', status: 'queued' } });
   await Promise.all([send, show]);
   assert.equal(f.controller.state.draft, '');
   assert.equal(f.controller.state.run.id, '41');
+  assert.equal(f.controller.state.pendingText, '');
   assert.equal(f.timers.size, 1);
   f.controller.hide(); assert.equal(f.timers.size, 0);
 });

@@ -79,7 +79,9 @@ async function fixtures() {
   actor = { enterpriseId: eid, principal: { kind: 'user', userId: visitorId }, contextVersion: 1, capabilities: ['assistant.chat.self'] };
   const cid = String((await new ConversationService(actor).create(randomUUID())).id);
   const located = await new LocationService(actor, cid).locate({ latitude: 30.642, longitude: 111.345, coordinateSystem: 'gcj02' });
-  const region = located.region; assert.equal(region.cityName, '宜昌市'); report.region = region;
+  const region = located.region;
+  assert.ok(region && !located.deferred, 'The idle fixture must have a persisted region');
+  assert.equal(region.cityName, '宜昌市'); report.region = region;
   const portfolio = new PortfolioService({ enterpriseId: eid, adminId: designer });
   await portfolio.execute('saveProfile', { expectedVersion: 0, content: { bio: '合成测试资料', cities: [{ code: region.cityCode, name: region.cityName, districts: [] }], styles: ['原木风'], layoutSpecialties: ['三居'], featuredWorkIds: [] } }, randomUUID());
   const work = await portfolio.execute('create', { content: { title: 'SYNTHETIC 原木客厅' } }, randomUUID());

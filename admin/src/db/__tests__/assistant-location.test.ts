@@ -2,18 +2,21 @@ import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { withPlatformTransaction } from '@/db/transaction';
+import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConversationService } from '@/lib/assistant/core/conversation';
 import { LocationService } from '@/lib/assistant/location/service';
+import { recordRunLocationUse } from '@/lib/assistant/location/run-context';
+import { claimJob, completeRun, failRun, runContext } from '@/lib/assistant/infrastructure/job-queue';
 import type { NearbyRegion } from '@/lib/assistant/location/region';
 import type { ActorContext } from '@/lib/assistant/contracts';
 
 let eid = '';
 const actors: ActorContext[] = [], users: string[] = [];
 const point = { latitude: 30.25, longitude: 120.13, coordinateSystem: 'gcj02' };
+const textContent = (text: string) => ({ version: 1 as const, blocks: [{ type: 'text' as const, text }] });
 const config = async () => ({ key: 'synthetic-test-only', signingKey: '', license: '', validUntil: '', dailyLimit: 100 });
 const region = (city = 'hangzhou'): NearbyRegion => city === 'hangzhou'
   ? { cityCode: '330100', cityName: '杭州市', district: '西湖区', source: 'wechat_location', resolvedAt: new Date().toISOString() }
@@ -29,7 +32,7 @@ before(async () => {
   await withPlatformTransaction(async tx => {
     eid = String((await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix},${prefix},'active') returning id`))!.id);
     await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${eid},true,100,1000000,100000000,30)`);
-    for (let i = 0; i < 2; i++) { const userId = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix + i},1) returning id`))!.id); users.push(userId);
+    for (let i = 0; i < 4; i++) { const userId = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix + i},1) returning id`))!.id); users.push(userId);
       await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${userId},${prefix + i})`);
       actors.push({ enterpriseId: eid, principal: { kind: 'user', userId }, contextVersion: 1, capabilities: ['assistant.chat.self'] }); }
   });
@@ -61,4 +64,52 @@ test('a failed provider lookup clears the previous area without retaining coordi
   await assert.rejects(location.locate(point), /provider outage/); assert.equal((await location.read()).region, null);
   const snapshot = await withPlatformTransaction(tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where id=${cid}`));
   assert.doesNotMatch(JSON.stringify(snapshot), /latitude|longitude|30\.25|120\.13/);
+});
+
+test('a location refresh crossing message admission defers until the ordinary reply can finish', async () => {
+  const chat = new ConversationService(actors[2]), created = await chat.create(randomUUID());
+  assert.equal(created.reportContextRequired, false);
+  assert.equal(created.hasLocationContext, false);
+  const cid = String(created.id), gate = deferred();
+  const location = new LocationService(actors[2], cid, { config, resolve: gate.provider });
+  const pending = location.locate(point);
+  await gate.started;
+  const receipt = await chat.send(cid, randomUUID(), textContent('贴砖前怎么验收'));
+  gate.resolve(region());
+  assert.deepEqual(await pending, { region: null, deferred: true });
+  const lease = await claimJob({ enterpriseId: eid, runId: String(receipt.runId) });
+  assert.ok(lease);
+  const output = await completeRun(lease, { content: textContent('先核对基层和放线。'), usage: null });
+  assert.ok(output);
+  assert.equal((await chat.detail(cid)).latestRun?.status, 'succeeded');
+  assert.equal((await location.locate(point)).region?.cityCode, '330100');
+});
+
+test('location revocation clears the area immediately and only fences a reply that read it', async () => {
+  const chat = new ConversationService(actors[3]), cid = String((await chat.create(randomUUID())).id);
+  const location = new LocationService(actors[3], cid, { config, resolve: async () => region() });
+  await location.locate(point);
+  const ordinary = await chat.send(cid, randomUUID(), textContent('卫生间怎么做闭水'));
+  const ordinaryLease = await claimJob({ enterpriseId: eid, runId: String(ordinary.runId) });
+  assert.ok(ordinaryLease);
+  await location.clear();
+  assert.equal((await location.read()).region, null);
+  assert.ok(await completeRun(ordinaryLease, { content: textContent('要核对蓄水和渗漏。'), usage: null }));
+
+  const nearbyCid = String((await chat.create(randomUUID())).id);
+  const nearbyLocation = new LocationService(actors[3], nearbyCid, { config, resolve: async () => region() });
+  await nearbyLocation.locate(point);
+  const nearby = await chat.send(nearbyCid, randomUUID(), textContent('附近有哪些在建工地'));
+  const nearbyLease = await claimJob({ enterpriseId: eid, runId: String(nearby.runId) });
+  assert.ok(nearbyLease);
+  await withTenantTransaction(eid, async tx => {
+    const current = await runContext(tx, nearbyLease);
+    await recordRunLocationUse(tx, eid, nearbyLease.runId, current.conversation.entry_snapshot);
+  });
+  await nearbyLocation.clear();
+  await assert.rejects(completeRun(nearbyLease, { content: textContent('沿用已撤销的区域'), usage: null }), /context_changed/);
+  await failRun(nearbyLease, 'context_changed', true);
+  const detail = await chat.detail(nearbyCid);
+  assert.equal(detail.latestRun?.errorCode, 'context_changed');
+  assert.equal(detail.latestRun?.outputMessageId, null);
 });

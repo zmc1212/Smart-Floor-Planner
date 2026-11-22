@@ -8,6 +8,7 @@ import { DEFAULT_PORTFOLIO_AVATAR, LAYOUT_OPTIONS, STYLE_OPTIONS, type Portfolio
 import { matchDesigners } from './designer-match';
 import { portfolioCandidates, type Candidate } from './public-query';
 import { recommendationRegion, type NearbyRegion } from '@/lib/assistant/location/region';
+import { recordRunLocationUse } from '@/lib/assistant/location/run-context';
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
 import type { PublicContent } from '@/lib/construction/public-contract';
 
@@ -48,7 +49,7 @@ function earlierRegion(texts: string[]) {
 /** Resolve the city from explicit housing context or verified device location.
  * Model arguments may only restate those grounded taxonomy values; unknown
  * style/layout does not prevent browsing designers in the resolved city. */
-export function resolveDesignerQuery(input: { memoryHousing?: string; memoryStyle?: string; triggerText?: string; input?: Row; location?: NearbyRegion | null; conversationTexts?: string[] }): DesignerQuery | null {
+export function resolveDesignerQuery(input: { memoryHousing?: string; memoryStyle?: string; triggerText?: string; input?: Row; location?: NearbyRegion | null; conversationTexts?: string[] }, onDeviceLocation?: () => void): DesignerQuery | null {
   let housing = input.memoryHousing || '', style = input.memoryStyle || '';
   if (negation.test(style) && STYLE_OPTIONS.some(s => s !== '其他' && style.includes(s))) return null;
   if (uncertain.test(housing)) housing = '';
@@ -68,7 +69,10 @@ export function resolveDesignerQuery(input: { memoryHousing?: string; memoryStyl
   const styleMatches = STYLE_OPTIONS.filter(option => option !== '其他' && corpus.includes(option));
   const layoutMatches = LAYOUT_OPTIONS.filter(option => option !== '其他' && corpus.includes(option));
   if (styleMatches.length > 1 || layoutMatches.length > 1) return null;
-  if (region) return { cityCode: region.cityCode, style: styleMatches[0] || '', layout: layoutMatches[0] || '' };
+  if (region) {
+    if (region.source === 'wechat_location') onDeviceLocation?.();
+    return { cityCode: region.cityCode, style: styleMatches[0] || '', layout: layoutMatches[0] || '' };
+  }
   // No city anywhere in this consultation: instead of dead-ending on location,
   // fall back to the enterprise-wide catalogue. A city that was mentioned but
   // has no resolvable, non-negated reading still asks for clarification first.
@@ -115,9 +119,9 @@ function card(candidate: Candidate, reason: string, match: string): DesignerCard
  * Ordinary replies, intervening user turns and other consultations do not carry
  * a preference into this read. Publication is still checked independently. */
 async function designerRequestContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row, input: Row,
-  context?: { triggerMessageId: string }): Promise<{ triggerText: string; requestMessageIds: string[] }> {
+  context?: { triggerMessageId?: string }): Promise<{ triggerText: string; requestMessageIds: string[] }> {
   const triggerText = typeof input.triggerText === 'string' ? input.triggerText : '';
-  if (!context || actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation')
+  if (!context?.triggerMessageId || actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation')
     return { triggerText, requestMessageIds: [] };
   const current = await one(tx, sql`select id,seq,content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(conversation.id)} and id=${id(context.triggerMessageId)} and author_kind='user'`);
@@ -139,7 +143,7 @@ async function designerRequestContext(tx: PostgresTransaction, actor: ActorConte
 }
 
 export async function recommendDesigners(tx: PostgresTransaction, actor: ActorContext, conversation: Row, input: Row = {},
-  context?: { triggerMessageId: string }): Promise<{ items: DesignerCard[]; notice: string; needContext?: boolean; cityCode?: string; style?: string; layout?: string; requestMessageIds?: string[] }> {
+  context?: { triggerMessageId?: string; runId?: string }): Promise<{ items: DesignerCard[]; notice: string; needContext?: boolean; cityCode?: string; style?: string; layout?: string; requestMessageIds?: string[] }> {
   const request = await designerRequestContext(tx, actor, conversation, input, context);
   // A published site credit is authoritative for “who designed this site”. It
   // still resolves through live portfolio publication: a withdrawn work, an
@@ -158,6 +162,7 @@ export async function recommendDesigners(tx: PostgresTransaction, actor: ActorCo
   // still asks for clarification instead of reaching further back.
   const earlier = await rows(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(conversation.id)} and author_kind='user' order by seq desc limit 10`);
+  let usedDeviceLocation = false;
   const query = resolveDesignerQuery({
     memoryHousing: facts.filter(fact => fact.field === 'housing').map(fact => fact.value).join(' '),
     memoryStyle: facts.filter(fact => fact.field === 'style').map(fact => fact.value).join(' '),
@@ -166,7 +171,8 @@ export async function recommendDesigners(tx: PostgresTransaction, actor: ActorCo
     location: recommendationRegion(conversation.entry_snapshot)?.source === 'wechat_location'
       ? recommendationRegion(conversation.entry_snapshot) as NearbyRegion : null,
     conversationTexts: earlier.map(message => (message.content as { blocks?: Array<{ text?: string }> }).blocks?.map(block => block.text || '').join(' ') || ''),
-  });
+  }, () => { usedDeviceLocation = true; });
+  if (usedDeviceLocation && context?.runId) await recordRunLocationUse(tx, actor.enterpriseId, context.runId, conversation.entry_snapshot);
   if (!query) return { items: [], notice: designerNotice, needContext: true, requestMessageIds: request.requestMessageIds };
   const candidates = (await portfolioCandidates(tx, actor.enterpriseId, { city: query.cityCode, style: query.style || undefined, layout: query.layout || undefined, recommend: true }))
     .filter(candidate => query.cityCode ? servesCity(candidate, query.cityCode) : true);

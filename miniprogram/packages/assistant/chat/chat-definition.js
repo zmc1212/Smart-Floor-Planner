@@ -90,6 +90,7 @@ module.exports = () => ({
 			identity: sessionToken,
 			resumeConversationId,
 			onResumeInvalid: id => chatResume.clear(id),
+			prepareFirstSend: (cid, emptyLocation) => this.location?.ensure(cid, false, emptyLocation),
 			referenceImage: value => this.referenceImages.materialize(value),
 			emit: patch => {
 				if (!this._alive) return;
@@ -131,7 +132,8 @@ module.exports = () => ({
 					if (patch.conversation?.id && this.floorplans && this._shown && this.floorplans.id !== String(patch.conversation.id)) this.floorplans.show(String(patch.conversation.id));
 					if (patch.conversation !== undefined && !this.data.followupActive) this.syncReportQuestion();
 					const next = patch.messages;
-					if (next && next.length && (!previous.length || next[next.length - 1].id !== previous[previous.length - 1].id) && !this._holdAutoScroll) {
+					const appended = next?.length && next[next.length - 1].id !== previous.at(-1)?.id;
+					if (!this._holdAutoScroll && (appended || patch.sending && patch.pendingText)) {
 						this.scrollBottom();
 					}
 				});
@@ -220,6 +222,8 @@ module.exports = () => ({
 		if (this._alive && this._shown) {
 			if ((!selectedMode || selectedMode === 'customer') && !this._options.publicSiteId) this.startOwnerReminderRefresh();
 			await this.controller.show(this._options);
+			// A current, unchanged message window can resume without a messages patch.
+			if (this._alive && this._shown && !this.data.fatal && this.data.messages?.length) this.loadDesignerCards(this.data.messages);
 			if (this._alive && this._shown && !this.data.fatal && !this.controller.conversationId) void this.loadOwnerSiteContext();
 			if (this._alive && this._shown && !this.data.fatal) await this.floorplans.show(this.controller.conversationId);
 			await this.prepareSpeech();
@@ -358,16 +362,11 @@ module.exports = () => ({
 	confirmOptions() { return this.controller.confirmOptions(); },
 	async send() {
 		if (this.data.needsLogin) { this.login(); return; }
-		if (this.data.contextBusy || this.data.contextPending) return;
+		if (this.data.contextBusy || this.data.contextPending || this.data.sending) return;
 		if (this.data.speechBusy || this._openingVoice) return;
 		if (!this.data.staffTab && !this.data.followupActive && !this.data.siteContext && measureIntent(this.data.draft)) {
 			this.setData({ measureCardVisible: true, measureCardDismissed: false });
 		}
-		// The send mutation creates the conversation when needed and the server
-		// validates the attached floorplan selection version, so the composer
-		// can surface the pending bubble immediately. Location is synced on
-		// page show and on demand by the recommendation entries that read it;
-		// a text send never waits on those network preflights.
 		if (!this._alive || !this._shown || this._openingVoice || this.data.speechBusy) return;
 		const speech = this.speechController;
 		const path = speech ? this.speechPath() : '';
@@ -750,9 +749,13 @@ module.exports = () => ({
 		if (!this._alive || !this._shown || cid !== this.data.conversation?.id || session !== sessionToken()) return {};
 		// Reproject in the background like the idle poll: it never supersedes an
 		// in-flight write with a new epoch and never re-reads the entry token.
-		if (result.changed && !this.controller.state.busy && !this.controller.state.pendingSend && !this.controller.state.pendingAction) {
+		const idle = () => this._alive && this._shown && cid === this.data.conversation?.id && session === sessionToken()
+			&& !this.controller.state.busy && !this.controller.state.pendingSend && !this.controller.state.pendingAction && !this.controller.state.generating;
+		if (result.changed && idle()) {
 			const epoch = this.controller.epoch;
-			await this.controller.snapshot(cid, epoch, true).catch(error => this.controller.syncFailure(error, cid, epoch));
+			await this.controller.snapshot(cid, epoch, true).catch(error => {
+				if (idle()) this.controller.syncFailure(error, cid, epoch);
+			});
 		}
 		return result;
 	},

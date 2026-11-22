@@ -3,6 +3,10 @@ import { CITY_OPTIONS, cityNameFor, districtOptions } from '@/lib/portfolio/regi
 /** Coarse, short-lived browsing context; never a housing fact or a home address. */
 export type NearbyRegion = { cityCode: string; cityName: string; district: string; source: 'wechat_location'; resolvedAt: string };
 export const locationLifetimeMs = 30 * 60 * 1000;
+
+export function nearbyLocationVersion(entry: unknown): number {
+  return (entry as { nearbyLocationVersion?: number } | null)?.nearbyLocationVersion ?? 0;
+}
 export function nearbyRegion(entry: unknown, now = Date.now()): NearbyRegion | null {
   const value = (entry as { nearbyRegion?: NearbyRegion } | null)?.nearbyRegion;
   if (!value || value.source !== 'wechat_location' || cityNameFor(value.cityCode) !== value.cityName || !value.cityName

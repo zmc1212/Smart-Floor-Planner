@@ -32,6 +32,8 @@ import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { buildAgentContext, parseAgentReply, agentPromptVersion, ownerNoArchivePolicy } from './context';
 import { knowledgeTools, runKnowledgeEnabled, generalKnowledgeInstructions } from '../knowledge-policy';
 import { recommendationRegion } from '../location/region';
+import { recordRunLocationUse } from '../location/run-context';
+import { discoveryIntent } from '../core/discovery';
 import { publicCandidates, selectPublicCandidates } from '@/lib/construction/public-read';
 import { hydrateImages, resolveAgentImage, resolveAgentMedia, specialistSitePhotos, withoutImageBytes, type AgentMediaDependency, type MediaDependency, type SitePhotoDependency } from './media-context';
 import { businessToolDefinitions, queryBusiness, parseBusinessQuery, parseDesignerQuery, businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
@@ -785,9 +787,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         + JSON.stringify(floorplanContext(context.conversation.entry_snapshot))
         + '。selection为空表示不结合户型档案，不从正式户型补尺寸或布局；旧消息中的尺寸不能冒充当前核验。用户自行发出的原话和图片仍按原来源规则使用。所选ID只是范围，实际内容必须经原工具重新校验所有权、版本及撤回；不要把选择操作说成已发送咨询或正式保存需求。' });
       const housing = memory.facts.filter(f => f.field === 'housing' && f.status === 'current').map(f => f.value).join(' ');
-      const region = recommendationRegion(context.conversation.entry_snapshot, housing, safeText(trigger.content as Parameters<typeof safeText>[0]));
+      const currentQuestion = safeText(trigger.content as Parameters<typeof safeText>[0]);
+      const publicSitesQueried = !selectedPublicSite && discoveryIntent(currentQuestion).sites;
+      const region = (publicSitesQueried || designerIntent.test(currentQuestion))
+        && recommendationRegion(context.conversation.entry_snapshot, housing, currentQuestion);
       if (region && system.role === 'system') {
-        const publicSitesQueried = !selectedPublicSite && /附近|周边|工地|围观/.test(safeText(trigger.content as Parameters<typeof safeText>[0]));
+        if (region.source === 'wechat_location') await recordRunLocationUse(tx, lease.enterpriseId, lease.runId, context.conversation.entry_snapshot);
         const selected = publicSitesQueried ? selectPublicCandidates(await publicCandidates(tx, lease.enterpriseId, region.cityCode), region.district) : null;
         const sites = selected?.items || [];
         const nearby = [];
@@ -2356,7 +2361,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
               const snapshot = cached ? cached.private_checkpoint as DesignerToolSnapshot : await (async () => {
                 const result = await recommendDesigners(tx, lease.actor, context.conversation, { ...query, triggerText: reviewContext.currentQuestion },
-                  { triggerMessageId: String(initial.trigger.id) });
+                  { triggerMessageId: String(initial.trigger.id), runId: lease.runId });
                 return {
                   ...(result.cityCode ? { cityCode: result.cityCode } : {}), ...(result.style ? { style: result.style } : {}),
                   ...(result.layout ? { layout: result.layout } : {}), communityId: null, count: result.items.length,

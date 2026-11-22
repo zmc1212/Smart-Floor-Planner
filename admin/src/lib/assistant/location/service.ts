@@ -6,7 +6,7 @@ import { fail, fingerprint, id, principalKey, requireCapability, type ActorConte
 import { getCommunityRuntimeConfig } from '@/lib/map-services/config';
 import type { CommunityProviderConfig } from '@/lib/portfolio/community-provider';
 import { coordinates, reverseRegion, type Coordinates } from './geocode';
-import { nearbyRegion, type NearbyRegion } from './region';
+import { nearbyLocationVersion, nearbyRegion, type NearbyRegion } from './region';
 
 export class LocationService {
   constructor(readonly actor: ActorContext, readonly conversationId: string,
@@ -23,13 +23,17 @@ export class LocationService {
     });
   }
   read() { return this.scope(async (_tx, c) => ({ region: nearbyRegion(c.entry_snapshot) })); }
+  private async clearRegion(tx: PostgresTransaction, entry: Row) {
+    if (!entry?.nearbyRegion && !entry?.nearbyLocationRequest) return;
+    const version = nearbyLocationVersion(entry) + Number(!!entry.nearbyRegion);
+    await tx.execute(sql`update app.assistant_conversations
+      set entry_snapshot=jsonb_set(entry_snapshot-'nearbyRegion'-'nearbyLocationRequest','{nearbyLocationVersion}',to_jsonb(${version}::int)),
+        version=version+1 where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
+  }
+
   clear() {
     return this.scope(async (tx, c) => {
-      const entry = c.entry_snapshot as Row;
-      if (!entry?.nearbyRegion && !entry?.nearbyLocationRequest) return { region: null };
-      // Revocation invalidates in-flight answers through the existing revision guard.
-      await tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot-'nearbyRegion'-'nearbyLocationRequest',context_revision=context_revision+1,version=version+1
-        where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
+      await this.clearRegion(tx, c.entry_snapshot as Row);
       return { region: null };
     });
   }
@@ -64,16 +68,26 @@ export class LocationService {
           await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended('platform-map-services',0))`);
           if (fingerprint(await getCommunityRuntimeConfig(tx)) !== fingerprint(config)) fail('context_changed');
         }
-        await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot-'nearbyLocationRequest','{nearbyRegion}',${JSON.stringify(region)}::jsonb),
-          context_revision=context_revision+1,version=version+1 where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
+        // The conversation lock also serializes send admission. A slow refresh
+        // can leave the active reply's region alone and be retried on demand.
+        const activeReply = await one(tx, sql`select id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId}
+          and conversation_id=${this.conversationId} and purpose='reply' and status in ('queued','running') limit 1`);
+        if (activeReply) {
+          await tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot-'nearbyLocationRequest'
+            where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
+          return { region: nearbyRegion(c.entry_snapshot), deferred: true };
+        }
+        const version = nearbyLocationVersion(c.entry_snapshot) + 1;
+        await tx.execute(sql`update app.assistant_conversations set entry_snapshot=(entry_snapshot-'nearbyLocationRequest')
+          || ${JSON.stringify({ nearbyRegion: region, nearbyLocationVersion: version })}::jsonb,
+          version=version+1 where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
         return { region };
       }, true);
     } catch (error) {
       // Clear this request's stale context, never a newer successful lookup.
       try { await this.scope(async (tx, c) => {
         if ((c.entry_snapshot as Row).nearbyLocationRequest !== requestId) return;
-        await tx.execute(sql`update app.assistant_conversations set entry_snapshot=entry_snapshot-'nearbyRegion'-'nearbyLocationRequest',context_revision=context_revision+1,version=version+1
-          where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId}`);
+        await this.clearRegion(tx, c.entry_snapshot as Row);
       }); } catch { /* A disconnected client can repeat DELETE after recovery. */ }
       throw error;
     }

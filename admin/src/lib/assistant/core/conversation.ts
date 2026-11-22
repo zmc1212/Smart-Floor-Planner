@@ -58,6 +58,7 @@ import { discoveryReplies } from './discovery';
 import { assistantDailyLimitsEnabled } from './daily-limits';
 import { factsOnlyMode } from '../knowledge/answer';
 import { reportContext, reportContextView, selectedReport } from '@/lib/construction/report-reference';
+import { nearbyLocationVersion } from '../location/region';
 import type { ReportCompositionScope } from '@/lib/construction/report-composition';
 import { samePublicRef, type PublicContextRef } from '@/lib/construction/public-contract';
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
@@ -265,6 +266,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         && !agent.imageContext && !agent.knowledgeExplanation && !reportContext(c.entry_snapshot).selection
         ? { dialogueContext: minimalDialogueProtocol } : {}),
       ...(!report && reference.selection ? { reportContextVersion: reference.revision } : {}),
+      ...(c.purpose === 'customer_consultation' && purpose === 'reply' ? { nearbyLocationVersion: nearbyLocationVersion(c.entry_snapshot) } : {}),
       ...(stageReminderFollowup ? { stageReminderFollowup: stageReminderFollowupProtocol, reportHistoryScope: reportHistoryScopeProtocol } : {}),
       ...(report ? { reportComposition } : {}),
       ...(report ? reportBodyFinalPolicy(agent) : {}),
@@ -338,7 +340,7 @@ export class ConversationService {
     };
     return this.transaction ? execute(this.transaction) : withTenantTransaction(this.actor.enterpriseId, execute);
   }
-  create(requestKey: string, previewInput:Row={}) {
+  create(requestKey: string, previewInput:Row={}): Promise<Row> {
     if (this.actor.capabilities.includes('assistant.followup.self')) fail('assistant_capability_forbidden', 403);
     return this.scoped(async (repo, settings) => {
       const result = await idempotent(repo.tx, this.actor, 'create', requestKey, { entry: this.actor.entry || {},previewInput }, async () => {
@@ -359,8 +361,10 @@ export class ConversationService {
         ${this.actor.principal.kind==='admin'?this.actor.principal.adminId:null},${json({ kind: 'self', contextVersion: this.actor.contextVersion })}::jsonb)`);
       return conversationDto(c);
       });
-      await repo.conversation(String(result.id));
-      return result;
+      const current = await repo.conversation(String(result.id));
+      const context = current.entry_snapshot as Row;
+      return { ...result, reportContextRequired: !!reportContext(context).selection,
+        hasLocationContext: !!(context.nearbyRegion || context.nearbyLocationRequest) };
     }, true);
   }
   list(cursor = '9223372036854775807', limit = 20) {

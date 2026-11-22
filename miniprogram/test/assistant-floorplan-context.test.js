@@ -42,6 +42,31 @@ test('an unknown selection reuses its original operation body and key after reen
   assert.equal(await f.controller.show('8'), false);
   assert.equal(await f.controller.retry(), true); assert.equal(f.view.contextPending, false); assert.equal(f.view.selectedFloorplan.floorPlanId, '12');
 });
+test('reentry restores the unconfirmed selection before a failing archive read', async () => {
+  let failRead = false, key;
+  const f = fixture(call => {
+    if (call.method === 'GET' && failRead) throw { statusCode: 503 };
+    if (call.method === 'POST') {
+      const current = call.options.headers['Idempotency-Key'];
+      if (!key) { key = current; throw { statusCode: 503 }; }
+      assert.equal(current, key);
+      assert.equal(call.body.selection.floorPlanId, '12');
+    }
+  });
+  await f.controller.show('8');
+  await f.controller.select(plan);
+  failRead = true;
+  const restored = {}, reopened = new FloorplanContextController({
+    client: f.controller.client, identity: () => 'owner-a', emit: patch => Object.assign(restored, patch),
+  });
+  const flight = reopened.show('8');
+  assert.equal(restored.contextPending, true);
+  assert.equal(await flight, false);
+  assert.equal(restored.contextPending, true);
+  assert.equal(await reopened.retry(), true);
+  assert.equal(restored.contextPending, false);
+  assert.equal(restored.selectedFloorplan.floorPlanId, '12');
+});
 test('a late response from a prior conversation or identity cannot restore its private archive', async () => {
   let release;
   const f = fixture(call => call.url.includes('/8/') ? new Promise(resolve => { release = resolve; }) : null);
