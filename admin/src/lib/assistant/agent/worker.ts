@@ -3012,7 +3012,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     // reservations for reconciliation, including definitive HTTP rejections.
     const recovery = error === textFailure ? await recoverKnowledgeAnswer(lease, error) : null;
     if (recovery?.completed) return;
-    if (error instanceof AssistantError && (code === 'source_read_required' || code === 'unsupported_model_commitment')) {
+    if (error instanceof AssistantError && (code === 'source_read_required' || code === 'unsupported_model_commitment' || code === 'ungrounded_response_scope')) {
       try { if (await completeSafeFallback(lease, code)) return; }
       catch (e) { if (!(e instanceof AssistantError && e.code === 'context_changed')) console.error('[assistant] safe fallback failed', lease.runId, e); }
     }

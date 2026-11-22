@@ -738,6 +738,8 @@ Assistant Worker 本地诊断 **Implemented**。Worker 原子写入请求、成�
 
 **I7.5.20 正式知识问答降级（Implemented）。** 文本调用在获权检索成功后失败时，同一任务可保存审核原文和引用，以 `content.answerMode=facts_only` 标记。提交复核当前项目、阶段、发布、版本、哈希及权限。依据不足时保存 `insufficient_evidence`。任务回执保留模型错误与检索步骤，已发出的未知计费调用保持 `reconciling`。托管检索遇到允许切换的可用性错误时才使用获权且兼容的本地索引。凭据拒绝或本地索引不兼容时停止检索。[I7.5.20 验收](./xiaok-i7520-facts-only-ai-acceptance.md)。
 
+百炼托管混合检索融合已核验远程切片与同一获权就绪分片的本地词项结果。返回多段时可保留最高且适用的词项命中，尊重明确指定来源及调用方重排。两路均受发布、受众、项目、阶段、版本和哈希约束。业主询问施工依据、当轮知识读取成功，但答案被无依据校验拒绝时，使用既有 `source_unavailable` 回执。步骤记录原拒绝码和实际回执类型。[闭水核验](../tmp/xiaok-agent-eval-20261121/repair/assessment.json)。
+
 1B知识回答、结构化引用/失效校验、无依据处理及本人预览后端 **Implemented**。同一ConversationService/JobQueue在授权检索后调用现有文本模型；每段回答必须引用本次证据及逐字摘录，最终提交复查权限、epoch、hash/profile和有效期。无候选/低相关或模型明确无依据时保存固定insufficient_evidence notice；检索故障、非法引用或畸形输出不会冒充有效回答。0061新增强制RLS引用表及消息/run answer_kind；引用与最终消息、终态同事务落库，reset/purge已包含引用。后续读取会隐藏已撤回/受限/过期/draft编辑失效来源及整条依赖回答，仍获授权的旧发布版本标记historical。
 
 **客户回答安全兜底（2026-11-17，代码 Implemented / 生产未部署）。** 客户会话（`customer_consultation`、`construction_followup`）中，`source_read_required` 且问题涉及企业标准/工艺/验收/闭水等，或 `unsupported_model_commitment` 且问题涉及价格/工期/下周安排/正式承诺时，Worker 不再留下空白失败轮次：保存固定 `insufficient_evidence` notice，写入 `agent_fallback` 审计步骤并保留原错误码；模型已调用的预占保持 `reconciling`，未调用则释放。`retrieval_unavailable` 等检索基础设施故障、员工预览、内部动作及已提交回答仍按原失败处理；不新增路由、权限、schema 或小程序 UI，沿用现有 notice `fallbackText` 渲染。回归覆盖 `answer-selection.test.ts` 与 `assistant-agent.test.ts` 的两个定向用例。

@@ -366,7 +366,7 @@ export async function retrieveKnowledge(conversationId: string, actor: ActorCont
 
   const minSimilarity = options?.minSimilarity ?? (provider === BAILIAN_RAG ? 0.12 : retrievalConfiguration.minSimilarity);
   const expanded = expandChineseQuery(query), terms = expanded.terms;
-  const lexical = mode !== 'vector' && provider !== BAILIAN_RAG;
+  const lexical = mode !== 'vector';
   const lexicalScore = lexical ? sql`(select coalesce(sum((${JSON.stringify(queryTermWeights(expanded))}::jsonb->>t)::int),0)
     from unnest(c.terms) t where t in (select jsonb_array_elements_text(${JSON.stringify(terms)}::jsonb)))` : sql`0`;
   const fromProvider = provider === BAILIAN_RAG || !!external;
@@ -386,7 +386,7 @@ export async function retrieveKnowledge(conversationId: string, actor: ActorCont
       const managedHits = hits.get(corpus.enterpriseId) ?? [];
       const allowedVersions = corpus.versions.filter(v => v.ready &&
         (!localProfile || localBinding(corpus,v,localProfile)));
-      if (!allowedVersions.length || provider === BAILIAN_RAG && !managedHits.length || external && !externalCandidates.length) continue;
+      if (!allowedVersions.length || provider === BAILIAN_RAG && !lexical && !managedHits.length || external && !externalCandidates.length) continue;
       const matched = await withinCorpus(tx,corpus,() => rows<Candidate>(tx, sql`with authorized as materialized (
         select ${knowledgeColumns},${distance} as distance,${lexicalScore} as lexical,
           ${corpus.platform}::boolean as platform_knowledge
@@ -396,13 +396,14 @@ export async function retrieveKnowledge(conversationId: string, actor: ActorCont
           on c.locator->'file'->'extraction'->>'chunkIndex'=hit->>'chunkIndex'
           and c.locator->'file'->'extraction'->>'chunkSha256'=hit->>'chunkSha256'` : sql``}
         ${provider === BAILIAN_RAG ? sql`${managedJoins}
-          join jsonb_array_elements(${JSON.stringify(managedHits)}::jsonb) hit
+          left join jsonb_array_elements(${JSON.stringify(managedHits)}::jsonb) hit
           on mi.index_document_id=hit->>'documentId' and mi.version_tag=hit->>'tag'
           and c.locator->'managed'->>'id'=hit->>'sliceId' and c.locator->'managed'->>'hash'=hit->>'hash'` : sql``}
         where c.enterprise_id=${corpus.enterpriseId} and ${sourceReady} and ${corpusScope(actor,state,corpus.platform,filters)}
           and v.id in (${sql.join(allowedVersions.map(v => sql`${v.version_id}`),sql`,`)})
           ${localProfile ? sql`and c.embedding is not null` : sql``}
-          ${provider === BAILIAN_RAG ? sql`and mi.workspace_id=${corpus.library!.workspace_id}` : sql``}
+          ${provider === BAILIAN_RAG ? sql`and mi.workspace_id=${corpus.library!.workspace_id}
+            and c.locator->'managed'->>'id' is not null and c.locator->'managed'->>'hash' is not null` : sql``}
           ${external ? sql`and c.locator->'file'->'extraction'->>'corpusSha256'=${external.corpusSha256}` : sql``}
       ), semantic as (
         ${fromProvider ? sql`select id,external_rank as semantic_rank from authorized where external_rank is not null`
@@ -423,7 +424,8 @@ export async function retrieveKnowledge(conversationId: string, actor: ActorCont
       for (const d of preferred) preferredDocuments.add(d);
       for (const c of fused) conditions.set(c.id,c.professional ? applicability(c.professional,context) : null);
       const shortlist = fused.filter(c => {
-        if (!(c.distance === null || 1 - c.distance >= minSimilarity || !!options && !primaryError && c.lexical_rank !== null)) return false;
+        if (!(c.distance === null || 1 - c.distance >= minSimilarity
+          || !primaryError && (provider === BAILIAN_RAG || !!options) && c.lexical_rank !== null)) return false;
         const key = c.document_version_id + ':' + (c.locator?.start ?? c.id);
         if (!c.locator?.managed) return true;
         if (seen.has(key)) return false;
@@ -433,10 +435,21 @@ export async function retrieveKnowledge(conversationId: string, actor: ActorCont
       const ranked = options?.rerank ? new Map(options.rerank(shortlist.map(c => candidateEvidence(c,context))).map((id, rank) => [id,rank])) : null;
       if (ranked) shortlist.sort((a,b) => (ranked.get(a.id) ?? Infinity) - (ranked.get(b.id) ?? Infinity) || 0);
       reviewedTables ||= !!external && shortlist.some(c => c.locator?.file?.extraction?.review);
-      if (selected.length < limit) selected.push(...selectContextCandidates(shortlist,conditions,limit-selected.length,preferred,selection,reviewedTables ? c => {
-        const extraction = c.locator?.file?.extraction;
-        return extraction?.review ? `table:${c.document_version_id}:${extraction.chunkIndex}` : `row:${c.id}`;
-      } : undefined));
+      if (selected.length < limit) {
+        const chosen = selectContextCandidates(shortlist,conditions,limit-selected.length,preferred,selection,reviewedTables ? c => {
+          const extraction = c.locator?.file?.extraction;
+          return extraction?.review ? `table:${c.document_version_id}:${extraction.chunkIndex}` : `row:${c.id}`;
+        } : undefined);
+        // Remote hits can take both rank votes while an exact local hit has only
+        // one. Include the leading usable lexical hit without replacing the
+        // leading result or overriding a named source or caller's reranking.
+        if (provider === BAILIAN_RAG && !ranked && chosen.length > 1) {
+          const lexicalLead = shortlist.find(c => c.lexical_rank === 1 && conditions.get(c.id)?.status !== 'not_applicable'
+            && (!preferred.size || preferred.has(c.document_id)));
+          if (lexicalLead && !chosen.includes(lexicalLead)) chosen[chosen.length - 1] = lexicalLead;
+        }
+        selected.push(...chosen);
+      }
       candidates.push(...fused);
       eligible.push(...shortlist);
     }

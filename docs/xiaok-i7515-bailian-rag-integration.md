@@ -9,7 +9,7 @@
 - `assistant_managed_knowledge_libraries` 保存 `enterpriseId → Workspace → indexId`，`assistant_managed_knowledge_imports` 保存每一审核版本的 `fileId`、`indexDocumentId`、`ingestionId`、过滤标签和回执。一个已配置的北京 Workspace 内，每家企业的索引独立。项目资料仍属于企业索引，服务端通过文档项目绑定、项目状态和会话角色额外收敛。
 - 平台公共语料使用专用承载企业自己的索引。迁移 `0132` 加入 DBA 管理的单条 `assistant_platform_knowledge_library` 映射。平台管理员通过同一知识服务审核发布，租户应用角色只有映射读取权限。公共库提供已发布、有效的通用语料，检索结果标为 `knowledge.scope=platform`。本企业证据优先，公共库补充。员工知识预览读取选定企业的固定来源范围。
 - `KnowledgeRetriever/Evidence` 按当前身份、企业、会话权限、项目、阶段、受众、有效期、版本和索引映射筛出版本。阶段条件由审核版本的 `professional.conditions` 提供，阶段取服务端项目记录。百炼回包对照 workspace、index、文档、切片和原文哈希后才进入候选。服务端在返回结果及重开引用时复核来源。文件导入可提供 `professional.origin.page` 记录复核过的原件页码。引用存档保留标题、来源、版本和逐字摘录，平台参考资料走现有公共来源识别。提取式问答只交付所选原文，缺可靠依据时返回 `insufficient_evidence`。
-- 托管索引就绪时，由已配置的本机 Qwen3-Embedding-0.6B 为同一审核分片写入 pgvector 1024 维备用向量，并绑定固定 profile。连接失败、超时、上游限流或不可用时，要有完整兼容的获权索引才能自动切换。明确的凭据拒绝和映射冲突返回错误。正常未命中保持空证据。备用失败返回 `retrieval_unavailable`，成功结果记录实际 Provider。旧托管分片缺少备用向量时，可经现有新版本索引流程补齐。兼容回执与公共引用外键需要 `0132`。
+- 成功的托管混合检索融合百炼已核验切片和本地获权分片词项。词项支路沿现有发布、授权、原文和索引就绪核对，多段结果可以保留最高且适用的词项命中。两路均无匹配时返回空证据。向量备用走独立分支。已配置的本机 Qwen3-Embedding-0.6B 为审核分片写入绑定固定 profile 的 pgvector 1024 维向量。连接失败、超时、上游限流或不可用时，只有完整兼容的获权向量索引才能自动切换。凭据拒绝、映射冲突或备用失败返回 `retrieval_unavailable`。旧托管分片的备用向量可经新版本索引流程补齐。兼容回执与公共引用外键需要 `0132`。[闭水核验](../tmp/xiaok-agent-eval-20261121/repair/assessment.json)。
 
 ## 隔离验收
 

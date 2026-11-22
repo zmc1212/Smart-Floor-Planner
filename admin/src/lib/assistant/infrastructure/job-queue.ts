@@ -268,38 +268,52 @@ export async function failRun(lease: Lease, code: string, outcomeKnown=false, de
     await finish(tx, lease, status, unknown ? 'provider_outcome_unknown' : code);
   });
 }
-/** Customer-facing safety rejections must not leave an empty failed turn.
- * Commit a fixed server-authored notice only for the two rejections that would
- * otherwise hide the answer entirely. Infrastructure failures, staff previews,
- * internal actions and already-committed answers retain the original failure. */
-export async function completeSafeFallback(lease: Lease, code: SafeFallbackCode) {
+/** Deliver a fixed notice for customer source and commitment rejections.
+ * Infrastructure failures, staff previews, internal actions and committed
+ * answers retain their existing behavior. */
+export async function completeSafeFallback(lease: Lease, code: SafeFallbackCode | 'ungrounded_response_scope') {
   try {
     return await withTenantTransaction(lease.enterpriseId, async tx => {
       const { job, run, conversation } = await runContext(tx, lease);
       if (lease.actor.principal.kind !== 'user' || run.purpose !== 'reply' || run.trigger_kind !== 'user_message'
         || !['customer_consultation', 'construction_followup'].includes(String(conversation.purpose))
         || run.output_message_id) return false;
-      if (code === 'source_read_required') {
-        // A real retrieval outage is an infrastructure failure, not a safe
-        // "no evidence" answer; keep it failed for retry and reconciliation.
-        const unavailable = await one(tx, sql`select id from app.assistant_run_steps
-          where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='retrieval' and status='failed'
-            and input_summary->>'knowledgeStatus'='retrieval_unavailable' limit 1`);
-        if (unavailable) return false;
-      }
       const trigger = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${lease.enterpriseId}
         and conversation_id=${String(conversation.id)} and id=${String(run.trigger_message_id)} and author_kind in ('user','admin')`);
       if (!trigger) return false;
       const reportScoped = !!reportContext(conversation.entry_snapshot).selection
         || (run.policy_snapshot as Row).reportContextVersion !== undefined;
-      if (!safeFallbackApplies(code, safeText(trigger.content as MessageContent), reportScoped)) return false;
+      const question = safeText(trigger.content as MessageContent);
+      let noticeCode: SafeFallbackCode | null = code === 'ungrounded_response_scope' ? null : code;
+      if (code !== 'source_read_required' && !reportScoped && safeFallbackApplies('source_read_required', question)) {
+        // The retrieved passages may provide too little support for a draft's
+        // quantities or scope. The rejection and the displayed notice have
+        // different purposes, and the rejected draft is never delivered.
+        const lookup = await one(tx, sql`select id from app.assistant_run_steps
+          where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='retrieval'
+            and capability_name='knowledge.search.v1' and status='succeeded'
+            ${code === 'ungrounded_response_scope' ? sql`and exists (select 1 from app.assistant_run_steps validation
+              where validation.enterprise_id=${lease.enterpriseId} and validation.run_id=${lease.runId}
+                and validation.kind='agent_validation' and validation.status='failed'
+                and validation.input_summary->>'code'=${code}
+                and validation.input_summary->>'scope'='authorized_response_scope')` : sql``} limit 1`);
+        if (lookup) noticeCode = 'source_read_required';
+      }
+      if (!noticeCode || !safeFallbackApplies(noticeCode, question, reportScoped)) return false;
+      if (noticeCode === 'source_read_required') {
+        // Keep retrieval outages eligible for failure recovery and reconciliation.
+        const unavailable = await one(tx, sql`select id from app.assistant_run_steps
+          where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='retrieval' and status='failed'
+            and input_summary->>'knowledgeStatus'='retrieval_unavailable' limit 1`);
+        if (unavailable) return false;
+      }
       const next = await one(tx, sql`select coalesce(max(step_seq),0)+1 as seq from app.assistant_run_steps
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
         values(${lease.enterpriseId},${lease.runId},${Number(next?.seq || 1)},'agent_fallback','succeeded',
-          ${JSON.stringify({ code, protocol: 'safe-fallback-v1', providerStarted: !!job.provider_started_at, reportScoped })}::jsonb)`);
+          ${JSON.stringify({ code, noticeCode, protocol: 'safe-fallback-v1', providerStarted: !!job.provider_started_at, reportScoped })}::jsonb)`);
       const message = await appendMessage(tx, lease.actor, String(conversation.id), { author: 'assistant', runId: lease.runId,
-        purpose: 'agent.reply', content: safeFallbackContent(code, { reportScoped }) });
+        purpose: 'agent.reply', content: safeFallbackContent(noticeCode, { reportScoped }) });
       await tx.execute(sql`update app.assistant_messages set answer_kind='insufficient_evidence'
         where enterprise_id=${lease.enterpriseId} and id=${String(message.id)}`);
       await tx.execute(sql`update app.assistant_quota_reservations set status=${job.provider_started_at ? 'reconciling' : 'released'},
