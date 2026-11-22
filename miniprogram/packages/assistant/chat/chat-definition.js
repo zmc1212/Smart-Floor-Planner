@@ -363,12 +363,11 @@ module.exports = () => ({
 		if (!this.data.staffTab && !this.data.followupActive && !this.data.siteContext && measureIntent(this.data.draft)) {
 			this.setData({ measureCardVisible: true, measureCardDismissed: false });
 		}
-		if (!this.data.conversation?.id && this.data.draft && this.data.canSend && !this.data.busy && !this.data.pendingSend && !this.data.pendingAction && !this.data.generating && !this.data.readOnly) {
-			if (!await this.controller.handoffConversation()) return;
-		}
-		if (this.controller.conversationId && !await this.floorplans.show(this.controller.conversationId)) return;
-		const location = await this.syncLocation();
-		if (location.blocked) { this.setData({ portfolioNotice: location.notice }); return; }
+		// The send mutation creates the conversation when needed and the server
+		// validates the attached floorplan selection version, so the composer
+		// can surface the pending bubble immediately. Location is synced on
+		// page show and on demand by the recommendation entries that read it;
+		// a text send never waits on those network preflights.
 		if (!this._alive || !this._shown || this._openingVoice || this.data.speechBusy) return;
 		const speech = this.speechController;
 		const path = speech ? this.speechPath() : '';
@@ -749,7 +748,12 @@ module.exports = () => ({
 		if (!cid || !this.location || this.data.generating || this.data.readOnly || this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun) return {};
 		const result = await this.location.ensure(cid, requestPermission);
 		if (!this._alive || !this._shown || cid !== this.data.conversation?.id || session !== sessionToken()) return {};
-		if (result.changed) await this.controller.refresh();
+		// Reproject in the background like the idle poll: it never supersedes an
+		// in-flight write with a new epoch and never re-reads the entry token.
+		if (result.changed && !this.controller.state.busy && !this.controller.state.pendingSend && !this.controller.state.pendingAction) {
+			const epoch = this.controller.epoch;
+			await this.controller.snapshot(cid, epoch, true).catch(error => this.controller.syncFailure(error, cid, epoch));
+		}
 		return result;
 	},
 	async loadDesigners(event) {

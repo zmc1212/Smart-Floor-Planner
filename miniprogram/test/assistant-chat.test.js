@@ -124,6 +124,21 @@ const messageReads = f => f.calls.filter(call => call.url.endsWith('/messages') 
 const { appendPatch } = require('../packages/assistant/lib/chat');
 const promptEvent = text => ({ currentTarget: { dataset: { text } } });
 
+test('a bound-entry conversation reads its report context before the first send', async () => {
+  const f = fixture(); await f.controller.show({});
+  f.intercept(call => {
+    if (call.url === '/conversations/11' && call.method === 'GET')
+      return { success: true, data: { ...f.db.conversation, reportContext: { selected: true, version: 3 } } };
+  });
+  f.controller.input('结合这份日报继续聊');
+  await f.controller.sendMessage();
+  const detailAt = f.calls.findIndex(call => call.url === '/conversations/11' && call.method === 'GET');
+  const sendAt = f.calls.findIndex(call => call.url.endsWith('/messages') && call.method === 'POST');
+  assert.ok(detailAt >= 0 && detailAt < sendAt, 'the report context must be read before the send');
+  assert.equal(f.calls[sendAt].body.content.reportContextVersion, 3);
+  f.controller.dispose();
+});
+
 test('a service consultation records the welcome notice through an ordinary chat send', async () => {
   const f = fixture();
   f.db.entry.staffProfileCapture = true;
@@ -153,22 +168,26 @@ test('each welcome topic sends its text immediately through the existing chat fl
   }
 });
 
-test('a second topic tap during asynchronous send preparation cannot replace or duplicate the first', async () => {
+test('a second topic tap while the first send is in flight cannot replace or duplicate it', async () => {
   const f = fixture(); await f.controller.show({});
-  const page = promptPage(f), location = deferred(), preparing = deferred();
-  page.syncLocation = () => { preparing.resolve(); return location.promise; };
+  const page = promptPage(f), accepted = deferred();
+  f.intercept(call => {
+    if (call.method === 'POST' && call.url.endsWith('/messages')) return accepted.promise.then(() => undefined);
+  });
   const text = page.data.topics[1].text;
   const first = page.pickPrompt(promptEvent(text));
-  await preparing.promise;
-  assert.equal(page.data.busy, false);
+  for (let guard = 0; !page.data.busy && guard < 100; guard++) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(page.data.busy, true);
+  assert.equal(page.data.pendingText, text);
   await page.pickPrompt(promptEvent(page.data.topics[2].text));
   assert.equal(page.data.draft, text);
-  location.resolve({}); await first;
+  accepted.resolve();
+  await first;
   assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 1);
   assert.equal(page.data.messages[0].blocks[0].text, text);
 });
 
-test('the welcome screen stays away while an accepted send is being projected', async () => {
+test('the pending bubble stays visible from the tap until the send is projected', async () => {
   const f = fixture(); await f.controller.show({});
   const page = promptPage(f), text = page.data.topics[0].text, projected = deferred(), projecting = deferred();
   page.controller.input(text);
@@ -177,18 +196,20 @@ test('the welcome screen stays away while an accepted send is being projected', 
   let observed = null;
   f.intercept(call => {
     if (call.method !== 'GET' || !call.url.endsWith('/messages')) return;
-    // The accepted write has cleared the optimistic bubble, but its projection
-    // has not arrived: the customer must keep seeing the conversation, never
-    // the welcome page they already left.
-    observed = { pendingText: page.data.pendingText, welcome: welcome() };
+    // The write was accepted but its projection has not arrived: the pending
+    // bubble must stay on screen so the sent text never blinks out, and the
+    // customer keeps seeing the conversation, never the welcome page they
+    // already left.
+    observed = { pendingText: page.data.pendingText, welcome: welcome(), sending: page.data.sending };
     projecting.resolve();
     return projected.promise.then(() => ({ success: true, data: { items: f.db.items, nextCursor: null } }));
   });
   const pending = page.send();
   await projecting.promise;
+  assert.deepEqual(observed, { pendingText: text, welcome: false, sending: true });
   projected.resolve();
   await pending;
-  assert.deepEqual(observed, { pendingText: '', welcome: false });
+  assert.equal(page.data.pendingText, '');
   assert.equal(page.data.messages.length, 1);
   assert.equal(page.data.messages[0].blocks[0].text, text);
   assert.equal(page.data.sending, false);
@@ -238,15 +259,15 @@ test('a shortcut with an unknown receipt keeps the original message and recovery
   assert.equal(page.data.draft, '');
 });
 
-test('failed archive validation keeps the shortcut draft and allows another attempt', async () => {
+test('a pending floorplan selection blocks sends entirely until it settles', async () => {
   const f = fixture(); await f.controller.show({});
   const page = promptPage(f), text = page.data.topics[1].text;
-  page.floorplans.show = async () => false;
+  page.controller.input('已输入的草稿');
+  page.data.contextPending = true;
   await page.pickPrompt(promptEvent(text));
-  assert.equal(page.data.draft, text);
-  assert.equal(page._promptSending, false);
+  assert.equal(page.data.draft, '已输入的草稿', 'a blocked tap must not touch the draft');
   assert.equal(f.calls.filter(call => call.method === 'POST' && call.url.endsWith('/messages')).length, 0);
-  page.floorplans.show = async () => true;
+  page.data.contextPending = false;
   await page.pickPrompt(promptEvent(text));
   assert.equal(page.data.messages[0].blocks[0].text, text);
   assert.equal(page.data.draft, '');
@@ -1467,4 +1488,70 @@ test('idle reminder polling preserves in-progress multiple choices and skips pen
   const pending = f.controller.snapshot('11', f.controller.epoch, true);
   f.controller.hide(); gate.resolve({ success: true, data: { items: [{ id: '99', seq: '99', authorKind: 'system', content: { blocks: [] } }] } });
   await pending; assert.equal(f.controller.state.messages.length, 0); assert.equal(f.timers.size, 0);
+});
+
+test('returning from a subpage restores designer cards when the unchanged resume emits no message patch', async () => {
+  const oldApp = global.getApp, oldWx = global.wx;
+  let downloads = 0;
+  const reads = [];
+  global.getApp = () => ({ globalData: { token: 'a' } });
+  global.wx = {
+    getStorageSync: () => '',
+    downloadFile: ({ success }) => { downloads += 1; success({ statusCode: 200, tempFilePath: 'wxfile://cover-1.jpg' }); },
+    env: { USER_DATA_PATH: 'wxfile://usr' },
+    getFileSystemManager: () => ({ writeFile: ({ success }) => success(), unlink: ({ fail }) => {} }),
+  };
+  const flush = async () => { for (let i = 0; i < 6; i += 1) await new Promise(resolve => setImmediate(resolve)); };
+  try {
+    const page = require('../packages/assistant/chat/chat-definition')();
+    const designerMessage = {
+      id: '71', seq: '3', authorKind: 'assistant', isUser: false, available: true,
+      content: { version: 1, blocks: [{ type: 'text', text: '按当前方向找到了设计师作品' }] },
+      designerRecommendation: { items: [{
+        authorId: '501', authorName: '刘兵', portraitAvailable: true,
+        work: { id: '201', versionId: '301', coverAssetId: '401', coverLabel: '效果图' },
+      }] },
+    };
+    Object.assign(page.data, { conversation: { id: '11', mode: 'ai', status: 'open' }, messages: [designerMessage] });
+    Object.assign(page, {
+      _alive: true, _options: {},
+      controller: {
+        conversationId: '11', show: async () => {}, hide() {}, dispose() {},
+        client: { read: async () => { reads.push('portrait'); return { mimeType: 'image/jpeg', imageBase64: '/9j/AA==' }; } },
+      },
+      setData(patch) {
+        const apply = (target, key, value) => {
+          const dot = key.indexOf('.');
+          if (dot < 0) { target[key] = value; return; }
+          const head = key.slice(0, dot);
+          if (typeof target[head] !== 'object' || target[head] === null) target[head] = {};
+          apply(target[head], key.slice(dot + 1), value);
+        };
+        for (const [key, value] of Object.entries(patch)) apply(this.data, key, value);
+      },
+      startOwnerReminderRefresh() {}, stopOwnerReminderRefresh() {},
+      liveConsent: { clear() {} }, location: { clear() {} },
+      followups: { hide() {}, show: async () => {} },
+      siteRecords: { clear() {} }, recommendations: { clear() {} },
+      publicSites: { clear() {} }, plans: { clear() {} },
+      floorplans: { show: async () => {} },
+      prepareSpeech: async () => {}, syncLocation: async () => ({}), closeSheet() {},
+    });
+    await page.onShow(); await flush();
+    assert.equal(page.data.latestDesignerMessageId, '71');
+    assert.equal(page.data.designerCardImages.i401, 'wxfile://cover-1.jpg');
+    assert.equal(downloads, 1);
+    assert.equal(reads.length, 1);
+    page.onHide();
+    assert.equal(page.data.latestDesignerMessageId, '');
+    assert.deepEqual(page.data.designerCardImages, {});
+    // The unchanged-conversation resume (controller.show emits no `messages`
+    // patch) must still re-derive the cards from the retained window.
+    await page.onShow(); await flush();
+    assert.equal(page.data.latestDesignerMessageId, '71');
+    assert.equal(page.data.designerCardImages.i401, 'wxfile://cover-1.jpg');
+    assert.equal(downloads, 2);
+    assert.equal(reads.length, 2);
+    assert.ok(page.data.designerCardPortraits['501']);
+  } finally { global.getApp = oldApp; global.wx = oldWx; }
 });

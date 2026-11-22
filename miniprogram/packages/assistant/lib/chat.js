@@ -470,7 +470,8 @@ class ChatController {
       if (!entry || !this.valid(epoch)) return null;
       const c = await this.createConsultation(entry, noticeWasShown);
       if (!this.valid(epoch)) return null;
-      this.conversationId = c.id; this.set({ conversation: c }); return c.id;
+      await this.adoptConversation(c, epoch);
+      return this.conversationId;
     } catch (error) { this.fail(error, epoch); return null; }
     finally { this.setIf(epoch, { busy: false }); }
   }
@@ -535,6 +536,19 @@ class ChatController {
     return this.send();
   }
 
+  // The create receipt is a plain conversation DTO without `reportContext`.
+  // When the entry binds a report (a follow-up lead), the send mutation must
+  // echo the authoritative reportContext version, which only the conversation
+  // detail carries; sending straight from the DTO is rejected as
+  // context_changed. Read the detail once before handing the conversation to
+  // the composer.
+  async adoptConversation(created, epoch) {
+    this.conversationId = created.id;
+    const detail = await this.client.read(`/conversations/${created.id}`).catch(() => null);
+    if (!this.valid(epoch)) return;
+    this.set({ conversation: detail || created });
+  }
+
   async sendMessage() {
     const s = this.state;
     if (!this.visible || s.busy || s.loading || s.fatal || s.pendingAction) return;
@@ -543,11 +557,12 @@ class ChatController {
     if (!text || text.length > s.maxChars) return;
     const epoch = this.epoch, noticeWasShown = s.staffProfileCapture;
     let committed = false;
-    // `sending` keeps the approved conversation view (optimistic message and
-    // run state) in place until the authoritative projection of this send is
-    // applied. `messages` and `pendingText` are both transiently empty between
-    // the accepted write and that read, which must not re-render the welcome
-    // screen the customer already left.
+    // `sending` keeps the approved conversation view (pending bubble and run
+    // state) in place until the authoritative projection of this send is
+    // applied. The pending bubble is rendered immediately so a send never
+    // waits on the conversation-creation and window reads before anything is
+    // visible, and it must not re-render the welcome screen the customer
+    // already left.
     this.set({ busy: true, error: '', pendingText: text, sending: true });
     try {
       if (!this.conversationId) {
@@ -555,8 +570,7 @@ class ChatController {
         if (!this.valid(epoch) || !entry) return;
         const created = await this.createConsultation(entry, noticeWasShown);
         if (!this.valid(epoch)) return;
-        this.conversationId = created.id;
-        this.set({ conversation: created });
+        await this.adoptConversation(created, epoch);
       }
       const result = await this.client.mutate(`send:${this.conversationId}`, `/conversations/${this.conversationId}/messages`, {
         content: { version: 1, blocks: [{ type: 'text', text }],
@@ -566,10 +580,14 @@ class ChatController {
       if (!this.valid(epoch)) return;
       committed = true;
       this.speechInput = null;
-      this.set({ draft: this.operationalDraft == null ? '' : this.operationalDraft, pendingText: '', pendingSend: false });
+      this.set({ draft: this.operationalDraft == null ? '' : this.operationalDraft, pendingSend: false });
       this.operationalDraft = null;
       this.applyRun({ ...result, id: result.runId });
       await this.snapshot(this.conversationId, epoch);
+      // The pending bubble stays until the authoritative window of this send
+      // has been applied, so the accepted message never blinks out between
+      // the write and its render.
+      this.setIf(epoch, { pendingText: '' });
     } catch (error) {
       if (this.valid(epoch)) {
         this.set({ pendingSend: !committed && uncertain(error), ...(committed ? { pendingText: '' } : {}) });

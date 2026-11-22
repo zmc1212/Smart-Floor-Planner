@@ -4,6 +4,8 @@
 
 `POST /api/miniprogram/assistant/entry-context` 下发服务档案资格。按原方式发送首条消息时，客户端用 `staffProfileNotice` 标记已显示用途，服务器仅接受签名入口内的档案。会客室沿用 [C01 的欢迎说明](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md) 和原输入区。[C02 批准稿](../design-references/xiaok-assistant-phase1-ppt-v1/sources/slide06-needs.png) 仍承接已有「查看需求提案」。旧版的主动共享、撤回及回顾接口只投影业主明确共享的信息。[后台读取](./admin-system-modules.zh-CN.md)。
 
+**聊天发送链路（Implemented）。** 点击发送后「发送中」气泡立即上屏，并保持到本条消息的权威投影落地，不再在提交与读回之间闪烁消失。发送不再等待定位同步与户型档案预检：定位沿页面进入和推荐入口按需同步，未授权或解析失败的结果带 5 分钟锁存，不逐次重复 DELETE/定位请求（显式授权请求仍即时重试）；定位变更后的重新投影改为后台快照，不抢占进行中的写入。新建会话先读取一次会话详情再发送——绑定日报的入场凭证（如跟进线索）要求首条消息回传 `reportContextVersion`，仅凭创建回执发送会被拒为 `context_changed`。接口、路由与权限边界不变；视觉沿用原「发送中」气泡。实测（企业 3 业主身份、生产 HTTPS、Stable 390×844）：点击→气泡 59~64ms，消息上屏 349~753ms，新对话首条含创建与详情读取 753ms（修复前气泡 1.2~1.7s、上屏 1.5~2.0s）。证据：`tmp/send-latency-20261122/`。
+
 真实聊天控制器和隔离 PostgreSQL 接口覆盖普通发送、后台读取及来源和档案失权。服务专项 24 项、小程序 89 项通过。开发版 `20261118.1` 已通过官方 DevTools 上传，用途说明随正常聊天入口显示。微信公众平台的浏览器访问被站点安全策略拦截，正式审核和发布待完成。[上传回执](../tmp/staff-profile-release-20261118/miniprogram-upload-status.json)。
 
 上传版聊天控制器使用精艺智家获准测试业户连接正式 HTTPS。后端 `20261118-003` 已修复阶段词抢答普通首句及颜色偏好覆盖房屋的问题。`002` 的 11 轮聊天覆盖厨房/卫生间提问、更正、回顾、阶段读取和重进，并保留房屋投影失败。独立的 `003` 四轮验证后台超级管理员可见正确的房屋、居住、风格和时间。两批均真实写入并重进未确认草稿，没有画像确认或共享。后台房间汇总仍为 Limited：私聊回顾的洗碗机未进入目前仅显示卫生间的单来源字段。本次后端修复无需改动小程序源码。Stable 原生发送此前超时，本次共享验收守卫鉴权未通过，未获取原生控制器。原生页面发送及真机仍未验证，全量 PostgreSQL 回归保留原失败。[正式服务实证与分批记录](../tmp/staff-profile-housing-correction-20261118/production-verification.json)、[原生尝试与资源守卫](../tmp/staff-profile-first-reply-20261118/native-resource-preflight.json)。

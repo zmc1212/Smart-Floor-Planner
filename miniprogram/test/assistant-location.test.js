@@ -2,16 +2,18 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { NearbyLocationController } = require('../packages/assistant/lib/location');
 const region = () => ({ cityCode: '330100', cityName: '杭州市', district: '西湖区', source: 'wechat_location', resolvedAt: new Date().toISOString() });
-test('the first message creates its own consultation before resolving location and sending', async () => {
+test('the composer send reaches the controller directly and location stays off the send path', async () => {
   const previous = global.Page; let page;
   global.Page = value => { page = value; };
   try { require('../packages/assistant/chat/chat'); } finally { global.Page = previous; }
   const events = [], context = { _alive: true, _shown: true, data: { draft: '我想看看附近的工地', canSend: true },
-    controller: { handoffConversation: async () => { events.push('create'); context.data.conversation = { id: '11' }; return '11'; }, send: async () => events.push('send') },
-    syncLocation: async () => { assert.equal(context.data.conversation.id, '11'); events.push('location'); return {}; } };
-  await page.send.call(context); assert.deepEqual(events, ['create', 'location', 'send']);
-  context.data.conversation = null; context.controller.handoffConversation = async () => null; events.length = 0;
+    controller: { send: async () => events.push('send') },
+    syncLocation: async () => { events.push('location'); return {}; } };
+  await page.send.call(context); assert.deepEqual(events, ['send']);
+  context._alive = false; events.length = 0;
   await page.send.call(context); assert.deepEqual(events, []);
+  context._alive = true; context.data.conversation = null; events.length = 0;
+  await page.send.call(context); assert.deepEqual(events, ['send']);
   const previousApp = global.getApp; global.getApp = () => ({ globalData: { token: 'synthetic' } });
   try {
     for (const state of ['pendingSend', 'pendingAction', 'uncertainRun']) {
@@ -46,6 +48,40 @@ test('denial clears server region without repeated permission prompts; failure r
     assert.ok((await broken.controller.ensure('11', true)).notice); assert.equal(broken.calls.at(-1).method, 'DELETE');
     global.wx.getLocation = ({ success }) => success({ latitude: 30.25, longitude: 120.13 });
     assert.ok((await broken.controller.ensure('11', true)).region);
+  } finally { global.wx = old; }
+});
+test('an ungranted or failing location latches its cleanup; explicit permission requests still retry', async () => {
+  const old = global.wx;
+  try {
+    const f = fixture({});
+    const first = await f.controller.ensure('11');
+    assert.equal(first.changed, true);
+    assert.equal(f.calls.filter(call => call.method === 'DELETE').length, 1);
+    const latch = await f.controller.ensure('11');
+    assert.deepEqual(latch, {});
+    assert.equal(f.calls.filter(call => call.method === 'DELETE').length, 1, 'latched calls must not repeat the DELETE');
+    // An explicit request is never latched: with the scope undecided it goes
+    // through the wx permission flow, and a successful fix clears the latch.
+    const asked = await f.controller.ensure('11', true);
+    assert.ok(asked.region);
+    assert.equal(f.controller.denied, null);
+    // A hard denial with an explicit request still reports the notice.
+    const refused = fixture({ 'scope.userLocation': false });
+    assert.match((await refused.controller.ensure('11', true)).notice, /定位未授权/);
+    assert.equal(refused.calls.at(-1).method, 'DELETE');
+    // Identity change never reuses the previous latch.
+    f.session('synthetic-b');
+    const other = await f.controller.ensure('11');
+    assert.equal(other.changed, true);
+    assert.equal(f.calls.filter(call => call.method === 'DELETE').length, 2, 'a new identity never reuses the latch');
+    const broken = fixture({ 'scope.userLocation': true }, { errMsg: 'getLocation:fail' });
+    assert.ok((await broken.controller.ensure('11')).notice);
+    assert.deepEqual(await broken.controller.ensure('11'), {});
+    assert.equal(broken.calls.filter(call => call.method === 'DELETE').length, 1, 'a failed fix latches the cleanup too');
+    global.wx.getLocation = ({ success }) => success({ latitude: 30.25, longitude: 120.13 });
+    const recovered = await broken.controller.ensure('11', true);
+    assert.ok(recovered.region);
+    assert.equal(broken.controller.denied, null, 'a successful fix clears the latch');
   } finally { global.wx = old; }
 });
 test('reentry reuses a recent server region; switching identity while acquiring discards late location', async () => {
