@@ -271,7 +271,7 @@ export async function failRun(lease: Lease, code: string, outcomeKnown=false, de
 /** Deliver a fixed notice for customer source and commitment rejections.
  * Infrastructure failures, staff previews, internal actions and committed
  * answers retain their existing behavior. */
-export async function completeSafeFallback(lease: Lease, code: SafeFallbackCode | 'ungrounded_response_scope') {
+export async function completeSafeFallback(lease: Lease, code: SafeFallbackCode | 'ungrounded_response_scope' | 'invalid_model_answer' | 'invalid_model_citation') {
   try {
     return await withTenantTransaction(lease.enterpriseId, async tx => {
       const { job, run, conversation } = await runContext(tx, lease);
@@ -284,8 +284,31 @@ export async function completeSafeFallback(lease: Lease, code: SafeFallbackCode 
       const reportScoped = !!reportContext(conversation.entry_snapshot).selection
         || (run.policy_snapshot as Row).reportContextVersion !== undefined;
       const question = safeText(trigger.content as MessageContent);
-      let noticeCode: SafeFallbackCode | null = code === 'ungrounded_response_scope' ? null : code;
+      const rejectedRepair = code === 'invalid_model_answer' || code === 'invalid_model_citation';
+      let noticeCode: SafeFallbackCode | null = rejectedRepair || code === 'ungrounded_response_scope' ? null : code;
+      let priorValidationCode: string | undefined;
       if (code !== 'source_read_required' && !reportScoped && safeFallbackApplies('source_read_required', question)) {
+        if (rejectedRepair) {
+          // A malformed repair must not erase an audited safety rejection.
+          // Restrict recovery to this consultation's completed repair and read.
+          if (conversation.purpose !== 'customer_consultation' || explicitNeedWriteStatement(question)
+            || explicitHumanHandoffRequested(question)) return false;
+          const prior = await one(tx, sql`select validation.input_summary->>'code' as code
+            from app.assistant_run_steps validation
+            where validation.enterprise_id=${lease.enterpriseId} and validation.run_id=${lease.runId}
+              and validation.kind='agent_validation' and validation.status='failed'
+              and (validation.input_summary->>'code', validation.input_summary->>'scope') in
+                (('unsupported_model_commitment','authorized_citation_only'), ('ungrounded_response_scope','authorized_response_scope'))
+              and exists (select 1 from app.assistant_run_steps checkpoint
+                join app.assistant_run_steps model on model.enterprise_id=checkpoint.enterprise_id and model.run_id=checkpoint.run_id
+                  and model.kind='agent_model' and model.status='succeeded'
+                  and model.input_summary->>'turn'=checkpoint.private_checkpoint->>'turn'
+                where checkpoint.enterprise_id=validation.enterprise_id and checkpoint.run_id=validation.run_id
+                  and checkpoint.kind='agent_checkpoint' and checkpoint.private_checkpoint->>'validationRepairs'='1')
+            order by validation.step_seq desc limit 1`);
+          if (!prior) return false;
+          priorValidationCode = String(prior.code);
+        }
         // The retrieved passages may provide too little support for a draft's
         // quantities or scope. The rejection and the displayed notice have
         // different purposes, and the rejected draft is never delivered.
@@ -311,7 +334,8 @@ export async function completeSafeFallback(lease: Lease, code: SafeFallbackCode 
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
         values(${lease.enterpriseId},${lease.runId},${Number(next?.seq || 1)},'agent_fallback','succeeded',
-          ${JSON.stringify({ code, noticeCode, protocol: 'safe-fallback-v1', providerStarted: !!job.provider_started_at, reportScoped })}::jsonb)`);
+          ${JSON.stringify({ code, noticeCode, ...(priorValidationCode ? { priorValidationCode } : {}),
+            protocol: 'safe-fallback-v1', providerStarted: !!job.provider_started_at, reportScoped })}::jsonb)`);
       const message = await appendMessage(tx, lease.actor, String(conversation.id), { author: 'assistant', runId: lease.runId,
         purpose: 'agent.reply', content: safeFallbackContent(noticeCode, { reportScoped }) });
       await tx.execute(sql`update app.assistant_messages set answer_kind='insufficient_evidence'

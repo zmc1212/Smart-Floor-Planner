@@ -7,7 +7,7 @@ import { finalToolForMessages, agentToolsForMessage, agentToolsForTurn } from '.
 import { knowledgeSynthesisSources, parseSynthesis, synthesisInstructions } from '../agent/synthesis';
 import { synthesisQuestionPrefix } from '../agent/model-policy';
 import { compileModelRequest } from '../agent/model-request';
-import { parseSourceExcerptAnswer, sourceExcerptInstructions } from '../agent/source-excerpts';
+import { hasQualifiedMeasurementExcerpt, parseSourceExcerptAnswer, sourceExcerptInstructions } from '../agent/source-excerpts';
 
 const currentQuestion='我在看《精艺》这份装修手册，卫生间防水前要准备什么？';
 const evidence:Evidence[]=[{ref:{type:'knowledge_chunk',id:'2835',version:'411'},hash:'synthetic',
@@ -59,6 +59,43 @@ test('source selection never authorizes foreign identities, prose, extra fields 
   const unsafe:Evidence[]=[{...evidence[0],text:'这个项目已经验收合格，可以保证安全入住。'}];
   assert.throws(()=>parseSourceExcerptAnswer('{"selections":["E1"]}',unsafe,{currentQuestion:'我家这个项目可以验收合格了吗？'}),/unsupported_model_commitment|ungrounded_response_scope/);
   assert.equal(parseSourceExcerptAnswer('{"selections":[]}',evidence,{currentQuestion}).answerKind,'insufficient_evidence');
+});
+
+test('an ordinary workmanship answer selects the authorized measurement clause without rewriting its subject', () => {
+  const question = '卫生间防水做完之后，闭水试验要放多深的水、蓄多久才算合格？';
+  const quote = '卫生间闭水试验时，最高蓄水深度不低于20mm，蓄水观察时间不低于48小时。';
+  const source: Evidence = { ...evidence[0], text: quote, knowledge: { enterpriseName: '合成企业', documentId: '1', title: '合成工艺',
+    versionId: '411', versionNumber: 1, scope: 'enterprise', projectId: null, category: '防水', sourceType: 'faq',
+    effectiveFrom: '2026-11-01', effectiveTo: null, published: true } };
+  const tools = agentToolsForMessage(question, true);
+  const compile = (items: Evidence[], withProject = false) => {
+    const excerpts = answerExcerpts(items);
+    const messages: ModelMessage[] = [
+      { role: 'system', content: [{ type: 'text', text: synthesisInstructions + synthesisQuestionPrefix + JSON.stringify({ currentQuestion: question }) }] },
+      { role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: 'current', text: question }) }] },
+      paired(items)[0],
+      { role: 'tool', callId: 'read', content: JSON.stringify({ knowledgeStatus: 'ready', evidence: excerpts,
+        synthesisSources: knowledgeSynthesisSources(items), qualifiedMeasurementExcerpt: hasQualifiedMeasurementExcerpt(excerpts, items) }) },
+    ];
+    if (withProject) messages.push(
+      { role: 'assistant', content: '', toolCalls: [{ id: 'project', name: 'query_business', arguments: '{}' }] },
+      { role: 'tool', callId: 'project', content: JSON.stringify({ resultKey: 'project-result', synthesisSources: [] }) });
+    return compileModelRequest({ question, triggerId: 'current', turn: 1, purpose: 'answer', messages, tools,
+      sourceExcerpts: true, sourceQuestionCoverage: true,
+      toolsForTurn: (q, m, t, id) => agentToolsForTurn(q, m, t, id, { sourceExcerpts: true, sourceQuestionCoverage: true }) });
+  };
+  const result = compile([source]);
+  const fields = (compiled: typeof result) => compiled.dispatchTools.find(tool => tool.name === 'final_response')!
+    .parameters.properties as Record<string, { enum?: string[] }>;
+  assert.deepEqual(fields(result).kind.enum, ['knowledge']);
+  assert.ok(!fields(result).coverage);
+  assert.ok(result.modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(sourceExcerptInstructions))));
+  assert.deepEqual(parseSourceExcerptAnswer('{"selections":["E1"]}', [source], { currentQuestion: question }).segments,
+    [{ text: quote, citations: [{ sourceId: source.ref.id, quote }] }]);
+  assert.notDeepEqual(fields(compile([source], true)).kind.enum, ['knowledge']);
+  assert.notDeepEqual(fields(compile([{ ...source, text: quote.replace('最高蓄水深度', '蓄水深度') }])).kind.enum, ['knowledge']);
+  assert.throws(() => parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'evidence', text: quote.replace('20mm', '30mm'),
+    citations: [{ sourceId: 'K' + source.ref.id, quote }] }] }), knowledgeSynthesisSources([source])), /unsupported_model_commitment/);
 });
 
 test('shared craft follow-ups keep the same source selector without relying on source-title keywords',()=>{

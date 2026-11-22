@@ -738,7 +738,9 @@ Assistant Worker 本地诊断 **Implemented**。Worker 原子写入请求、成�
 
 **I7.5.20 正式知识问答降级（Implemented）。** 文本调用在获权检索成功后失败时，同一任务可保存审核原文和引用，以 `content.answerMode=facts_only` 标记。提交复核当前项目、阶段、发布、版本、哈希及权限。依据不足时保存 `insufficient_evidence`。任务回执保留模型错误与检索步骤，已发出的未知计费调用保持 `reconciling`。托管检索遇到允许切换的可用性错误时才使用获权且兼容的本地索引。凭据拒绝或本地索引不兼容时停止检索。[I7.5.20 验收](./xiaok-i7520-facts-only-ai-acceptance.md)。
 
-百炼托管混合检索融合已核验远程切片与同一获权就绪分片的本地词项结果。返回多段时可保留最高且适用的词项命中，尊重明确指定来源及调用方重排。两路均受发布、受众、项目、阶段、版本和哈希约束。业主询问施工依据、当轮知识读取成功，但答案被无依据校验拒绝时，使用既有 `source_unavailable` 回执。步骤记录原拒绝码和实际回执类型。[闭水核验](../tmp/xiaok-agent-eval-20261121/repair/assessment.json)。
+百炼托管混合检索融合已核验远程切片与同一获权就绪分片的本地词项结果。返回多段时可保留最高且适用的词项命中，尊重明确指定来源及调用方重排。两路均受发布、受众、项目、阶段、版本和哈希约束。业主询问施工依据、当轮知识读取成功，但答案被无依据校验拒绝时，使用既有 `source_unavailable` 回执。步骤记录原拒绝码和实际回执类型。普通业主咨询仅读企业知识并取得带最高、最低等量测限定的已发布条款时，模型沿既有原文协议选完整片段。服务端校验引用、量数和回答范围，重验来源权限后按原文交付。[闭水核验](../tmp/xiaok-agent-eval-20261121/repair/assessment.json) · [原文措辞复验](../tmp/xiaok-agent-eval-20261121/repair/qualifier-assessment.json)。
+
+符合上述条件的业主咨询已有依据校验拒绝记录且修订稿格式或引用无效时，仍按 `source_unavailable` 交付。回执步骤同时保留修订错误和原依据拒绝码。
 
 1B知识回答、结构化引用/失效校验、无依据处理及本人预览后端 **Implemented**。同一ConversationService/JobQueue在授权检索后调用现有文本模型；每段回答必须引用本次证据及逐字摘录，最终提交复查权限、epoch、hash/profile和有效期。无候选/低相关或模型明确无依据时保存固定insufficient_evidence notice；检索故障、非法引用或畸形输出不会冒充有效回答。0061新增强制RLS引用表及消息/run answer_kind；引用与最终消息、终态同事务落库，reset/purge已包含引用。后续读取会隐藏已撤回/受限/过期/draft编辑失效来源及整条依赖回答，仍获授权的旧发布版本标记historical。
 

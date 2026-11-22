@@ -773,7 +773,7 @@ P2S 第一批 C01/C02/S01/U01 的聊天与接待主链路 **Implemented**，自�
 
 **I7.5.20 正式知识问答降级（Implemented）。** 文本模型调用失败时，原 C01 用已有提示、正文和引用入口展示 `facts_only`，企业/项目审核原文与平台公共知识各有标注。打开引用重新校验权限，可查看标题、可用页码、版本和摘录。撤权后原回答失效，依据不足使用既有 `insufficient_evidence` 提示。[I7.5.20 验收](./xiaok-i7520-facts-only-ai-acceptance.md)。
 
-C01 的获权工艺回答沿原引用按钮和来源纸页展示。当轮已读取企业知识而施工依据问答被校验拒绝时，显示既有 `source_unavailable` 回执。无依据数值在交付前拦截，报告和价格工期承诺仍沿相应回执。[闭水核验](../tmp/xiaok-agent-eval-20261121/repair/assessment.json)。
+C01 仅读企业知识的工艺回答，可在正文展示带最高蓄水深度等量测限定的所选条款。点击引用可在来源纸页核对同一原文。当轮已读取企业知识而施工依据问答被校验拒绝时，即使修订稿格式或引用无效，也显示既有 `source_unavailable` 回执。服务端在交付前拦截无依据数值。[闭水核验](../tmp/xiaok-agent-eval-20261121/repair/assessment.json) · [原文措辞复验](../tmp/xiaok-agent-eval-20261121/repair/qualifier-assessment.json)。
 
 **I7.5.23 共享认证加固（开发环境 Implemented）。** 小程序 Token 签发使用统一生产 JWT 解析器：缺失、默认、过短或占位 `JWT_SECRET` 拒绝出票，验证失败关闭。员工入驻与密码重置生成一次性随机密码，仅显示一次且首次登录强制修改；历史账号保留原强制改密合同。小程序端不接收 Provider 加密密钥。[I7.5.23 加固](./xiaok-i7523-production-security-hardening.md)。
 

@@ -244,6 +244,11 @@ function mentionsMetric(clause: string, metric: string) {
 
 const constraintPattern = /([\p{Script=Han}，,、\s]{2,80}?)(不得小于|不得大于|不小于|不低于|不少于|不大于|不高于|不多于|不超过|至少|至多|大于|小于)\s*(\d+(?:\.\d+)?)\s*(mm|cm|m\b|毫米|厘米|公分|米|小时|分钟|秒|天)/giu;
 const observationPattern = /([\p{Script=Han}]{2,24})\s*(\d+(?:\.\d+)?)\s*(mm|cm|m\b|毫米|厘米|公分|米|小时|分钟|秒|天)/giu;
+export function hasQualifiedMeasurementLimit(quote: string) {
+  return [...quote.matchAll(constraintPattern)].some(([, metric]) =>
+    /最高|最低|最大|最小|最深|最浅/u.test(metric.split(/[，,、\n]/u).at(-1) ?? ''));
+}
+
 function compareDecimals(left: string, right: string) {
   const [li, lf = ''] = left.split('.'), [ri, rf = ''] = right.split('.'), scale = Math.max(lf.length, rf.length);
   const l = BigInt(li + lf.padEnd(scale, '0')), r = BigInt(ri + rf.padEnd(scale, '0'));

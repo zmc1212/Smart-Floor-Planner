@@ -78,7 +78,7 @@ import { isReportAnswerSnapshot, reportFinalResponseIssue, reportFinalProtocol, 
 import { ownerCitationCarrierProtocol, projectFinalToolOutput } from './final-output';
 export { projectFinalToolOutput } from './final-output';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
-import { sourceExcerptProtocol, sourceExcerptFinalTool, sourceExcerptIds, parseSourceExcerptAnswer } from './source-excerpts';
+import { hasQualifiedMeasurementExcerpt, sourceExcerptProtocol, sourceExcerptFinalTool, sourceExcerptIds, parseSourceExcerptAnswer } from './source-excerpts';
 import { sourceQuestionCoverageProtocol, sourceQuestionReadTool, sourceQuestionFinalTool, parseSourceQuestionQuery,
   readSourceQuestionCoverage, parseSourceQuestionAnswer, type SourceQuestionCoverage } from './source-question-coverage';
 import { knowledgeExplanationProtocol, naturalKnowledgeProtocol, naturalKnowledgeInstructions, naturalKnowledgeReadTool, currentKnowledgeQuestion, knowledgeQuantityScopeProtocol, knowledgeExplanationInstructions, exactKnowledgeQuoteRequested, knowledgeExplanationReadTool, knowledgeExplanationFinalTool,
@@ -331,6 +331,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
   const boundReminder = boundSources.length > 0;
   let queriedSources = boundReminder, synthesisResult = boundReminder, reportAnswer = false, otherDisplayResult = false, designerResult = false, naturalSourceRead = false;
   let excerptIds:string[]|undefined;
+  let qualifiedMeasurementExcerpt = false, mixedSourceRead = false;
   let questionCoverage: SourceQuestionCoverage | undefined;
   let reportPacketCoverage: unknown;
   for (const [index, message] of messages.entries()) {
@@ -345,9 +346,11 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
       const packet = JSON.parse(message.content);
       if (!packet || typeof packet !== 'object' || Array.isArray(packet)) continue;
       if(call.name==='search_knowledge' || isKnowledgeTool(call.name)) {
-        excerptIds=sourceExcerptIds(packet)??excerptIds;
+        const readExcerptIds = sourceExcerptIds(packet);
+        excerptIds = readExcerptIds ?? excerptIds;
+        qualifiedMeasurementExcerpt = packet.qualifiedMeasurementExcerpt === true && !!readExcerptIds?.length;
         if (sourceQuestionCoverage && packet.questionCoverage) questionCoverage = readSourceQuestionCoverage(packet.questionCoverage);
-      }
+      } else mixedSourceRead = true;
       // Pure source reads need an answer composed from their actual catalog.
       // A result key is a receipt, not proof that a snapshot list answers the
       // customer's question. Keep action cards and clarification displays.
@@ -384,6 +387,9 @@ export function finalToolForMessages(messages:ModelMessage[], question = '', sou
     if (sourceQuestionCoverage && !questionCoverage) fail('context_changed');
     return questionCoverage ? sourceQuestionFinalTool(tool, questionCoverage) : tool;
   }
+  if (sourceExcerpts && reportPlan === undefined && !boundReminder && qualifiedMeasurementExcerpt && excerptIds
+    && !mixedSourceRead && !independentAdvice && !explicitNeedWriteStatement(question) && !explicitHumanHandoffRequested(question))
+    return sourceExcerptFinalTool(finalTool, excerptIds);
   const allIds=[...new Set([...boundSources.flatMap(source => modelCitationCatalog(source).map(option => option.citationId)), ...messages.flatMap(message=>{
     if(message.role!=='tool')return [];
     try{const packet=JSON.parse(message.content);return (Array.isArray(packet?.synthesisSources)?packet.synthesisSources:[])
@@ -2589,8 +2595,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               const synthesisSources = [...knowledgeSynthesisSources(selected,titles),
                 ...[...businessSources, ...(site ? [site] : [])].flatMap(s=>businessSynthesisSources(s.resultKey,s.snapshot))];
               const unresolvedConflict = unresolvedSynthesisConflict(synthesisSources);
+              const excerpts = answerExcerpts(selected);
+              const qualifiedMeasurementExcerpt = sourceMode.sourceExcerpts && lease.actor.principal.kind === 'user'
+                && initial.conversation.purpose === 'customer_consultation' && !initial.shared && !initial.staffFollowup
+                && !reportSource && !specialist && !initial.mediaRefs.length && !bound && !site && !unresolvedConflict
+                && hasQualifiedMeasurementExcerpt(excerpts, selected);
               return { content: JSON.stringify({ knowledgeStatus, unresolvedConflict,
-                ...(ragTool && knowledgeStatus !== 'ready' ? { knowledgeNotice: '本次未检索到适用于当前范围的企业标准。' } : {}), ...(questionCoverage ? { questionCoverage } : {}), evidence: answerExcerpts(selected), synthesisSources:synthesisSources.map(({evidence,...source})=>({...source,
+                ...(qualifiedMeasurementExcerpt ? { qualifiedMeasurementExcerpt } : {}),
+                ...(ragTool && knowledgeStatus !== 'ready' ? { knowledgeNotice: '本次未检索到适用于当前范围的企业标准。' } : {}), ...(questionCoverage ? { questionCoverage } : {}), evidence: excerpts, synthesisSources:synthesisSources.map(({evidence,...source})=>({...source,
                 ...(ragTool && evidence ? { chunkId: evidence.ref.id, versionId: evidence.ref.version } : {}),
                 ...(evidence?.file?{file:evidence.file,...(source.text.length<=400?{citationQuote:source.text}:{})}:{}),
                 ...(evidence?.professional?{professional:{origin:evidence.professional.entry.origin,conditions:evidence.professional.entry.conditions,prerequisites:evidence.professional.entry.prerequisites,exceptions:evidence.professional.entry.exceptions},applicability:evidence.professional.applicability,context:evidence.professional.context}: {})})),
@@ -3012,7 +3024,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     // reservations for reconciliation, including definitive HTTP rejections.
     const recovery = error === textFailure ? await recoverKnowledgeAnswer(lease, error) : null;
     if (recovery?.completed) return;
-    if (error instanceof AssistantError && (code === 'source_read_required' || code === 'unsupported_model_commitment' || code === 'ungrounded_response_scope')) {
+    if (error instanceof AssistantError && (code === 'source_read_required' || code === 'unsupported_model_commitment' || code === 'ungrounded_response_scope'
+      || error !== textFailure && (code === 'invalid_model_answer' || code === 'invalid_model_citation'))) {
       try { if (await completeSafeFallback(lease, code)) return; }
       catch (e) { if (!(e instanceof AssistantError && e.code === 'context_changed')) console.error('[assistant] safe fallback failed', lease.runId, e); }
     }

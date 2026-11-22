@@ -82,7 +82,11 @@ export function compileModelRequest(input: {
     dispatchTools = [nativeFinalDefinition(dispatchTools[0], { quantityValidation: 'application' })];
   if (input.profile === consultationLongProfile.id && purpose === 'answer' && dispatchTools.length === 1)
     dispatchTools = [constrainSynthesisRepairTool(dispatchTools[0], focused)];
-  const excerptMode=purpose==='answer'&&input.sourceExcerpts&&(input.requiredKnowledge||originalAnswerOnly(question));
+  const excerptMode = purpose === 'answer' && (input.sourceExcerpts && (input.requiredKnowledge || originalAnswerOnly(question))
+    || dispatchTools.some(tool => {
+      const kinds = (tool.parameters.properties as Record<string, { enum?: string[] }> | undefined)?.kind?.enum;
+      return tool.name === 'final_response' && kinds?.length === 1 && kinds[0] === 'knowledge';
+    }));
   const explanationMode = purpose === 'answer' && input.knowledgeExplanation && (input.naturalKnowledge || input.requiredKnowledge || originalAnswerOnly(question)
     || dispatchTools.some(tool => tool.name === 'final_response' && ((tool.parameters.properties as Record<string, { enum?: string[] }>)?.kind?.enum || []).includes('knowledge_explanation')));
   const reportMode = purpose === 'answer' && dispatchTools.some(tool => tool.name === 'final_response'
@@ -110,7 +114,8 @@ export function compileModelRequest(input: {
       reportFinalOutputTokens: input.reportFinalOutputTokens } }) : purpose === 'answer' && (input.profile || input.naturalKnowledge)
     ? projectConsultationModelView(policyView, dispatchTools, input.naturalKnowledge ? naturalKnowledgeInstructions : undefined) : policyView;
   const excerptView=excerptMode?sourceExcerptModelView(contentView):contentView;
-  if (excerptMode && input.sourceQuestionCoverage) excerptView.push({ role: 'system', content: [{ type: 'text', text: sourceQuestionCoverageInstructions }] });
+  if (excerptMode && input.sourceQuestionCoverage && (input.requiredKnowledge || originalAnswerOnly(question)))
+    excerptView.push({ role: 'system', content: [{ type: 'text', text: sourceQuestionCoverageInstructions }] });
   const specializedView = specialist ? specialistEvidenceView(excerptView, question) : excerptView;
   const wireView=input.wireProjection?input.wireProjection(specializedView):specializedView;
   const bounded = fitAgentContext(wireView, dispatchTools, { profile: input.profile, purpose, imageContextBudget: input.imageContextBudget,
