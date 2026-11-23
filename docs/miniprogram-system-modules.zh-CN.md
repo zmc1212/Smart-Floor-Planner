@@ -4,7 +4,7 @@
 
 业主会话和后台私有调试都能使用企业的原生运行时绑定，绑定配置和凭据只在服务端读取。
 
-工地详情校验进度权限后返回业主可见的设置；会话详情提供当前可用的词库、追问和附件设置。`GET /api/miniprogram/assistant/conversations/:id/suggestions` 将追问绑定到当前参与者可读的最近回复。`POST /api/miniprogram/xiaok/stage-answer` 继续检查本人项目和阶段绑定的模板版本。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。
+工地详情校验进度权限后返回业主可见的设置；会话详情提供当前可用的词库、追问和附件设置。首次发送和并发读取施工跟进列表均先锁企业设置，再在同一事务内复核业主当前服务线索授权。`GET /api/miniprogram/assistant/conversations/:id/suggestions` 将追问绑定到当前参与者可读的最近回复。`POST /api/miniprogram/xiaok/stage-answer` 继续检查本人项目和阶段绑定的模板版本。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。
 
 **装修画像（Implemented）。** 业主在小 K 会客室照常聊天。可明确对应本人房屋服务档案的新咨询在原欢迎说明处提示用途，小 K 自动把业主原话整理到后台画像。多套房且没有明确档案的咨询、历史私聊和普通公开工地问答保留原咨询范围。新版普通聊天无需打开表单、编辑字段或确认共享。
 

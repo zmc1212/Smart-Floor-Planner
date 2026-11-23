@@ -4,7 +4,7 @@
 
 Owner chat and the administrator’s private preview can use the same enterprise native-runtime binding. The binding and its credentials stay on the server.
 
-The owner-site API exposes only the owner-facing settings after checking progress access. Conversation detail returns the permitted vocabulary, follow-up and attachment settings. `GET /api/miniprogram/assistant/conversations/:id/suggestions` binds suggestions to the participant’s latest available reply. `POST /api/miniprogram/xiaok/stage-answer` still validates the owned project and the stage’s pinned workflow version. [Stage Agent contract](./xiaok-stage-agent-architecture.md).
+The owner-site API exposes only the owner-facing settings after checking progress access. Conversation detail returns the permitted vocabulary, follow-up and attachment settings. The first send and concurrent construction follow-up list lock enterprise settings before rechecking the current service lead in the same transaction. `GET /api/miniprogram/assistant/conversations/:id/suggestions` binds suggestions to the participant’s latest available reply. `POST /api/miniprogram/xiaok/stage-answer` still validates the owned project and the stage’s pinned workflow version. [Stage Agent contract](./xiaok-stage-agent-architecture.md).
 
 **Renovation profile (Implemented).** The owner keeps chatting normally in the XiaoK consultation. New chats that match one owned service record display a short service notice in the existing welcome caption. XiaoK automatically records supported customer excerpts in the staff-side profile. Ambiguous homes, previous private chats and ordinary public site questions stay within their existing consultation scope. The current ordinary chat has no profile form or sharing confirmation.
 

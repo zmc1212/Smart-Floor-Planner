@@ -101,6 +101,19 @@ export function nativeExecutorPrompt(knowledgeEnabled: boolean, delegation = fal
   ].join('\n');
 }
 
+export function stagePreviewCommitmentIssue(text: string) {
+  try {
+    guardAnswerCommitments(text);
+    return null;
+  } catch (error) {
+    if (!(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
+    return {
+      code: error.code,
+      feedback: '请根据交底原文和本轮获权资料重新组织答复。直接区分已有记录、偏好和仍需谁核对的事项。没有业务回执时，只说明具体的待确认状态，保留有效来源和引用。',
+    };
+  }
+}
+
 /** Business snapshots stay authoritative server data. A valid uncited model
  * explanation now accompanies them instead of being discarded (the FastGPT V2
  * discard rule retires with that bridge). Retrieved knowledge/web evidence
@@ -1320,9 +1333,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
           if (issue) citationRepairIssued = true;
           const parameter = issue ? null : parameterIssue(text);
           const specialistIssues = issue || parameter ? [] : checkSpecialistDraft(text);
-          return issue ?? parameter ?? (specialistIssues.length
-            ? { code: specialistIssues[0].issue.code, feedback: specialistIssues.map(item => item.issue.feedback).join('\n') }
-            : null);
+          if (issue || parameter) return issue ?? parameter;
+          if (specialistIssues.length)
+            return { code: specialistIssues[0].issue.code, feedback: specialistIssues.map(item => item.issue.feedback).join('\n') };
+          return stageWorkflow && initial.conversation.purpose === 'knowledge_preview' ? stagePreviewCommitmentIssue(text) : null;
         },
         checkpoint: state => withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);

@@ -108,6 +108,10 @@ Mini `site-capture.js`先把临时文件复制至自有`USER_DATA_PATH/site-capt
 
 ## 一期PPT工艺资料试问（Limited）
 
+**阶段工作台 TXT 预览（Limited）。** 模拟交底首问应指出入门右侧窗边短墙留竖纹，门口收边待现场核对。两轮真实后台试问均正确返回并入库。项目经理视角的追问应区分业主偏好与现场待核对项。首次追问因标题否定正式批准而误拦。接入原生图已有的一次无工具答复修正后，重写仍因否定式「不写已批准」触发 `unsupported_model_commitment`，追问未保存答复。
+
+剩余缺口归 Agent。两份留存草稿均收到四份获权工艺原文，量数背书校验均无异常。逐句回放定位到关于正式状态的否定说明，其余句通过，追加无回执的正向批准仍会被拒绝。区分性证据指向整条自由文本的承诺校验未能识别否定范围，诊断结果仅用于定位。保留两次追问失败并停止措辞试跑。三个独立实模批次分别有 8、7、9 次供应商尝试，实际费用未知。隔离 Worker 已关闭、模型授权已恢复、队列归零。[原始首稿](../tmp/xiaok-two-fixes-20261123/original-preview-steps.json) · [首次追问失败](../tmp/xiaok-two-fixes-20261123/preview-a3c194a7/report.json) · [修正后追问失败](../tmp/xiaok-two-fixes-20261123/preview-7413bbab/report.json) · [留存回放](../tmp/xiaok-two-fixes-20261123/followup-discrimination.json)。
+
 **FastGPT统一装修会话：Limited。固定原生四问旅程已在隔离工作流中端到端通过；候选仍为显式启用、非默认、非生产。** 显式`XIAOK_FASTGPT_WORKFLOWS_FILE.rag.mode=unified`和`rag.grounding=native-chat-quote`选择隔离v4.17.4工作流：原生classifyQuestion→原权限/查询准备→原生datasetSearchNode→原文复核→原生ToolCall仅作有界联网取证（其stopTool把已读原文交给作答节点）→原生chatNode以未改动的v4.17.4严格引用模板（`fastgpt/vendor/strict-quote.ts`）作唯一最终作答节点。通用/公开问题走官方空查询分支，不传企业材料、不调用embedding；企业/混合问题先取证再作答。qwen3.7-plus及百炼text-embedding-v4固定，不新增作答提示条款、关键词路由、换模型、第二Agent、事实库或改答。未知分类拒绝。桥接在所有阶段接受厂商合并的相邻用户消息数组形状；需联网的一轮在取证未新读页面时可沿用本会话仍获权的更早网页原文，仅在完全无获权网页依据时失败。
 
 原C01 `packages/assistant/chat/chat`、`/api/miniprogram/assistant/conversations/*`、schema、markup/样式/素材和批准390×844设计不变；仅显式启用的文字咨询选择候选。原服务继续持有真实保存、获权模型原答历史、引用目录、当前租户/本人/受众/版本/hash检查、来源依赖重进、幂等和逐次计量。FastGPT使用`NO_RECORD_HISTORIES`，原生CITE只解析真实选中来源；网页引用用每轮短编号（`w:<run>:<index>[:<part>]`），保存时逐个对照该轮获权原文核验。

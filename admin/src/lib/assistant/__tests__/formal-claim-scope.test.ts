@@ -18,6 +18,26 @@ test('the actual sourced denial keeps its original wording and cannot become a c
   for (const text of ['不代表方案、费用已批准。', '这并不代表方案和工期已经正式批准。', '不能证明现场落实及验收已批准。']) assert.equal(parse(text), text);
   assert.match(projectDeniedApprovalList(original), /不能据此确认操作状态/);
 });
+test('a preview can explain that an attachment does not constitute an approved plan', () => {
+  const text = '交底写的是窗边短墙竖纹和门口收边待核对，属于未核实的业主意向，不等同于企业工艺标准或已批准的施工方案。';
+  assert.equal(parse(text), text);
+  for (const comparison of [
+    '当前资料并不等同于已经正式批准的施工方案。',
+    '因此不能视为已批准的做法或已完成的验收。',
+    '该交底不能视为项目已批准的施工方案或正式验收结论。',
+  ]) assert.equal(parse(comparison), comparison);
+  for (const claim of [
+    text + '现场已经批准排版。',
+    '不等同于企业工艺标准或已批准的施工方案，但我已联系师傅。',
+    '不等同于企业工艺标准或已批准的施工方案并已付款。',
+    '并非不等同于企业工艺标准或已批准的施工方案。',
+    '这就是已批准的施工方案。',
+    '并非不能视为已批准的做法或已完成的验收。',
+    '不能视为已批准的做法或已完成的验收；同时已付款。',
+    '不能视为已批准的作法并已联系师傅。',
+    '这份交底是项目已批准的施工方案或已完成的验收。',
+  ]) assert.throws(() => parse(claim), /unsupported_model_commitment/, claim);
+});
 test('denial projection does not hide a later positive, double negation, an unknown subject or a second predicate', () => {
   for (const text of [original + '但方案已批准。', original + '已联系师傅。', '不代表方案、费用已批准，但已经验收。',
     '并非不代表方案、费用已批准。', '不是不代表方案、费用已批准。', '不代表方案、费用已批准以及已联系师傅。',

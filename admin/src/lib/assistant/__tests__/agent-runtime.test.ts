@@ -6,6 +6,7 @@ import { parseBailianResponses } from '@/lib/ai/providers/bailian-responses';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import { agentToolsForMessage, projectFinalToolOutput, projectNeedBatchOutput } from '../agent/worker';
 import { parseAgentReply } from '../agent/context';
+import { stagePreviewCommitmentIssue } from '../agent/native-executor';
 import { parseSynthesis } from '../agent/synthesis';
 import { reviewTurnMode, reviewDesignerOnly } from '../agent/review-runtime';
 
@@ -143,6 +144,31 @@ test('the numeric guard sees only visible content and still rejects an unsupport
   assert.doesNotMatch(JSON.stringify(f.saved), /250 mm/);
   f.ports.model = async () => evaluate('管根上翻应为250 mm。', '250 mm');
   await assert.rejects(f.run(), /unsupported_model_commitment/);
+});
+
+test('a stage preview gets one reply repair for the saved attachment commitment rejection', async () => {
+  const f = fixture();
+  const declined = '**客户偏好（业主侧意向，不是企业规定，也不是已批准变更）**';
+  const repaired = '业主初选木纹砖，希望窗边短墙竖排。门口收边是否与客厅门槛齐平，仍等设计师和师傅现场核对。';
+  f.ports.validateFinal = async text => stagePreviewCommitmentIssue(text);
+  let calls = 0;
+  f.ports.model = async (_turn, _messages, tools) => {
+    if (++calls === 1) return { ...answer, text: declined };
+    assert.deepEqual(tools, []);
+    return { ...answer, text: repaired };
+  };
+  const result = await f.run();
+  assert.equal(result.validationRepairs, 1);
+  assert.equal(result.output?.text, repaired);
+  assert.equal(calls, 2);
+
+  calls = 0;
+  f.ports.model = async () => {
+    calls++;
+    return { ...answer, text: '项目经理已经批准该施工变更。' };
+  };
+  await assert.rejects(f.run(), /unsupported_model_commitment/);
+  assert.equal(calls, 2);
 });
 
 test('a terminal final_response follows a paired tool receipt and rejects inline reasoning in either carrier', async () => {

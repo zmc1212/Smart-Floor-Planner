@@ -39,6 +39,10 @@ export async function authorizeHandoffStaff(tx: PostgresTransaction, actor: Acto
 export class AssistantRepository {
   constructor(readonly tx: PostgresTransaction, readonly actor: ActorContext) {}
   async identity() {
+    await this.authorizePrincipal();
+    await this.validateCustomerService();
+  }
+  private async authorizePrincipal() {
     const a = this.actor;
     const enterprise = await one(this.tx, sql`select id from app.enterprises where id=${a.enterpriseId} and status='active' for share`);
     if (!enterprise) fail('assistant_resource_not_found', 404);
@@ -74,13 +78,20 @@ export class AssistantRepository {
     if (a.capabilities.includes('assistant.followup.delivery')) return;
     const user = await one(this.tx, sql`select app.assistant_identity_is_current(${a.principal.userId}::bigint,${a.contextVersion}::integer) as valid`);
     if (!user?.valid) fail('identity_context_invalid', 401);
-    if (a.customerServiceRequired && (await currentCustomerService(this.tx, a.principal.userId)).enterpriseId !== a.enterpriseId)
+  }
+  private async validateCustomerService() {
+    const a = this.actor;
+    if (a.principal.kind === 'user' && !a.capabilities.includes('assistant.followup.delivery') && a.customerServiceRequired
+      && (await currentCustomerService(this.tx, a.principal.userId)).enterpriseId !== a.enterpriseId)
       fail('assistant_resource_not_found', 404);
   }
   async settings(write = false, readLock: RowLock = 'update') {
-    await this.identity();
+    await this.authorizePrincipal();
     const lock = !write && readLock === 'share' ? sql`share` : sql`update`;
     const settings = await one(this.tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${this.actor.enterpriseId} for ${lock}`);
+    // Service resolution takes SHARE locks on leads. A send may update the
+    // same lead's profile, so both reads and writes lock settings first.
+    await this.validateCustomerService();
     if (write && !assistantWritesEnabled(settings)) fail('assistant_disabled', 403);
     return settings;
   }

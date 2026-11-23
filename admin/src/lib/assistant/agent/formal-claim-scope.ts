@@ -194,14 +194,25 @@ export function hasDelegationClaim(text: string) {
 // Project only an explicit, complete denial of approval for a closed list of
 // business subjects. This changes the guard view, never the original answer.
 const subjects = new Set(['方案', '费用', '工期', '现场落实', '验收']);
-const denial = /^(?:但|但是|因此|所以)?(?:这(?:一点)?|客户需求|需求记录|当前资料|该记录)?(?:并)?(?:不代表|不证明|不能证明|不足以证明|不能说明|不意味着)/;
+const denial = /^(?:但(?:是)?|因此|所以|也|仍)?(?:这(?:一点)?|客户需求|需求记录|当前资料|(?:这份|该)(?:记录|资料|交底|附件))?(?:并)?(?:不代表|不证明|不能证明|不足以证明|不能说明|不意味着|不等同于|不等于|(?:不能|不可)(?:直接)?(?:视为|作为|当作|看作)|不是|并非)/u;
+const comparisonConjunction = /、|或(?:者)?|以及|和|及/u;
+const referenceType = /^(?:(?:企业|公司)?(?:工艺)?(?:标准|规范)|(?:正式)?施工(?:方案|计划)|(?:正式)?验收(?:结论|记录|结果|回执))$/u;
+const describedResult = /^((?:企业|公司|项目|团队|现场|业主)?)(?:已(?:经)?(?:成功)?(?:正式)?(?:批准|完成|通过|验收))(?=的[\p{Script=Han}]{1,18}$)/u;
 export function projectDeniedApprovalList(text: string): string {
   return text.split(/([，。；！？\n—,;!?])/).map(clause => {
     const value = clause.trim(), prefix = denial.exec(value);
     if (!prefix) return clause;
-    const predicate = /已(?:经)?(?:成功)?(?:正式)?批准$/.exec(value);
+    const described = value.slice(prefix[0].length).trim();
+    const compared = described.split(comparisonConjunction).map(item => item.trim());
+    // The negation governs the listed reference types. Project only the
+    // result predicate modifying each noun; another claim still gets checked.
+    if (compared.some(item => describedResult.test(item))
+      && compared.every(item => referenceType.test(item) || describedResult.test(item))) {
+      return prefix[0] + compared.map(item => item.replace(describedResult, '$1待核实')).join('、');
+    }
+    const predicate = /已(?:经)?(?:成功)?(?:正式)?批准$/.exec(described);
     if (!predicate) return clause;
-    const objects = value.slice(prefix[0].length, predicate.index).split(/、|或|以及|和|及/);
+    const objects = described.slice(0, predicate.index).split(/、|或|以及|和|及/);
     if (objects.length < 2 || objects.length > subjects.size || objects.some(o => !subjects.has(o))) return clause;
     return '不能据此确认操作状态';
   }).join('');
