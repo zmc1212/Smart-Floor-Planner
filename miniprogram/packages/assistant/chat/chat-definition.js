@@ -66,7 +66,7 @@ module.exports = () => ({
 			{ title: '装修风格', helper: '找找灵感', icon: 'requirement-style', text: '想聊聊适合我家的装修风格' },
 			{ title: '预算安排', helper: '先聊想法', icon: 'requirement-budget', text: '想聊聊装修预算怎么安排' },
 		],
-		siteContext: null, siteTopics: [], siteGreeting: '', stageExperience:null, inputCandidates:[], followQuestions:[], followMessageId:'',
+		siteContext: null, siteTopics: [], siteGreeting: '', stageExperience:null, inputCandidates:[], stageInputCursor:-1, followQuestions:[], followMessageId:'',
 		measureCardVisible: false, measureCardDismissed: false,
 		mediaItems: [], mediaPaths: {}, mediaLoading: false, mediaBusy: false, mediaPending: false, mediaError: '', mediaKind: 0, mediaRoom: '',
 		formalPlans: [], formalRooms: [], formalIndex: 0, formalRoomIndex: 0, mediaPendingFormal: false,
@@ -82,7 +82,8 @@ module.exports = () => ({
 		if (resumeConversationId && !this._options.conversationId) this._options.conversationId = resumeConversationId;
 		this._alive = true;
 		this.speechController = new SpeechController({ identity: sessionToken, emit: patch => { if (this._alive && this._shown) this.setData(patch); },
-			getDraft: () => this.data.draft || '', setDraft: text => this.controller.input(text), reload: () => this.controller.refresh() });
+			getDraft: () => this.data.draft || '', setDraft: text => { this.clearStageInput(); this.controller.input(text); },
+			reload: () => this.controller.refresh() });
 		this.measureWindow();
 		this.referenceImages = new ReferenceImage();
 		this.siteRecords = new SiteRecordMedia({ identity: sessionToken, emit: patch => { if (this._alive && this._shown) this.setData(patch); } });
@@ -105,11 +106,16 @@ module.exports = () => ({
 					this.speechController.hide();
 				}
 				if (patch.conversation && Object.prototype.hasOwnProperty.call(patch.conversation,'stageExperience')) {
-					patch.stageExperience=patch.conversation.stageExperience;
-					patch.inputCandidates=[];
+					patch.stageExperience = patch.conversation.stageExperience;
+					if (patch.conversation.id !== this.data.conversation?.id
+						|| JSON.stringify(patch.stageExperience?.lexicon) !== JSON.stringify(this.data.stageExperience?.lexicon)) {
+						this._inputMatch = null;
+						Object.assign(patch, { inputCandidates: [], stageInputCursor: -1 });
+					}
 				}
 				if (patch.fatal || patch.needsLogin || patch.conversation===null) {
-					Object.assign(patch,{stageExperience:null,inputCandidates:[],followQuestions:[],followMessageId:''});
+					this._inputMatch = null;
+					Object.assign(patch, { stageExperience: null, inputCandidates: [], stageInputCursor: -1, followQuestions: [], followMessageId: '' });
 					this._followReceipt='';
 				}
 				const previous = this.data.messages;
@@ -349,39 +355,81 @@ module.exports = () => ({
 	},
 	keyboardChange(event) {
 		const keyboardHeight = Math.max(0, Number(event.detail.height) || 0);
+		if (!keyboardHeight) this._inputMatch = null;
 		this.setData({ keyboardHeight, ...(keyboardHeight ? { ownerReminderPrompt: null }
-			: this.data.keyboardHeight ? { inputFocused: false } : {}) });
+			: this.data.keyboardHeight ? { inputFocused: false, inputCandidates: [], stageInputCursor: -1 } : {}) });
 		this.syncKeyboardTab();
 		if (this.data.messages.length || this.data.pendingText) this.scrollBottom();
 	},
-	focusInput() { this.setData({ inputFocused: true, ownerReminderPrompt: null }); },
-	blurInput() { if (!this.data.keyboardHeight) this.setData({ inputFocused: false }); },
+	focusInput(event) {
+		const entering = !this.data.inputFocused;
+		this.setData({ inputFocused: true, ownerReminderPrompt: null });
+		if (entering && this.data.draft) this.updateStageInput(event?.detail?.cursor);
+	},
+	blurInput() {
+		if (this.data.keyboardHeight) return;
+		this.clearStageInput();
+		this.setData({ inputFocused: false });
+	},
 	input(event) {
-		const text=event.detail.value;
-		this.controller.input(text);
-		this._inputMatch=inputCandidates(text,event.detail.cursor,this.data.stageExperience?.lexicon);
-		this.setData({inputCandidates:this._inputMatch?.items || []});
+		this.controller.input(event.detail.value);
+		this.updateStageInput(event.detail.cursor);
+	},
+	updateStageInput(cursor) {
+		const draft = this.data.draft || '';
+		const match = inputCandidates(draft, cursor, this.data.stageExperience?.lexicon, this.data.maxChars);
+		this._inputMatch = match && { ...match, draft };
+		this.setData({ inputCandidates: match?.items || [], stageInputCursor: -1 });
+	},
+	clearStageInput() {
+		this._inputMatch = null;
+		if (this.data.inputCandidates?.length || this.data.stageInputCursor !== -1)
+			this.setData({ inputCandidates: [], stageInputCursor: -1 });
 	},
 	fillStageQuestion(event) {
-		const m=this._inputMatch, word=event.currentTarget.dataset.text;
-		if (!m?.items.includes(word)) return;
-		const value=this.data.draft || '';
-		this.controller.input(value.slice(0,m.start)+word+value.slice(m.end));
-		this._inputMatch=null;this.setData({inputCandidates:[]});
+		const match = this._inputMatch;
+		const word = event.currentTarget.dataset.text;
+		const draft = this.data.draft || '';
+		if (!match?.items.includes(word) || match.draft !== draft || !this.data.stageExperience?.lexicon?.includes(word)
+			|| !this.data.canSend || this.data.readOnly || this.data.busy || this.data.pendingSend || this.data.generating) return;
+		this.controller.input(draft.slice(0, match.start) + word + draft.slice(match.end));
+		this._inputMatch = null;
+		this.setData({ inputCandidates: [], stageInputCursor: match.start + word.length });
+		this.queueKeyboardScroll?.();
+	},
+	stageFollowReply() {
+		const latest = this.data.messages?.at(-1);
+		if (!this.data.stageExperience || this.data.stageExperience.followUp === 'off' || this.data.readOnly
+			|| this.data.fatal || this.data.followupActive || this.data.generating || this.data.pendingSend
+			|| latest?.authorKind !== 'assistant' || latest.available === false) return null;
+		return latest;
 	},
 	async loadStageFollowQuestions() {
-		const cid=this.controller?.conversationId, latest=this.data.messages?.at(-1);
-		const eligible=cid && !this.data.readOnly && !this.data.fatal && !this.data.followupActive && this.data.stageExperience
-			&& this.data.stageExperience.followUp!=='off' && latest?.authorKind==='assistant' && latest.available!==false;
-		if (!eligible) {this._followReceipt='';if(this.data.followMessageId)this.setData({followQuestions:[],followMessageId:''});return;}
-		const key=cid+':'+latest.id, token=sessionToken();
-		if (this._followReceipt===key) return;
-		this._followReceipt=key;
+		const cid = this.controller?.conversationId;
+		const latest = this.stageFollowReply();
+		if (!cid || !latest) {
+			this._followReceipt = '';
+			if (this.data.followMessageId) this.setData({ followQuestions: [], followMessageId: '' });
+			return;
+		}
+		const key = cid + ':' + latest.id;
+		const token = sessionToken();
+		if (this._followReceipt === key) return;
+		this._followReceipt = key;
 		try {
-			const result=await this.controller.client.read('/conversations/'+cid+'/suggestions');
-			if (!this._alive || !this._shown || this._followReceipt!==key || sessionToken()!==token || this.controller.conversationId!==cid) return;
-			this.setData({followMessageId:String(result.messageId||'')===String(latest.id)?String(latest.id):'',followQuestions:result.questions||[]});
-		} catch (_) {if(this._followReceipt===key)this._followReceipt='';}
+			const result = await this.controller.client.read('/conversations/' + cid + '/suggestions');
+			if (!this._alive || !this._shown || this._followReceipt !== key || sessionToken() !== token
+				|| this.controller.conversationId !== cid || this.stageFollowReply()?.id !== latest.id) return;
+			const questions = String(result.messageId || '') === String(latest.id) ? result.questions || [] : [];
+			this.setData({ followMessageId: questions.length ? String(latest.id) : '', followQuestions: questions });
+		} catch (_) { if (this._followReceipt === key) this._followReceipt = ''; }
+	},
+	pickStageFollowQuestion(event) {
+		const reply = this.stageFollowReply();
+		const { text, message } = event.currentTarget.dataset;
+		if (!reply || String(reply.id) !== String(message) || String(message) !== this.data.followMessageId
+			|| !this.data.followQuestions.includes(text)) return;
+		return this.pickPrompt(event);
 	},
 	async pickPrompt(event) {
 		if (this._promptSending) return;
@@ -398,8 +446,7 @@ module.exports = () => ({
 	chooseOption(event) { return this.controller.chooseOption(event.currentTarget.dataset.key, event.currentTarget.dataset.text); },
 	confirmOptions() { return this.controller.confirmOptions(); },
 	async send() {
-		if (this.data.inputCandidates?.length) this.setData({inputCandidates:[]});
-		this._inputMatch=null;
+		this.clearStageInput();
 		if (this.data.needsLogin) { this.login(); return; }
 		if (this.data.contextBusy || this.data.contextPending || this.data.sending) return;
 		if (this.data.speechBusy || this._openingVoice) return;
@@ -503,6 +550,7 @@ module.exports = () => ({
 		}, 100);
 	},
 	openSheet(sheet) {
+		this.clearStageInput();
 		wx.hideKeyboard(); clearTimeout(this._sheetTimer);
 		this.setData({ sheet, sheetOpen: false, keyboardHeight: 0, inputFocused: false }, () => {
 			this.syncKeyboardTab();
@@ -510,7 +558,9 @@ module.exports = () => ({
 		});
 	},
 	async openMedia() {
-		if (this.data.mediaBusy || this.data.stageExperience?.attachments===false) return;
+		if (this.data.mediaBusy || this.data.stageExperience?.attachments === false) return;
+		this.clearStageInput();
+		wx.hideKeyboard();
 		let id = this.data.conversation && this.data.conversation.id;
 		if (!id) id = await this.controller.handoffConversation();
 		if (!id || !this._alive) return;
@@ -745,6 +795,8 @@ module.exports = () => ({
 		if (this.data.needsLogin) { this.login(); return; }
 		if (this._openingVoice || !this.data.canSend || this.data.loading || this.data.fatal || this.data.readOnly || this.data.busy
 			|| this.data.pendingSend || this.data.pendingAction || this.data.generating || this.data.uncertainRun || this.data.speechBusy) return;
+		this.clearStageInput();
+		wx.hideKeyboard();
 		this._openingVoice = true;
 		try {
 			const id = this.controller.conversationId || await this.controller.handoffConversation();
