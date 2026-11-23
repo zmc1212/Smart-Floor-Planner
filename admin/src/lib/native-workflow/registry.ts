@@ -76,6 +76,17 @@ export interface CapabilitySpec {
  * reference these names; there is no HTTP, SQL, script or file capability.
  */
 export const capabilityCatalog: Readonly<Record<string, CapabilitySpec>> = {
+  'trigger.stage_consultation': {
+    type: 'trigger', typeVersion: 1, effect: 'none', configKeys: ['eventType', 'name', 'description'],
+    inputs: {}, outputs: { eventId: 'string', eventType: 'string', occurredAt: 'string' },
+  },
+  'read.stage_guide': {
+    type: 'read_materials', typeVersion: 1, effect: 'read', configKeys: [], permission: 'knowledge',
+    inputs: {}, outputs: { answer: 'string', checklist: 'string', nextStage: 'string', matched: 'boolean' },
+  },
+  'output.stage_guide': {
+    type: 'output', typeVersion: 1, effect: 'none', configKeys: [], inputs: { text: 'string' }, outputs: { text: 'string' },
+  },
   'trigger.specialist_followup': {
     type: 'trigger', typeVersion: 1, effect: 'none', configKeys: ['eventType'],
     inputs: {}, outputs: { eventId: 'string', eventType: 'string', occurredAt: 'string' },
@@ -347,6 +358,14 @@ export function validateCapabilityConfig(
   }
 
   switch (capabilityRef) {
+    case 'trigger.stage_consultation': {
+      if (config.eventType !== 'stage_consultation' || typeof config.name !== 'string' || !config.name.trim()
+        || config.name.length > 60 || typeof config.description !== 'string' || !config.description.trim()
+        || config.description.length > 240) {
+        issues.push(workflowIssue('invalid_trigger_config', path, '阶段模板需要名称（1–60 字）和用途说明（1–240 字）'));
+      }
+      return;
+    }
     case 'trigger.specialist_followup': {
       if (config.eventType !== 'specialist_followup') {
         issues.push(workflowIssue('invalid_trigger_config', `${path}.eventType`, 'specialist trigger requires eventType=specialist_followup'));

@@ -3,13 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
-import { Button, Modal, Result, Select, Space, Tag, Typography } from 'antd';
+import { Button, Input, Modal, Result, Select, Space, Tag, Typography } from 'antd';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface DefinitionSummary {
   definitionId: string;
-  eventType: 'stage_changed' | 'period_report' | 'specialist_followup';
+  eventType: 'stage_changed' | 'period_report' | 'specialist_followup' | 'stage_consultation';
   periodKind: 'daily' | 'weekly' | null;
   latestPublishedRevision: number | null;
   draftRevision: number;
@@ -18,6 +18,8 @@ interface DefinitionSummary {
 }
 
 const TEMPLATE_OPTIONS = [
+  { value: 'stage-guidance', label: '阶段知识问答（多 Agent 共用）' },
+  { value: 'stage-checklist', label: '现场核对清单（多 Agent 共用）' },
   { value: 'stage-reminder', label: '阶段提醒（实际阶段变化后）' },
   { value: 'period-report-daily', label: '施工日报（共用 period）' },
   { value: 'period-report-weekly', label: '施工周报（共用 period）' },
@@ -26,6 +28,7 @@ const TEMPLATE_OPTIONS = [
 ];
 
 function eventLabel(record: DefinitionSummary): string {
+  if (record.eventType === 'stage_consultation') return '阶段 Agent 调用';
   if (record.eventType === 'stage_changed') return '实际阶段变化';
   if (record.eventType === 'specialist_followup') {
     return record.definitionId.startsWith('electrical') ? '业主发起水电跟进' : '业主发起防水跟进';
@@ -38,7 +41,9 @@ export default function NativeWorkflowListPage() {
   const { user } = useCurrentUser();
   const canManage = ['super_admin', 'admin'].includes(user?.role || '');
   const [creating, setCreating] = useState(false);
-  const [templateId, setTemplateId] = useState('stage-reminder');
+  const [templateId, setTemplateId] = useState('stage-guidance');
+  const [customId, setCustomId] = useState('');
+  const callable = templateId === 'stage-guidance' || templateId === 'stage-checklist';
   const [createSaving, setCreateSaving] = useState(false);
 
   const createDraft = async () => {
@@ -47,13 +52,13 @@ export default function NativeWorkflowListPage() {
       const response = await fetch('/api/native-workflow/definitions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId }),
+        body: JSON.stringify({ templateId, ...(callable && customId.trim() ? { definitionId: 'stage-tool-' + customId.trim() } : {}) }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || result.error || '创建草稿失败');
       setCreating(false);
       notify.success('已从模板创建草稿');
-      router.push(`/native-workflow/${templateId}`);
+      router.push(`/native-workflow/${result.data.definitionId}`);
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '创建草稿失败');
     } finally {
@@ -141,7 +146,8 @@ export default function NativeWorkflowListPage() {
         }}
         columns={columns}
         toolBarRender={() => [
-          <Button key="create" type="primary" onClick={() => setCreating(true)}>
+          <Button key="agents" href="/assistant-knowledge?tab=stage-agents">阶段 Agent 管理</Button>,
+          <Button key="create" type="primary" onClick={() => { setCustomId(''); setCreating(true); }}>
             从模板新建草稿
           </Button>,
         ]}
@@ -156,7 +162,9 @@ export default function NativeWorkflowListPage() {
         onCancel={() => setCreating(false)}
       >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Select value={templateId} onChange={setTemplateId} options={TEMPLATE_OPTIONS} style={{ width: '100%' }} />
+          <Select aria-label="模板类型" value={templateId} onChange={setTemplateId} options={TEMPLATE_OPTIONS} style={{ width: '100%' }} />
+          {callable && <Input addonBefore="stage-tool-" aria-label="自定义模板标识" placeholder="可选，例如 site-check；留空使用内置标识"
+            maxLength={52} value={customId} onChange={event => setCustomId(event.target.value)} />}
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             创建模板会保存草稿。可检查节点、端口和模拟轨迹，正式运行使用已发布版本。
           </Typography.Paragraph>

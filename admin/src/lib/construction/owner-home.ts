@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows } from '@/db/repositories/assistant-repository';
 import { fail, id } from '@/lib/assistant/contracts';
+import { stageIdForConstructionKey } from '@/lib/xiaok-v1/stages';
+import type { StageSuggestedQuestion } from '@/lib/xiaok-v1/stage-workflow-settings';
 import { FollowupService } from './followup-service';
 import { currentStage, readStageSettings } from './stages-store';
 
@@ -21,13 +23,18 @@ export async function ownerSiteList(userId: string) {
   return { items: items.map(p => ({ id: String(p.id), name: String(p.name) })) };
 }
 
-export async function ownerSiteHome(identity: { userId: string; contextVersion: number }, projectId: string) {
-  const uid = id(identity.userId), pid = id(projectId);
+export async function ownerSiteEnterprise(userId: string, projectId: string) {
+  const uid = id(userId), pid = id(projectId);
   const located = await withPlatformTransaction(tx => one(tx, sql`select p.enterprise_id::text
     from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     join app.enterprises e on e.id=p.enterprise_id where p.id=${pid} and ${ownerSiteAccess(uid)}`));
   if (!located) fail('construction_not_found', 404);
-  const eid = String(located.enterprise_id);
+  return String(located.enterprise_id);
+}
+
+export async function ownerSiteHome(identity: { userId: string; contextVersion: number }, projectId: string) {
+  const uid = id(identity.userId), pid = id(projectId);
+  const eid = await ownerSiteEnterprise(uid, pid);
   const project = await withTenantTransaction(eid, async tx => {
     const identityIsCurrent = await one(tx, sql`select app.assistant_identity_is_current(${uid}::bigint,${identity.contextVersion}::integer) as valid`);
     if (!identityIsCurrent?.valid) fail('identity_context_invalid', 401);
@@ -38,7 +45,11 @@ export async function ownerSiteHome(identity: { userId: string; contextVersion: 
     if (!p) fail('construction_not_found', 404);
     const progressAccess = p.customer_access === true;
     const stage = progressAccess ? currentStage(p, (await readStageSettings(tx, eid)).stages) : null;
-    return { id: pid, name: String(p.name), leadId: String(p.lead_id), stageName: stage?.name || '', progressAccess };
+    const stageId = progressAccess && stageIdForConstructionKey(String(p.current_stage_key));
+    const agent = stageId && await one<{ questions: StageSuggestedQuestion[] }>(tx, sql`select suggested_questions as questions
+      from app.assistant_stage_agents where enterprise_id=${eid} and stage_id=${stageId} and enabled`);
+    return { id: pid, name: String(p.name), leadId: String(p.lead_id), stageName: stage?.name || '', progressAccess,
+      ...(agent && agent.questions.length ? { suggestedQuestions: agent.questions } : {}) };
   });
   const report = project.progressAccess ? await new FollowupService({
     enterpriseId: eid, principal: { kind: 'user', userId: uid }, contextVersion: identity.contextVersion,

@@ -397,10 +397,12 @@ export async function processAssistantJob(processRun: (lease: Lease) => Promise<
 /** Trusted configured interview copy is not a knowledge answer or provider invocation. */
 /** A deterministic stage-knowledge turn keeps the original conversation,
  * message order and run receipt; it never calls the model. */
-export async function completeStageKnowledge(lease: Lease, text: string) {
-  if (!text.trim() || text.length > 4000) fail('invalid_message', 422);
+export async function completeStageKnowledge(lease: Lease, resolve: (tx: PostgresTransaction) => Promise<string | null>) {
   return withTenantTransaction(lease.enterpriseId, async tx => {
     const { conversation, job } = await runContext(tx, lease);
+    const text = await resolve(tx);
+    if (text === null) return null;
+    if (!text.trim() || text.length > 4000) fail('invalid_message', 422);
     if (job.provider_started_at) fail('context_changed');
     const message = await appendMessage(tx, lease.actor, String(conversation.id), {
       author: 'assistant', runId: lease.runId, purpose: 'construction.stage_knowledge',

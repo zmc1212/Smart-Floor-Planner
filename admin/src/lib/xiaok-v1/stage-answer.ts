@@ -1,6 +1,7 @@
 import { stageKnowledgeRegistry, type StageKnowledgeFaq, type StageKnowledgePack } from './stage-knowledge';
 import { routeStageQuestion, type StageRoute } from './stage-router';
-import { stageForConstructionKey } from './stages';
+import { stageForConstructionKey, type StageId } from './stages';
+import type { StageWorkflowReceipt } from './stage-workflow-invocation';
 
 export const stageAnswerProtocol = 'xiaok-stage-answer-v1';
 export type StageAudience = 'owner' | 'worker' | 'designer' | 'boss';
@@ -9,7 +10,9 @@ export type EnterpriseKnowledgeItem = { sourceId: string; title: string; quote: 
 export type StageAnswer = {
   protocol: typeof stageAnswerProtocol;
   agentId: string | null;
-  stageId: string | null;
+  stageId: StageId | null;
+  agentName?: string;
+  workflow?: StageWorkflowReceipt;
   stageName: string | null;
   intent: string;
   answer: string;

@@ -1,20 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizePlatformAdmin } from '@/lib/auth';
 import { WorkflowDefinitionError, WorkflowOperationError } from './errors';
-import { createWorkflowService, type WorkflowService } from './service';
-import { createFileWorkflowStore, resolveNativeWorkflowStoreDir } from './store/file-store';
-
-let cachedService: WorkflowService | null = null;
-
-/** Server-only composition: B-owned file store behind the store interface. */
-export function getNativeWorkflowService(): WorkflowService {
-  if (!cachedService) {
-    cachedService = createWorkflowService({
-      store: createFileWorkflowStore({ rootDir: resolveNativeWorkflowStoreDir() }),
-    });
-  }
-  return cachedService;
-}
+export { getNativeWorkflowService } from './configured-service';
 
 export function workflowApiError(error: unknown): NextResponse {
   if (error instanceof WorkflowOperationError) {

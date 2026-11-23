@@ -4,7 +4,7 @@ import { dailyReportFixtures, dailyReportScenario, periodReportFixtures, weeklyR
 import { specialistFixtures, specialistMaterialFixtures, specialistScenario, specialistWaitFixtures } from './specialist';
 import { stageReminderFixtures, stageReminderScenario } from './stage-reminder';
 
-export type WorkflowFixtureDefinitionKind = 'stage_reminder' | 'period_report' | 'specialist_followup';
+export type WorkflowFixtureDefinitionKind = 'stage_reminder' | 'period_report' | 'specialist_followup' | 'stage_consultation';
 
 export interface WorkflowFixtureSet {
   readonly id: string;
@@ -181,6 +181,13 @@ const sets: WorkflowFixtureSet[] = [
 ];
 
 sets.push(
+  { id: 'stage-consultation', label: '阶段 Agent · 读取知识并返回', definitionKind: 'stage_consultation',
+    eventType: 'stage_consultation', periodKind: null,
+    scenario: { runIdPrefix: 'stage-agent', clock: { startedAt: '2026-11-23T00:00:00Z', stepMs: 1 },
+      events: [{ eventId: 'sample-question', eventType: 'stage_consultation', occurredAt: '2026-11-23T00:00:00Z' }] },
+    fixtures: { nodes: {}, capabilities: { 'read.stage_guide': { status: 'ok', outputs: {
+      answer: '先按图纸核对点位。', checklist: '核对开关与插座位置。', nextStage: '准备下一阶段交底。', matched: true,
+    } } } } },
   { id: 'waterproof-reviewed', label: '防水事项已复核', definitionKind: 'specialist_followup', eventType: 'specialist_followup', periodKind: null,
     scenario: specialistScenario, fixtures: specialistFixtures },
   { id: 'waterproof-waiting', label: '等待防水现场资料', definitionKind: 'specialist_followup', eventType: 'specialist_followup', periodKind: null,

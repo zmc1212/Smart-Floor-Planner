@@ -1,3 +1,4 @@
+import { applyStageWorkflow } from './stage-workflow-invocation';
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { rows, one } from '@/db/repositories/assistant-repository';
@@ -15,16 +16,16 @@ export function isStageChatQuestion(question: string, precedingQuestions: string
     && (!precedingQuestions.length || !routedConsultationSpecialist(question, precedingQuestions)));
 }
 
-type ProjectRow = { id: string; name: string; current_stage_key: string | null; customer_user_id: string };
+type ProjectRow = { id: string; name: string; current_stage_key: string | null; customer_user_id: string; lead_id: string };
 
-const projectColumns = sql`p.id,p.name,p.current_stage_key,l.customer_user_id`;
+const projectColumns = sql`p.id,p.name,p.current_stage_key,l.customer_user_id,p.lead_id`;
 
 async function linkedProjects(tx: PostgresTransaction, eid: string, conversationId: string, userId: string) {
   return rows<ProjectRow>(tx, sql`select ${projectColumns} from app.construction_links cl
     join app.construction_projects p on p.enterprise_id=cl.enterprise_id and p.id=cl.project_id
     join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where cl.enterprise_id=${eid} and cl.conversation_id=${conversationId} and p.status<>'archived' and l.archived_at is null
-    and p.customer_access and l.customer_user_id=${userId} order by p.id`);
+    and p.customer_access and l.customer_user_id=${userId} order by p.id for share of p,l`);
 }
 async function boundProjects(tx: PostgresTransaction, eid: string, userId: string) {
   return rows<ProjectRow>(tx, sql`select ${projectColumns} from app.construction_followup_bindings b
@@ -32,13 +33,13 @@ async function boundProjects(tx: PostgresTransaction, eid: string, userId: strin
     join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where b.enterprise_id=${eid} and b.principal_key=${'user:' + userId} and b.audience='customer'
     and b.status='enabled' and p.status<>'archived' and l.archived_at is null
-    and p.customer_access and l.customer_user_id=${userId} order by b.id desc`);
+    and p.customer_access and l.customer_user_id=${userId} order by b.id desc for share of b,p,l`);
 }
 async function accessibleProjects(tx: PostgresTransaction, eid: string, userId: string) {
   return rows<ProjectRow>(tx, sql`select ${projectColumns}
     from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid} and p.status='active' and l.archived_at is null and p.customer_access
-    and l.customer_user_id=${userId} order by p.id`);
+    and l.customer_user_id=${userId} order by p.id for share of p,l`);
 }
 
 export type StageProjectResolution =
@@ -109,7 +110,7 @@ async function configuredEnterpriseKnowledge(input: {
  * turn must stay on the existing specialist/model/fact route. */
 export async function stageChatForConversation(input: {
   tx: PostgresTransaction; enterpriseId: string; conversationId: string; userId: string;
-  actor?: ActorContext; knowledgeEpoch?: number; question: string;
+  actor?: ActorContext; knowledgeEpoch?: number; question: string; runId?: string;
   enterpriseKnowledge?: (input: { question: string }) => Promise<StageEnterpriseKnowledge>;
 }) {
   if (!isStageChatQuestion(input.question)) return null;
@@ -132,5 +133,11 @@ export async function stageChatForConversation(input: {
     audience: 'owner', enterpriseKnowledge: enterprise.items,
     enterpriseKnowledgeStatus: enterprise.status });
   if (answer.handoff) return null;
-  return composeStageChatAnswer(answer);
+  const result = await applyStageWorkflow(input.tx, input.enterpriseId, answer, 'owner', input.conversationId);
+  if (result.workflow && input.runId) {
+    await input.tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,status,input_summary)
+      values(${input.enterpriseId},${input.runId},3200,'agent_tool','run_stage_workflow','succeeded',
+        ${JSON.stringify({ agentId: result.agentId, ...result.workflow })}::jsonb)`);
+  }
+  return composeStageChatAnswer(result);
 }

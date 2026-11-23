@@ -80,7 +80,7 @@ export interface WorkflowEdge {
 }
 
 export interface WorkflowInputSchema {
-  readonly eventType: 'stage_changed' | 'period_report' | 'specialist_followup';
+  readonly eventType: 'stage_changed' | 'period_report' | 'specialist_followup' | 'stage_consultation';
   readonly periodKind?: 'daily' | 'weekly';
 }
 
@@ -109,7 +109,7 @@ export type WorkflowValue =
  */
 export interface TriggerEvent {
   readonly eventId: string;
-  readonly eventType: 'stage_changed' | 'period_report' | 'specialist_followup';
+  readonly eventType: 'stage_changed' | 'period_report' | 'specialist_followup' | 'stage_consultation';
   readonly occurredAt: string;
   readonly stageKey?: string;
   readonly stageLabel?: string;

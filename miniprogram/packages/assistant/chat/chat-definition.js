@@ -264,7 +264,7 @@ module.exports = () => ({
 				return;
 			}
 			const home = await api.request(`/miniprogram/construction/owner-sites/${encodeURIComponent(items[0].id)}`, 'GET', {}, { suppressUnauthorized: true });
-			if (!this._alive || !this._shown) return;
+			if (!this._alive || !this._shown || sessionToken() !== token || this.controller?.conversationId) return;
 			const view = ownerSiteContext(home?.data?.project, home?.data?.report);
 			if (!view) {
 				this.setData({ siteContext: null, siteTopics: [], siteGreeting: '' });
@@ -726,14 +726,19 @@ module.exports = () => ({
 		await this.controller.selectConversation(id);
 		if (id === this.controller.conversationId) await this.prepareSpeech();
 	},
-	newConversation() {
+	async newConversation() {
 		if (this.data.mediaBusy || this.data.mediaPending) return;
 		if (this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
 		chatResume.clear();
 		delete this._options.conversationId;
 		this.setData({ measureCardVisible: false, measureCardDismissed: false });
-		this.followups.leave(); this.closeSheet(); const result = this.controller.newConversation();
-		return this.controller.visible ? result : this.controller.show(this._options);
+		this.followups.leave(); this.closeSheet();
+		await this.controller.newConversation();
+		if (!this.controller.visible) await this.controller.show(this._options);
+		if (this._alive && this._shown && !this.data.fatal && !this.controller.conversationId) {
+			this._siteContextAt = 0;
+			await this.loadOwnerSiteContext();
+		}
 	},
 	olderMessages() { return this.controller.olderMessages(); },
 	stop() { return this.controller.action('cancel'); },

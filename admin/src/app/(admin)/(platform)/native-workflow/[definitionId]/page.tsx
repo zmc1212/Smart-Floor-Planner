@@ -94,7 +94,7 @@ function formatJson(value: unknown): string {
 function canvasDefinition(text: string): WorkflowDefinition | null {
   try {
     const value = JSON.parse(text) as WorkflowDefinition;
-    return value?.inputSchema?.eventType === 'specialist_followup' && Array.isArray(value.nodes)
+    return ['specialist_followup', 'stage_consultation'].includes(value?.inputSchema?.eventType) && Array.isArray(value.nodes)
       && Array.isArray(value.edges) && value.nodes.every(node => node && typeof node.nodeId === 'string')
       && value.edges.every(edge => edge && typeof edge.from === 'string' && typeof edge.to === 'string') ? value : null;
   } catch { return null; }
@@ -480,7 +480,8 @@ function NativeWorkflowDetailPageInner() {
   const latest = record.versions[record.versions.length - 1] ?? null;
   const schema = record.draft.definition.inputSchema;
   const specialistFlow = schema.eventType === 'specialist_followup';
-  const visualDefinition = specialistFlow ? canvasDefinition(editor.text) : null;
+  const callable = schema.eventType === 'stage_consultation';
+  const visualDefinition = specialistFlow || callable ? canvasDefinition(editor.text) : null;
   const issueNodeId = (path: string) => {
     const index = /^\$\.nodes\[(\d+)\]/u.exec(path)?.[1];
     return index === undefined ? null : visualDefinition?.nodes[Number(index)]?.nodeId ?? null;
@@ -500,7 +501,7 @@ function NativeWorkflowDetailPageInner() {
     else notify.error('结构校验未通过');
   };
   const electricalFlow = record.definitionId === 'electrical-inspection-v1';
-  const eventLabel = specialistFlow ? (electricalFlow ? '业主发起水电跟进' : '业主发起防水跟进') :
+  const eventLabel = callable ? '阶段 Agent 调用' : specialistFlow ? (electricalFlow ? '业主发起水电跟进' : '业主发起防水跟进') :
     schema.eventType === 'stage_changed'
       ? '实际阶段变化'
       : schema.periodKind === 'weekly'
@@ -528,8 +529,8 @@ function NativeWorkflowDetailPageInner() {
             >
               重置
             </Button>
-            {specialistFlow ? <Button onClick={checkDraft}>结构校验</Button> : null}
-            {visualDefinition && !visualDefinition.nodes.some(node => node.capabilityRef === 'condition.specialist_evidence') ?
+            {(specialistFlow || callable) ? <Button onClick={checkDraft}>结构校验</Button> : null}
+            {specialistFlow && visualDefinition && !visualDefinition.nodes.some(node => node.capabilityRef === 'condition.specialist_evidence') ?
               <Popconfirm title={`将现有草稿替换为三分支${electricalFlow ? '水电' : '防水'}模板`} okText="载入" cancelText="取消"
                 onConfirm={() => setEditor(current => current ? updateDraftText(current, formatJson({
                   ...(electricalFlow ? createElectricalInspectionDefinition() : createWaterproofInspectionDefinition()),
@@ -597,7 +598,7 @@ function NativeWorkflowDetailPageInner() {
           {visualDefinition ? <NativeWorkflowCanvas definition={visualDefinition} focusNodeId={focusNodeId}
             onSelectNode={setFocusNodeId} invalidNodeIds={invalidNodeIds}
             onChange={definition => setEditor(current => current ? updateDraftText(current, formatJson(definition)) : current)} /> : null}
-          <Collapse defaultActiveKey={specialistFlow ? [] : ['json']} size="small" items={[{ key: 'json', label: '定义 JSON', children: <Input.TextArea
+          <Collapse defaultActiveKey={specialistFlow || callable ? [] : ['json']} size="small" items={[{ key: 'json', label: '定义 JSON', children: <Input.TextArea
             value={editor.text}
             onChange={(event) => setEditor((current) => (current ? updateDraftText(current, event.target.value) : current))}
             autoSize={{ minRows: 18, maxRows: 34 }}
@@ -1218,7 +1219,7 @@ function NativeWorkflowDetailPageInner() {
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Alert type="info" showIcon message="草稿、模拟与发布"
-          description="模拟使用选中的测试数据。发布后可按真实运行 ID 查看已绑定的版本、节点和回执。" />
+          description={callable ? '发布后，多个阶段 Agent 可以分别绑定此模板版本。' : '模拟使用选中的测试数据。发布后可按真实运行 ID 查看已绑定的版本、节点和回执。'} />
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -1226,9 +1227,9 @@ function NativeWorkflowDetailPageInner() {
             { key: 'draft', label: '草稿与发布', children: draftTab },
             { key: 'versions', label: `已发布版本（${record.versions.length}）`, children: versionsTab },
             { key: 'simulation', label: '模拟调试', children: simulationTab },
-            { key: 'live', label: '真实运行', children: specialistFlow
+            ...(callable ? [] : [{ key: 'live', label: '真实运行', children: specialistFlow
               ? activeTab === 'live' ? <NativeWorkflowSpecialistStatus record={record} initialRunId={urlRunId} /> : null
-              : liveTab },
+              : liveTab }]),
           ]}
         />
       </Space>

@@ -1,5 +1,7 @@
 # 小程序当前功能清单
 
+**阶段 Agent 与猜你想问（本地 Implemented）。** 当业主只有一个可读工地时，原 C01 欢迎页的三张问题卡按项目实际阶段读取企业配置，沿用 [C01 设计台账](./miniprogram-design-restoration-ledger.zh-CN.md) 的卡片位置和图标，未配置的卡位使用系统问题。点击后向当前咨询发送完整问题。工地详情只向有进度权限的业主返回卡片文案。工地里的阶段问答通过 `POST /api/miniprogram/xiaok/stage-answer` 核验本人项目和企业，再运行该阶段默认模板，也接受显式选择已绑定的 `workflowId`。原生 C01 咨询可以按提问选用已绑定模板，结果保存在原会话。未配置或停用时沿用原问答。 从历史记录「开启新对话」也会读取问题卡。Stable 390×844 已验证已配置卡片、正常发送、阶段答复与重进。水电和油漆两组真实模型对话均调用了同一发布版。[原生卡片发送和零模型回执](../tmp/stage-agent-workflows-20261123/cards-12576759/report.json) · [两组模型回答与实际调用记录](../tmp/stage-agent-workflows-20261123/model-235fb76e/report.json)。
+
 **装修画像（Implemented）。** 业主在小 K 会客室照常聊天。可明确对应本人房屋服务档案的新咨询在原欢迎说明处提示用途，小 K 自动把业主原话整理到后台画像。多套房且没有明确档案的咨询、历史私聊和普通公开工地问答保留原咨询范围。新版普通聊天无需打开表单、编辑字段或确认共享。
 
 `POST /api/miniprogram/assistant/entry-context` 下发服务档案资格。按原方式发送首条消息时，客户端用 `staffProfileNotice` 标记已显示用途，服务器仅接受签名入口内的档案。会客室沿用 [C01 的欢迎说明](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md) 和原输入区。[C02 批准稿](../design-references/xiaok-assistant-phase1-ppt-v1/sources/slide06-needs.png) 仍承接已有「查看需求提案」。旧版的主动共享、撤回及回顾接口只投影业主明确共享的信息。[后台读取](./admin-system-modules.zh-CN.md)。

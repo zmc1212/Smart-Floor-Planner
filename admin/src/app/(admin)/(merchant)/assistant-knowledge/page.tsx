@@ -9,6 +9,7 @@ import { hasAssistantKnowledgeAccess } from '@/lib/assistant/access';
 import { assistantError, assistantRequest, audienceLabels, formatTime, statusLabels } from '@/components/assistant/client';
 import type { Audience, KnowledgeDocument } from '@/components/assistant/contracts';
 
+const StageAgentManager = lazy(() => import('@/components/assistant/stage-agent-manager').then(module => ({ default: module.StageAgentManager })));
 const KnowledgeEditor = lazy(() => import('@/components/assistant/knowledge-editor').then(module => ({ default: module.KnowledgeEditor })));
 const PreviewPanel = lazy(() => import('@/components/assistant/preview-panel').then(module => ({ default: module.PreviewPanel })));
 const GuidanceEditor = lazy(() => import('@/components/assistant/guidance-editor').then(module => ({ default: module.GuidanceEditor })));
@@ -17,8 +18,12 @@ const KnowledgeSettings = lazy(() => import('@/components/assistant/knowledge-se
 const HandoffPanel = lazy(() => import('@/components/assistant/handoff-panel').then(module => ({ default: module.HandoffPanel })));
 const KnowledgeOperationsPanel = lazy(() => import('@/components/assistant/knowledge-operations').then(module => ({ default: module.KnowledgeOperationsPanel })));
 
-function KnowledgeWorkbench({ canHandoff, canUsage }: { canHandoff: boolean; canUsage:boolean }) {
-  const [tab, setTab] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('preview') ? 'preview' : 'knowledge');
+function KnowledgeWorkbench({ canHandoff, canUsage, canPublish }: { canHandoff: boolean; canUsage:boolean; canPublish: boolean }) {
+  const [tab, setTab] = useState(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    if (params.get('tab') === 'stage-agents') return 'stage-agents';
+    return params.has('preview') ? 'preview' : 'knowledge';
+  });
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [hasMore, setHasMore] = useState(false);
@@ -48,6 +53,7 @@ function KnowledgeWorkbench({ canHandoff, canUsage }: { canHandoff: boolean; can
   ];
   return <>
     <Tabs activeKey={tab} onChange={setTab} items={[
+      { key: 'stage-agents', label: '阶段 Agent', children: <Suspense fallback={<Skeleton active />}><StageAgentManager canPublish={canPublish} /></Suspense> },
       { key: 'settings', label: '知识设置', children: <Suspense fallback={<Skeleton active />}><KnowledgeSettings /></Suspense> },
       { key: 'knowledge', label: '企业知识', children: <Space direction="vertical" size={20} style={{ width: '100%' }}>
         <Alert type="info" showIcon message="先维护资料，再索引、试问和发布" description="新草稿不会覆盖当前已发布知识。客户只能引用本企业已发布且有效的客户可见资料。" />
@@ -69,6 +75,6 @@ function KnowledgeWorkbench({ canHandoff, canUsage }: { canHandoff: boolean; can
 export default function AssistantKnowledgePage() {
   const { user, isLoading, error } = useCurrentUser();
   return <div className="admin-page-frame"><PageContainer title="小 K 知识库" subTitle="维护企业资料，核对回答依据" breadcrumbRender={false} className="admin-page-container">
-    {isLoading ? <Skeleton active /> : error ? <Result status="error" title="登录信息读取失败" extra={<Button onClick={() => window.location.reload()}>重新加载</Button>} /> : !hasAssistantKnowledgeAccess(user?.role, user?.effectivePermissions) ? <Result status="403" title="尚未获得小 K 知识管理权限" subTitle="平台管理员、超级管理员及企业明确授权的负责人可维护知识和访问本人试问。" /> : !user?.enterpriseId?._id ? <Result status="info" title="请先选择企业" subTitle="通过侧栏顶部的企业选择器选择一家企业，再查看和维护该企业的小 K 知识。" /> : <KnowledgeWorkbench canHandoff={isEnterpriseManagementRole(user.role)} canUsage={user?.role==='enterprise_admin'&&Boolean(user?.effectivePermissions?.includes('assistant-usage'))} key={`${user?._id}:${user?.enterpriseId?._id}`} />}
+    {isLoading ? <Skeleton active /> : error ? <Result status="error" title="登录信息读取失败" extra={<Button onClick={() => window.location.reload()}>重新加载</Button>} /> : !hasAssistantKnowledgeAccess(user?.role, user?.effectivePermissions) ? <Result status="403" title="尚未获得小 K 知识管理权限" subTitle="平台管理员、超级管理员及企业明确授权的负责人可维护知识和访问本人试问。" /> : !user?.enterpriseId?._id ? <Result status="info" title="请先选择企业" subTitle="通过侧栏顶部的企业选择器选择一家企业，再查看和维护该企业的小 K 知识。" /> : <KnowledgeWorkbench canPublish={user.role === 'admin' || user.role === 'super_admin'} canHandoff={isEnterpriseManagementRole(user.role)} canUsage={user?.role==='enterprise_admin'&&Boolean(user?.effectivePermissions?.includes('assistant-usage'))} key={`${user?._id}:${user?.enterpriseId?._id}`} />}
   </PageContainer></div>;
 }

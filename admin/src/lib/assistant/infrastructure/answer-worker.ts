@@ -151,13 +151,11 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
         return text;
       });
       if (question) {
-        const reply = await withTenantTransaction(lease.enterpriseId, async tx => {
-          await runContext(tx, lease);
-          return stageChatForConversation({ tx, enterpriseId: lease.enterpriseId,
+        const completed = await completeStageKnowledge(lease, tx =>
+          stageChatForConversation({ tx, enterpriseId: lease.enterpriseId, runId: lease.runId,
             conversationId: String(context.run.conversation_id), userId, question,
-            actor: lease.actor, knowledgeEpoch: Number(context.run.knowledge_epoch) });
-        });
-        if (reply) { await completeStageKnowledge(lease, reply); return; }
+            actor: lease.actor, knowledgeEpoch: Number(context.run.knowledge_epoch) }));
+        if (completed) return;
       }
     }
     // The run snapshot names its executor protocol; dispatch is exact and an

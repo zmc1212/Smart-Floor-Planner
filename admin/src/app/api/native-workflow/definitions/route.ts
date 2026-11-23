@@ -29,7 +29,10 @@ export async function POST(request: Request) {
     if (!isNativeWorkflowTemplateId(body.templateId)) {
       throw new WorkflowOperationError('invalid_request', 400, 'templateId must be a known template');
     }
-    const record = await getNativeWorkflowService().createFromTemplate(body.templateId);
+    if (body.definitionId !== undefined && typeof body.definitionId !== 'string') {
+      throw new WorkflowOperationError('invalid_request', 400, 'definitionId must be a string');
+    }
+    const record = await getNativeWorkflowService().createFromTemplate(body.templateId, body.definitionId);
     return NextResponse.json({ success: true, data: record }, { status: 201 });
   } catch (error) {
     return workflowApiError(error);

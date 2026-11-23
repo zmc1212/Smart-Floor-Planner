@@ -1,4 +1,4 @@
-import { bigint, boolean, customType, date, integer, jsonb, pgSchema, text, timestamp } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, date, integer, jsonb, pgSchema, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
 export * from './assistant-knowledge-schema';
 
 // SQL migrations 0058–0069 own tenant FKs, manager/handoff identity guards, RLS and partial unique indexes.
@@ -23,6 +23,19 @@ const base = () => ({
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 });
+
+export const assistantStageAgents = app.table('assistant_stage_agents', {
+  enterpriseId: bigint('enterprise_id', { mode: 'bigint' }).notNull(),
+  stageId: text('stage_id').notNull(),
+  version: integer('version').notNull(),
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  enabled: boolean('enabled').notNull(),
+  workflowRefs: jsonb('workflow_refs').notNull(),
+  defaultWorkflowId: text('default_workflow_id'),
+  suggestedQuestions: jsonb('suggested_questions').notNull().default([]),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => [primaryKey({ columns: [table.enterpriseId, table.stageId] })]);
 
 export const assistantSpeechAssets = app.table('assistant_speech_assets', {
   ...base(), conversationId: bigint('conversation_id', { mode: 'bigint' }).notNull(), projectId: bigint('project_id', { mode: 'bigint' }),

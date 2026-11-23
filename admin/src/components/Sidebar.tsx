@@ -88,6 +88,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'ai-providers', label: 'AI 供应商', icon: Cable, href: '/ai-providers' },
         { key: 'ai-models', permissionKey: 'ai-providers', label: '生图模型', icon: Image, href: '/ai-models' },
         { key: 'llm-settings', label: 'LLM大模型配置', icon: BrainCircuit, href: '/llm-settings' },
+        { key: 'native-workflow', label: 'Agent 工作流模板', icon: Network, href: '/native-workflow' },
         { key: 'assistant-worker', label: '小K Worker 启停', icon: PlayCircle, href: '/assistant-worker' },
         { key: 'map-settings', label: '地图服务配置', icon: Map, href: '/map-settings' },
         { key: 'portfolio-templates', label: '作品集模板', icon: LayoutTemplate, href: '/portfolio-templates' },
@@ -509,6 +510,7 @@ export default function Sidebar() {
     if (key === 'media-storage') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'sms-settings') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'llm-settings') return admin.role === 'super_admin' || admin.role === 'admin';
+    if (key === 'native-workflow') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'assistant-worker') return admin.role === 'super_admin';
     if (key === 'portfolio-templates') return admin.role === 'super_admin' || admin.role === 'admin';
     if (['ai-credit-prices', 'ai-presets', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;

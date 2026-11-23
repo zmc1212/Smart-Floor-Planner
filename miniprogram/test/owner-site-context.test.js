@@ -22,6 +22,14 @@ test('a today report produces the today-update greeting and three site topics', 
   ]);
 });
 
+test('enabled stage questions replace only configured card slots and preserve the approved icons', () => {
+  const question = { title: '到场看什么', helper: '水电核对', text: '我家水电阶段，到现场先看什么？' };
+  const view = ownerSiteContext({ ...project, suggestedQuestions: [question] }, null, now);
+  assert.deepEqual(view.siteTopics[0], { ...question, icon: 'requirement-home' });
+  assert.equal(view.siteTopics[1].title, '阶段注意什么');
+  assert.equal(view.siteTopics.length, 3);
+});
+
 test('an older report is shown as a new report, never as today progress', () => {
   const view = ownerSiteContext(project, { periodStart: '2026-11-16T00:00:00Z' }, now);
   assert.equal(view.siteContext.hasTodayReport, false);

@@ -124,7 +124,7 @@ function triggerPayload(plan: CompiledWorkflowPlan, event: TriggerEvent): Record
       stageLabel: event.stageLabel,
     };
   }
-  if (event.eventType === 'specialist_followup') {
+  if (event.eventType === 'specialist_followup' || event.eventType === 'stage_consultation') {
     return { eventId: event.eventId, eventType: event.eventType, occurredAt: event.occurredAt };
   }
   if (event.periodKind !== plan.inputSchema.periodKind) {
@@ -423,6 +423,13 @@ function pump(
       continue;
     }
 
+    if (node.capabilityRef === 'output.stage_guide') {
+      state.outputs[node.nodeId] = resolveInputs(node, state.outputs);
+      pushTrace(state, trace, at, 'node_succeeded', node.nodeId, node.type, { effect: 'none' });
+      completed = node.nodeId;
+      continue;
+    }
+
     if (node.capabilityRef === 'compose.stage_reminder_deterministic') {
       const input = resolveInputs(node, state.outputs);
       state.outputs[node.nodeId] = composeDeterministic(node, input);
@@ -472,7 +479,7 @@ function route(
   if (edges.length === 0) {
     if (node.type === 'save_result' || node.type === 'deliver_inapp' || node.type === 'output') {
       state.status = 'completed';
-      state.outcome = node.type === 'save_result' ? 'saved' : 'delivered';
+      state.outcome = node.capabilityRef === 'output.stage_guide' ? 'returned' : node.type === 'save_result' ? 'saved' : 'delivered';
       pushTrace(state, trace, at, 'run_completed', completedNodeId, node.type, { outcome: state.outcome });
       return null;
     }

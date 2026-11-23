@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { prepareStageWorkflowTool } from '@/lib/xiaok-v1/stage-dialogue-workflow';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
@@ -701,6 +702,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // before the commit. A tool is never hidden by a single-sentence keyword
     // test: query_business stays available and the model decides from the
     // whole conversation whether the customer asked about their own home.
+    let stageWorkflow: Awaited<ReturnType<typeof prepareStageWorkflowTool>> = null;
     const runPublicRefs = new Map<string, PublicContextRef & { contentHash?: string }>();
     let expectedActive: PublicContextRef | null = null;
     const catalog = new Map<string, RagCitationSource>(citations.map(c => [c.nativeId, c]));
@@ -714,6 +716,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if (!samePublicRef(expectedActive, active ?? null)) fail('context_changed');
         for (const ref of runPublicRefs.values())
           if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
+        await stageWorkflow?.revalidate(tx);
         await sites.revalidate(tx);
         // Recalled customer originals carry their own ref set (recovered
         // snapshots plus every fresh recall): a session version bump or an
@@ -947,7 +950,16 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const drawingRequested = specialist?.agent.agentId === 'electrical-specialist'
       && /图纸|点位图|水电图|电气图|给排水图|平面图/u.test(specialistQuestion);
     const materialRead = drawingRequested ? readToolsForContext([materialTool], readContext)[0] : null;
+    const stageQuestion = messages.filter(message => message.role === 'user').at(-1)?.content ?? '';
+    stageWorkflow = await withTenantTransaction(lease.enterpriseId, async tx => {
+      const { conversation } = await runContext(tx, lease);
+      const entry = conversation.entry_snapshot as Row;
+      return prepareStageWorkflowTool(tx, lease, { conversationId: String(conversation.id), leadId: readContext?.leadId,
+        question: stageQuestion, eligible: !specialist && !entry.activePublicSite && !reportContext(entry).selection
+          && !currentMessageOnlyRequested(stageQuestion) && !independentAdviceRequested(stageQuestion) });
+    });
     const tools: ModelTool[] = [
+      ...(stageWorkflow ? [stageWorkflow.definition] : []),
       ...(knowledgeEnabled ? [enterpriseSearchTool] : []),
       ...(roomProgress ? [{ ...businessRead, parameters: { type: 'object', properties: {
         domain: { type: 'string', enum: ['construction'] }, room: { type: 'string', enum: [roomProgress] },
@@ -970,6 +982,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       ],
     }), specialist.progressRequested) : tools;
     const validateTool = (name: string, args: string): { code: string; feedback: string } | null => {
+      if (name === 'run_stage_workflow' && !stageWorkflow?.parse(args)) return { code: 'invalid_tool_input', feedback: '请选择当前阶段已绑定的 workflowId。' };
       if (name === 'search_enterprise') {
         try {
           const value = JSON.parse(args) as { query?: unknown };
@@ -1018,6 +1031,14 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // identities reuse their persisted receipt and never reach this counter.
     let sequence = toolState.nextSequence;
     const toolPort = async (turn: number, index: number, name: string, args: string, callId?: string) => {
+      if (name === 'run_stage_workflow') {
+        const workflow = stageWorkflow;
+        if (!workflow) fail('assistant_capability_forbidden', 403);
+        return withTenantTransaction(lease.enterpriseId, async tx => {
+          await runContext(tx, lease);
+          return { content: await workflow.invoke(tx, args, 3200 + turn * 10 + index) };
+        });
+      }
       if (name === delegationToolName) {
         if (!delegationContext || !delegationTool || !callId) fail('assistant_capability_forbidden', 403);
         await guard();
@@ -1461,6 +1482,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if (!samePublicRef(expectedActive, active ?? null)) fail('context_changed');
         for (const ref of runPublicRefs.values())
           if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
+        await stageWorkflow?.revalidate(tx);
         await sites.revalidate(tx);
         await designers.revalidate(tx);
         // Recalled originals revalidate one last time beside the other

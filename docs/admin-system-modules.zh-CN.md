@@ -1,5 +1,7 @@
 # 后台系统当前功能清单
 
+**阶段 Agent 管理（本地 Implemented）。** 有小 K 知识库权限的企业管理员在「小 K 知识库 → 阶段 Agent」为每个装修阶段创建、编辑或停用一个 Agent。可设置名称、职责、最多三张猜你想问卡、多个可调用工作流及默认工作流，也可只配置问题卡。`/assistant-knowledge?tab=stage-agents` 使用 `GET/POST/PUT /api/assistant/stage-agents`。保存时复核当前管理权限、所选企业和配置版本。迁移 `0145` 在 `app.assistant_stage_agents` 按企业隔离配置。平台管理员从「Agent 工作流模板」进入 `/native-workflow`，创建、连线、模拟和发布模板。多个 Agent 可引用同一版本，模板升级后由管理员逐个切换。Web 与 Worker 共用持久化的 `NATIVE_WORKFLOW_STORE_DIR`。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。 [后台表单与保存回读](../tmp/stage-agent-workflows-20261123/ui-2a6719f9/report.json) · [权限、并发保存与版本切换](../tmp/stage-agent-workflows-20261123/contracts-f08bfc8f/report.json)。
+
 **三端工地工作台数据（已实现／有限）。** `GET /api/miniprogram/construction/workbench` 从签名企业和实时权限生成三端投影。施工账号按当前项目成员关系进入工人或项目经理视图。员工选择的 `projectId` 必须是当前角色仍有效的工地。工人读本人任务与最近上报回执，经理读草稿与整改复查，设计师读分配给本人的设计事项。老板从共用计划和事项事实取简报，汇总口径为当次最多 20 个工地。
 
 精确记录入口在既有项目交流 GET 携带 `recordId`。仅原提交人员或有权经理可扩展读取旧记录位置，原工地权限与媒体权限继续实时核对。上报、事项回复、核对和发布沿既有版本写入及回执。 [小程序入口与设计证据](./miniprogram-system-modules.zh-CN.md#小k工地工作台)。

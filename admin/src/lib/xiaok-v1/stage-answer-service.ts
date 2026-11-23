@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { applyStageWorkflow } from './stage-workflow-invocation';
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one } from '@/db/repositories/assistant-repository';
@@ -22,8 +24,10 @@ async function audienceFor(tx: PostgresTransaction, actor: ActorContext): Promis
 
 /** Project-scoped stage knowledge. The same Construction membership rules that
  * govern progress reads decide whether the question can be answered. */
-export async function stageAnswerForProject(actor: ActorContext, input: { projectId?: unknown; question?: unknown }) {
+export async function stageAnswerForProject(actor: ActorContext, input: { projectId?: unknown; question?: unknown; workflowId?: unknown }) {
   const pid = id(input.projectId), question = questionInput(input.question);
+  if (input.workflowId !== undefined && (typeof input.workflowId !== 'string' || !/^[a-z][a-z0-9_-]{2,63}$/.test(input.workflowId))) fail('invalid_message', 422);
+  const requested = input.workflowId;
   return withTenantTransaction(actor.enterpriseId, async tx => {
     const project = await one(tx, sql`select p.id,p.name,p.current_stage_key,p.customer_access,l.customer_user_id
       from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
@@ -41,7 +45,8 @@ export async function stageAnswerForProject(actor: ActorContext, input: { projec
         if (!member) fail('construction_not_found', 404);
       }
     }
-    const answer = answerStageQuestion({ constructionStageKey: project.current_stage_key as string | null, question, audience });
+    const base = answerStageQuestion({ constructionStageKey: project.current_stage_key as string | null, question, audience });
+    const answer = await applyStageWorkflow(tx, actor.enterpriseId, base, audience, randomUUID(), requested);
     return { projectId: String(project.id), projectName: String(project.name), stageKey: project.current_stage_key as string | null, answer };
   });
 }

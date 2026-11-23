@@ -1,3 +1,4 @@
+import { stageConsultationNodeLabels } from './stage-consultation-template';
 import { canonicalJson } from './canonical';
 import { workflowIssue, type WorkflowIssue } from './errors';
 import { hasOwn, isJsonScalar, isPlainObject } from './guards';
@@ -156,8 +157,8 @@ function parseInputSchema(raw: unknown, path: string, issues: WorkflowIssue[]): 
   }
   checkKnownKeys(raw, INPUT_SCHEMA_KEYS, path, issues);
   const eventType = raw.eventType;
-  if (eventType !== 'stage_changed' && eventType !== 'period_report' && eventType !== 'specialist_followup') {
-    issues.push(workflowIssue('invalid_input_schema', `${path}.eventType`, 'eventType must be stage_changed, period_report or specialist_followup'));
+  if (eventType !== 'stage_changed' && eventType !== 'period_report' && eventType !== 'specialist_followup' && eventType !== 'stage_consultation') {
+    issues.push(workflowIssue('invalid_input_schema', `${path}.eventType`, 'unsupported workflow event type'));
     return null;
   }
   if (eventType === 'period_report') {
@@ -403,6 +404,21 @@ export function validateDefinition(raw: unknown): ValidationResult {
     incoming.get(edge.to)?.push(edge);
   });
 
+  const consultation = inputSchema?.eventType === 'stage_consultation';
+  for (const node of nodeMap.values()) {
+    const callable = hasOwn(stageConsultationNodeLabels, node.capabilityRef);
+    if (consultation ? !callable : callable && node.capabilityRef !== 'condition.compare_boolean') {
+      issues.push(workflowIssue('capability_event_mismatch', nodePath.get(node.nodeId) ?? '$.nodes', 'node is incompatible with this workflow event'));
+    }
+    if (!consultation) continue;
+    const edges = outgoing.get(node.nodeId) ?? [];
+    if (node.type === 'condition' && !['true', 'false'].every(branch => edges.some(edge => edge.when === branch))) {
+      issues.push(workflowIssue('condition_branch_required', '$.edges', '阶段模板的两个分支都需要返回结果'));
+    }
+    if (node.type === 'output' && (edges.length || nodeMap.get(node.inputs?.text?.nodeId ?? '')?.capabilityRef !== 'read.stage_guide')) {
+      issues.push(workflowIssue('invalid_stage_output', '$.nodes', '返回节点应连接阶段知识的文本输出，并结束流程'));
+    }
+  }
   const specialist = inputSchema?.eventType === 'specialist_followup';
   const explicitAssessment = nodes.some(node => node.capabilityRef === 'read.specialist_evidence' || node.capabilityRef === 'compose.stage_specialist.v3');
   const branchedSpecialist = specialist && (explicitAssessment || nodes.some(node => node.typeVersion === 2 || node.capabilityRef === 'condition.specialist_evidence'));
@@ -534,7 +550,7 @@ export function validateDefinition(raw: unknown): ValidationResult {
 
   const saveNodes = [...nodeMap.values()].filter((node) => node.type === 'save_result');
   const deliverNodes = [...nodeMap.values()].filter((node) => node.type === 'deliver_inapp' || node.type === 'output');
-  if (inputSchema?.eventType !== 'specialist_followup' && saveNodes.length === 0) {
+  if (!consultation && !specialist && saveNodes.length === 0) {
     issues.push(workflowIssue('missing_save_node', '$.nodes', 'at least one save_result node is required'));
   }
   if (deliverNodes.length === 0) {
@@ -556,7 +572,7 @@ export function validateDefinition(raw: unknown): ValidationResult {
   }
   for (const node of nodeMap.values()) {
     const specialistNode = !['trigger', 'condition', 'read_materials', 'compose_content', 'save_result', 'deliver_inapp'].includes(node.type);
-    if (node.type !== 'trigger' && node.type !== 'condition' && specialistNode !== specialist) {
+    if (!consultation && node.type !== 'trigger' && node.type !== 'condition' && specialistNode !== specialist) {
       issues.push(workflowIssue('capability_event_mismatch', nodePath.get(node.nodeId) ?? '$.nodes', 'capability does not support this event type'));
     }
   }

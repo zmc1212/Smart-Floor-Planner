@@ -15,6 +15,7 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteEntry[] = [
   { key: 'ai-providers', label: 'AI 供应商', href: '/ai-providers', section: '平台管理中心' },
   { key: 'ai-models', label: '生图模型', href: '/ai-models', section: '平台管理中心', permissionKey: 'ai-providers' },
   { key: 'llm-settings', label: 'LLM大模型配置', href: '/llm-settings', section: '平台管理中心' },
+  { key: 'native-workflow', label: 'Agent 工作流模板', href: '/native-workflow', section: '平台管理中心' },
   { key: 'assistant-worker', label: '小K Worker 启停', href: '/assistant-worker', section: '平台管理中心' },
   { key: 'map-settings', label: '地图服务配置', href: '/map-settings', section: '平台管理中心' },
   { key: 'ai-presets', label: 'AI 预设配置', href: '/ai-presets', section: 'AI 辅助设计' },

@@ -4,6 +4,7 @@ import { fixtureMatchesDefinition, fixtureSetSummaries, findFixtureSet, type Wor
 import { simulate, type SimulationResult } from './simulate';
 import { createElectricalInspectionDefinition, createWaterproofInspectionDefinition } from './specialist-template';
 import { electricalWorkflowTemplateId, waterproofWorkflowTemplateId } from '../assistant/specialists/registry';
+import { createStageConsultationDefinition } from './stage-consultation-template';
 import { createPeriodReportDefinition, createStageReminderDefinition } from './templates';
 import type { WorkflowDefinition } from './types';
 import { validateDefinition } from './validate';
@@ -16,6 +17,8 @@ import type {
 
 export const nativeWorkflowTemplateIds = [
   'stage-reminder',
+  'stage-guidance',
+  'stage-checklist',
   'period-report-daily',
   'period-report-weekly',
   waterproofWorkflowTemplateId,
@@ -26,6 +29,8 @@ export type NativeWorkflowTemplateId = (typeof nativeWorkflowTemplateIds)[number
 
 const templateBuilders: Record<NativeWorkflowTemplateId, () => WorkflowDefinition> = {
   'stage-reminder': createStageReminderDefinition,
+  'stage-guidance': () => createStageConsultationDefinition('stage-guidance'),
+  'stage-checklist': () => createStageConsultationDefinition('stage-checklist'),
   'period-report-daily': () => createPeriodReportDefinition('daily'),
   'period-report-weekly': () => createPeriodReportDefinition('weekly'),
   [waterproofWorkflowTemplateId]: createWaterproofInspectionDefinition,
@@ -48,7 +53,7 @@ export interface WorkflowService {
     record: WorkflowDefinitionRecord;
     fixtureSets: readonly WorkflowFixtureSetSummary[];
   }>;
-  createFromTemplate(templateId: NativeWorkflowTemplateId): Promise<WorkflowDefinitionRecord>;
+  createFromTemplate(templateId: NativeWorkflowTemplateId, definitionId?: string): Promise<WorkflowDefinitionRecord>;
   saveDraft(input: {
     readonly definitionId: string;
     readonly definition: unknown;
@@ -106,11 +111,16 @@ export function createWorkflowService(options: {
       return { record: await requireRecord(definitionId), fixtureSets: fixtureSetSummaries };
     },
 
-    async createFromTemplate(templateId: NativeWorkflowTemplateId): Promise<WorkflowDefinitionRecord> {
+    async createFromTemplate(templateId: NativeWorkflowTemplateId, definitionId?: string): Promise<WorkflowDefinitionRecord> {
       if (!isNativeWorkflowTemplateId(templateId)) {
         throw new WorkflowOperationError('invalid_request', 400, 'unknown template id');
       }
-      const checked = validateDefinition(templateBuilders[templateId]());
+      const seed = templateBuilders[templateId]();
+      if (definitionId !== undefined && definitionId !== templateId
+        && (seed.inputSchema.eventType !== 'stage_consultation' || !/^stage-tool-[a-z0-9][a-z0-9-]{0,51}$/.test(definitionId))) {
+        throw new WorkflowOperationError('invalid_request', 400, '自定义阶段模板标识须以 stage-tool- 开头，后接小写字母、数字或短横线');
+      }
+      const checked = validateDefinition({ ...seed, definitionId: definitionId ?? templateId });
       if (!checked.ok) throw new WorkflowDefinitionError([...checked.issues]);
       return store.create({ definition: checked.definition, now: now() });
     },
@@ -121,6 +131,9 @@ export function createWorkflowService(options: {
       const latestPublished = record.versions[record.versions.length - 1]?.revision ?? 0;
       const checked = validateDefinition(withIdentity(definition, definitionId, latestPublished + 1));
       if (!checked.ok) throw new WorkflowDefinitionError([...checked.issues]);
+      if (checked.definition.inputSchema.eventType !== record.draft.definition.inputSchema.eventType) {
+        throw new WorkflowOperationError('invalid_request', 422, '已建工作流的触发事件不能更换');
+      }
       return store.saveDraft({
         definitionId,
         definition: checked.definition,

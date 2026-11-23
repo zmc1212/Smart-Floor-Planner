@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Empty, Flex, Select, Space, Tag, Typography, theme } from 'antd';
+import { Alert, Button, Card, Descriptions, Empty, Flex, Input, Select, Space, Tag, Typography, theme } from 'antd';
 import type { Graph } from '@antv/x6';
 import { specialists, waterproofAgentId } from '@/lib/assistant/specialists/registry';
 import { capabilityCatalog, specialistInputMatches, specialistNodeSettings, getCapability } from '@/lib/native-workflow/registry';
+import { stageConsultationNodeLabels, stageGuidePorts } from '@/lib/native-workflow/stage-consultation-template';
 import { WORKFLOW_BOUNDS, type JsonValue, type NodeType, type WorkflowDefinition, type WorkflowEdge, type WorkflowNode } from '@/lib/native-workflow/types';
 
 const labels: Partial<Record<NodeType, string>> = {
@@ -13,9 +14,11 @@ const labels: Partial<Record<NodeType, string>> = {
   evidence_assessment: '复核引用依据',
   human_review: '项目经理复核', output: '回传原咨询', checklist: '生成检查清单', request_material: '请求补充资料',
 };
-const capabilities = Object.entries(capabilityCatalog).filter(([key, spec]) =>
-  !!labels[spec.type] && (spec.type !== 'trigger' || key === 'trigger.specialist_followup')
+const specialistCapabilities = Object.entries(capabilityCatalog).filter(([key, spec]) =>
+  (!Object.hasOwn(stageConsultationNodeLabels, key) || key === 'condition.compare_boolean') && !!labels[spec.type] && (spec.type !== 'trigger' || key === 'trigger.specialist_followup')
     && (spec.type !== 'condition' || ['condition.compare_boolean', 'condition.specialist_evidence'].includes(key)));
+const stageCapabilities = Object.entries(capabilityCatalog).filter(([key]) => Object.hasOwn(stageConsultationNodeLabels, key));
+const nodeLabel = (key: string, type: NodeType) => stageConsultationNodeLabels[key] ?? labels[type] ?? key;
 const publishedAgents = specialists.list().filter(agent => agent.status !== 'draft');
 const defaultSpecialist = (specialists.active(waterproofAgentId) ?? publishedAgents[0])!;
 const agentKey = (agent: Readonly<{ agentId: string; version: number }>) => `${agent.agentId}@${agent.version}`;
@@ -122,6 +125,8 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState(definition.entryNodeId);
   const editable = !!onChange;
+  const callable = definition.inputSchema.eventType === 'stage_consultation';
+  const capabilities = callable ? stageCapabilities : specialistCapabilities;
 
   useEffect(() => { latest.current = { definition, onChange, onSelectNode }; }, [definition, onChange, onSelectNode]);
   useEffect(() => {
@@ -176,7 +181,7 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
       const invalid = invalidNodeIds?.includes(node.nodeId);
       return graph.createNode({
         id: node.nodeId, shape: 'rect', x, y, width: 143, height: 47,
-        label: labels[node.type] ?? node.nodeId,
+        label: nodeLabel(node.capabilityRef, node.type),
         attrs: {
           body: { rx: 6, ry: 6, stroke: invalid ? token.colorError : focused ? token.colorPrimary : token.colorBorder, strokeWidth: focused || invalid ? 2 : 1,
             fill: focused ? token.colorPrimaryBg : token.colorBgContainer },
@@ -252,9 +257,9 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
       <Space wrap>
         {editable ? <Select<string> aria-label="添加节点" placeholder="添加节点" value={undefined} style={{ minWidth: 184 }}
           disabled={definition.nodes.length >= WORKFLOW_BOUNDS.maxNodes} onSelect={addNode}
-          options={palette.map(([value, cap]) => ({ value, label: labels[cap.type] }))} /> : null}
+          options={palette.map(([value, cap]) => ({ value, label: nodeLabel(value, cap.type) }))} /> : null}
         <Select aria-label="选择节点" value={focusNodeId ?? selected} onChange={selectNode} style={{ minWidth: 184 }}
-          options={definition.nodes.map(item => ({ value: item.nodeId, label: (labels[item.type] ?? item.type) + ' · ' + item.nodeId }))} />
+          options={definition.nodes.map(item => ({ value: item.nodeId, label: nodeLabel(item.capabilityRef, item.type) + ' · ' + item.nodeId }))} />
         <Button disabled={!graph} onClick={() => graph?.zoomToFit({ padding: 20, maxScale: 1 })}>适应画布</Button>
       </Space>
       {error ? <Alert type="warning" showIcon message="画布加载失败，仍可用节点配置或 JSON 编辑" /> : null}
@@ -266,7 +271,7 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
               onDragStart={event => {
                 event.dataTransfer.setData(dragType, ref);
                 event.dataTransfer.effectAllowed = 'copy';
-              }} onClick={() => addNode(ref)}>{labels[cap.type]}</Button>)}
+              }} onClick={() => addNode(ref)}>{nodeLabel(ref, cap.type)}</Button>)}
           </Space>
         </Card> : null}
         <div ref={frame} onDragOver={event => {
@@ -285,7 +290,7 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
         </div>
       </Flex>
       {node && spec ? (
-        <Card size="small" title={labels[node.type]} extra={editable && node.type !== 'trigger'
+        <Card size="small" title={nodeLabel(node.capabilityRef, node.type)} extra={editable && node.type !== 'trigger'
           ? <Button size="small" danger onClick={() => removeNode(node.nodeId)}>移除节点</Button> : null}>
           <Descriptions size="small" column={2} items={[
             { key: 'node', label: '节点', children: <Typography.Text code>{node.nodeId}</Typography.Text> },
@@ -298,6 +303,12 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
             { key: 'out', label: 'OUTPUT', children: Object.entries(spec.outputs).map(([name, kind]) => <Tag key={name}>{name} · {kind}</Tag>) },
           ]} />
           <Space wrap>
+            {node.capabilityRef === 'trigger.stage_consultation' && <Space direction="vertical">
+              <label>模板名称<Input maxLength={60} disabled={!editable} value={String(node.config?.name ?? '')}
+                onChange={event => patchNode({ config: { ...node.config, name: event.target.value } })} /></label>
+              <label>适用场景<Input.TextArea maxLength={240} rows={2} disabled={!editable} value={String(node.config?.description ?? '')}
+                onChange={event => patchNode({ config: { ...node.config, description: event.target.value } })} /></label>
+            </Space>}
             {node.type === 'agent' ? (() => {
               const current = String(node.config?.agentId) + '@' + String(node.config?.agentVersion);
               const choices = publishedAgents.map(agent => ({ value: agentKey(agent),
@@ -328,8 +339,8 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
               const ref = node.inputs?.[name];
               const options = definition.nodes.filter(item => item.nodeId !== node.nodeId)
                 .flatMap(item => Object.entries(capabilityCatalog[item.capabilityRef]?.outputs ?? {})
-                  .filter(([key, type]) => type === kind && specialistInputMatches(hasEvidenceBranches(definition), node, name, item, key, explicitAssessment))
-                  .map(([key]) => ({ label: item.nodeId + ' · ' + key, value: item.nodeId + ':' + key })));
+                  .filter(([key, type]) => type === kind && (!callable || node.type !== 'output' || item.capabilityRef === 'read.stage_guide') && specialistInputMatches(hasEvidenceBranches(definition), node, name, item, key, explicitAssessment))
+                  .map(([key]) => ({ label: item.nodeId + ' · ' + (callable ? stageGuidePorts[key as keyof typeof stageGuidePorts] ?? key : key), value: item.nodeId + ':' + key })));
               return <Space wrap key={'input:' + name}><Typography.Text>INPUT {name} · {kind}</Typography.Text>
                 <Select allowClear disabled={!editable} aria-label={'输入 ' + name} style={{ minWidth: 225 }} placeholder="连接输出端口"
                   value={ref ? ref.nodeId + ':' + ref.outputPath : undefined} options={options}

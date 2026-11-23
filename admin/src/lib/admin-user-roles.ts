@@ -30,6 +30,7 @@ export const ALL_MENUS = [
   { key: 'enterprises', label: '企业管理' },
   { key: 'ai-providers', label: 'AI 供应商' },
   { key: 'llm-settings', label: 'LLM大模型配置' },
+  { key: 'native-workflow', label: 'Agent 工作流模板' },
   { key: 'assistant-worker', label: '小K Worker 启停' },
   { key: 'map-settings', label: '地图服务配置' },
   { key: 'media-storage', label: '媒体存储' },
@@ -75,6 +76,7 @@ export const MENU_PERMISSION_GROUPS: Array<{
       'enterprises',
       'ai-providers',
       'llm-settings',
+      'native-workflow',
       'assistant-worker',
       'map-settings',
       'media-storage',
@@ -138,6 +140,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   // them to ALL_MENUS or role defaults (including super_admin).
   super_admin: ALL_MENUS.map((menu) => menu.key),
   admin: [
+    'native-workflow',
     'construction-projects',
     'case-publishing',
     'dashboard',

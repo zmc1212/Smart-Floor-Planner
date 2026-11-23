@@ -28,7 +28,11 @@ function ownerSiteContext(project, report, now = Date.now()) {
   ];
   return {
     siteContext: { projectId: String(project.id), name, stageName, hasTodayReport, hasReport },
-    siteTopics,
+    siteTopics: siteTopics.map((topic, index) => {
+      const custom = Array.isArray(project.suggestedQuestions) && project.suggestedQuestions[index];
+      return custom && custom.title && custom.helper && custom.text
+        ? { title: custom.title, helper: custom.helper, text: custom.text, icon: topic.icon } : topic;
+    }),
     siteGreeting
   };
 }
