@@ -36,6 +36,7 @@ import {
 } from '@/lib/customer-phone';
 import { AppointmentRepository } from './appointment-repository';
 import { AssignmentRacingRepository } from './assignment-racing-repository';
+import { currentCustomerService } from './customer-service';
 import { LeadRepository, type LeadWithRelations } from './lead-repository';
 import { STAFF_ACTIVITY_PRESENTER_ROLES } from './referrer-network-repository';
 
@@ -146,19 +147,8 @@ export class ReferralLeadRepository {
   }
 
   async findActiveCustomerAttribution(customerUserId: bigint) {
-    const rows = await this.transaction
-      .select({ lock: customerAttributionLocks, lead: leads })
-      .from(customerAttributionLocks)
-      .innerJoin(leads, eq(customerAttributionLocks.leadId, leads.id))
-      .where(
-        and(
-          eq(customerAttributionLocks.customerUserId, customerUserId),
-          isNull(customerAttributionLocks.releasedAt),
-          isNull(leads.archivedAt)
-        )
-      )
-      .limit(1);
-    return rows[0] ?? null;
+    const scope = await currentCustomerService(this.transaction, customerUserId);
+    return { ambiguous: scope.ambiguous, lead: scope.leadId ? await this.loadLead(BigInt(scope.leadId)) : null };
   }
 
   private async releaseInactiveAttributionLocks(customerUserId: bigint) {
@@ -426,7 +416,12 @@ export class ReferralLeadRepository {
       input.customerUserId,
       input.idempotencyKeyHash
     );
-    if (idempotent) return { kind: 'idempotent', lead: idempotent };
+    if (idempotent) {
+      const { lead } = await this.findActiveCustomerAttribution(input.customerUserId);
+      if (!lead || !idempotent.enterpriseId) throw referralError('customer_service_changed', '原服务关系已变更，请重新扫码');
+      if (lead.enterpriseId !== idempotent.enterpriseId) return { kind: 'existing_attribution', lead };
+      return { kind: 'idempotent', lead: idempotent };
+    }
     if (input.source.expired) {
       throw referralError('pending_source_expired', '推广来源已过期，请重新扫码', 410);
     }
@@ -452,14 +447,15 @@ export class ReferralLeadRepository {
     const phone = normalizeCustomerPhone(user.phone);
     await this.lockKey(`enterprise-phone:${enterpriseId.toString()}:${phone}`);
     await this.lockKey(`customer-attribution:${input.customerUserId.toString()}`);
-    const existing = await this.findActiveAttribution(input.customerUserId);
-    if (existing) {
+    const { lead: existing, ambiguous } = await this.findActiveCustomerAttribution(input.customerUserId);
+    if (ambiguous) throw referralError('customer_service_ambiguous', '存在多家服务企业，请联系当前的装修顾问确认');
+    if (existing?.enterpriseId) {
       await this.transaction.insert(leadAssignmentEvents).values({
-        enterpriseId: existing.lock.enterpriseId,
-        leadId: existing.lead.id,
+        enterpriseId: existing.enterpriseId,
+        leadId: existing.id,
         eventType: 'attribution_reused',
-        designerId: existing.lead.assignedTo,
-        measurerId: existing.lead.measurerId,
+        designerId: existing.assignedTo,
+        measurerId: existing.measurerId,
         actorUserId: input.customerUserId,
         reason: 'active_attribution_preserved',
         metadata: {
@@ -468,10 +464,12 @@ export class ReferralLeadRepository {
       });
       return {
         kind: 'existing_attribution',
-        lead: await this.loadLead(existing.lead.id),
+        lead: existing,
       };
     }
     await this.releaseInactiveAttributionLocks(input.customerUserId);
+    if (await this.findActiveAttribution(input.customerUserId))
+      throw referralError('customer_service_changed', '原服务关系暂不可用，请联系装修顾问确认');
 
     const matchedLead = await new LeadRepository(this.transaction).findOpenByPhone(
       phone,

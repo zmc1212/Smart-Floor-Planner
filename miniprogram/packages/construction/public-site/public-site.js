@@ -19,7 +19,8 @@ Page({
   },
   watchLive() {
     const live=this.data.liveEntry,site=this.data.site;if(!live||!site||!/^[a-f0-9]{48}$/.test(live.key))return;
-    const values={enterpriseId:this.options.enterpriseId,key:live.key,siteId:site.id,versionId:site.versionId,...(this.options.conversationId?{conversationId:this.options.conversationId}:{})};
+    const cid = this.controller.consultationId;
+    const values={enterpriseId:this.options.enterpriseId,key:live.key,siteId:site.id,versionId:site.versionId,...(cid?{conversationId:cid}:{})};
     wx.navigateTo({url:'/packages/construction/public-live/public-live?'+Object.entries(values).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&')});
   },
   onHide() {this.liveEpoch++;this.setData({liveEntry:null});original.onHide.call(this);},

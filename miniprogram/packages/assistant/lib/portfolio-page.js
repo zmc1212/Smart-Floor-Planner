@@ -1,4 +1,4 @@
-const { PortfolioController, initial, studioDefaults } = require('./portfolio');
+const { PortfolioController, initial, studioDefaults, sharedWorkPath } = require('./portfolio');
 const { goToLogin } = require('../../../utils/session');
 const { copyDesignerWechatId } = require('../../../utils/designerContact');
 const nativePreview = require('../../../utils/native-preview');
@@ -29,6 +29,11 @@ function page(kind) {
     },
     async onShow() {
       this._shown = true;
+      if (kind === 'designer' && this._options.portfolioEntry) {
+        wx.redirectTo({ url: sharedWorkPath(this._options.portfolioEntry),
+          fail: () => this.setData({ loading: false, error: '暂时打不开分享作品，请重试。' }) });
+        return;
+      }
       // Returning from the native image viewer keeps the rendered gallery,
       // filters and scroll position instead of rebuilding the page.
       if (nativePreview.shownAfterPreview(this)) { this._previewPaths = null; this._previewPending = null; return; }
@@ -60,7 +65,7 @@ function page(kind) {
       const navigationTop = Math.max(info.statusBarHeight || 44, (capsule?.top || 50) - 6), navigationHeight = Math.max(44, capsule?.height || 32);
       this.setData({ navigationTop, navigationHeight, navigationBottom: navigationTop + navigationHeight, navigationRight: capsule ? info.windowWidth - capsule.left + 8 : 100 });
     },
-    retry() { return this.controller.load(); },
+    retry() { return kind === 'designer' && this._options?.portfolioEntry ? this.onShow() : this.controller.load(); },
     retryImages() { this.controller.set({ imageError: '' }); return this.controller.loadImages(); },
     moreWorks() { return this.controller.more(); },
     setFilter(event) {
@@ -137,7 +142,9 @@ function page(kind) {
     },
     navigateTour(index, work = this.data.work) {
       if (!work || !Number.isInteger(index) || index < 0 || index >= work.tours.length) return;
-      wx.navigateTo({ url: `/packages/assistant/tour-view/tour-view?conversationId=${encodeURIComponent(this.data.conversationId)}&workId=${work.id}&versionId=${work.versionId}&index=${index}` });
+      const access = this.data.sharedPreview ? 'portfolioEntry=' + encodeURIComponent(this._options.portfolioEntry)
+        : 'conversationId=' + encodeURIComponent(this.data.conversationId);
+      wx.navigateTo({ url: `/packages/assistant/tour-view/tour-view?${access}&workId=${work.id}&versionId=${work.versionId}&index=${index}` });
     },
     login() { goToLogin(); },
     back() {
@@ -169,7 +176,7 @@ function page(kind) {
       else wx.navigateTo({ url: `/packages/assistant/designer/designer?conversationId=${encodeURIComponent(id)}&authorId=${work.authorId}&sourceWorkId=${work.id}` });
     },
     openPublicContact() {
-      if (!this._alive || !this._shown || this.data.loading || this.data.unavailable || (!this.data.work && !this.data.featuredWork)) return;
+      if (!this._alive || !this._shown || this.data.sharedPreview || this.data.loading || this.data.unavailable || (!this.data.work && !this.data.featuredWork)) return;
       if (!this.data.contactSheetOpen) {
         clearTimeout(this._contactSheetTimer);
         this.setData({ contactSheetVisible: true });
@@ -235,7 +242,7 @@ function page(kind) {
       this.controller.set({ imageError: '图纸暂未加载，点此重试。' });
     },
     async preview(event) {
-      const { work, conversationId, images, unavailable } = this.data;
+      const { work, images, unavailable } = this.data;
       if (!this._alive || !this._shown || unavailable || !work || this._previewPending != null) return;
       const { id, kind } = event.currentTarget.dataset;
       const current = images['i' + id];
@@ -244,7 +251,7 @@ function page(kind) {
       const epoch = this.controller.epoch;
       this._previewPending = epoch;
       try {
-        await this.controller.client.read(`/conversations/${conversationId}/portfolio/works/${work.id}`, { versionId: work.versionId });
+        await this.controller.readWork(work.id, work.versionId);
         if (!this.controller.valid(epoch) || !this._shown || this.data.images['i' + id] !== current) return;
         const urls = shown.map(item => this.data.images['i' + item.assetId]).filter(Boolean);
         // The native viewer can hide this page before reading its local files.

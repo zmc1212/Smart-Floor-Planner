@@ -4,6 +4,7 @@ import type { ProfessionalEvidence, ReportWorkmanshipStage } from './professiona
 export type Principal = { kind: 'user'; userId: string } | { kind: 'admin'; adminId: string };
 export type ActorContext = {
   enterpriseId: string; principal: Principal; contextVersion: number;
+  customerServiceRequired?: true;
   capabilities: readonly string[]; entry?: Record<string, unknown>;
 };
 export type MessageBlock = { type: 'text'; text: string }

@@ -1,8 +1,8 @@
-const { PublicSiteClient, PublicMedia, imagePath, viewMaterial, validId, publicError } = require('../../../utils/public-site-client');
-const initial = () => ({ loading: true, error: '', unavailable: false, items: [], site: null, publicPaths: {}, areas: [], areaIndex: 0, areaLabel: '选择片区', tab: 'records', draft: '' });
+const { PublicSiteClient, PublicMedia, imagePath, viewMaterial, validId, publicError, publicConsultationId } = require('../../../utils/public-site-client');
+const initial = () => ({ loading: true, error: '', unavailable: false, canConsult: false, items: [], site: null, publicPaths: {}, areas: [], areaIndex: 0, areaLabel: '选择片区', tab: 'records', draft: '' });
 class PublicSitesController {
-  constructor({ emit, identity = () => '', client = new PublicSiteClient(), media }) {
-    Object.assign(this, { emit, identity, client }); this.state = initial(); this.epoch = 0;
+  constructor({ emit, identity = () => '', client = new PublicSiteClient(), media, authorizeConsultation = publicConsultationId }) {
+    Object.assign(this, { emit, identity, client, authorizeConsultation }); this.state = initial(); this.epoch = 0;
     this.media = media || new PublicMedia({ identity, emit: patch => { if (patch.publicMediaRevoked) this.set({ items: [], site: null, unavailable: true }); this.set(patch); } });
   }
   set(p) { Object.assign(this.state, p); this.emit(p); }
@@ -12,11 +12,16 @@ class PublicSitesController {
     this.epoch++;
     if (this.session !== this.identity()) { this.media.clear(); this.set(initial()); }
     this.session = this.identity(); this.options = options; this.detail = detail;
+    this.consultationId = ''; this.set({ canConsult: false });
     this.entryValid = validId(options.enterpriseId) && (!detail || validId(options.siteId) && validId(options.versionId));
     if (!this.entryValid) { this.media.clear(); this.set({ ...initial(), loading: false, unavailable: true, error: '请从有效的公开工地入口进入。' }); return; }
-    return this.load();
+    const load = this.load();
+    const epoch = this.epoch;
+    const cid = this.session ? await this.authorizeConsultation(options) : '';
+    if (this.valid(epoch)) { this.consultationId = cid; this.set({ canConsult: !!cid }); }
+    return load;
   }
-  hide() { this.visible = false; this.epoch++; this.media.clear(); this.set({ items: [], site: null }); }
+  hide() { this.visible = false; this.epoch++; this.consultationId = ''; this.media.clear(); this.set({ items: [], site: null, canConsult: false }); }
   async load() {
     if (!this.visible || !this.entryValid) return; const epoch = ++this.epoch, eid = this.options.enterpriseId;
     this.set({ loading: true, error: '', unavailable: false });
@@ -40,8 +45,9 @@ class PublicSitesController {
   }
   area(index) { if (!Number.isInteger(index) || index < 0 || index >= this.state.areas.length) return; this.set({ areaIndex: index }); return this.load(); }
   privateChat(site, designer = false) {
-    const values = { ...(validId(this.options.conversationId) ? { conversationId: this.options.conversationId } : { publicEnterpriseId: this.options.enterpriseId }),
-      ...(site ? { publicSiteId: site.id, publicVersionId: site.versionId, publicEnterpriseId: this.options.enterpriseId } : {}),
+    if (!this.consultationId || !this.visible || this.session !== this.identity() || this.state.unavailable) return '';
+    const values = { conversationId: this.consultationId,
+      ...(site ? { publicSiteId: site.id, publicVersionId: site.versionId } : {}),
       ...(designer ? { findDesigner: '1' } : {}), ...(this.state.draft ? { prompt: this.state.draft } : {}) };
     return '/packages/assistant/chat/chat?' + Object.entries(values).map(([k,v]) => k + '=' + encodeURIComponent(v)).join('&');
   }

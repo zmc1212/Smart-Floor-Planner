@@ -1,5 +1,5 @@
 const { AssistantClient, errorCopy } = require('../lib/client');
-const { PortfolioImages } = require('../lib/portfolio');
+const { PortfolioImages, previewHeaders, sharedWorkPath } = require('../lib/portfolio');
 const { tourInput, selectTour } = require('../lib/tour');
 const { goToLogin } = require('../../../utils/session');
 
@@ -24,7 +24,13 @@ Page({
     if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
     if (this._alive && this._shown) return this.load();
   },
-  onHide() { this._shown = false; },
+  onHide() {
+    this._shown = false;
+    if (this.input?.portfolioEntry) {
+      this._loaded = false; this.tour = null; this.images.clear();
+      this.setData({ url: '', coverPath: '' });
+    }
+  },
   onUnload() {
     this._alive = false; this._shown = false;
     if (this.images) this.images.clear();
@@ -35,7 +41,9 @@ Page({
     this.setData({ ...initial(), viewportWidth: this.data.viewportWidth });
     try {
       const input = this.input;
-      const work = await this.client.read(`/conversations/${input.conversationId}/portfolio/works/${input.workId}`, { versionId: input.versionId });
+      const work = input.portfolioEntry
+        ? await this.client.read('/portfolio-preview', {}, previewHeaders(input.portfolioEntry))
+        : await this.client.read(`/conversations/${input.conversationId}/portfolio/works/${input.workId}`, { versionId: input.versionId });
       if (!this._alive || !this._shown) return;
       if (String(work.id) !== input.workId || String(work.versionId) !== input.versionId) throw { code: 'portfolio_not_found', statusCode: 404 };
       const tour = selectTour(work, input.index);
@@ -49,7 +57,7 @@ Page({
       this.setData({ loading: false, workTitle: String(work.title || ''), tourTitle: tour.title, provider: tour.provider, url: tour.url });
       if (/^[1-9]\d{0,18}$/.test(String(work.coverAssetId))) {
         try {
-          const coverPath = await this.images.load(input.conversationId, work, work.coverAssetId);
+          const coverPath = await this.images.load(input.conversationId, work, work.coverAssetId, input.portfolioEntry);
           if (this._alive && this._shown) this.setData({ coverPath });
         } catch (_) { /* The fallback remains usable without the cover. */ }
       }
@@ -62,6 +70,7 @@ Page({
     if (this._alive && this.data.url) this.setData({ url: '', webError: true });
   },
   retryWeb() {
+    if (this.input?.portfolioEntry) return this.retryRead();
     if (this.tour && this.tour.url && this._alive) this.setData({ url: this.tour.url, webError: false, copied: false });
   },
   retryRead() { this._loaded = false; return this.load(); },
@@ -78,7 +87,8 @@ Page({
   back() {
     if (getCurrentPages().length > 1) { wx.navigateBack(); return; }
     if (this.input) {
-      wx.redirectTo({ url: `/packages/assistant/work/work?conversationId=${encodeURIComponent(this.input.conversationId)}&workId=${this.input.workId}&versionId=${this.input.versionId}` });
+      wx.redirectTo({ url: this.input.portfolioEntry ? sharedWorkPath(this.input.portfolioEntry)
+        : `/packages/assistant/work/work?conversationId=${encodeURIComponent(this.input.conversationId)}&workId=${this.input.workId}&versionId=${this.input.versionId}` });
       return;
     }
     wx.switchTab({ url: '/pages/index/index' });

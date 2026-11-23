@@ -40,6 +40,8 @@ before(async () => {
       await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${tenants[i]},true,100,1200000,100000000,30)`);
       const u = (await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix + i},1) returning id`))!; users.push(String(u.id));
       await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${users[i]},${prefix + i})`);
+      await tx.execute(sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+        values(${tenants[i]},${users[i]},${prefix + ' synthetic service'},'13000000000','test')`);
       customers.push({ enterpriseId: tenants[i], principal: { kind: 'user', userId: users[i] }, contextVersion: 1, capabilities: ['assistant.chat.self'] });
       for (let j = 0; j < 4; j++) {
         const role = j === 0 ? 'enterprise_admin' : j === 3 ? 'measurer' : 'designer';
@@ -53,7 +55,7 @@ before(async () => {
 });
 after(async () => {
   if (!tenants.length) return;
-  try { await withPlatformTransaction(async tx => { await tx.execute(sql`delete from app.platform_portfolio_templates where key like ${prefix + '%'}`); for (const eid of tenants) { await deletePortfolioData(tx, BigInt(eid)); await deleteAssistantData(tx, BigInt(eid)); await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`); await tx.execute(sql`delete from app.enterprises where id=${eid}`); } for (const uid of users) await tx.execute(sql`delete from app.users where id=${uid}`); }); }
+  try { await withPlatformTransaction(async tx => { await tx.execute(sql`delete from app.platform_portfolio_templates where key like ${prefix + '%'}`); for (const eid of tenants) { await deletePortfolioData(tx, BigInt(eid)); await deleteAssistantData(tx, BigInt(eid)); await tx.execute(sql`delete from app.leads where enterprise_id=${eid}`); await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`); await tx.execute(sql`delete from app.enterprises where id=${eid}`); } for (const uid of users) await tx.execute(sql`delete from app.users where id=${uid}`); }); }
   finally { await closePostgresPool(); }
 });
 type TestResult = Row & { head: Row & { content: WorkContent }; work: Row; versions: Array<Row & { content: WorkContent }>; items: Row[]; assets: Row[]; template: Row & { content: WorkContent }; images: Row[] };
@@ -267,23 +269,31 @@ test('P2C.2 explicit preferences persist once, retain correction lineage and rej
   await assert.rejects(catalog.preference(workId, { ...body, versionId: '1' }, randomUUID()), /not_found/);
 });
 
-test('P2C.2 signed studio sharing creates the recipient own consultation and rechecks current publication', async () => {
+test('P2C.2 a shared work can be previewed across enterprises without creating a consultation or granting portfolio access', async () => {
   const catalog = new PortfolioCatalog(customers[0], conversations[0]), work = await catalog.work(workId);
   const share = await catalog.share(workId, work.versionId), decoded = decodeJwt(share.token);
   assert.equal(decoded.workId, workId); assert.equal(decoded.conversationId, undefined); assert.equal(decoded.userId, undefined); assert.equal(decoded.channelCode, undefined);
   assert.equal((await readPortfolioEntry(share.token)).enterpriseId, tenants[0]);
   await assert.rejects(readPortfolioEntry(share.token.slice(0, -8) + 'tampered'), /entry_context_invalid/);
   const mini = await signMiniProgramToken({ sub: users[1], id: users[1], contextVersion: 1, mode: 'customer', role: 'user', source: 'wechat' });
-  const post = (path: string[], body: Row, k = randomUUID()) => assistantHttp(new Request('http://localhost:3006/api/miniprogram/assistant/' + path.join('/'), {
-    method: 'POST', headers: { authorization: 'Bearer ' + mini, 'Content-Type': 'application/json', 'Idempotency-Key': k }, body: JSON.stringify(body) }), path);
-  const entryResponse = await post(['entry-context'], { portfolioEntry: share.token }); assert.equal(entryResponse.status, 200);
-  const entry = (await entryResponse.json()).data; assert.equal(entry.portfolio.authorId, staff[0][1]);
-  const created = await post(['conversations'], { entryToken: entry.entryToken }); assert.equal(created.status, 200);
-  const cid = (await created.json()).data.id; assert.notEqual(cid, conversations[0]);
-  const own = await assistantHttp(new Request('http://localhost:3006/api/miniprogram/assistant/conversations/' + cid + '/portfolio/designers/' + staff[0][1], { headers: { authorization: 'Bearer ' + mini } }), ['conversations', cid, 'portfolio', 'designers', staff[0][1]]);
-  assert.equal(own.status, 200);
+  const request = (path: string[], body?: Row) => assistantHttp(new Request('http://localhost:3006/api/miniprogram/assistant/' + path.join('/'), {
+    method: body ? 'POST' : 'GET', headers: { authorization: 'Bearer ' + mini, 'Content-Type': 'application/json',
+      'Idempotency-Key': randomUUID(), 'X-Portfolio-Entry': share.token }, ...(body ? { body: JSON.stringify(body) } : {}) }), path);
+  const count = () => withPlatformTransaction(tx => one(tx, sql`select count(*)::int n from app.assistant_participants where user_id=${users[1]}`));
+  const before = (await count())!.n;
+  const preview = await request(['portfolio-preview']); assert.equal(preview.status, 200);
+  const data = (await preview.json()).data;
+  assert.equal(data.id, workId); assert.equal(data.versionId, work.versionId); assert.equal(data.authorId, staff[0][1]);
+  assert.equal(data.conversationId, undefined); assert.equal(data.contact, undefined);
+  const image = await request(['portfolio-preview', 'assets', assetId]);
+  assert.equal(image.status, 200); assert.equal(image.headers.get('content-type'), 'image/jpeg');
+  assert.equal((await request(['portfolio-preview', 'assets', '9223372036854775807'])).status, 404);
+  assert.equal((await request(['portfolio-preview'], { contact: true })).status, 404);
+  assert.equal((await request(['entry-context'], { portfolioEntry: share.token })).status, 403);
+  assert.equal((await request(['conversations', conversations[0], 'portfolio', 'designers', staff[0][1]])).status, 404);
+  assert.equal((await count())!.n, before);
   await withPlatformTransaction(tx => tx.execute(sql`update app.admin_users set status='disabled' where id=${staff[0][1]}`));
-  try { assert.equal((await post(['entry-context'], { portfolioEntry: share.token })).status, 404); await assert.rejects(catalog.share(workId, work.versionId), /not_found/); }
+  try { assert.equal((await request(['portfolio-preview'])).status, 404); await assert.rejects(catalog.share(workId, work.versionId), /not_found/); }
   finally { await withPlatformTransaction(tx => tx.execute(sql`update app.admin_users set status='active' where id=${staff[0][1]}`)); }
 });
 

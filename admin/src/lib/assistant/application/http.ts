@@ -8,7 +8,7 @@ import { HandoffWorkflow } from '../handoff/workflow';
 import { staffHandoffHttp } from '../handoff/http';
 import { mediaHttp } from '../media/http';
 import { speechHttp } from '../speech/http';
-import { portfolioCatalogHttp } from '@/lib/portfolio/catalog';
+import { portfolioCatalogHttp, portfolioPreviewHttp } from '@/lib/portfolio/catalog';
 import { siteWatchInterceptor } from '@/lib/construction/site-watches';
 import { customerSiteMedia } from '@/lib/construction/site-publications';
 import { withTenantTransaction } from '@/db/transaction';
@@ -31,6 +31,7 @@ export async function assistantHttp(request: Request, path: string[]) {
   const requestId = randomUUID();
   try {
     const identity = await customerIdentity(request);
+    if (path[0] === 'portfolio-preview') return await portfolioPreviewHttp(request, path.slice(1));
     if (path[0] === 'conversations' && ['report-context','report-topic'].includes(path[2]) && path.length === 3) {
       const cid = id(path[1]), params = new URL(request.url).searchParams;
       if (params.size) fail('invalid_message', 422);

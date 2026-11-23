@@ -7,7 +7,7 @@ import { appendMessage, idempotent } from '@/lib/assistant/core/conversation';
 import { discoveryRequest } from '@/lib/assistant/core/discovery';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import { HandoffWorkflow } from '@/lib/assistant/handoff/workflow';
-import { createPortfolioEntry } from './entry';
+import { createPortfolioEntry, readPortfolioEntry } from './entry';
 import { resolveDesignerQuery } from './designer-recommendation';
 import { nearbyRegion } from '@/lib/assistant/location/region';
 import { DEFAULT_PORTFOLIO_AVATAR, LAYOUT_OPTIONS, STYLE_OPTIONS, type PortfolioDefaultAvatar } from './options';
@@ -26,6 +26,22 @@ function authorCard(candidate: Candidate) {
   return { id: candidate.work.authorId, name: candidate.work.authorName, title: candidate.professional?.title ?? '',
     enterpriseName: candidate.enterpriseName, city: candidate.work.cityName, portraitAvailable: candidate.portraitAvailable,
     defaultAvatar: candidate.profile.defaultAvatar ?? DEFAULT_PORTFOLIO_AVATAR };
+}
+
+async function portfolioAsset(tx: PostgresTransaction, enterpriseId: string, work: PublicWork, assetId: string, column: 'content_hash' | 'image_base64') {
+  const assigned = work.images.some(image => image.assetId === assetId)
+    || work.planComparison?.originalAssetId === assetId || work.planComparison?.designAssetId === assetId;
+  if (!assigned) fail('portfolio_not_found', 404);
+  const asset = await one(tx, sql`select ${sql.identifier(column)} as value from app.portfolio_assets
+    where enterprise_id=${enterpriseId} and work_id=${work.id} and id=${assetId}`);
+  if (!asset) fail('portfolio_not_found', 404);
+  return String(asset.value);
+}
+
+async function portfolioPortrait(tx: PostgresTransaction, enterpriseId: string, authorId: string) {
+  const portrait = await one(tx, sql`select image_base64 from app.portfolio_portraits where enterprise_id=${enterpriseId} and author_id=${authorId}`);
+  if (!portrait) fail('portfolio_not_found', 404);
+  return String(portrait.image_base64);
 }
 /** All public projections recheck the live publication, author and rights.
  * No published DTO contains permission evidence, private owner details or internal source files.
@@ -115,9 +131,7 @@ export class PortfolioCatalog {
     id(authorId);
     return this.authorized(async tx => {
       if (!(await portfolioCandidates(tx, this.actor.enterpriseId, { authorId })).length) fail('portfolio_not_found', 404);
-      const portrait = await one(tx, sql`select image_base64 from app.portfolio_portraits where enterprise_id=${this.actor.enterpriseId} and author_id=${authorId}`);
-      if (!portrait) fail('portfolio_not_found', 404);
-      return Buffer.from(String(portrait.image_base64), 'base64');
+      return Buffer.from(await portfolioPortrait(tx, this.actor.enterpriseId, authorId), 'base64');
     });
   }
   work(workId: string, versionId?: string) {
@@ -213,16 +227,40 @@ export class PortfolioCatalog {
     id(workId); id(versionId); id(assetId);
     return this.authorized(async tx => {
       const candidate = (await portfolioCandidates(tx, this.actor.enterpriseId, { workId }))[0];
-      if (!candidate || candidate.work.versionId !== versionId || ![...candidate.work.images.map(image => image.assetId),
-        candidate.work.planComparison?.originalAssetId, candidate.work.planComparison?.designAssetId].includes(assetId)) fail('portfolio_not_found', 404);
+      if (!candidate || candidate.work.versionId !== versionId) fail('portfolio_not_found', 404);
       const column = representation === 'hash' ? 'content_hash' : 'image_base64';
-      const asset = await one(tx, sql`select ${sql.identifier(column)} as value from app.portfolio_assets where enterprise_id=${this.actor.enterpriseId} and work_id=${workId} and id=${assetId}`);
-      if (!asset) fail('portfolio_not_found', 404);
-      const value = String(asset.value);
+      const value = await portfolioAsset(tx, this.actor.enterpriseId, candidate.work, assetId, column);
       return representation === 'hash' ? value : Buffer.from(value, 'base64');
     });
   }
 }
+
+/** A share grants read access to one exact public publication. It has no
+ * consultation, transitions, or contact permissions. */
+export async function portfolioPreviewHttp(request: Request, path: string[]) {
+  const params = new URL(request.url).searchParams;
+  const portrait = path.join('/') === 'portrait';
+  const asset = path.length === 2 && path[0] === 'assets';
+  if (request.method !== 'GET' || (path.length && !portrait && !asset)) fail('portfolio_not_found', 404);
+  if (portrait ? params.size !== 1 || params.get('format') !== 'base64' : params.size) fail('invalid_portfolio', 422);
+  const entry = await readPortfolioEntry(request.headers.get('X-Portfolio-Entry'));
+  return withTenantTransaction(entry.enterpriseId, async tx => {
+    const enterprise = await one(tx, sql`select id from app.enterprises where id=${entry.enterpriseId} and status='active' for share`);
+    if (!enterprise) fail('portfolio_not_found', 404);
+    const candidate = (await portfolioCandidates(tx, entry.enterpriseId, { workId: entry.workId, authorId: entry.authorId }))[0];
+    if (!candidate || candidate.work.versionId !== entry.versionId) fail('portfolio_not_found', 404);
+    const headers = { 'Cache-Control': 'private, no-store' };
+    if (asset) {
+      const value = await portfolioAsset(tx, entry.enterpriseId, candidate.work, id(path[1]), 'image_base64');
+      return new NextResponse(Buffer.from(value, 'base64'), { headers: { ...headers, 'Content-Type': 'image/jpeg', 'X-Content-Type-Options': 'nosniff' } });
+    }
+    const data = portrait
+      ? { mimeType: 'image/jpeg', imageBase64: await portfolioPortrait(tx, entry.enterpriseId, entry.authorId) }
+      : { ...candidate.work, authorCard: authorCard(candidate) };
+    return NextResponse.json({ success: true, data }, { headers });
+  });
+}
+
 export async function portfolioCatalogHttp(request: Request, actor: ActorContext, conversationId: string, path: string[]) {
   const params = new URL(request.url).searchParams, service = new PortfolioCatalog(actor, conversationId);
   const allowed = path.join('/') === 'recommendations' ? ['cityCode', 'style', 'layout', 'communityId', 'replyId']

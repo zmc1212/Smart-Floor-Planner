@@ -36,11 +36,11 @@ function page(detail) {
     openSite(e) {
       const item = this.data.items.find(i => i.id === String(e.currentTarget.dataset.id)); if (!item) return;
       const values = { enterpriseId: this.options.enterpriseId, siteId: item.id, versionId: item.versionId,
-        ...(this.options.conversationId ? { conversationId: this.options.conversationId } : {}) };
+        ...(this.controller.consultationId ? { conversationId: this.controller.consultationId } : {}) };
       wx.navigateTo({ url: '/packages/construction/public-site/public-site?' + Object.entries(values).map(([k,v]) => k+'='+encodeURIComponent(v)).join('&') });
     },
-    consult() { wx.navigateTo({ url: this.controller.privateChat(this.data.site) }); },
-    designer() { wx.navigateTo({ url: this.controller.privateChat(this.data.site, true) }); },
+    consult() { const url = this.controller.privateChat(this.data.site); if (url) wx.navigateTo({ url }); },
+    designer() { const url = this.controller.privateChat(this.data.site, true); if (url) wx.navigateTo({ url }); },
     voice() { wx.showToast({ title: '语音暂不可用，可以打字或发图', icon: 'none' }); },
     onShareAppMessage() { return { title: detail && this.data.site ? this.data.site.name + ' · 云工地围观' : '看看公开工地 · 家客来',
       path: detail && this.data.site ? '/packages/construction/public-site/public-site?enterpriseId='+this.options.enterpriseId+'&siteId='+this.data.site.id+'&versionId='+this.data.site.versionId

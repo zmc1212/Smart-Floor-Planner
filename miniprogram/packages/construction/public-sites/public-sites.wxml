@@ -10,5 +10,5 @@
     <view wx:for="{{items}}" wx:key="id" class="paper site-card"><view class="site-cover"><image wx:if="{{item.photos.length && publicPaths[item.photos[0].key]}}" src="{{publicPaths[item.photos[0].key]}}" mode="aspectFill"/><text wx:else class="meta">现场照片未公开</text></view><view class="site-copy"><text class="site-title">{{item.name}}</text><text class="stage-tag">{{item.stageName}}</text><text class="meta date-label">{{item.district}} · {{item.dateLabel}}</text><text wx:if="{{item.excerpts.length}}" class="site-summary">{{item.excerpts[0].text}}</text><button class="primary" data-id="{{item.id}}" bindtap="openSite">看看现场 <text>›</text></button></view></view>
     <text class="privacy-note">仅展示获准公开的照片与服务节选。</text>
   </view>
-  <view class="consult-footer"><button class="primary" bindtap="consult">聊聊我家的装修</button></view>
+  <view wx:if="{{canConsult && !unavailable}}" class="consult-footer"><button class="primary" bindtap="consult">聊聊我家的装修</button></view>
 </view>

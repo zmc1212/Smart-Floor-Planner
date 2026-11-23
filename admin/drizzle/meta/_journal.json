@@ -960,6 +960,13 @@
       "when": 1797235200000,
       "tag": "0140_construction_worker_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1797580800000,
+      "tag": "0144_assistant_customer_service",
+      "breakpoints": true
     }
   ]
 }

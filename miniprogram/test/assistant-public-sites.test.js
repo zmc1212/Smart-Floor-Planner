@@ -161,9 +161,14 @@ test('asking about a displayed public version attaches it once to the original c
   page.data.readOnly=true;await page.askPublicSite();assert.equal(calls.length,3);
 });
 
-test('public browsing is anonymous, keeps the visitor consultation and never carries a project/owner identity', async()=>{
-  const calls=[];const c=new PublicSitesController({emit(){},identity:()=>'',media:noMedia(),client:{async read(eid,path,params){calls.push({eid,path,params});return path==='areas'?{items:[{cityCode:'420500',district:'伍家岗区',label:'伍家岗区'}]}:{items:[material()]};}}});
+test('public site shares preview only and can return to a verified same-enterprise consultation', async()=>{
+  let identity='';
+  const calls=[];const c=new PublicSitesController({emit(){},identity:()=>identity,media:noMedia(),authorizeConsultation:async options=> options.enterpriseId==='1' ? options.conversationId : '',client:{async read(eid,path,params){calls.push({eid,path,params});return path==='areas'?{items:[{cityCode:'420500',district:'伍家岗区',label:'伍家岗区'}]}:{items:[material()]};}}});
   await c.show({enterpriseId:'1',conversationId:'11'});assert.equal(c.state.items.length,1);assert.equal(calls[1].path,'sites');
+  assert.equal(c.privateChat(c.state.items[0],true),'');
+  identity='account-a'; await c.show({enterpriseId:'2',conversationId:'11'});
+  assert.equal(c.state.items.length,1);assert.equal(c.privateChat(c.state.items[0],true),'');
+  await c.show({enterpriseId:'1',conversationId:'11'});
   const url=c.privateChat(c.state.items[0],true);assert.match(url,/conversationId=11/);assert.match(url,/publicSiteId=21/);assert.match(url,/findDesigner=1/);assert.doesNotMatch(url,/leadId|projectId|ownerId/);
   assert.deepEqual(entryInput({conversationId:'11',publicEnterpriseId:'1',publicSiteId:'21'}),{conversationId:'11'});
   assert.deepEqual(entryInput({publicEnterpriseId:'1',publicSiteId:'21'}),{publicEnterpriseId:'1'});

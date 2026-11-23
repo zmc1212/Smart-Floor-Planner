@@ -15,8 +15,7 @@ const {
   publishedImageCacheKey,
 } = require('../../utils/protectedImageCache.js');
 
-const FREE_DESIGN_ROUTE = 'packages/business/free-design-service/free-design-service';
-const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
+const { resolveServiceEntryUrl } = require('../../utils/service-entry');
 const XIAO_K_IMAGE = '/images/customer-service-three-free/xiao-k-three-benefits.png';
 
 function navigationMetrics() {
@@ -33,35 +32,6 @@ function navigationMetrics() {
     navigationHeight: Number((menuRect && menuRect.height) || 32),
     navigationRight: Math.max(94, Number(windowInfo.windowWidth || 390) - menuLeft + 10),
   };
-}
-
-function resolveServiceEntryUrl(scanResult) {
-  const candidates = [
-    String((scanResult && scanResult.path) || '').trim(),
-    String((scanResult && scanResult.result) || '').trim(),
-  ].filter(Boolean);
-
-  for (const raw of candidates) {
-    let pathPart = raw;
-    try {
-      if (/^https?:\/\//i.test(raw)) {
-        const parsed = new URL(raw);
-        pathPart = `${parsed.pathname.replace(/^\//, '')}${parsed.search || ''}`;
-      }
-    } catch (error) {
-      pathPart = raw;
-    }
-
-    const normalized = pathPart.replace(/^\/+/, '');
-    const queryIndex = normalized.indexOf('?');
-    const route = (queryIndex === -1 ? normalized : normalized.slice(0, queryIndex)).replace(/\.html$/, '');
-    const query = queryIndex === -1 ? '' : normalized.slice(queryIndex + 1);
-    if (!/(^|&)(token|scene)=[^&]+/.test(query)) continue;
-    if (route === FREE_DESIGN_ROUTE || route === ONBOARDING_ROUTE) {
-      return `/${route}${queryIndex === -1 ? '' : normalized.slice(queryIndex)}`;
-    }
-  }
-  return '';
 }
 
 function formatUpdatedAt(value) {

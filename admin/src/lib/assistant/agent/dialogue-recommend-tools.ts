@@ -5,7 +5,7 @@ import { fail } from '../contracts';
 import { runContext, type Lease } from '../infrastructure/job-queue';
 import { synthesisContextAvailable } from './synthesis-sources';
 import type { SynthesisContext } from './synthesis';
-import { recommendDesigners, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
+import { designerNoMatch, recommendDesigners, revalidateDesignerSnapshot, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
 import { publicCandidates, selectPublicCandidates } from '@/lib/construction/public-read';
 import { publicContextStatus, type PublicContextRef } from '@/lib/construction/public-projections';
 import { readMemory } from './memory';
@@ -86,20 +86,24 @@ export function publicSitesDelivery(composed: { text: string; modelIncluded: boo
 
 /** The three authorized wordings: found N designers / missing city or direction
  * / no match. The credit decision lives in recommendDesigners, not here. */
-export function designerRecommendationReceipt(count: number, needContext: boolean) {
-  return { status: count ? 'ready' : 'empty', tool: 'recommend_designers',
-    text: count ? `按当前公开条件找到${count}位设计师的公开作品，卡片随本条回复展示。`
-      : needContext ? '还缺少房屋城市或设计方向，暂不能推荐；可以请客户补充所在城市或想要的风格。'
-        : '没有找到符合条件的公开设计师作品。' };
+export function designerRecommendationReceipt(count: number, needContext: boolean, unfilteredCity = false) {
+  return { status: count ? 'ready' : needContext ? 'need_context' : 'empty', tool: 'recommend_designers', count,
+    text: count ? `从当前服务企业找到${count}位设计师的公开作品，可以打开下方卡片查看。`
+      + (unfilteredCity ? '本次没有按城市筛选。告诉我房屋所在城市，可以看同城的公开作品。' : '')
+      : needContext ? '请再确认房屋所在城市或想看的风格，我才能按你的条件找设计师。'
+        : designerNoMatch };
 }
 
-/** `recommend_designers`: zero model arguments. Memoized once per run; a
- * persisted step 2000 is replayed verbatim across processes. Without items no
- * step is written — step 2000/kind is designerMessageProjection's contract. */
+type SavedDesignerSearch = DesignerSnapshot & { needContext?: boolean };
+function designerReceiptText(receipt: ToolReceipt | undefined) {
+  return receipt?.tool === 'recommend_designers' && typeof receipt.text === 'string' ? receipt.text : null;
+}
+
+/** The fixed step is the source for delivery, recovery and the client cards. */
 export function dialogueDesignerRecommendation(rt: RecommendToolRuntime) {
-  let memo: Promise<ToolReceipt> | undefined = rt.recovered?.designers
-    ? Promise.resolve(rt.recovered.designers) : undefined;
-  return (): Promise<ToolReceipt> => memo ??= (async () => {
+  let currentReceipt = rt.recovered?.designers;
+  let memo: Promise<ToolReceipt> | undefined = currentReceipt ? Promise.resolve(currentReceipt) : undefined;
+  const run = (): Promise<ToolReceipt> => memo ??= (async () => {
     await rt.authorize();
     const { receipt } = await withTenantTransaction(rt.lease.enterpriseId, async tx => {
       const current = await runContext(tx, rt.lease);
@@ -108,30 +112,43 @@ export function dialogueDesignerRecommendation(rt: RecommendToolRuntime) {
         where enterprise_id=${rt.lease.enterpriseId} and run_id=${rt.lease.runId} and step_seq=2000
           and kind='agent_designer_result' and status='succeeded'`);
       if (cached) {
-        const snapshot = cached.private_checkpoint as DesignerSnapshot | null;
+        const snapshot = cached.private_checkpoint as SavedDesignerSearch | null;
         const saved = (cached.input_summary as Row).receipt as ToolReceipt | undefined;
         if (!snapshot?.items) fail('provider_outcome_unknown');
-        return { receipt: saved && saved.status === 'ready' && saved.tool === 'recommend_designers'
-          ? saved : designerRecommendationReceipt(snapshot.items.length, false) };
+        return { receipt: saved && designerReceiptText(saved)
+          ? saved : designerRecommendationReceipt(snapshot.items.length, !!snapshot.needContext, !snapshot.cityCode) };
       }
-      const recommendation = await recommendDesigners(tx, rt.lease.actor, current.conversation, {}, { runId: rt.lease.runId });
+      const recommendation = await recommendDesigners(tx, rt.lease.actor, current.conversation, {}, {
+        runId: rt.lease.runId, triggerMessageId: String(current.run.trigger_message_id),
+      });
       const items = recommendation.needContext ? [] : recommendation.items;
-      const receipt = designerRecommendationReceipt(items.length, !!recommendation.needContext);
-      if (items.length) {
-        const snapshot: DesignerSnapshot = {
-          ...(recommendation.cityCode ? { cityCode: recommendation.cityCode } : {}),
-          ...(recommendation.style ? { style: recommendation.style } : {}),
-          ...(recommendation.layout ? { layout: recommendation.layout } : {}),
-          items: items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })),
-        };
-        await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint,input_summary)
-          values(${rt.lease.enterpriseId},${rt.lease.runId},2000,'agent_designer_result','succeeded',${JSON.stringify(snapshot)}::jsonb,
-            ${JSON.stringify({ protocol: rt.protocol, tool: 'recommend_designers', count: items.length, receipt })}::jsonb)`);
-      }
+      const receipt = designerRecommendationReceipt(items.length, !!recommendation.needContext, !recommendation.cityCode);
+      const snapshot: SavedDesignerSearch = {
+        ...(recommendation.cityCode ? { cityCode: recommendation.cityCode } : {}),
+        ...(recommendation.style ? { style: recommendation.style } : {}),
+        ...(recommendation.layout ? { layout: recommendation.layout } : {}),
+        ...(recommendation.needContext ? { needContext: true } : {}),
+        items: items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })),
+      };
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
+        values(${rt.lease.enterpriseId},${rt.lease.runId},2000,'agent_designer_result','designers.search.v1',1,'succeeded',${JSON.stringify(snapshot)}::jsonb,
+          ${JSON.stringify({ protocol: rt.protocol, tool: 'recommend_designers', count: items.length, receipt })}::jsonb)`);
       return { receipt };
     });
+    currentReceipt = receipt;
     return receipt;
   })();
+  return Object.assign(run, {
+    text: () => designerReceiptText(currentReceipt),
+    async revalidate(tx: PostgresTransaction) {
+      if (!currentReceipt || currentReceipt.status !== 'ready') return;
+      const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${rt.lease.enterpriseId}
+        and run_id=${rt.lease.runId} and step_seq=2000 and kind='agent_designer_result' and status='succeeded'`);
+      const snapshot = step?.private_checkpoint as DesignerSnapshot | undefined;
+      if (!snapshot?.items?.length || (await revalidateDesignerSnapshot(tx, rt.lease.actor, snapshot)).length !== snapshot.items.length)
+        fail('context_changed');
+    },
+  });
 }
 
 /** `recommend_public_sites`: zero model arguments. The authorized region comes

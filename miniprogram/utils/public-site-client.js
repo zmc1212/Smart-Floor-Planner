@@ -2,6 +2,15 @@ const api = require('./api');
 const nativePreview = require('./native-preview');
 const ID = /^[1-9]\d{0,18}$/;
 function validId(value) { return ID.test(String(value || '')); }
+async function publicConsultationId(options, request = api.request) {
+  const { enterpriseId, conversationId } = options || {};
+  if (!validId(enterpriseId) || !validId(conversationId)) return '';
+  try {
+    const result = await request('/miniprogram/assistant/entry-context', 'POST', { conversationId }, { suppressUnauthorized: true });
+    if (result?.success && String(result.data?.enterprise?.id) === String(enterpriseId)) return String(conversationId);
+  } catch (_) { /* The material remains available for preview. */ }
+  return '';
+}
 function publicPath(eid, suffix) {
   if (!validId(eid)) throw { code: 'public_site_unavailable', statusCode: 404 };
   return '/public/construction/' + eid + '/' + suffix;
@@ -70,4 +79,4 @@ class PublicMedia {
     }
   }
 }
-module.exports = { PublicSiteClient, PublicMedia, publicPath, imagePath, imageKey, materialKey, viewMaterial, validId, publicError };
+module.exports = { PublicSiteClient, PublicMedia, publicPath, imagePath, imageKey, materialKey, viewMaterial, validId, publicError, publicConsultationId };

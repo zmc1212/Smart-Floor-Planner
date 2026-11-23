@@ -27,6 +27,7 @@ import { assertModelTurnBand, modelStepBase, modelStepStride, maxModelTurns, dia
   type WebToolRuntime } from './dialogue-web-tools';
 import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publicSitesDelivery,
   type RecommendToolRuntime } from './dialogue-recommend-tools';
+import { directDesignerDiscovery } from '../core/discovery';
 import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
 import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
 import { bindReadToolInput, independentAdviceRequested, readToolContext, readToolContextProtocol, readToolsForContext,
@@ -1208,6 +1209,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       ((step.input_summary as Row | null)?.receipt as Row | undefined)?.status === 'retrieval_unavailable'))
       specialistReview.enterpriseUnavailable = true;
     const currentQuestionText = [...messages].reverse().find(message => message.role === 'user')?.content || '';
+    const asksForDesigners = !specialist && lease.actor.principal.kind === 'user' && directDesignerDiscovery(currentQuestionText);
     // Applicability is independent of citation presence: a user/master value the
     // answer endorses cannot borrow an unrelated run quote as support.
     const parameterIssue = (text: string) => {
@@ -1236,6 +1238,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
           return (await longTermDelegationReceipt(tx, lease.actor, conversation, lease.runId, { standalone: true }))?.text ?? null;
         }) : undefined,
         resolveFinal: async (text, state) => {
+          if (asksForDesigners && !designers.text()) await designers();
+          const designerText = designers.text();
+          if (designerText) return designerText;
           if (reviewedOriginals) text = normalizeNativeCitationCarrier(text, catalog.values());
           if (!specialist || specialist.progressRequested || delegationTool || state.finalFromTools
             || !state.validationRepairs && state.turn + 1 < agentModelLimits.maxModelTurns) return text;
@@ -1270,7 +1275,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           return guidance.length ? guidance.join('\n') : null;
         },
         validateFinal: async (text, _turn, finalFromTools) => {
-          if (finalFromTools) return null;
+          if (finalFromTools || designers.text()) return null;
           text = normalizeNativeCitationCarrier(text, catalog.values());
           const { issue } = nativeCitationGate(text, catalog.values(), citationRepairIssued || parameterPartial,
             knowledgeRetrieved || webRetrieved);
@@ -1324,7 +1329,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const runCitations = finalAssessment.runCitations;
     // A located-but-empty nearby result is delivered from the server receipt;
     // need_region never overrides the model draft (same rule as the bridge).
-    const composed = publicSitesDelivery(
+    if (asksForDesigners && !designers.text()) await designers();
+    const designerText = designers.text();
+    const composed = designerText ? {
+      text: [designerText, sites.outcome()?.text, snapshotText].filter(Boolean).join('\n\n'), modelIncluded: false,
+    } : publicSitesDelivery(
       composeNativeDelivery(finalText, snapshotText, runCitations, evidenceProvided && !parameterPartial,
         { delegationReply: policy.longTermMemory === true }, specialistReview ? text => {
           const issue = checkSpecialistDraft(text)[0]?.issue;
@@ -1453,6 +1462,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         for (const ref of runPublicRefs.values())
           if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
         await sites.revalidate(tx);
+        await designers.revalidate(tx);
         // Recalled originals revalidate one last time beside the other
         // consulted sources before the answer commits.
         if (historyRefs.size && !await historyRefsAvailable(tx, lease.enterpriseId, String(state.conversation.id), [...historyRefs.values()])) fail('context_changed');

@@ -58,12 +58,12 @@ test('an empty located result overrides delivery and drops the model draft', () 
 });
 
 test('designer receipts keep the three authorized wordings', () => {
-  assert.deepEqual(designerRecommendationReceipt(2, false), { status: 'ready', tool: 'recommend_designers',
-    text: '按当前公开条件找到2位设计师的公开作品，卡片随本条回复展示。' });
-  assert.deepEqual(designerRecommendationReceipt(0, true), { status: 'empty', tool: 'recommend_designers',
-    text: '还缺少房屋城市或设计方向，暂不能推荐；可以请客户补充所在城市或想要的风格。' });
-  assert.deepEqual(designerRecommendationReceipt(0, false), { status: 'empty', tool: 'recommend_designers',
-    text: '没有找到符合条件的公开设计师作品。' });
+  assert.deepEqual(designerRecommendationReceipt(2, false), { status: 'ready', tool: 'recommend_designers', count: 2,
+    text: '从当前服务企业找到2位设计师的公开作品，可以打开下方卡片查看。' });
+  assert.deepEqual(designerRecommendationReceipt(0, true), { status: 'need_context', tool: 'recommend_designers', count: 0,
+    text: '请再确认房屋所在城市或想看的风格，我才能按你的条件找设计师。' });
+  assert.deepEqual(designerRecommendationReceipt(0, false), { status: 'empty', tool: 'recommend_designers', count: 0,
+    text: '当前服务企业暂无符合条件的公开设计师作品。' });
 });
 
 /** Recovery must rebuild the public-site delivery state from the persisted
@@ -98,6 +98,7 @@ test('a recovered designer receipt is re-served without a new query', async () =
   const receipt = { status: 'ready', tool: 'recommend_designers',
     text: '按当前公开条件找到1位设计师的公开作品，卡片随本条回复展示。' };
   const designers = dialogueDesignerRecommendation(runtime({ designers: receipt }));
+  assert.equal(designers.text(), receipt.text);
   assert.deepEqual(await designers(), receipt);
 });
 

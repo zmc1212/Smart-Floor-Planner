@@ -3,6 +3,7 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { fail, type ActorContext } from '@/lib/assistant/contracts';
 import { authorizeKnowledgeManager } from '@/lib/assistant/knowledge/manager';
 import { assistantDailyLimitsEnabled } from '@/lib/assistant/core/daily-limits';
+import { currentCustomerService } from './customer-service';
 
 export type Row = Record<string, unknown>;
 type RowLock = 'update' | 'share';
@@ -73,6 +74,8 @@ export class AssistantRepository {
     if (a.capabilities.includes('assistant.followup.delivery')) return;
     const user = await one(this.tx, sql`select app.assistant_identity_is_current(${a.principal.userId}::bigint,${a.contextVersion}::integer) as valid`);
     if (!user?.valid) fail('identity_context_invalid', 401);
+    if (a.customerServiceRequired && (await currentCustomerService(this.tx, a.principal.userId)).enterpriseId !== a.enterpriseId)
+      fail('assistant_resource_not_found', 404);
   }
   async settings(write = false, readLock: RowLock = 'update') {
     await this.identity();

@@ -4,7 +4,8 @@ const { designerAvatarPath } = require('../../../utils/designer-avatar');
 const { downloadFile, ACTIVE_API_ENVIRONMENT } = require('../../../utils/api');
 const ID = /^[1-9]\d{0,18}$/;
 const pathFor = id => `/conversations/${encodeURIComponent(id)}/portfolio`;
-const savedEntryKey = 'assistant-portfolio-reentry-v1';
+const previewHeaders = token => ({ 'X-Portfolio-Entry': token });
+const sharedWorkPath = token => '/packages/assistant/work/work?portfolioEntry=' + encodeURIComponent(token);
 const SPACE_ORDER = ['客厅', '餐厅', '主卧', '次卧', '儿童房', '书房', '厨房', '卫生间', '阳台', '玄关', '其他'];
 // Same business taxonomy order as admin/src/lib/portfolio/options.ts; unknown labels remain visible.
 const LAYOUT_ORDER = ['小户型', '两居', '三居', '四居及以上', '大平层', '复式/跃层', '别墅', '旧房改造', '精装改造', '毛坯新房', '局部改造', '其他'];
@@ -14,7 +15,7 @@ const initial = () => ({ loading: true, busy: false, error: '', needsLogin: fals
   portraitPath: '', designerFilter: 'all', filterOptions: [], totalWorks: 0, spaceFilter: 'all',
   featuredWork: null, closingWork: null, catalogWorks: [], styleOptions: [], layoutOptions: [], studioFilters: studioDefaults(),
   hasStudioFilters: false, matchingCount: 0, remainingWorks: 0, studioCountLabel: '', studioResultLabel: '', catalogCompleteLabel: '',
-  sharePath: '', shareTitle: '', pendingAction: '', readOnly: false, feedback: '',
+  sharePath: '', shareTitle: '', pendingAction: '', readOnly: false, sharedPreview: false, feedback: '',
   publicContact: null, contactAuthor: null, contactBusy: false, contactQrPath: '', contactError: '' });
 
 function textList(values, max, length) {
@@ -40,9 +41,15 @@ class PortfolioImages {
       return false;
     });
   }
-  async load(conversationId, work, assetId) {
-    if (![conversationId, work.id, work.versionId, assetId].every(v => ID.test(String(v)))) throw { code: 'invalid_response' };
+  async load(conversationId, work, assetId, previewToken = '') {
+    if (![work.id, work.versionId, assetId].every(v => ID.test(String(v)))) throw { code: 'invalid_response' };
     const epoch = this.epoch;
+    if (previewToken) {
+      const { tempFilePath } = await this.download('/miniprogram/assistant/portfolio-preview/assets/' + assetId,
+        { suppressUnauthorized: true, headers: previewHeaders(previewToken) });
+      return this.keepFile(tempFilePath, epoch);
+    }
+    if (!ID.test(String(conversationId))) throw { code: 'invalid_response' };
     const path = `/miniprogram/assistant${pathFor(conversationId)}/works/${work.id}/assets/${assetId}`;
     const query = `?versionId=${work.versionId}`;
     if (this.environment === 'production' && Number(work.id) <= 12) {
@@ -56,7 +63,8 @@ class PortfolioImages {
     const { tempFilePath } = await this.download(path + query, { suppressUnauthorized: true });
     return this.keepFile(tempFilePath, epoch);
   }
-  async loadPortrait(conversationId, authorId) {
+  async loadPortrait(conversationId, authorId, previewToken = '') {
+    if (previewToken) return this.loadJpeg('/portfolio-preview/portrait', {}, `portrait-${authorId}`, previewHeaders(previewToken));
     if (![conversationId, authorId].every(v => ID.test(String(v)))) throw { code: 'invalid_response' };
     return this.loadJpeg(`${pathFor(conversationId)}/designers/${authorId}/portrait`, {}, `portrait-${authorId}`);
   }
@@ -66,9 +74,9 @@ class PortfolioImages {
     return this.loadJpeg(`${pathFor(conversationId)}/designers/${work.authorId}/contact-qr`,
       { workId: work.id, versionId: work.versionId, revision }, `contact-${work.authorId}-${revision}`);
   }
-  async loadJpeg(url, query, name) {
+  async loadJpeg(url, query, name, headers) {
     const epoch = this.epoch;
-    const data = await this.client.read(url, { ...query, format: 'base64' });
+    const data = await this.client.read(url, { ...query, format: 'base64' }, headers);
     if (data.mimeType !== 'image/jpeg' || typeof data.imageBase64 !== 'string' || data.imageBase64.length > 409600
       || !/^\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(data.imageBase64)) throw { code: 'invalid_response' };
     if (epoch !== this.epoch) throw { code: 'context_changed' };
@@ -258,10 +266,12 @@ class PortfolioController {
     if (this.flight) await this.flight;
     if (ticket !== this.showTicket) return;
     this.visible = true; this.options = options; this.kind = kind;
+    this.previewToken = options.portfolioEntry || '';
     const session = this.identity();
     if (this.session && this.session !== session) { this.client.pending.clear(); this.conversationId = ''; this.studioView = null; this.workView = null; this.scrollTop = 0; this.images.clear(); this.set(initial()); }
     this.session = session;
-    if (!session) { this.set({ ...initial(), loading: false, needsLogin: true, error: '登录后查看作品，并回到自己的装修咨询。' }); return; }
+    if (!session) { this.set({ ...initial(), loading: false, needsLogin: true,
+      error: this.previewToken ? '登录后即可预览这套作品。' : '登录后查看作品，并回到自己的装修咨询。' }); return; }
     return this.load();
   }
   fail(error, epoch) {
@@ -272,44 +282,36 @@ class PortfolioController {
   }
   async resolveConversation(epoch) {
     const options = this.options;
-    if (options.portfolioEntry) {
-      if (options.conversationId || options.authorId || options.workId || options.versionId) throw { code: 'entry_context_invalid', statusCode: 422 };
-      const entry = await this.client.read('/entry-context', { portfolioEntry: options.portfolioEntry }, {}, 'POST');
-      if (!this.valid(epoch)) return null;
-      if (!entry.portfolio || !ID.test(entry.portfolio.authorId)) throw { code: 'invalid_response' };
-      this.authorId = entry.portfolio.authorId; this.sourceWorkId = entry.portfolio.workId;
-      let saved;
-      try { saved = wx.getStorageSync(savedEntryKey); } catch (_) { /* Memory remains usable. */ }
-      if (!this.conversationId && saved?.session === this.session && saved.token === options.portfolioEntry) this.conversationId = saved.conversationId;
-      if (!this.conversationId) {
-        const created = await this.client.mutate('portfolio-create:' + options.portfolioEntry, '/conversations', { entryToken: entry.entryToken });
-        if (!this.valid(epoch)) return null;
-        if (!ID.test(String(created.id))) throw { code: 'invalid_response' };
-        this.conversationId = String(created.id);
-        try { wx.setStorageSync(savedEntryKey, { session: this.session, token: options.portfolioEntry, conversationId: this.conversationId }); } catch (_) { /* Current page retains reentry. */ }
-      }
-    } else {
-      if (!ID.test(String(options.conversationId))) throw { code: 'entry_context_invalid', statusCode: 422 };
-      this.conversationId = String(options.conversationId);
-      this.authorId = options.authorId; this.sourceWorkId = options.sourceWorkId;
-    }
+    if (!ID.test(String(options.conversationId))) throw { code: 'entry_context_invalid', statusCode: 422 };
+    this.conversationId = String(options.conversationId);
+    this.authorId = options.authorId; this.sourceWorkId = options.sourceWorkId;
     const conversation = await this.client.read('/conversations/' + this.conversationId);
     if (!this.valid(epoch)) return null;
     this.set({ conversationId: this.conversationId, readOnly: conversation.status !== 'open' });
     return conversation;
+  }
+  readWork(workId, versionId) {
+    if (this.previewToken) return this.client.read('/portfolio-preview', {}, previewHeaders(this.previewToken));
+    if (!ID.test(String(workId)) || !ID.test(String(versionId))) throw { code: 'entry_context_invalid', statusCode: 422 };
+    return this.client.read(`${pathFor(this.conversationId)}/works/${workId}`, { versionId });
   }
   async load() {
     this.rememberStudioView(); this.rememberWorkView(); this.restoreScrollTop = 0;
     const epoch = ++this.epoch;
     this.images.clear(); this.closeContact(); this.fullWorks = null;
     this.set({ ...studioCatalog([]), designer: null, work: null, loading: true, busy: false, needsLogin: false, error: '', unavailable: false, images: {}, portraitPath: '',
-      sharePath: '', imageError: '', designerFilter: 'all', filterOptions: [], totalWorks: 0, spaceFilter: 'all', publicContact: null, contactAuthor: null });
+      sharePath: '', imageError: '', designerFilter: 'all', filterOptions: [], totalWorks: 0, spaceFilter: 'all', publicContact: null, contactAuthor: null,
+      sharedPreview: !!this.previewToken, pendingAction: '', feedback: '' });
     try {
-      if (!await this.resolveConversation(epoch) || !this.valid(epoch)) return;
+      if (this.previewToken) {
+        if (this.kind !== 'work' || ['conversationId', 'authorId', 'workId', 'versionId'].some(key => this.options[key]))
+          throw { code: 'entry_context_invalid', statusCode: 422 };
+        this.conversationId = '';
+        this.set({ conversationId: '', readOnly: true });
+      } else if (!await this.resolveConversation(epoch) || !this.valid(epoch)) return;
       const base = pathFor(this.conversationId);
       if (this.kind === 'work') {
-        if (!ID.test(String(this.options.workId)) || !ID.test(String(this.options.versionId))) throw { code: 'entry_context_invalid', statusCode: 422 };
-        const data = await this.client.read(`${base}/works/${this.options.workId}`, { versionId: this.options.versionId });
+        const data = await this.readWork(this.options.workId, this.options.versionId);
         if (!this.valid(epoch)) return;
         this.authorId = data.authorId;
         const view = workForView(data), context = [this.session, this.conversationId, view.id, view.versionId].join('\u001f');
@@ -329,7 +331,7 @@ class PortfolioController {
           ...studioCatalog(viewer.works, saved?.filters, saved?.visibleCount, viewer.template) });
       }
       const work = this.state.work || this.state.featuredWork;
-      if (work) {
+      if (work && !this.previewToken) {
         const pending = this.client.pending.get('portfolio-write:' + this.conversationId + ':' + work.id);
         this.set({ pendingAction: pending ? pending.path.endsWith('/contact') ? 'contact' : pending.body.sentiment : '' });
       }
@@ -337,6 +339,10 @@ class PortfolioController {
       const portrait = this.state.contactAuthor?.portraitAvailable ? this.loadPortrait(epoch, this.state.contactAuthor.id) : Promise.resolve();
       await Promise.all([this.loadImages(epoch), portrait]);
       if (work && this.valid(epoch)) {
+        if (this.previewToken) {
+          this.set({ sharePath: sharedWorkPath(this.previewToken), shareTitle: work.title + ' · 家客来' });
+          return;
+        }
         try {
           const share = await this.client.read(`${base}/works/${work.id}/share`, { versionId: work.versionId }, {}, 'POST');
           if (this.valid(epoch)) this.set({ sharePath: share.path, shareTitle: (this.state.designer?.name || work.authorName) + '的设计室 · 家客来' });
@@ -357,7 +363,7 @@ class PortfolioController {
         const [w, assetId] = tasks[index++], imageKey = 'i' + assetId;
         if (this.state.images[imageKey]) continue;
         try {
-          const filePath = await this.images.load(this.conversationId, w, assetId);
+          const filePath = await this.images.load(this.conversationId, w, assetId, this.previewToken);
           if (this.valid(epoch)) this.set({ images: { ...this.state.images, [imageKey]: filePath } });
         } catch (error) {
           if ([401,403,404].includes(error.statusCode)) { this.fail(error, epoch); return; }
@@ -369,7 +375,7 @@ class PortfolioController {
   }
   async loadPortrait(epoch, authorId) {
     try {
-      const filePath = await this.images.loadPortrait(this.conversationId, authorId);
+      const filePath = await this.images.loadPortrait(this.conversationId, authorId, this.previewToken);
       if (this.valid(epoch)) this.set({ portraitPath: filePath });
     } catch (_) {
       if (this.valid(epoch)) this.set({ portraitPath: '' });
@@ -383,7 +389,7 @@ class PortfolioController {
   async refreshContact({ qr = false, apply } = {}) {
     const work = this.state.work || this.state.featuredWork;
     const epoch = this.epoch;
-    if (!this.valid(epoch) || this.state.loading || this.state.unavailable || this.state.contactBusy || !work) return;
+    if (this.previewToken || !this.valid(epoch) || this.state.loading || this.state.unavailable || this.state.contactBusy || !work) return;
     const ticket = ++this.contactEpoch;
     const valid = () => this.valid(epoch) && this.contactEpoch === ticket;
     this.set({ contactBusy: true, contactError: '' });
@@ -501,4 +507,4 @@ class RecommendationController {
   }
 }
 module.exports = { PortfolioController, PortfolioImages, RecommendationController, workForView, designerForView,
-  filterOptionsFor, filterWorks, studioCatalog, studioDefaults, applySpace, pathFor, initial };
+  filterOptionsFor, filterWorks, studioCatalog, studioDefaults, applySpace, pathFor, previewHeaders, sharedWorkPath, initial };

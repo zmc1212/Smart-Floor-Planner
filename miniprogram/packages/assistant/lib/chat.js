@@ -63,7 +63,7 @@ function appendPatch(patch, previousLength) {
   return next;
 }
 const initial = () => ({
-  loading: true, busy: false, error: '', fatal: false, needsLogin: false,
+  loading: true, busy: false, error: '', fatal: false, needsLogin: false, needsServiceCode: false,
   enterpriseId: '', enterpriseName: '', canSend: false, maxChars: 4000,
   shareReferenceEntry: '', staffProfileCapture: false,
   welcomeText: WELCOME, guidanceEnabled: false, guidance: null, selectedOptions: [], selectedOptionMap: {},
@@ -251,7 +251,9 @@ class ChatController {
   fail(error, epoch, fatal = false) {
     if (!this.valid(epoch)) return;
     const code = error.code || error.error;
-    const denied = error.statusCode === 401 || ['assistant_capability_forbidden', 'assistant_resource_not_found', 'entry_context_invalid', 'identity_context_invalid'].includes(code);
+    const denied = error.statusCode === 401 || ['assistant_capability_forbidden', 'assistant_resource_not_found',
+      'entry_context_invalid', 'identity_context_invalid', 'assistant_service_code_required',
+      'customer_service_ambiguous', 'assistant_share_preview_only'].includes(code);
     if (denied) {
       this.epoch += 1;
       this.unschedule(this.timer); this.client.pending.clear();
@@ -265,6 +267,7 @@ class ChatController {
         citation: null, citationLoading: false });
     }
     this.set({ loading: false, error: errorCopy(error), fatal: fatal || denied, needsLogin: error.statusCode === 401,
+      needsServiceCode: code === 'assistant_service_code_required',
       ...(code === 'assistant_disabled' ? { canSend: false } : {}) });
   }
 

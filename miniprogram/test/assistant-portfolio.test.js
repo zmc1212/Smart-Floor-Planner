@@ -92,7 +92,7 @@ test('native portfolio preview returns to the same gallery without reloading or 
   let reloads = 0;
   const p = { ...fixture, _alive: true, _shown: true, data: { work: data, images: { ...shown }, conversationId: '11' },
     controller: { epoch: 1, session: 'session-a', images: files, valid(epoch) { return epoch === this.epoch; },
-      client: { read: async (route, query) => { authorizations.push({ route, query }); } },
+      readWork: async (id, versionId) => { authorizations.push({ route: '/conversations/11/portfolio/works/' + id, query: { versionId } }); },
       hide(paths) { this.epoch++; files.clear(paths); p.data.images = {}; },
       async show() { reloads += 1; files.clear(); },
     } };
@@ -126,21 +126,27 @@ test('return to consultation uses the matching original chat stack and does not 
   try { page('work').continueChat.call({ data: { conversationId: '11' } }); assert.deepEqual(back, { delta: 2 }); }
   finally { global.wx = oldWx; global.getCurrentPages = oldPages; }
 });
-test('shared-studio reentry restores only this account own consultation and a different identity creates its own', async () => {
-  const oldWx = global.wx, storage = new Map(); let session = 'account-a', creates = 0;
-  global.wx = { getStorageSync: key => storage.get(key), setStorageSync: (key, value) => storage.set(key, value) };
-  const f = fixture();
-  const client = { pending: new Map(), read: async (path, input, headers, method) => {
-    if (path === '/entry-context') return { entryToken: 'entry', portfolio: { authorId: '14', workId: '12' } };
-    if (/^\/conversations\/2\d$/.test(path)) return { status: 'open' };
-    return f.client.read(path, input, headers, method);
-  }, mutate: async () => { creates += 1; return { id: String(20 + creates) }; } };
-  const make = () => new PortfolioController({ emit() {}, identity: () => session, client, images: { clear() {}, load: async () => '/private/x.jpg' } });
-  try {
-    const c = make(); await c.show({ portfolioEntry: 'signed' }); assert.equal(c.state.conversationId, '21'); c.hide();
-    const reopened = make(); await reopened.show({ portfolioEntry: 'signed' }); assert.equal(reopened.state.conversationId, '21'); assert.equal(creates, 1);
-    session = 'account-b'; await reopened.show({ portfolioEntry: 'signed' }); assert.equal(reopened.state.conversationId, '22'); assert.equal(creates, 2);
-  } finally { global.wx = oldWx; }
+test('shared works revalidate on reentry and support preview only for either identity', async () => {
+  let session = 'account-a', withdrawn = false;
+  const calls = [];
+  const client = { pending: new Map(), read: async (path, input, headers) => {
+    calls.push(path);
+    assert.equal(path, '/portfolio-preview');
+    assert.deepEqual(headers, { 'X-Portfolio-Entry': 'signed' });
+    if (withdrawn) throw { statusCode: 404, code: 'portfolio_not_found' };
+    return work();
+  }, mutate: async () => { assert.fail('Shared preview must not write'); } };
+  const c = new PortfolioController({ emit() {}, identity: () => session, client,
+    images: { clear() {}, load: async (_conversation, _work, _asset, token) => { assert.equal(token, 'signed'); return '/private/x.jpg'; } } });
+  await c.show({ portfolioEntry: 'signed' }, 'work');
+  assert.equal(c.state.conversationId, ''); assert.equal(c.state.work.id, '12'); assert.equal(c.state.sharedPreview, true);
+  assert.equal(await c.write('contact'), undefined); await c.refreshContact();
+  c.hide();
+  session = 'account-b'; await c.show({ portfolioEntry: 'signed' }, 'work');
+  assert.equal(c.state.conversationId, ''); assert.equal(c.state.work.id, '12');
+  withdrawn = true; await c.load();
+  assert.equal(c.state.unavailable, true); assert.equal(c.state.work, null);
+  assert.deepEqual(calls, ['/portfolio-preview', '/portfolio-preview', '/portfolio-preview']);
 });
 test('hiding during recovery of an uncertain write cannot restart a background page or publish late data', async () => {
   const f = fixture(); let finish;

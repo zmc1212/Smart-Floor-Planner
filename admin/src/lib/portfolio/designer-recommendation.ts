@@ -13,6 +13,7 @@ import { publishedPublicMaterial } from '@/lib/construction/public-read';
 import type { PublicContent } from '@/lib/construction/public-contract';
 
 export const designerNotice = '作品仅供风格/户型与服务方向参考；同小区不代表同户型，不承诺可预约日期。';
+export const designerNoMatch = '当前服务企业暂无符合条件的公开设计师作品。';
 const uncertain = /[？?]|不确定|没想好|不喜欢|不要|不考虑|不是|不在|不做|不想/;
 const negation = /不确定|没想好|不喜欢|不要|不考虑|不是|不在|不做|不想/;
 
@@ -119,13 +120,15 @@ function card(candidate: Candidate, reason: string, match: string): DesignerCard
  * Ordinary replies, intervening user turns and other consultations do not carry
  * a preference into this read. Publication is still checked independently. */
 async function designerRequestContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row, input: Row,
-  context?: { triggerMessageId?: string }): Promise<{ triggerText: string; requestMessageIds: string[] }> {
-  const triggerText = typeof input.triggerText === 'string' ? input.triggerText : '';
+  context?: { triggerMessageId?: string }): Promise<{ triggerText: string; currentText: string; requestMessageIds: string[] }> {
+  const suppliedText = typeof input.triggerText === 'string' ? input.triggerText : undefined;
   if (!context?.triggerMessageId || actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation')
-    return { triggerText, requestMessageIds: [] };
+    return { triggerText: suppliedText || '', currentText: suppliedText || '', requestMessageIds: [] };
   const current = await one(tx, sql`select id,seq,content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(conversation.id)} and id=${id(context.triggerMessageId)} and author_kind='user'`);
-  if (!current || safeText(current.content as Parameters<typeof safeText>[0]) !== triggerText) fail('context_changed');
+  if (!current) fail('context_changed');
+  const currentText = safeText(current.content as Parameters<typeof safeText>[0]);
+  if (suppliedText !== undefined && currentText !== suppliedText) fail('context_changed');
   const prior = await one(tx, sql`select source.id,source.content from app.assistant_messages response
     join app.assistant_runs r on r.enterprise_id=response.enterprise_id and r.conversation_id=response.conversation_id
       and r.output_message_id=response.id and r.status='succeeded'
@@ -135,10 +138,11 @@ async function designerRequestContext(tx: PostgresTransaction, actor: ActorConte
       and response.id=(select m.id from app.assistant_messages m where m.enterprise_id=${actor.enterpriseId}
         and m.conversation_id=${String(conversation.id)} and m.author_kind='assistant' and m.seq<${String(current.seq)} order by m.seq desc limit 1)
       and exists(select 1 from app.assistant_run_steps s where s.enterprise_id=r.enterprise_id and s.run_id=r.id
-        and s.capability_name='designers.search.v1' and s.status='succeeded')
+        and s.capability_name='designers.search.v1' and s.status='succeeded'
+        and jsonb_array_length(coalesce(s.private_checkpoint->'items','[]'::jsonb))>0)
       and not exists(select 1 from app.assistant_messages m where m.enterprise_id=source.enterprise_id
         and m.conversation_id=source.conversation_id and m.author_kind='user' and m.seq>source.seq and m.seq<${String(current.seq)})`);
-  return { triggerText: prior ? safeText(prior.content as Parameters<typeof safeText>[0]) + '\n' + triggerText : triggerText,
+  return { currentText, triggerText: prior ? safeText(prior.content as Parameters<typeof safeText>[0]) + '\n' + currentText : currentText,
     requestMessageIds: [...(prior ? [String(prior.id)] : []), String(current.id)] };
 }
 
@@ -148,7 +152,8 @@ export async function recommendDesigners(tx: PostgresTransaction, actor: ActorCo
   // A published site credit is authoritative for “who designed this site”. It
   // still resolves through live portfolio publication: a withdrawn work, an
   // inactive author or a revoked site version falls back to normal discovery.
-  const credit = await publicSiteDesignerCredit(tx, actor.enterpriseId, conversation);
+  const explicitlyAsksWhoDesigned = /谁设计|谁做的设计|(?:这|该|本)(?:个|处)?(?:工地|现场).{0,8}设计师/.test(request.currentText);
+  const credit = explicitlyAsksWhoDesigned ? await publicSiteDesignerCredit(tx, actor.enterpriseId, conversation) : null;
   if (credit) {
     const owned = (await portfolioCandidates(tx, actor.enterpriseId,
       { authorId: credit.designerId, city: credit.cityCode, recommend: true })).slice(0, 1);
@@ -194,7 +199,8 @@ export async function revalidateDesignerSnapshot(tx: PostgresTransaction, actor:
   for (const saved of snapshot.items.slice(0, 3)) {
     try {
       const workId = id(saved.workId), versionId = id(saved.versionId);
-      const candidate = (await portfolioCandidates(tx, actor.enterpriseId, { workId, recommend: true }))
+      const candidate = (await portfolioCandidates(tx, actor.enterpriseId,
+        { workId, city: snapshot.cityCode, style: snapshot.style || undefined, layout: snapshot.layout || undefined, recommend: true }))
         .find(item => item.work.versionId === versionId);
       if (!candidate || (snapshot.cityCode && !servesCity(candidate, snapshot.cityCode)) || seen.has(candidate.work.authorId)) continue;
       const matched = matchDesigners([candidate], { community: snapshot.communityId ?? null, style: snapshot.style, layout: snapshot.layout })[0];

@@ -19,9 +19,30 @@ test('acquisition page resolves QR entry code and creates the lead through the e
   assert.match(js, /\/miniprogram\/referrals\/authorize-and-create-lead/);
   assert.match(js, /Idempotency-Key/);
   assert.match(js, /pendingSource/);
-  assert.match(js, /chat\?entryCode=/);
+  assert.match(js, /path \+ '\?entryCode='/);
   const wxml = fs.readFileSync(path.join(pageRoot, 'acquisition-chat.wxml'), 'utf8');
   assert.match(wxml, /open-type="getPhoneNumber"/);
+});
+
+test('the XiaoK scanner opens enterprise service codes and an existing client returns without the scan token', () => {
+  const { resolveServiceEntryUrl } = require('../utils/service-entry');
+  const base = '/packages/business/acquisition-chat/acquisition-chat';
+  const token = 'rp_' + 'a'.repeat(32);
+  assert.equal(resolveServiceEntryUrl({ path: 'packages/business/free-design-service/free-design-service?scene=' + token }, { assistant: true }),
+    base + '?entryCode=' + token);
+  assert.equal(resolveServiceEntryUrl({ path: 'packages/business/onboarding/onboarding?scene=' + token }, { assistant: true }), '');
+  const oldPage = global.Page, oldWx = global.wx;
+  let acquired, redirected;
+  global.Page = value => { acquired = value; };
+  global.wx = { redirectTo: value => { redirected = value.url; } };
+  try {
+    require('../packages/business/acquisition-chat/acquisition-chat');
+    acquired.data.token = token;
+    acquired.goChat(true);
+    assert.equal(redirected, '/packages/assistant/chat/chat');
+    acquired.goChat(false);
+    assert.equal(redirected, '/packages/assistant/chat/chat?entryCode=' + token);
+  } finally { global.Page = oldPage; global.wx = oldWx; }
 });
 
 test('the landing honors anonymous and branded acquisition settings', () => {

@@ -1,6 +1,7 @@
 const { ChatController, initial, appendPatch } = require('../lib/chat');
 const chatResume = require('../lib/chat-resume');
 const { goToLogin } = require('../../../utils/session');
+const { resolveServiceEntryUrl } = require('../../../utils/service-entry');
 const nativePreview = require('../../../utils/native-preview');
 const { MediaController } = require('../lib/media');
 const { ReferenceImage } = require('../lib/reference-image');
@@ -428,6 +429,14 @@ module.exports = () => ({
 		if (plan) wx.navigateTo({ url: '/packages/business/customer-project/customer-project?leadId=' + encodeURIComponent(plan.leadId) });
 	},
 	login() { goToLogin(); },
+	scanServiceCode() {
+		if (!this.data.needsServiceCode) return;
+		wx.scanCode({ onlyFromCamera: false, success: result => {
+			const url = resolveServiceEntryUrl(result, { assistant: true });
+			if (url) wx.navigateTo({ url });
+			else wx.showToast({ title: '请扫描装修企业的服务码', icon: 'none' });
+		} });
+	},
 	back() {
 		wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/index/index' }) });
 	},

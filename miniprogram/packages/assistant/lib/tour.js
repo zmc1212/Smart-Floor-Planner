@@ -34,8 +34,11 @@ function selectTour(work, index) {
 
 function tourInput(options = {}) {
   const conversationId = String(options.conversationId || ''), workId = String(options.workId || ''), versionId = String(options.versionId || '');
+  const portfolioEntry = String(options.portfolioEntry || '');
   const index = /^[0-2]$/.test(String(options.index == null ? '' : options.index)) ? Number(options.index) : NaN;
-  if (![conversationId, workId, versionId].every(value => ID.test(value)) || !Number.isInteger(index)) return null;
+  if (![workId, versionId].every(value => ID.test(value)) || !Number.isInteger(index)) return null;
+  if (portfolioEntry) return !conversationId && portfolioEntry.length <= 2048 ? { portfolioEntry, workId, versionId, index } : null;
+  if (!ID.test(conversationId)) return null;
   return { conversationId, workId, versionId, index };
 }
 

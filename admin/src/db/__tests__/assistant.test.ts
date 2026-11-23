@@ -11,10 +11,14 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { currentCustomerService } from '@/db/repositories/customer-service';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { ConversationService, startInternalRun } from '@/lib/assistant/core/conversation';
 import { assistantHttp } from '@/lib/assistant/application/http';
 import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
+import { createStaffActivityToken, hashReferrerNetworkToken } from '@/db/repositories/referrer-network-repository';
+import { POST as resolveCode } from '@/app/api/miniprogram/codes/resolve/route';
+import { POST as acceptService } from '@/app/api/miniprogram/referrals/authorize-and-create-lead/route';
 import { changeMode, appendEventNotice, bindContext } from '@/lib/assistant/core/extensions';
 import { claimJob, completeRun, failRun, heartbeat, markProviderStarted, type Lease } from '@/lib/assistant/infrastructure/job-queue';
 import { ContextRegistry } from '@/lib/assistant/capabilities/registry';
@@ -25,6 +29,7 @@ import { fail } from '@/lib/assistant/contracts';
 const prefix = 'assistant-test-' + process.pid + '-' + Date.now();
 let a: ActorContext; let b: ActorContext; let stranger: ActorContext; let service: ConversationService;
 const tenants: string[] = []; const userIds: string[] = [];
+let serviceLeadId: string;
 const content = (text = '旧房改造包含哪些服务？') => ({ version: 1 as const, blocks: [{ type: 'text' as const, text }] });
 before(async () => {
   loadEnvConfig(process.cwd());
@@ -39,6 +44,9 @@ before(async () => {
       userIds.push(String(user.id));
       await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${String(user.id)},${prefix + '-openid-' + i})`);
     }
+    const lead = await one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+      values(${tenants[0]},${userIds[0]},${prefix + ' synthetic service'},'13000000000','test') returning id`);
+    serviceLeadId = String(lead!.id);
   });
   a = { enterpriseId: tenants[0], principal: { kind: 'user', userId: userIds[0] }, contextVersion: 1, capabilities: ['assistant.chat.self'] };
   b = { ...a, enterpriseId: tenants[1] }; stranger = { ...a, principal: { kind: 'user', userId: userIds[1] } };
@@ -48,6 +56,7 @@ after(async () => {
   await withPlatformTransaction(async tx => {
     for (const tenant of tenants) {
       await deleteAssistantData(tx, BigInt(tenant));
+      await tx.execute(sql`delete from app.leads where enterprise_id=${tenant}`);
       await tx.execute(sql`delete from app.enterprises where id=${tenant}`);
     }
     for (const user of userIds) await tx.execute(sql`delete from app.users where id=${user}`);
@@ -237,10 +246,82 @@ test('A01 entry tokens bind customer/version, forbidden arbitrary enterprise and
   await assert.rejects(fromEntry({ ...identity, userId: userIds[1] }, entry.entryToken), /entry_context_invalid/);
   await assert.rejects(fromEntry({ ...identity, contextVersion: 2 }, entry.entryToken), /entry_context_invalid/);
   await assert.rejects(entryContext(identity, { enterpriseId: b.enterpriseId }), /entry_context_invalid/);
-  await assert.rejects(entryContext({ ...identity, enterpriseId: undefined }, {}), /entry_context_invalid/);
+  assert.equal((await entryContext({ ...identity, enterpriseId: b.enterpriseId }, {})).enterprise.id, a.enterpriseId);
+  await assert.rejects(entryContext({ ...identity, userId: userIds[1] }, {}), /assistant_service_code_required/);
   const c = await conversation();
   assert.equal((await locate({ ...identity, enterpriseId: undefined }, 'conversation', c)).enterpriseId, a.enterpriseId);
   await assert.rejects(locate({ ...identity, userId: userIds[1] }, 'conversation', c), /assistant_resource_not_found/);
+});
+test('service scope blocks old foreign conversations and share entries, redirects foreign service codes and revokes cached tokens', async () => {
+  const uid = userIds[0], identity = { userId: uid, contextVersion: 1, enterpriseId: undefined };
+  const otherConversation = String((await new ConversationService(b).create(crypto.randomUUID())).id);
+  const original = await conversation();
+  const entry = await entryContext(identity, {});
+  await assert.rejects(entryContext(identity, { conversationId: otherConversation }), /assistant_resource_not_found/);
+  await assert.rejects(locate(identity, 'conversation', otherConversation), /assistant_resource_not_found/);
+  await assert.rejects(entryContext(identity, { publicEnterpriseId: b.enterpriseId }), /assistant_share_preview_only/);
+  await assert.rejects(entryContext(identity, { portfolioEntry: 'legacy-share' }), /assistant_share_preview_only/);
+  const staff = await withTenantTransaction(b.enterpriseId, tx => one(tx, sql`insert into app.admin_users
+    (enterprise_id,username,password_hash,role,status,must_change_password)
+    values(${b.enterpriseId},${prefix + '-service-code'},'test-only','enterprise_admin','active',false) returning id`));
+  const staffId = String(staff!.id), token = createStaffActivityToken(BigInt(staffId), 1);
+  const code = await withTenantTransaction(b.enterpriseId, tx => one(tx, sql`insert into app.staff_activity_codes
+    (enterprise_id,staff_id,version,token_hash,status) values(${b.enterpriseId},${staffId},1,${hashReferrerNetworkToken(token)},'active') returning id`));
+  let newLeadId: string | undefined;
+  try {
+    const mini = await signMiniProgramToken({ sub: uid, id: uid, contextVersion: 1, mode: 'customer', role: 'user', source: 'wechat' });
+    const resolved = await resolveCode(new Request('http://localhost/api/miniprogram/codes/resolve', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + mini }, body: JSON.stringify({ token }),
+    }));
+    assert.equal(resolved.status, 200);
+    const scan = (await resolved.json()).data;
+    assert.equal(scan.existingAttribution, true); assert.equal(scan.pendingSource, null);
+    assert.equal(scan.lead.id, serviceLeadId);
+    const redirected = await entryContext(identity, { entryCode: token });
+    assert.equal(redirected.enterprise.id, a.enterpriseId);
+    assert.notEqual(redirected.resumeConversationId, otherConversation);
+    assert.ok(redirected.resumeConversationId);
+    assert.equal((await locate(identity, 'conversation', original)).enterpriseId, a.enterpriseId);
+
+    const fresh = { ...identity, userId: userIds[1] };
+    await withPlatformTransaction(tx => tx.execute(sql`update app.users set phone='13000000001' where id=${fresh.userId}`));
+    const freshToken = await signMiniProgramToken({ sub: fresh.userId, id: fresh.userId, contextVersion: 1, mode: 'customer', role: 'user', source: 'phone' });
+    await assert.rejects(entryContext(fresh, { entryCode: token }), /assistant_service_code_required/);
+    const scanResponse = await resolveCode(new Request('http://localhost/api/miniprogram/codes/resolve', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + freshToken }, body: JSON.stringify({ token }),
+    }));
+    assert.equal(scanResponse.status, 200);
+    const pendingSource = (await scanResponse.json()).data.pendingSource;
+    assert.ok(pendingSource);
+    const idempotencyKey = crypto.randomUUID();
+    const claim = await acceptService(new Request('http://localhost/api/miniprogram/referrals/authorize-and-create-lead', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + freshToken, 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ pendingSource, idempotencyKey }),
+    }));
+    const claimed = await claim.json();
+    assert.equal(claim.status, 201, JSON.stringify(claimed));
+    newLeadId = claimed.data.lead.id;
+    const freshEntry = await entryContext(fresh, { entryCode: token });
+    assert.equal(freshEntry.enterprise.id, b.enterpriseId);
+    const freshChat = await new ConversationService(await fromEntry(fresh, freshEntry.entryToken)).create(crypto.randomUUID());
+    assert.equal((await locate(fresh, 'conversation', String(freshChat.id))).enterpriseId, b.enterpriseId);
+    await withTenantTransaction(a.enterpriseId, tx => tx.execute(sql`update app.leads set archived_at=now() where id=${serviceLeadId}`));
+    await assert.rejects(fromEntry(identity, entry.entryToken), /assistant_service_code_required/);
+    await assert.rejects(locate(identity, 'conversation', original), /assistant_resource_not_found/);
+  } finally {
+    await withPlatformTransaction(async tx => {
+      await tx.execute(sql`update app.leads set archived_at=null where id=${serviceLeadId}`);
+      if (newLeadId) {
+        await tx.execute(sql`delete from app.customer_attribution_locks where lead_id=${newLeadId}`);
+        await tx.execute(sql`delete from app.lead_assignment_events where lead_id=${newLeadId}`);
+        await tx.execute(sql`delete from app.leads where id=${newLeadId}`);
+      }
+      await tx.execute(sql`update app.users set phone=null where id=${userIds[1]}`);
+      await tx.execute(sql`delete from app.promotion_scan_audits where enterprise_id=${b.enterpriseId}`);
+      await tx.execute(sql`delete from app.staff_activity_codes where id=${String(code!.id)}`);
+      await tx.execute(sql`delete from app.admin_users where id=${staffId}`);
+    });
+  }
 });
 test('home entry binds the only live project lead and resumes that project conversation', async () => {
   const identity = { userId: userIds[1], contextVersion: 1, enterpriseId: undefined };
@@ -254,6 +335,8 @@ test('home entry binds the only live project lead and resumes that project conve
   try {
     const lead = await createLead(prefix + ' 唯一项目业主'); leadIds.push(lead);
     projectIds.push(await createProject(lead, prefix + ' 唯一在建项目'));
+    assert.equal((await withPlatformTransaction(tx => currentCustomerService(tx, identity.userId))).enterpriseId, a.enterpriseId);
+    assert.equal((await withTenantTransaction(a.enterpriseId, tx => one(tx, sql`select status from app.enterprises where id=${a.enterpriseId}`)))?.status, 'active');
     const entry = await entryContext(identity, {});
     const actor = await fromEntry(identity, entry.entryToken), bound = (actor.entry || {}) as Row;
     assert.equal(actor.enterpriseId, a.enterpriseId);

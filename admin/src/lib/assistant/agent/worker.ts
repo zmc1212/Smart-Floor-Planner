@@ -33,14 +33,14 @@ import { buildAgentContext, parseAgentReply, agentPromptVersion, ownerNoArchiveP
 import { knowledgeTools, runKnowledgeEnabled, generalKnowledgeInstructions } from '../knowledge-policy';
 import { recommendationRegion } from '../location/region';
 import { recordRunLocationUse } from '../location/run-context';
-import { discoveryIntent } from '../core/discovery';
+import { directDesignerDiscovery, discoveryIntent } from '../core/discovery';
 import { publicCandidates, selectPublicCandidates } from '@/lib/construction/public-read';
 import { hydrateImages, resolveAgentImage, resolveAgentMedia, specialistSitePhotos, withoutImageBytes, type AgentMediaDependency, type MediaDependency, type SitePhotoDependency } from './media-context';
 import { businessToolDefinitions, queryBusiness, parseBusinessQuery, parseDesignerQuery, businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
 import { floorplanContext } from '../media/floorplan-selection';
 import { prepareMaterialShare, revokeMaterialShare, materialSharingRequested } from '@/lib/construction/material-sharing';
 import { materialShareCompletionClaim } from '@/lib/construction/material-sharing-contract';
-import { recommendDesigners, revalidateDesignerSnapshot, designerNotice, type DesignerCard, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
+import { recommendDesigners, revalidateDesignerSnapshot, designerNoMatch, designerNotice, type DesignerCard, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
 import { LAYOUT_OPTIONS, STYLE_OPTIONS } from '@/lib/portfolio/options';
 import { CITY_OPTIONS } from '@/lib/portfolio/regions';
 import { authorizeKnowledgeRead, KnowledgeSearchUnavailable, readKnowledgeTarget, retrieveKnowledge, type KnowledgeSearchOptions, type RetrievalDiagnostic } from '../knowledge/retrieval';
@@ -2836,24 +2836,32 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       });
       return;
     }
-    if (reply.kind === 'designers') {
+    if (reply.kind === 'designers' || (lease.actor.customerServiceRequired && directDesignerDiscovery(reviewContext.currentQuestion))) {
       await authorize();
       await scoped(async (tx, context) => {
-        const match = new RegExp(`^${lease.runId}:(\\d+):(\\d+)$`).exec(reply.resultKey || '');
-        if (!match || Number(match[1]) > 3 || Number(match[2]) > 3) fail('invalid_model_answer', 502);
-        const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
-          and step_seq=${1200 + Number(match[1])*10 + Number(match[2])} and capability_name='designers.search.v1'`);
-        if (!step) fail('invalid_model_citation', 502);
-        const snapshot = step.private_checkpoint as DesignerToolSnapshot;
+        let snapshot: DesignerToolSnapshot;
+        if (reply.kind === 'designers') {
+          const match = new RegExp(`^${lease.runId}:(\\d+):(\\d+)$`).exec(reply.resultKey || '');
+          if (!match || Number(match[1]) > 3 || Number(match[2]) > 3) fail('invalid_model_answer', 502);
+          const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+            and step_seq=${1200 + Number(match[1])*10 + Number(match[2])} and capability_name='designers.search.v1'`);
+          if (!step) fail('invalid_model_citation', 502);
+          snapshot = step.private_checkpoint as DesignerToolSnapshot;
+        } else {
+          const result = await recommendDesigners(tx, lease.actor, context.conversation, {},
+            { triggerMessageId: String(initial.trigger.id), runId: lease.runId });
+          snapshot = { cityCode: result.cityCode, style: result.style, layout: result.layout, needContext: result.needContext,
+            items: result.items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })) };
+        }
         const items = snapshot.needContext ? [] : await revalidateDesignerSnapshot(tx, lease.actor, snapshot);
         const scope = [snapshot.style, snapshot.layout].filter(Boolean).join('、') || '当前方向';
-        const cityNote = !snapshot.needContext && !snapshot.cityCode
+        const cityNote = items.length && !snapshot.cityCode
           ? '\n本次没有按城市筛选；告诉我房屋所在城市，可以看同城的公开作品。' : '';
         const text = snapshot.needContext
           ? '暂未获取到可用位置。点下面的「允许定位并查看设计师」授权后重试，或直接告诉我房屋所在城市；风格和户型可以慢慢聊。'
           : !items.length
-          ? `目前没有查到符合${scope}条件的公开设计师作品。你可以换一个风格或户型，或者告诉我更多信息。`
-          : (reply.text || '').trim() || `我按${scope}找到了${items.length}位设计师的公开作品，供你参考。`;
+          ? designerNoMatch
+          : `我在当前服务企业按${scope}找到了${items.length}位设计师的公开作品，供你参考。`;
         if (items.length) assertDesignerReply(text, items);
         if (!snapshot.needContext && items.length) {
           const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
@@ -2864,19 +2872,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
         const message = await appendMessage(tx, lease.actor, String(context.conversation.id), { author: 'assistant', runId: lease.runId,
           purpose: 'agent.reply', content: { version: 1, blocks: [{ type: 'text', text: text + cityNote + (text.includes(designerNotice) ? '' : '\n' + designerNotice) }, ...receiptBlocks] } });
-        // designerMessageProjection rebuilds the client cards and the needContext
-        // discovery entry from this fixed step. A missing city or a located empty
-        // result must persist it too, or the reply would point at the location
-        // card the client never renders.
-        if (snapshot.needContext || items.length) {
-          const saved: DesignerToolSnapshot = snapshot.needContext ? { communityId: null, needContext: true }
-            : { ...(snapshot.cityCode ? { cityCode: snapshot.cityCode } : {}),
-                ...(snapshot.style ? { style: snapshot.style } : {}), ...(snapshot.layout ? { layout: snapshot.layout } : {}),
-                communityId: snapshot.communityId ?? null, items: items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })) };
-          await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint,input_summary)
-            values(${lease.enterpriseId},${lease.runId},2000,'agent_designer_result','succeeded',${JSON.stringify(saved)}::jsonb,
-              ${JSON.stringify({ protocol: agentDesignerProtocol, triggerMessageId: String(initial.trigger.id), count: items.length, needContext: snapshot.needContext === true })}::jsonb)`);
-        }
+        const saved: DesignerToolSnapshot = { cityCode: snapshot.cityCode, style: snapshot.style, layout: snapshot.layout,
+          communityId: snapshot.communityId ?? null, needContext: snapshot.needContext === true,
+          items: items.map(item => ({ workId: item.work.id, versionId: item.work.versionId })) };
+        await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
+          values(${lease.enterpriseId},${lease.runId},2000,'agent_designer_result','designers.search.v1',1,'succeeded',${JSON.stringify(saved)}::jsonb,
+            ${JSON.stringify({ protocol: agentDesignerProtocol, triggerMessageId: String(initial.trigger.id), count: items.length, needContext: snapshot.needContext === true })}::jsonb)`);
         await tx.execute(sql`update app.assistant_jobs set status='succeeded',lease_token=null,lease_expires_at=null,updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
         await tx.execute(sql`update app.assistant_runs set status='succeeded',output_message_id=${String(message.id)},completed_at=now(),updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
         await tx.execute(sql`update app.assistant_quota_reservations set status='reconciling',updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);

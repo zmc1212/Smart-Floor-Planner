@@ -57,7 +57,6 @@
             loading="{{submitting}}"
             disabled="{{submitting || !pendingSource}}"
           >{{submitting ? '正在建立服务档案…' : '手机号授权，安排免费量房'}}</button>
-          <button class="secondary-action" bindtap="onPreviewChat" disabled="{{submitting}}">先和小K聊聊</button>
           <text class="privacy-copy">授权后才会建立服务档案。手机号只用于本次装修服务联系，不会公开展示。</text>
         </view>
       </block>

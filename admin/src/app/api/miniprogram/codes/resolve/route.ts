@@ -83,17 +83,19 @@ async function resolveCode(request: Request, log: MiniProgramRequestLog) {
         ) {
           return resolved;
         }
-        const existing = await leads.findActiveCustomerAttribution(actorUserId);
-        if (!existing) return resolved;
+        const { lead, ambiguous } = await leads.findActiveCustomerAttribution(actorUserId);
+        if (ambiguous) return { ...resolved, result: 'customer_service_ambiguous', pendingSource: null };
+        if (!lead) return resolved;
         return {
           ...resolved,
           pendingSource: null,
           enterpriseName: null,
+          acquisition: undefined,
           existingAttribution: true as const,
           lead: {
-            id: existing.lead.id.toString(),
-            status: existing.lead.status,
-            createdAt: existing.lead.createdAt,
+            id: lead.id.toString(),
+            status: lead.status,
+            createdAt: lead.createdAt,
           },
         };
       };
@@ -230,6 +232,8 @@ async function resolveCode(request: Request, log: MiniProgramRequestLog) {
     });
 
     if (result.result !== 'ok') {
+      if (result.result === 'customer_service_ambiguous')
+        return referrerNetworkError(result.result, { status: 409, message: '存在多家服务企业，请联系当前的装修顾问确认' });
       return referrerNetworkError(result.result);
     }
     return NextResponse.json({

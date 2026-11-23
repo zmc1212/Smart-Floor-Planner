@@ -44,6 +44,7 @@ function errorCopy(error) {
   if (code === 'code_not_found' || code === 'code_disabled') return '这个服务码已失效，请让推广人重新生成。';
   if (code === 'pending_source_expired') return '服务码已过期，请重新扫码进入。';
   if (code === 'phone_authorization_required') return '需要授权手机号才能建立服务档案。';
+  if (code === 'customer_service_ambiguous') return '请联系当前的装修顾问确认服务企业。';
   return (error && error.message) || '服务暂时不可用，请稍后重试。';
 }
 
@@ -94,7 +95,7 @@ Page({
         throw new Error('服务码类型无效');
       }
       if (data.existingAttribution && data.lead && data.lead.id) {
-        this.goChatByEntry();
+        this.goChat(true);
         return;
       }
       if (!data.pendingSource) throw new Error('服务码暂时不可用，请重新扫码');
@@ -137,7 +138,7 @@ Page({
         { headers: { 'Idempotency-Key': this.idempotencyKey } }
       );
       await this.persistCustomerSession(response);
-      this.goChatByEntry();
+      this.goChat(response.existingAttribution === true);
     } catch (error) {
       this.setData({ submitting: false, errorMessage: errorCopy(error) });
     }
@@ -169,17 +170,13 @@ Page({
     throw new Error('客户身份资料缺失');
   },
 
-  goChatByEntry() {
-    if (!this.data.token) return;
-    wx.redirectTo({ url: `/packages/assistant/chat/chat?entryCode=${encodeURIComponent(this.data.token)}` });
-  },
-
-  onPreviewChat() {
-    if (!wx.getStorageSync('token')) {
-      wx.showToast({ title: '请先授权手机号，再和小K聊', icon: 'none' });
-      return;
+  goChat(existingService) {
+    const path = '/packages/assistant/chat/chat';
+    if (existingService) {
+      wx.redirectTo({ url: path });
+    } else if (this.data.token) {
+      wx.redirectTo({ url: path + '?entryCode=' + encodeURIComponent(this.data.token) });
     }
-    this.goChatByEntry();
   },
 
   onRetry() {

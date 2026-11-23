@@ -21,7 +21,7 @@ export function discoveryIntent(text: string) {
     if (/不想|不要|不用|不需要|先不|别(?:看|推荐)|假如|假设|如果/.test(clause)) continue;
     if (/怎么|怎样|如何|为什么|要不要|该不该|多少钱|什么标准/.test(clause)) continue;
     if (nearbyListing.test(clause) && !ownSite.test(clause) && !siteInformation.test(clause)) sites = true;
-    const action = browsing.exec(clause) || /有没有|有没|哪里有|哪儿有/.exec(clause);
+    const action = browsing.exec(clause) || /有没有|有没|有哪些|有哪几位|哪里有|哪儿有/.exec(clause);
     if (!action) continue;
     const target = clause.slice(action.index + action[0].length).trim();
     // “工地和设计师作品都想看看” puts the objects before the action.
@@ -61,4 +61,8 @@ export async function discoveryRequest(tx: PostgresTransaction, enterpriseId: st
   const request = (await discoveryReplies(tx, enterpriseId, String(conversation.id), [replyId])).get(replyId);
   if (!request?.intent[kind]) fail('assistant_resource_not_found', 404);
   return request;
+}
+
+export function directDesignerDiscovery(text: string) {
+  return discoveryIntent(text).works && /设计师|设计工作室|设计室/.test(text);
 }
