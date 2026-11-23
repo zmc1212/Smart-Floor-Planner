@@ -66,6 +66,8 @@ import type { ReportCompositionScope } from '@/lib/construction/report-compositi
 import { samePublicRef, type PublicContextRef } from '@/lib/construction/public-contract';
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
 import { publicMessageAvailable } from '@/lib/construction/public-projections';
+import { editableQuestion, feedbackInput, loadReplyFeedback, ownedReply, readableReply, regenerationSource, replyControls, replyText, saveReplyFeedback, searchConsultations } from './conversation-interactions';
+import { synthesizeReply } from '../speech/read-aloud';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -401,6 +403,40 @@ export class ConversationService {
       return { items, nextCursor: result.length === limit ? String(result.at(-1)!.id) : null };
     });
   }
+  search(query: string, cursor?: string, limit?: number) {
+    return this.scoped(repo => searchConsultations(repo, query, cursor, limit));
+  }
+  feedback(conversationId: string, messageId: string, requestKey: string, body: Row) {
+    const feedback = feedbackInput(body);
+    return this.scoped(async repo => {
+      const conversation = await repo.conversation(conversationId);
+      const { userId } = await ownedReply(repo, conversation, messageId);
+      return idempotent(repo.tx, this.actor, 'answer-feedback:' + messageId, requestKey, feedback,
+        () => saveReplyFeedback(repo, conversationId, messageId, userId, feedback));
+    }, true);
+  }
+  async readAloud(conversationId: string, messageId: string) {
+    const read = () => this.scoped(async repo => {
+      const conversation = await repo.conversation(conversationId, 'share');
+      return replyText((await ownedReply(repo, conversation, messageId)).projected.content);
+    });
+    const text = await read();
+    const audio = await synthesizeReply(text);
+    if (await read() !== text) fail('context_changed');
+    return audio;
+  }
+  regenerate(conversationId: string, messageId: string, requestKey: string) {
+    return this.scoped(async (repo, settings) => {
+      const conversation = await repo.conversation(conversationId);
+      await ownedReply(repo, conversation, messageId);
+      return idempotent(repo.tx, this.actor, 'answer-regenerate:' + messageId, requestKey, {}, async () => {
+        const source = await regenerationSource(repo, conversation, messageId);
+        if (!source) fail('context_changed');
+        return newRun(repo.tx, this.actor, conversation, settings!, source.questionId, source.runId,
+          { kind: 'user_message', messageId: source.questionId }, 'reply.regenerate');
+      });
+    }, true);
+  }
   detail(conversationId: string) {
     return this.scoped(async (repo, settings) => {
       const c = await repo.conversation(conversationId);
@@ -420,6 +456,8 @@ export class ConversationService {
       const contentEntry=['reference_content','reference_unavailable'].includes(String(entry.kind));
       const source=entry.kind==='reference_content'?await contentEntrySource(repo.tx,entry as ContentEntry):null;
       const leadId = renovationLeadId(entry);
+      const regenerateMessageId = latest && !['queued', 'running'].includes(String(latest.status))
+        ? (await regenerationSource(repo, c))?.messageId ?? null : null;
       const hasRequirementSummary = this.actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
         && !entry.retentionRedacted && !entry.activePublicSite && Boolean(await one(repo.tx, sql`
           select 1 from app.assistant_requirement_summaries where enterprise_id=${this.actor.enterpriseId}
@@ -431,6 +469,7 @@ export class ConversationService {
           limit 1`));
       const stageConfig = c.mode==='ai' && !contentEntry && !reportContext(entry).selection ? await currentConversationExperience(repo.tx,this.actor,c) : null;
       return { ...conversationDto(c, await currentRequirementProposalPending(repo, c, settings)), stageExperience:stageConfig ? {lexicon:stageConfig.guideEnabled ? stageConfig.lexicon : [],followUp:stageConfig.followUp,attachments:stageConfig.attachments} : null, ownerAvailable, guidance:contentEntry?null:guidance, latestRun: latest ? runDto(latest) : null,
+        regenerateMessageId,
         ...(hasRequirementSummary ? { hasRequirementSummary: true } : {}),
         reportContext: await reportContextView(repo.tx, this.actor, c),
         ...(contentEntry?{guidanceOpening:contentGreeting(source),guidanceEnabled:false}:{}),
@@ -451,20 +490,27 @@ export class ConversationService {
       if (c.purpose === 'customer_consultation' && this.actor.principal.kind === 'user')
         purpose = sql`purpose is distinct from 'construction.stage_reminder'`;
       const result = after !== undefined
-        ? await rows(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
+        ? await rows(repo.tx, sql`select id,seq,author_kind,user_id,content,answer_kind,created_at,purpose,reply_to_message_id from app.assistant_messages
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq>${after}
           and ${purpose} order by seq asc limit ${cursor.limit}`)
-        : await rows(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
+        : await rows(repo.tx, sql`select id,seq,author_kind,user_id,content,answer_kind,created_at,purpose,reply_to_message_id from app.assistant_messages
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq<${cursor.beforeSeq}
           and ${purpose} order by seq desc limit ${cursor.limit}`);
       const discovery = this.actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
         ? await discoveryReplies(repo.tx, this.actor.enterpriseId, conversationId,
           result.filter(message => message.author_kind === 'assistant').map(message => String(message.id))) : null;
+      const feedback = await loadReplyFeedback(repo, c, result);
       const items=[];
       for (const message of result) {
         const projected = await projectMessage(repo.tx, this.actor, c, message);
         const intent = projected.available && discovery?.get(projected.id)?.intent;
-        items.push(intent && (intent.sites || intent.works) ? { ...projected, discovery: intent } : projected);
+        items.push({
+          ...projected,
+          ...(intent && (intent.sites || intent.works) ? { discovery: intent } : {}),
+          ...(editableQuestion(repo, c, message, projected) ? { editableQuestion: true } : {}),
+          ...(this.actor.principal.kind === 'user' && readableReply(c, message, projected)
+            ? { replyActions: replyControls(message, projected, feedback.get(projected.id) ?? null) } : {}),
+        });
       }
       const newest = after !== undefined ? String(result.at(-1)?.seq ?? after) : String(result[0]?.seq ?? latest);
       const latestSeq = String(BigInt(latest) > BigInt(newest) ? BigInt(latest) : BigInt(newest));
@@ -483,11 +529,16 @@ export class ConversationService {
       const c = await repo.conversation(conversationId);
       const items = [];
       for (const item of history.items) {
-        const message = await one(repo.tx, sql`select id,seq,author_kind,content,answer_kind,created_at,purpose from app.assistant_messages
+        const message = await one(repo.tx, sql`select id,seq,author_kind,user_id,content,answer_kind,created_at,purpose,reply_to_message_id from app.assistant_messages
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and id=${item.id}`);
         if (!message) continue;
         const projected = await projectMessage(repo.tx, this.actor, c, message, checked);
-        items.push(projected.available && 'discovery' in item ? { ...projected, discovery: item.discovery } : projected);
+        items.push({
+          ...projected,
+          ...(projected.available && item.discovery ? { discovery: item.discovery } : {}),
+          ...(editableQuestion(repo, c, message, projected) ? { editableQuestion: true } : {}),
+          ...(item.replyActions && readableReply(c, message, projected) ? { replyActions: item.replyActions } : {}),
+        });
       }
       return { ...history, items };
     });
@@ -679,6 +730,12 @@ export class ConversationService {
         // model response followed by retrieval failure keeps its original cost
         // hold while the explicit retry receives a separate budget reservation.
         if (r.awaiting_reconciliation) fail('context_changed');
+        if (r.purpose === 'reply.regenerate') {
+          const source = await regenerationSource(repo, c);
+          if (!source || source.runId !== String(r.retry_of_run_id)) fail('context_changed');
+          return newRun(repo.tx, this.actor, c, settings!, source.questionId, source.runId,
+            { kind: 'user_message', messageId: source.questionId }, 'reply.regenerate');
+        }
         const publicIntro = String(r.purpose) === 'public.site.intro';
         // A successful retry is the opening for the same visited site version, so
         // its marker must follow the new run. The marker stays bound to the site

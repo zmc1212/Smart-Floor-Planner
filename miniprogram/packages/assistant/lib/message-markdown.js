@@ -112,4 +112,29 @@ function markdownForBlock(block) {
   return sections;
 }
 
-module.exports = { markdownForBlock };
+const paragraphTags = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'table']);
+
+function copyNode(node) {
+  if (node.type === 'text') return node.text;
+  if (node.name === 'br') return '\n';
+  const children = (node.children || []).map(copyNode);
+  if (node.name === 'ol' || node.name === 'ul') {
+    const first = node.attrs?.start ?? 1;
+    return children.map((child, index) => {
+      const marker = node.name === 'ol' ? (first + index) + '. ' : '• ';
+      return marker + child.trim().replace(/\n/g, '\n' + ' '.repeat(marker.length));
+    }).join('\n') + '\n\n';
+  }
+  if (node.name === 'tr') return children.join('\t') + '\n';
+  return children.join('') + (paragraphTags.has(node.name) ? '\n\n' : '');
+}
+
+function copyableReplyText(message) {
+  if (!message?.replyActions || !message.available || message.authorKind !== 'assistant') return '';
+  return (message.content?.blocks || []).filter(block => block.type === 'text').map(block => {
+    const rendered = markdownForBlock(block);
+    return rendered ? rendered.flatMap(part => part.nodes).map(copyNode).join('').trim() : String(block.text || '').trim();
+  }).filter(Boolean).join('\n\n');
+}
+
+module.exports = { markdownForBlock, copyableReplyText };

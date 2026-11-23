@@ -1,0 +1,94 @@
+<template name="reply-actions">
+  <view class="answer-action-bar">
+    <button class="answer-action copy-answer" bindtap="copyAnswer" data-message="{{item.id}}" aria-label="复制回答">
+      <image src="../assets/reply-actions/{{copiedAnswerId === item.id ? 'check' : 'copy'}}.png" mode="aspectFit"/>
+      <text>{{copiedAnswerId === item.id ? '已复制' : '复制'}}</text>
+    </button>
+    <button class="answer-action helpful-answer {{item.replyActions.feedback.rating === 'helpful' ? 'is-marked' : ''}}" bindtap="markHelpful"
+      data-message="{{item.id}}" disabled="{{!!feedbackBusyId}}" aria-label="{{item.replyActions.feedback.rating === 'helpful' ? '取消有帮助标记' : '标记有帮助'}}">
+      <image src="../assets/reply-actions/helpful.png" mode="aspectFit"/><text>{{item.replyActions.feedback.rating === 'helpful' ? '已标记' : '有帮助'}}</text>
+    </button>
+    <button class="answer-action report-answer {{item.replyActions.feedback.rating === 'issue' ? 'is-marked' : ''}}" bindtap="openAnswerFeedback"
+      data-message="{{item.id}}" disabled="{{!!feedbackBusyId}}" aria-label="反馈这条回答">
+      <image src="../assets/reply-actions/feedback.png" mode="aspectFit"/><text>{{item.replyActions.feedback.rating === 'issue' ? '已反馈' : '反馈'}}</text>
+    </button>
+    <button wx:if="{{item.replyActions.readAloud || regenerateMessageId === item.id}}" class="answer-action more-answer"
+      bindtap="openAnswerMore" data-message="{{item.id}}" aria-label="更多回答操作">
+      <image src="../assets/reply-actions/more.png" mode="aspectFit"/>
+    </button>
+  </view>
+  <view wx:if="{{item.replyVersion}}" class="answer-version-control">
+    <button class="answer-version-step" bindtap="selectAnswerVersion" data-root="{{item.replyVersion.root}}"
+      data-version="{{item.replyVersion.previous}}" disabled="{{!item.replyVersion.previous}}" aria-label="查看上一版回答">‹</button>
+    <text>{{item.replyVersion.index}} / {{item.replyVersion.count}}</text>
+    <button class="answer-version-step" bindtap="selectAnswerVersion" data-root="{{item.replyVersion.root}}"
+      data-version="{{item.replyVersion.next}}" disabled="{{!item.replyVersion.next}}" aria-label="查看下一版回答">›</button>
+  </view>
+</template>
+
+<template name="reply-feedback">
+  <view class="answer-feedback-form">
+    <text class="answer-feedback-prompt">哪里需要改进？</text>
+    <view class="answer-reasons">
+      <button wx:for="{{feedbackReasons}}" wx:key="key" class="answer-reason {{feedbackReason === item.key ? 'is-picked' : ''}}"
+        bindtap="pickFeedbackReason" data-reason="{{item.key}}" disabled="{{!!feedbackBusyId || feedbackPending}}"
+        aria-label="{{item.text}}{{feedbackReason === item.key ? '，已选' : ''}}">
+        <text>{{item.text}}</text>
+        <image wx:if="{{feedbackReason === item.key}}" src="../assets/reply-actions/check.png" mode="aspectFit"/>
+      </button>
+    </view>
+    <textarea class="answer-feedback-note" value="{{feedbackNote}}" maxlength="400" adjust-position="{{false}}"
+      placeholder="补充说明（选填）" placeholder-class="answer-feedback-placeholder" show-confirm-bar="{{false}}"
+      disabled="{{!!feedbackBusyId || feedbackPending}}" bindinput="inputFeedbackNote" bindkeyboardheightchange="interactionKeyboardChange"/>
+    <text wx:if="{{feedbackError}}" class="answer-feedback-error" role="alert">{{feedbackError}}</text>
+    <button wx:if="{{feedbackSaved && !feedbackPending}}" class="answer-feedback-clear" bindtap="clearAnswerFeedback" disabled="{{!!feedbackBusyId}}">撤回反馈</button>
+    <button class="answer-feedback-submit" bindtap="submitAnswerFeedback" disabled="{{(!feedbackReason && !feedbackPending) || !!feedbackBusyId}}">
+      {{feedbackBusyId ? '正在提交…' : feedbackPending ? '确认反馈结果' : '提交反馈'}}
+    </button>
+  </view>
+</template>
+
+<template name="answer-more-menu">
+  <view class="answer-more-menu">
+    <button wx:if="{{canRegenerateAnswer}}" class="answer-more-row" bindtap="regenerateSelectedAnswer"
+      disabled="{{busy || generating || pendingSend || pendingAction || !canSend || readOnly}}">
+      <image src="../assets/reply-actions/retry.png" mode="aspectFit"/>
+      <view><text>{{regenerationPending ? '确认生成结果' : '重新生成'}}</text><text class="answer-more-detail">原回答仍可查看</text></view>
+      <view class="answer-more-chevron"/>
+    </button>
+    <button wx:if="{{canReadAnswer}}" class="answer-more-row" bindtap="readSelectedAnswer" disabled="{{audioState === 'loading'}}">
+      <image src="../assets/reply-actions/read.png" mode="aspectFit"/>
+      <text>{{audioState === 'playing' ? '暂停朗读' : audioState === 'paused' ? '继续朗读' : audioState === 'loading' ? '正在准备朗读…' : '朗读回答'}}</text>
+      <view class="answer-more-chevron"/>
+    </button>
+    <text wx:if="{{moreError}}" class="answer-feedback-error" role="alert">{{moreError}}</text>
+  </view>
+</template>
+
+<template name="answer-history-field">
+  <view class="answer-history-field">
+    <image src="../assets/reply-actions/search.png" mode="aspectFit"/>
+    <input value="{{historyQuery}}" maxlength="64" placeholder="搜索对话标题或内容" placeholder-class="answer-feedback-placeholder"
+      confirm-type="search" adjust-position="{{false}}" bindinput="inputHistorySearch" bindconfirm="confirmHistorySearch" bindkeyboardheightchange="interactionKeyboardChange"/>
+    <button wx:if="{{historyQuery}}" bindtap="clearHistorySearch" class="answer-history-clear" aria-label="清空搜索"><image src="../assets/x.png" mode="aspectFit"/></button>
+  </view>
+</template>
+
+<template name="answer-history-results">
+  <view class="answer-search-heading"><text>搜索结果</text><view/></view>
+  <text wx:if="{{historySearching && !historyMatches.length}}" class="sheet-state">正在搜索对话…</text>
+  <view wx:if="{{historySearchError}}" class="notice"><text>{{historySearchError}}</text><button class="notice-action" bindtap="retryHistorySearch">重试搜索</button></view>
+  <text wx:if="{{!historySearching && !historySearchError && !historyMatches.length && !historySearchCursor}}" class="sheet-state">没有找到相关对话，换个词试试。</text>
+  <button wx:for="{{historyMatches}}" wx:key="id" class="history-row conversation-list-row answer-search-result" data-id="{{item.id}}"
+    data-anchor="{{item.messageId}}" bindtap="selectHistory" disabled="{{busy || pendingSend || pendingAction}}">
+    <image class="conversation-list-icon" src="../assets/conversation-outline.png" mode="aspectFit"/>
+    <view class="conversation-list-content">
+      <view class="conversation-list-heading"><text class="history-title">{{item.title}}</text><text class="conversation-list-date">{{item.dateLabel}}</text></view>
+      <view class="answer-search-line">
+        <view class="answer-search-snippet"><text>{{item.snippet.before}}</text><text class="answer-search-mark">{{item.snippet.match}}</text><text>{{item.snippet.after}}</text></view>
+        <view class="conversation-list-arrow"/>
+      </view>
+    </view>
+  </button>
+  <button wx:if="{{historySearchCursor}}" class="older-action" bindtap="moreHistorySearch" disabled="{{historySearching}}">{{historySearching ? '正在搜索…' : '查看更多结果'}}</button>
+</template>

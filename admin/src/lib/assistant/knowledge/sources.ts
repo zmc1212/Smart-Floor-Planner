@@ -158,6 +158,16 @@ export function unavailableNoticeText(reason?: string) {
   return '这条回答所依据的资料已不可用，请重新提问。';
 }
 export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c:Row,message:Row,webChecks?:WebSourceChecks) {
+  if (message.purpose !== 'reply.regenerate') return projectSavedMessage(tx, actor, c, message, webChecks);
+  const original = await one(tx, sql`select original.* from app.assistant_messages variant
+    join app.assistant_messages original on original.enterprise_id=variant.enterprise_id and original.conversation_id=variant.conversation_id
+      and original.id=variant.reply_to_message_id and original.seq<variant.seq and original.purpose='reply' and original.author_kind='assistant'
+    where variant.enterprise_id=${actor.enterpriseId} and variant.conversation_id=${String(c.id)} and variant.id=${String(message.id)}`);
+  const available = !!original && (await projectSavedMessage(tx, actor, c, original, webChecks)).available;
+  return projectSavedMessage(tx, actor, c, message, webChecks, available);
+}
+
+async function projectSavedMessage(tx:PostgresTransaction, actor:ActorContext, c:Row, message:Row, webChecks?:WebSourceChecks, originalAvailable = true) {
   // Revoking an original also hides pre-revocation AI prose after it. This
   // conservative fence covers unstructured replies without inventing citations;
   // future turns can answer again from the remaining live sources.
@@ -181,7 +191,7 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   for (const citationId of webIds) projected.push(await webCitationProjection(tx, actor, c, citationId, webChecks));
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
-  const sourceAvailable=speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
+  const sourceAvailable=originalAvailable && speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id),actor);
   const siteResult = sourceAvailable && message.purpose === 'construction.result'
     ? await siteResultProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null;

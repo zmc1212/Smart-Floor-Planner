@@ -24,7 +24,7 @@ export const workerTiming = { providerMs: 90000, leaseMs: 150000, requestMs: 180
 export type Lease = { enterpriseId: string; jobId: string; runId: string; token: string; actor: ActorContext };
 export type RunResult = { content: MessageContent; usage: { inputTokens: number; outputTokens: number } | null; attemptId?: string;
   /** Internal native ToolCall completion; each dispatch already uses the original Agent ledger. */
-  usageMode?: 'per_turn' };
+  usageMode?: 'per_turn'; replyVersionOf?: string };
 async function finish(tx: PostgresTransaction, lease: Lease, status: string, error: string | null, outputMessageId?: string) {
   await tx.execute(sql`update app.assistant_jobs set status=${status},last_error=${error},lease_token=null,lease_expires_at=null,updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
   await tx.execute(sql`update app.assistant_runs set status=${status},error_code=${error},output_message_id=${outputMessageId || null},completed_at=now(),updated_at=now(),version=version+1 where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
@@ -166,7 +166,12 @@ export async function completeRun(lease: Lease, result: RunResult, commit?: (tx:
     if (result.content.version !== 1 || !result.content.blocks.length || result.content.blocks.some(b => b.type !== 'text' || typeof b.text !== 'string' || !b.text.trim()) ||
       JSON.stringify(result.content).length > 32000) fail('invalid_message', 422);
     if (result.usage && (!Number.isSafeInteger(result.usage.inputTokens) || !Number.isSafeInteger(result.usage.outputTokens) || result.usage.inputTokens < 0 || result.usage.outputTokens < 0)) fail('invalid_message', 422);
-    const message = await appendMessage(tx, lease.actor, String(run.conversation_id), { author: 'assistant', content: result.content, runId: lease.runId });
+    const regenerated = run.purpose === 'reply.regenerate';
+    if (regenerated !== !!result.replyVersionOf) fail('context_changed');
+    const message = await appendMessage(tx, lease.actor, String(run.conversation_id), {
+      author: 'assistant', content: result.content, runId: lease.runId,
+      ...(regenerated ? { purpose: 'reply.regenerate', replyToMessageId: result.replyVersionOf } : {}),
+    });
     await commit?.(tx, run, String(message.id));
     if (result.usageMode === 'per_turn') {
       const observed = await one(tx, sql`select id from app.assistant_usage_records where enterprise_id=${lease.enterpriseId}

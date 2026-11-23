@@ -16,6 +16,7 @@ import { chatFirstProgress, defaultGuidance } from '../requirements/guidance';
 import { needsDesignerSuggestion, designerSuggestion } from '../handoff/intent';
 import { agentConfig } from '../agent/config';
 import { processAgentAnswer } from '../agent/worker';
+import { regenerateAnswer } from '../agent/answer-regeneration';
 import { xiaokNativeExecutorProtocol, processNativeAgentAnswer } from '../agent/native-executor';
 import { nativeSearchDependency, selectedNativeSearch } from '../agent/native-search';
 import { configuredApplicationWebSearch } from '../agent/web-tool-runtime';
@@ -112,10 +113,17 @@ async function tryRequirementGuidance(lease: Lease, context: Awaited<ReturnType<
 
 export async function processAnswer(lease:Lease,deps:Dependencies={}) {
   let returned=false;
+  let regeneration=false;
   let stage:'retrieval'|'model'='retrieval';
   try {
     const context=await withTenantTransaction(lease.enterpriseId,tx=>runContext(tx,lease));
     const policy = context.run.policy_snapshot as Row;
+    if (context.run.purpose === 'reply.regenerate') {
+      regeneration = true;
+      stage = 'model';
+      await regenerateAnswer(lease, () => { returned = true; });
+      return;
+    }
     if (await tryRenovationProfileRecap(lease, context)) return;
     // Let a configured consultation interpret the current message through its
     // saved runtime before stage-template vocabulary can intercept it.
@@ -283,7 +291,7 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     });
     await completeAnswer(lease,parseSelection(output.text,evidence),evidence,output.attemptId || null,followup);
   }catch(e){
-    const recovery = stage === 'model' && !returned ? await recoverKnowledgeAnswer(lease, e) : null;
+    const recovery = !regeneration && stage === 'model' && !returned ? await recoverKnowledgeAnswer(lease, e) : null;
     if (recovery?.completed) return;
     // An explicit payment rejection is a known failure, not an ambiguous timeout.
     // Keep usage/cost unreconciled: this error is not a provider billing receipt.

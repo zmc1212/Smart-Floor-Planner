@@ -163,22 +163,44 @@ class SpeechController {
       if (!uncertain(error)) this.asset = null; } }
   }
   stopPlayback() {
-    if (this.player) { this.player.stop(); this.player.destroy(); this.player = null; }
+    this.playTicket = (this.playTicket || 0) + 1;
+    if (this.player) { const player = this.player; this.player = null; player.stop(); player.destroy(); }
     if (this.audioPath) { try { wx.getFileSystemManager().unlink({ filePath: this.audioPath, fail() {} }); } catch (_) {} this.audioPath = ''; }
+    const state = this.playState; this.playState = null; state?.('');
   }
   playLocal(path) {
     this.stopPlayback(); this.player = wx.createInnerAudioContext(); this.player.src = path;
     this.player.onEnded(() => this.stopPlayback()); this.player.onError(() => { this.stopPlayback(); this.message('录音暂时无法回听，请重试。'); }); this.player.play();
   }
   async play(id) {
-    this.stopPlayback(); const epoch = this.epoch;
-    const result = await api.downloadFile(this.base + '/' + id, { suppressUnauthorized: true });
-    if (!this.valid(epoch) || result.statusCode !== 200) {
+    return this.playProtected(this.base + '/' + id);
+  }
+  async playProtected(path, onState, onFailure = () => this.message()) {
+    this.stopPlayback();
+    const epoch = this.epoch, ticket = this.playTicket;
+    const current = () => this.valid(epoch) && this.playTicket === ticket;
+    this.playState = onState;
+    onState?.('loading');
+    let result;
+    try { result = await api.downloadFile(path, { suppressUnauthorized: true }); }
+    catch (_) {
+      if (current()) { this.stopPlayback(); onFailure(); }
+      return;
+    }
+    if (!current() || result.statusCode !== 200) {
       if (result.tempFilePath) try { wx.getFileSystemManager().unlink({ filePath: result.tempFilePath, fail() {} }); } catch (_) {}
-      if (this.valid(epoch)) this.message(); return;
+      if (current()) { this.stopPlayback(); onFailure(); }
+      return;
     }
     this.audioPath = result.tempFilePath; this.player = wx.createInnerAudioContext(); this.player.src = result.tempFilePath;
-    this.player.onEnded(() => this.stopPlayback()); this.player.onError(() => { this.stopPlayback(); if (this.valid(epoch)) this.message(); }); this.player.play();
+    this.player.onEnded(() => { if (current()) this.stopPlayback(); });
+    this.player.onError(() => { if (current()) { this.stopPlayback(); onFailure(); } });
+    if (onState) {
+      this.player.onPlay(() => { if (current()) onState('playing'); });
+      this.player.onPause(() => { if (current()) onState('paused'); });
+    }
+    this.player.play();
   }
+  togglePlayback(paused) { if (paused) this.player?.play(); else this.player?.pause(); }
 }
 module.exports = { SpeechController };

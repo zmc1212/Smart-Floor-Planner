@@ -126,6 +126,17 @@ export const assistantMessages = app.table('assistant_messages', {
   replyToMessageId: bigint('reply_to_message_id', { mode: 'bigint' }),
 });
 
+export const assistantAnswerFeedback = app.table('assistant_answer_feedback', {
+  enterpriseId: bigint('enterprise_id', { mode: 'bigint' }).notNull(),
+  conversationId: bigint('conversation_id', { mode: 'bigint' }).notNull(),
+  messageId: bigint('message_id', { mode: 'bigint' }).notNull(),
+  userId: bigint('user_id', { mode: 'bigint' }).notNull(),
+  rating: text('rating').notNull(),
+  reason: text('reason'),
+  note: text('note').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+}, t => [primaryKey({ columns: [t.enterpriseId, t.conversationId, t.userId, t.messageId] })]);
+
 export const assistantRuns = app.table('assistant_runs', {
   ...base(),
   conversationId: bigint('conversation_id', { mode: 'bigint' }).notNull(),

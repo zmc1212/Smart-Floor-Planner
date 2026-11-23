@@ -178,6 +178,13 @@ class AssistantClient {
         && (slot.startsWith('send:') || slot.startsWith('handoff:') || slot.startsWith('media:'))
         && data.conversationId !== slot.split(':')[1]) throw { code: 'invalid_response' };
       if (slot.startsWith('followup:') && !validFollowupReceipt(pending, data, slot)) throw { code: 'invalid_response' };
+      if (slot.startsWith('answer-feedback:')) {
+        const [, conversationId, messageId] = slot.split(':');
+        if (data.conversationId !== conversationId || data.messageId !== messageId
+          || data.rating !== (pending.body.rating === 'clear' ? null : pending.body.rating)) throw { code: 'invalid_response' };
+      }
+      if (slot.startsWith('answer-regenerate:') && (data.conversationId !== slot.split(':')[1]
+        || !/^[1-9]\d*$/.test(String(data.runId)) || data.status !== 'queued')) throw { code: 'invalid_response' };
       if (slot.startsWith('send:') || slot.startsWith('retry:')) {
         if ((!data.runId && !(slot.startsWith('send:') && data.status === 'succeeded' && data.messageId)) || !data.conversationId) throw { code: 'invalid_response' };
         if (slot.startsWith('send:') && pending.path.startsWith('/conversations/')

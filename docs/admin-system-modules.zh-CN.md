@@ -1,5 +1,11 @@
 # 后台系统当前功能清单
 
+**C01 回答交互（本地）。** 小程序用签名入口访问 `GET /api/miniprogram/assistant/conversations?search=…` 搜索当前可访问的咨询标题与正文，服务在投影片段前检查参与者与来源权限。定位使用授权消息 ID。`PATCH …/conversations/:id/messages/:messageId/feedback` 以幂等键保存或撤回本人的评价、原因及补充说明。`0147_assistant_answer_feedback` 增加租户 RLS 与复合消息外键，原会话留存清理同时删除评价及说明。
+
+`POST …/messages/:messageId/regenerate` 只接收最近一条有模型成功凭据、未产生业务动作的纯文本答复。复用原有计量模型、持久任务、失败重试和停止，`reply.regenerate` 执行时关闭工具，新版本通过 `reply_to_message_id` 关联原回答并复核其访问权限。`GET …/messages/:messageId/audio` 本机合成获权正文，下载前再次复核并返回不可缓存的 WAV。`ASSISTANT_TTS_PROVIDER=local-windows` 使用 Microsoft Huihui Desktop，`local-espeak-ng` 使用 `ASSISTANT_TTS_EXECUTABLE` 指定的绝对路径。已配置引擎时可朗读不超过 1,200 字符的回答。[小程序批准稿](../design-references/xiaok-answer-actions-20261124-v1/README.md) · [C01 入口](./miniprogram-system-modules.zh-CN.md)。
+
+重答采用 AI SDK 的消息 ID 触发方式，执行仍沿用小 K 的任务、计量、参与者与来源校验。隔离迁移和 HTTP 已核对本人评价读回、同企业其他业主和跨企业拒绝、参与者撤权。两条固定 `qwen3.7-flash` 样例成功保存独立版本，源码绑定无漂移。另有一次早期调用因审计查询故障未留存结果，仅作未知记录。已验证 Windows 本机合成和播放，Linux eSpeak 配置待实测。[AI SDK 触发方式](https://ai-sdk.dev/docs/reference/ai-sdk-ui/use-chat#regenerate) · [模型试验](../tmp/xiaok-answer-restoration-20261124/stable-e7f27490/report.json) · [原审计故障](../tmp/xiaok-answer-restoration-20261124/stable-bc33c754/report.json) · [HTTP 与原生证据](../tmp/xiaok-answer-restoration-20261124/stable-44a978e8/report.json)。
+
 **阶段 Agent 工作台（本地 Implemented）。** 在「小 K 知识库 → 阶段 Agent」选择施工阶段，左侧配置，右侧调试当前草稿。管理员可编辑带变量的开场白、最多三条开场预设问题、回答后的追问和输入词库，也可设置模型参数、工具、获权知识与默认工作流。回答和追问均使用企业授权的模型。真实调试经过原生 Worker，读取面向业主的已发布知识；对话仅对发起的管理员可见。编辑历史与调试日志支持重进。「发布渠道」展示小程序入口。浏览器朗读和文本附件用于后台调试。附件原文随调试消息发送，TXT 调试和历史交付按分句识别明确否定的并列状态，保留原答复、来源和引用。肯定式正式批准仍须真实业务回执。候选答复若违反承诺边界，继续沿原生执行器的一次修正机会复核。[调试范围与证据](./xiaok-assistant-phase-2.zh-CN.md#一期ppt工艺资料试问limited) · [交互设计](./design/xiaok-stage-agent-workbench.zh-CN.md)。
 
 `GET/POST/PUT /api/assistant/stage-agents` 核验企业、管理权限和预期版本。迁移 `0146` 为 `app.assistant_stage_agents` 增加可空体验配置和最近编辑记录，旧客户端保存时保留已有配置。预览接口校验阶段草稿，日志按参与者和阶段读取，追问绑定已完成的回复。平台管理员在 `/native-workflow` 用中文创建模板、在线上插入条件、补接出口、连接取值端口，可在画布试运行草稿或发布版并查看执行路径和返回文本。调用阶段可回到对应配置。发布新模板后，各阶段保留原先选定的版本。Compose 将模板保存在独立 `native_workflow_store` 卷。小 K Worker 通过同版 Admin 的内部接口执行，独立执行器沿用 `NATIVE_WORKFLOW_STORE_DIR` 配置。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。

@@ -1,8 +1,25 @@
 const { AssistantClient, entryInput, errorCopy, uncertain, messagesForView: projectMessages } = require('./client');
-const { markdownForBlock } = require('./message-markdown');
+const { markdownForBlock, copyableReplyText } = require('./message-markdown');
 
 function messagesForView(items) {
-  return projectMessages(items, markdownForBlock);
+  const views = projectMessages(items, markdownForBlock);
+  const byId = new Map(views.map(message => [message.id, message]));
+  const groups = new Map();
+  for (const message of views) {
+    const root = message.replyActions?.versionOf;
+    const first = byId.get(root);
+    if (!root || !first?.replyActions || message.available === false) continue;
+    if (!groups.has(root)) groups.set(root, [first]);
+    groups.get(root).push(message);
+  }
+  for (const [root, versions] of groups) {
+    const latest = versions.at(-1).id;
+    versions.forEach((message, index) => {
+      message.replyVersion = { root, latest, index: index + 1, count: versions.length,
+        previous: versions[index - 1]?.id || '', next: versions[index + 1]?.id || '' };
+    });
+  }
+  return views;
 }
 const ACTIVE = ['queued', 'running'];
 const WELCOME = '你好，我是小K。\n先聊聊你的装修想法吧。';
@@ -191,17 +208,18 @@ class ChatController {
     return entry;
   }
 
-  async historyPage(cursor) {
+  async historyPage(cursor, search = '') {
     const entry = await this.ensureEntry();
     if (!entry) return null;
+    const parameters = { limit: 20, ...(cursor ? { cursor } : {}), ...(search ? { search } : {}) };
     try {
-      return await this.client.read('/conversations', { limit: 20, ...(cursor ? { cursor } : {}) }, { 'X-Assistant-Entry': entry.entryToken });
+      return await this.client.read('/conversations', parameters, { 'X-Assistant-Entry': entry.entryToken });
     } catch (error) {
       // Refresh an expired entry token once, but never silently change an entry.
       if ((error.code || error.error) !== 'entry_context_invalid') throw error;
       const refreshed = await this.ensureEntry(true);
       if (!refreshed) return null;
-      return this.client.read('/conversations', { limit: 20, ...(cursor ? { cursor } : {}) }, { 'X-Assistant-Entry': refreshed.entryToken });
+      return this.client.read('/conversations', parameters, { 'X-Assistant-Entry': refreshed.entryToken });
     }
   }
 
@@ -406,7 +424,8 @@ class ChatController {
     if (!incoming.length) return null;
     const raw = mergeMessages(this.rawMessages || [], incoming);
     return {
-      view: { messages: messagesForView(raw), messageCursor: this.state.messageCursor, appended: incoming.length },
+      view: { messages: messagesForView(raw), messageCursor: this.state.messageCursor,
+        appended: incoming.some(message => message.replyActions?.versionOf) ? 0 : incoming.length },
       cache: { rawMessages: raw, seqConversationId: id, latestSeq: drained && seqOrder(latestSeq, after) > 0 ? latestSeq : after },
     };
   }
@@ -685,6 +704,69 @@ class ChatController {
       if (!this.state.generating && older.some(hasPublicSource)) this.scheduleConversation(this.conversationId, epoch);
     } catch (error) { this.fail(error, epoch); }
     finally { this.setIf(epoch, { busy: false }); }
+  }
+
+  async findHistoryMessage(messageId) {
+    const epoch = this.epoch;
+    while (this.visible && this.valid(epoch)) {
+      const match = this.state.messages.find(message => message.id === messageId && message.available !== false);
+      if (match) return true;
+      const cursor = this.state.messageCursor;
+      if (!cursor) break;
+      await this.olderMessages();
+      if (this.state.messageCursor === cursor) break;
+    }
+    return false;
+  }
+
+  answerText(messageId) {
+    if (!this.visible || !this.valid(this.epoch)) return '';
+    return copyableReplyText(this.rawMessages?.find(message => message.id === messageId));
+  }
+
+  questionText(messageId) {
+    if (!this.visible || !this.valid(this.epoch) || this.state.readOnly || this.state.conversation?.mode !== 'ai') return '';
+    const item = this.rawMessages?.find(message => message.id === messageId);
+    return item?.editableQuestion && item.available
+      ? item.content.blocks.filter(block => block.type === 'text').map(block => block.text).join('\n\n') : '';
+  }
+
+  async regenerateAnswer(messageId) {
+    const epoch = this.epoch, id = this.conversationId;
+    const slot = 'answer-regenerate:' + id + ':' + messageId;
+    if (!this.visible || !this.valid(epoch) || !id || this.state.busy || this.state.pendingSend || this.state.pendingAction
+      || !this.state.canSend || this.state.readOnly || !this.answerText(messageId)
+      || this.state.conversation?.regenerateMessageId !== messageId && !this.client.pending.get(slot)) return false;
+    this.set({ busy: true, error: '' });
+    this.unschedule(this.timer);
+    try {
+      const receipt = await this.client.mutate(slot, `/conversations/${id}/messages/${messageId}/regenerate`);
+      if (!this.visible || !this.valid(epoch)) return false;
+      this.applyRun({ ...receipt, id: receipt.runId });
+      try { await this.snapshot(id, epoch); }
+      catch (error) { this.syncFailure(error, id, epoch); }
+      return true;
+    } finally { this.setIf(epoch, { busy: false }); }
+  }
+
+  async updateAnswerFeedback(messageId, feedback) {
+    const epoch = this.epoch, id = this.conversationId;
+    if (!this.visible || !this.valid(epoch) || !id || !this.answerText(messageId)) return false;
+    const slot = 'answer-feedback:' + id + ':' + messageId;
+    const submitted = this.client.pending.get(slot)?.body || feedback;
+    const receipt = await this.client.mutate(slot, `/conversations/${id}/messages/${messageId}/feedback`, submitted, 'PATCH');
+    if (!this.visible || !this.valid(epoch) || this.conversationId !== id) return false;
+    const rating = receipt.rating;
+    const saved = rating ? { rating, reason: submitted.reason || null, note: String(submitted.note || '').trim() } : null;
+    const raw = this.rawMessages;
+    if (raw?.some(message => message.id === messageId && message.replyActions)) {
+      this.rawMessages = raw.map(message => message.id === messageId && message.replyActions
+        ? { ...message, replyActions: { ...message.replyActions, feedback: saved } } : message);
+      this.snapshotTicket = (this.snapshotTicket || 0) + 1;
+      this.set({ messages: messagesForView(this.rawMessages) });
+      this.scheduleConversation(id, epoch);
+    }
+    return true;
   }
 
   action(action) {

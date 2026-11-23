@@ -1,7 +1,19 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { markdownForBlock } = require('../packages/assistant/lib/message-markdown');
+const { markdownForBlock, copyableReplyText } = require('../packages/assistant/lib/message-markdown');
 const { messagesForView } = require('../utils/assistant-client');
+
+test('copy follows the visible reply, preserving numbering and omitting citation and link destinations', () => {
+  const reply = { authorKind: 'assistant', available: true, replyActions: {},
+    content: { version: 1, blocks: [
+      { type: 'text', text: '先核对：\n\n3. **门口**\n4. [砖样](https://example.test/private)' },
+      { type: 'citation', citationId: '3', fallbackText: '引用详情' },
+      { type: 'text', text: '师傅到场后再复核。' },
+    ] } };
+  assert.equal(copyableReplyText(reply), '先核对：\n\n3. 门口\n4. 砖样\n\n师傅到场后再复核。');
+  assert.equal(copyableReplyText({ ...reply, available: false }), '');
+  assert.equal(copyableReplyText({ ...reply, replyActions: undefined }), '');
+});
 
 function plainFallback(text) {
   const [message] = messagesForView([{

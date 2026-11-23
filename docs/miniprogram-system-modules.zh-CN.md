@@ -1,5 +1,9 @@
 # 小程序当前功能清单
 
+**C01 回答操作与搜索（本地）。** 业主端首页小 K 和独立聊天使用[已批准的四张交互稿](../design-references/xiaok-answer-actions-20261124-v1/README.md)。当前可读的小 K 回答可一键复制纯文本、标记「有帮助」或填写反馈原因，评价随本人和回答保存，支持修改、撤回和重进读回。「我的对话」搜索本人咨询标题与获权正文，点击命中结果定位到原消息。可编辑的本人文字提问长按后带回草稿。更多菜单支持对最近一条符合条件的纯问答生成新版本，并在配置本机语音合成时朗读回答。重答沿用只读计量任务和原答案版本。施工、预约和授权的业务结果以各自回执为准。
+
+小程序调用 `GET /api/miniprogram/assistant/conversations?search=…`（签名入口）、`PATCH …/conversations/:id/messages/:messageId/feedback`、`POST …/messages/:messageId/regenerate` 和 `GET …/messages/:messageId/audio`。历史片段和朗读均按当前会话参与者及来源可见范围读取。客户端按照服务返回的资格显示操作。Stable 390×844 核对了剪贴板正文、反馈重进、历史定位、切换旧回答，并通过真实业主身份入口读回首页内嵌聊天。已观察本机语音下载和播放。截图含微信胶囊，编码 363×785。真机剪贴板及播放仍待验证。[原生证据](../tmp/xiaok-answer-restoration-20261124/stable-44a978e8/report.json) · [播放证据](../tmp/xiaok-answer-restoration-20261124/stable-4280afbc/report.json) · [接口和数据合同](./admin-system-modules.zh-CN.md)。
+
 **阶段对话体验（本地 Implemented）。** 业主有一个可读工地时，C01 欢迎页按项目实际阶段读取已启用的企业配置。新对话展开开场白中的变量，显示最多三张预设问题卡，空位沿用系统卡。点卡发送完整问题。输入时匹配该阶段词库，纸质候选区最多露出三行，可以滚动。点候选在光标处回填，可继续编辑，再用主发送键提交。收起键盘时隐藏候选并保留草稿。回答后的「猜你想问」跟在最近一条可读的完整回复下方，点纸签即开始下一轮。输入区显示语音转写和图片上传的处理与恢复。[批准稿](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/stage-chat-experience-v1/README.md) · [Stable 和实服务证据](../tmp/xiaok-stage-chat-development-20261123/native-9c1b2280/report.json)。重进重新读取会话及当前授权，停用的阶段回到原咨询。[C01 设计台账](./miniprogram-design-restoration-ledger.zh-CN.md)。
 
 **C01 聊天恢复与档案栏。** 发送失败把状态和重试放在原消息下方，保留草稿。结果待确认时沿原键核对。传输中断在页头下方显示重连纸条，保留已获权的聊天记录。明确的服务拒绝在对应消息处反馈。输入聚焦时显示批准稿的灯泡、短档案胶囊、竖分隔线和独立的查看入口。[错误态批准稿](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/stage-chat-experience-v1/feedback-states-v1/README.md) · [恢复回执](../tmp/xiaok-feedback-fidelity-20261124/native-b1e25d31/report.json) · [引导及档案对照](../tmp/xiaok-feedback-fidelity-20261124/native-11751b75/guide-archive-comparison.png)。

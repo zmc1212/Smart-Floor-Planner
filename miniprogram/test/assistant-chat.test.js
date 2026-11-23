@@ -1720,3 +1720,28 @@ test('a definite server rejection keeps the draft and does not become a disconne
   assert.equal(f.controller.state.pendingText, '');
   assert.equal(f.db.items.length, 1);
 });
+
+test('editing a saved question restores it to the composer only after confirmation', async () => {
+  const { replyActionsMethods } = require('../packages/assistant/chat/reply-actions');
+  const previous = global.wx;
+  const source = '门口的木纹砖要怎么收边？';
+  const typed = [];
+  const page = {
+    _alive: true, _shown: true, data: { canSend: true, draft: '尚未发送的文字' },
+    controller: { conversationId: '12', questionText: id => id === '4' ? source : '', input: value => typed.push(value) },
+    clearStageInput() {},
+  };
+  try {
+    let allow = false;
+    global.wx = {
+      showActionSheet: ({ itemList, success }) => { assert.deepEqual(itemList, ['编辑后重发']); success({ tapIndex: 0 }); },
+      showModal: ({ success }) => success({ confirm: allow }),
+    };
+    await replyActionsMethods.editQuestionText.call(page, '4');
+    assert.deepEqual(typed, []);
+    allow = true;
+    await replyActionsMethods.editQuestionText.call(page, '4');
+    await replyActionsMethods.editQuestionText.call(page, '5');
+    assert.deepEqual(typed, [source]);
+  } finally { global.wx = previous; }
+});

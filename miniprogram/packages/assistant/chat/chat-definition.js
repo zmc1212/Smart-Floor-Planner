@@ -26,6 +26,7 @@ const { initialOwnerReminder, ownerReminderMethods } = require('./owner-reminder
 const { inputCandidates } = require('../lib/stage-chat-experience');
 const { ownerSiteContext } = require('../lib/owner-site-context');
 const { measureIntent, measureInvite } = require('../lib/measure-card');
+const { initialReplyActions, replyActionsMethods } = require('./reply-actions');
 const api = require('../../../utils/api');
 
 function sessionToken() {
@@ -51,12 +52,14 @@ module.exports = () => ({
 	...ownerReminderMethods,
 	...followupChatMethods,
 	...reportQuestionMethods,
+	...replyActionsMethods,
 	data: {
 		...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
 		...initialOwnerReminder(),
 		...initialPublic(), reportQuestion: emptyReportQuestion(),
 		...initialLive(),
 		...initialPlans(),
+		...initialReplyActions(),
 		...initialContext(),
 		...initialFollowups(), ...initialEnterprise(), followupChat: emptyFollowupChat(), followupScrollTarget: '', professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
 		viewportHeight: 844, keyboardHeight: 0, inputFocused: false, bottomInset: 34, sheet: '', sheetOpen: false,
@@ -105,6 +108,13 @@ module.exports = () => ({
 					|| patch.conversation?.id && this.speechController.visible && this.speechController.base !== consultationSpeechPath(patch.conversation.id)) {
 					this.speechController.hide();
 				}
+				if (patch.conversation === null || patch.conversation?.id && patch.conversation.id !== this.data.conversation?.id) {
+					patch.replyVersionChoice = {};
+					patch.replyAudioId = '';
+					patch.replyAudioState = '';
+				}
+				if (patch.messages && this.data.replyAudioId && !patch.messages.some(item => item.id === this.data.replyAudioId && item.replyActions))
+					this.speechController.stopPlayback();
 				if (patch.conversation && Object.prototype.hasOwnProperty.call(patch.conversation,'stageExperience')) {
 					patch.stageExperience = patch.conversation.stageExperience;
 					if (patch.conversation.id !== this.data.conversation?.id
@@ -314,6 +324,7 @@ module.exports = () => ({
 	onHide() { if (nativePreview.hiddenByPreview(this)) return; this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
 	onUnload() {
 		this._alive = false; clearTimeout(this._sheetTimer);
+		clearTimeout(this._copyAnswerTimer); clearTimeout(this._historySearchTimer);
 		this.stopOwnerReminderRefresh();
 		if (this.liveConsent) this.liveConsent.clear();
 		this.followupChatController?.dispose();
@@ -622,6 +633,9 @@ module.exports = () => ({
 	},
 	closeSheet() {
 		clearTimeout(this._sheetTimer);
+		const closingInteraction = ['history', 'answerFeedback', 'answerMore'].includes(this.data.sheet);
+		if (closingInteraction && this.data.interactionKeyboard) wx.hideKeyboard();
+		if (this.data.sheet === 'history') this.resetHistorySearch();
 		const closingReminder = this.data.sheet === 'ownerReminder';
 		if (closingReminder) this._ownerReminderTarget = null;
 		if (this.data.sheet === 'publicSite' && this.publicSites) this.publicSites.closeDetail();
@@ -632,7 +646,7 @@ module.exports = () => ({
 		this.controller.set({ citation: null });
 		this.setData({ sheetOpen: false });
 		this._sheetTimer = setTimeout(() => {
-			if (this._alive) { this.setData({ sheet: '', ...(closingReminder ? initialOwnerReminder() : {}) }); this.syncKeyboardTab(); }
+			if (this._alive) { this.setData({ sheet: '', ...(closingReminder ? initialOwnerReminder() : {}), ...(closingInteraction ? { interactionKeyboard: 0, replyTarget: '', feedbackNote: '', feedbackError: '' } : {}) }); this.syncKeyboardTab(); }
 		}, 260);
 	},
 	swallow() {},
@@ -652,7 +666,11 @@ module.exports = () => ({
 			this.setData({ ['mediaPaths.' + message.mediaId]: path });
 		}
 	},
-	openHistory() { this.openSheet('history'); this.followups.loadList(); return this.data.professionalFollowup ? null : this.controller.loadHistory(); },
+	openHistory() {
+		this.resetHistorySearch();
+		this.openSheet('history'); this.followups.loadList();
+		return this.data.professionalFollowup ? null : this.controller.loadHistory();
+	},
 	selectFollowup(event) {
 		if (this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.mediaBusy || this.data.mediaPending) return;
 		this.setData({ followupHistoryOpen: false, followupManageOpen: false }); this.closeSheet(); this.controller.hide(); return this.followups.select(String(event.currentTarget.dataset.id));
@@ -811,16 +829,36 @@ module.exports = () => ({
 	},
 	async voiceMessage(event) {
 		const messageId = event.currentTarget.dataset.message;
-		if (await this.prepareSpeech()) return this.speechController.messageMenu(messageId);
+		if (await this.prepareSpeech() && this.speechController.items.some(asset => asset.messageId === String(messageId)))
+			return this.speechController.messageMenu(messageId);
+		if (!this.data.staffTab && !this.data.professionalFollowup && !this.data.ownerSiteReport)
+			return this.editQuestionText(String(messageId));
 	},
 	moreHistory() { return this.controller.loadHistory(true); },
 	async selectHistory(event) {
 		if (this.data.mediaBusy || this.data.mediaPending) return;
 		if (this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
-		const id = event.currentTarget.dataset.id;
+		const { id, anchor } = event.currentTarget.dataset;
+		if (anchor) this._holdAutoScroll = true;
 		this.followups.leave(); this.controller.visible = true; this.closeSheet();
-		await this.controller.selectConversation(id);
-		if (id === this.controller.conversationId) await this.prepareSpeech();
+		try {
+			await this.controller.selectConversation(id);
+			if (id !== this.controller.conversationId) return;
+			if (anchor) {
+				const found = await this.controller.findHistoryMessage(anchor);
+				if (this._alive && this._shown && id === this.controller.conversationId) {
+					if (found) {
+						const version = this.data.messages.find(item => item.id === anchor)?.replyVersion;
+						this.setData({ scrollTarget: '', ...(version ? { ['replyVersionChoice.r' + version.root]: anchor } : {}) },
+							() => this.setData({ scrollTarget: 'message-' + anchor }));
+					}
+					else { this.scrollBottom(); wx.showToast({ title: '该消息暂不可查看', icon: 'none' }); }
+				}
+			}
+			await this.prepareSpeech();
+		} finally {
+			if (anchor) this._holdAutoScroll = false;
+		}
 	},
 	async newConversation() {
 		if (this.data.mediaBusy || this.data.mediaPending) return;

@@ -128,7 +128,24 @@ export async function assistantHttp(request: Request, path: string[]) {
       const actor = await fromEntry(identity, method === 'GET' ? request.headers.get('X-Assistant-Entry') : body.entryToken,
         method === 'POST' && body.staffProfileNotice === true);
       const service = new ConversationService(actor);
-      data = method === 'GET' ? await service.list(cursor('cursor'), limit) : await service.create(requestKey());
+      if (method === 'POST') data = await service.create(requestKey());
+      else if (params.has('search')) data = await service.search(params.get('search')!, cursor('cursor'), limit);
+      else data = await service.list(cursor('cursor'), limit);
+    } else if (path[0] === 'conversations' && path[2] === 'messages' && path.length === 5) {
+      const target = id(path[1]);
+      const service = new ConversationService(await locate(identity, 'conversation', target));
+      const message = id(path[3]);
+      if (path[4] === 'feedback' && method === 'PATCH') {
+        only(body, ['rating', 'reason', 'note']);
+        data = await service.feedback(target, message, requestKey(), body);
+      } else if (path[4] === 'regenerate' && method === 'POST') {
+        only(body, []);
+        data = await service.regenerate(target, message, requestKey());
+        status = 202;
+      } else if (path[4] === 'audio' && method === 'GET') {
+        const audio = await service.readAloud(target, message);
+        return new Response(new Uint8Array(audio), { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } });
+      } else fail('assistant_resource_not_found', 404);
     } else if (path[0] === 'conversations' && path.length <= 3) {
       const target = id(path[1]); const actor = await locate(identity, 'conversation', target); const service = new ConversationService(actor);
       if (path.length === 2 && method === 'GET') data = await service.detail(target);

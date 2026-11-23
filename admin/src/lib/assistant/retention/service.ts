@@ -282,6 +282,8 @@ async function redactConversation(
       and (content->>'retentionRedacted') is distinct from 'true'
     returning id`);
   counts.messages = messageRows.length;
+  await tx.execute(sql`delete from app.assistant_answer_feedback
+    where enterprise_id=${enterpriseId} and conversation_id=${conversationId}`);
   await tx.execute(sql`update app.assistant_long_term_memories set state='deleted',value=null,topic='',room=''
     where enterprise_id=${enterpriseId} and source_conversation_id=${conversationId} and state<>'deleted'`);
   await tx.execute(sql`delete from app.native_workflow_delegations
