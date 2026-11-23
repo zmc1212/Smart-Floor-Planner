@@ -60,7 +60,7 @@ module.exports = () => ({
 		...initialContext(),
 		...initialFollowups(), ...initialEnterprise(), followupChat: emptyFollowupChat(), followupScrollTarget: '', professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
 		viewportHeight: 844, keyboardHeight: 0, inputFocused: false, bottomInset: 34, sheet: '', sheetOpen: false,
-		embedded: false, scrollTarget: '',
+		embedded: false, scrollTarget: '', reconnectingChat: false,
 		topics: [
 			{ title: '旧房改造', helper: '从哪开始', icon: 'requirement-home', text: '旧房改造有哪些需要先考虑？' },
 			{ title: '装修风格', helper: '找找灵感', icon: 'requirement-style', text: '想聊聊适合我家的装修风格' },
@@ -481,6 +481,12 @@ module.exports = () => ({
 	cancelSiteWatch(e) { return this.controller.cancelSiteWatch(e.currentTarget.dataset.message); },
 	previewSiteRecord(e) { const d = e.currentTarget.dataset; return this.siteRecords.preview(String(d.record), Number(d.version), String(d.media)); },
 	refresh() { return this.controller.refresh(); },
+	async reconnectChat() {
+		if (!this.data.connectionInterrupted || this.data.reconnectingChat || this.data.loading || this.data.busy) return;
+		this.setData({ reconnectingChat: true });
+		try { await this.refresh(); }
+		finally { if (this._alive) this.setData({ reconnectingChat: false }); }
+	},
 	async openFloorplanPicker() {
 		if (this.data.contextBusy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.readOnly) return;
 		const id = this.controller.conversationId || await this.controller.handoffConversation();

@@ -1674,3 +1674,49 @@ test('returning from a subpage restores designer cards when the unchanged resume
     assert.ok(page.data.designerCardPortraits['501']);
   } finally { global.getApp = oldApp; global.wx = oldWx; }
 });
+
+
+test('a transport disconnect keeps the cached conversation visible until reconnection succeeds', async () => {
+  const f = fixture();
+  f.db.items = [message('21', '1', '已经保存的消息')];
+  await f.controller.show({ conversationId: '11' });
+  f.intercept(call => {
+    if (call.url === '/entry-context') throw { errMsg: 'request:fail timeout' };
+  });
+  await f.controller.refresh();
+  assert.equal(f.controller.state.connectionInterrupted, true);
+  assert.equal(f.controller.state.fatal, false);
+  assert.deepEqual(f.controller.state.messages.map(row => row.id), ['21']);
+
+  const pendingRead = deferred();
+  f.intercept(call => call.url === '/entry-context' ? pendingRead.promise : undefined);
+  const reconnect = f.controller.refresh();
+  assert.equal(f.controller.state.connectionInterrupted, true, 'keep the strip while the connection is checked');
+  pendingRead.resolve({ success: true, data: f.db.entry });
+  await reconnect;
+  assert.equal(f.controller.state.connectionInterrupted, false);
+  assert.deepEqual(f.controller.state.messages.map(row => row.id), ['21']);
+});
+
+test('a definite server rejection keeps the draft and does not become a disconnect', async () => {
+  const f = fixture();
+  await f.controller.show({ conversationId: '11' });
+  f.intercept(call => {
+    if (call.method === 'POST' && call.url.endsWith('/messages'))
+      throw { statusCode: 409, code: 'provider_outcome_unknown' };
+  });
+  const draft = '门口收边要怎么核对？';
+  f.controller.input(draft);
+  await f.controller.send();
+  assert.equal(f.controller.state.connectionInterrupted, false);
+  assert.equal(f.controller.state.pendingSend, false);
+  assert.equal(f.controller.state.pendingText, draft);
+  assert.equal(f.controller.state.draft, draft);
+  assert.match(f.controller.state.error, /待核对/);
+  assert.equal(f.db.items.length, 0);
+
+  f.intercept(undefined);
+  await f.controller.send();
+  assert.equal(f.controller.state.pendingText, '');
+  assert.equal(f.db.items.length, 1);
+});

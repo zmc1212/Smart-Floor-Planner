@@ -119,13 +119,44 @@
   .composer-focused { margin-left: 24rpx; margin-right: 12rpx; padding: 8rpx 16rpx 10rpx; border: 1rpx solid #dfd3bc; border-radius: 32rpx; background: #fbf8f0; box-shadow: inset 0 0 0 4rpx #fffdf7,0 -1rpx 7rpx #9c88643b; }
   .composer-focused .composer { padding: 8rpx 6rpx; border: 0; border-radius: 24rpx; box-shadow: none; background: none; }
   .composer-focused .composer-input { padding-left: 18rpx; background: #fffdfa; border: 1rpx solid #eee4d5; border-radius: 24rpx; }
-  .floorplan-context-row { display: flex; align-items: center; gap: 16rpx; padding: 8rpx 0 0; margin-top: 4rpx; border-top: 1rpx solid #aeb49c; }
-  .floorplan-scope { display: flex; align-items: center; gap: 12rpx; flex: 1; min-width: 0; min-height: 68rpx; margin: 4rpx 0; padding: 0 16rpx; border-radius: 48rpx; background: #e3e5d6; font-size: 25rpx; }
-  .floorplan-scope > image { width: 38rpx; height: 38rpx; flex: none; }
-  .floorplan-scope > text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .context-chevron { width: 13rpx; height: 13rpx; flex: none; border-right: 2rpx solid #123e30; border-bottom: 2rpx solid #123e30; transform: rotate(45deg); margin: -5rpx 8rpx 0 2rpx; }
-  .floorplan-browse { display: flex; align-items: center; justify-content: center; gap: 2rpx; flex: none; width: 172rpx; min-height: 84rpx; font-size: 25rpx; }
-  .floorplan-browse image { width: 28rpx; height: 28rpx; }
+  .floorplan-context-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 6rpx 0 0;
+    margin: 4rpx 8rpx 0 3rpx;
+    border-top: 1rpx solid #aeb49c;
+  }
+  .floorplan-scope {
+    display: flex;
+    align-items: center;
+    flex: 0 1 322rpx;
+    min-width: 0;
+    min-height: 86rpx;
+    margin-right: auto;
+    padding: 0;
+  }
+  .floorplan-scope-pill {
+    display: flex;
+    align-items: center;
+    gap: 9rpx;
+    width: 100%;
+    min-width: 0;
+    min-height: 65rpx;
+    padding: 0 34rpx 0 36rpx;
+    box-sizing: border-box;
+    border-radius: 48rpx;
+    background: linear-gradient(106deg, #e5e7d8, #dadeca);
+    color: #123e30;
+    font-size: 24rpx;
+    line-height: 1.35;
+  }
+  .floorplan-scope-pill > image { width: 41rpx; height: 41rpx; margin-right: 2rpx; flex: none; }
+  .floorplan-scope-pill > text { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .context-chevron { width: 13rpx; height: 13rpx; flex: none; border-right: 3rpx solid #123e30; border-bottom: 3rpx solid #123e30; transform: rotate(45deg); margin: -6rpx 2rpx 0 2rpx; }
+  .floorplan-context-divider { width: 1rpx; height: 46rpx; flex: none; margin-right: 11rpx; background: #aaa78c; }
+  .floorplan-browse { display: flex; align-items: center; justify-content: center; gap: 4rpx; flex: none; width: 148rpx; min-height: 86rpx; font-size: 24rpx; color: #123e30; white-space: nowrap; }
+  .floorplan-browse image { width: 32rpx; height: 32rpx; }
   .context-error { display: flex; align-items: center; gap: 10rpx; font-size: 22rpx; color: #886a40; line-height: 1.5; padding: 6rpx 0; }
   .context-error button { min-height: 60rpx; padding: 0 14rpx; flex: none; }
   .notice, .archive-note { font-size: 24rpx; line-height: 1.6; }

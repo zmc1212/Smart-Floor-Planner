@@ -29,34 +29,11 @@
   white-space: nowrap;
 }
 .stage-guide-bulb {
-  position: relative;
+  display: block;
   flex: none;
-  width: 29rpx;
-  height: 29rpx;
-  border: 3rpx solid #165343;
-  border-radius: 50% 50% 43% 43%;
-  box-sizing: border-box;
-  margin-bottom: 9rpx;
-}
-.stage-guide-bulb::before, .stage-guide-bulb::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-.stage-guide-bulb::before {
-  width: 11rpx;
-  height: 7rpx;
-  bottom: -5rpx;
-  border: 2rpx solid #165343;
-  border-top: 0;
-  border-radius: 0 0 4rpx 4rpx;
-  background: #faf6ec;
-}
-.stage-guide-bulb::after {
-  width: 8rpx;
-  bottom: -9rpx;
-  border-bottom: 2rpx solid #165343;
+  width: 30rpx;
+  height: 44rpx;
+  transform: translateY(6rpx);
 }
 .stage-guide-list { max-height: 264rpx; }
 .chat-page .stage-guide-option, .chat-page .stage-follow-option {
@@ -149,6 +126,92 @@
   min-height: 84rpx;
   padding: 0 4rpx;
   color: #174d3b;
+}
+
+.chat-network-card {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  min-height: 86rpx;
+  margin: 4rpx 26rpx 10rpx 50rpx;
+  padding: 0 18rpx;
+  border: 1rpx solid #e8dac1;
+  border-radius: 12rpx;
+  background: linear-gradient(108deg, #fbf5e9, #fffaf0);
+  box-shadow: inset 0 0 0 3rpx #fffaf0, 0 3rpx 7rpx #846c3e29;
+  box-sizing: border-box;
+}
+.chat-network-icon { flex: none; width: 39rpx; height: 39rpx; }
+.chat-network-copy { flex: 1; min-width: 0; color: #264436; font-size: 27rpx; font-weight: 500; }
+.chat-page .chat-network-reconnect, .chat-page .chat-send-retry {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 86rpx;
+}
+.chat-page .chat-network-reconnect > text {
+  padding: 7rpx 28rpx;
+  border-radius: 42rpx;
+  background: #063f31;
+  color: #fffdf4;
+  font-size: 24rpx;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chat-page .chat-pending-turn {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0;
+}
+.chat-send-feedback {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8rpx;
+  margin-top: 10rpx;
+  max-width: 100%;
+  font-size: 23rpx;
+  color: #943e2b;
+}
+.chat-send-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 29rpx;
+  height: 29rpx;
+  margin-top: 7rpx;
+  border-radius: 50%;
+  background: #a9533b;
+  color: #fffcf4;
+  font-size: 21rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+.chat-send-status { min-width: 0; margin-top: 4rpx; line-height: 35rpx; }
+.chat-page .chat-send-retry {
+  align-items: flex-start;
+  min-width: 88rpx;
+  padding: 0 2rpx;
+}
+.chat-page .chat-send-retry > text {
+  padding: 3rpx 21rpx;
+  border: 2rpx solid #0f4b38;
+  border-radius: 48rpx;
+  color: #0f4b38;
+  background: #fdf9ef;
+  font-size: 22rpx;
+  white-space: nowrap;
+}
+.chat-network-reconnect[disabled], .chat-send-retry[disabled] { opacity: .55; }
+.chat-send-detail {
+  margin: -5rpx 0 8rpx;
+  max-width: 88%;
+  color: #775649;
+  font-size: 21rpx;
+  text-align: right;
 }
 
 /* Approved C01/C02 at 390x844; PPT5 is the earlier source.

@@ -2,6 +2,8 @@
 
 **阶段对话体验（本地 Implemented）。** 业主有一个可读工地时，C01 欢迎页按项目实际阶段读取已启用的企业配置。新对话展开开场白中的变量，显示最多三张预设问题卡，空位沿用系统卡。点卡发送完整问题。输入时匹配该阶段词库，纸质候选区最多露出三行，可以滚动。点候选在光标处回填，可继续编辑，再用主发送键提交。收起键盘时隐藏候选并保留草稿。回答后的「猜你想问」跟在最近一条可读的完整回复下方，点纸签即开始下一轮。输入区显示语音转写和图片上传的处理与恢复。[批准稿](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/stage-chat-experience-v1/README.md) · [Stable 和实服务证据](../tmp/xiaok-stage-chat-development-20261123/native-9c1b2280/report.json)。重进重新读取会话及当前授权，停用的阶段回到原咨询。[C01 设计台账](./miniprogram-design-restoration-ledger.zh-CN.md)。
 
+**C01 聊天恢复与档案栏。** 发送失败把状态和重试放在原消息下方，保留草稿。结果待确认时沿原键核对。传输中断在页头下方显示重连纸条，保留已获权的聊天记录。明确的服务拒绝在对应消息处反馈。输入聚焦时显示批准稿的灯泡、短档案胶囊、竖分隔线和独立的查看入口。[错误态批准稿](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/stage-chat-experience-v1/feedback-states-v1/README.md) · [恢复回执](../tmp/xiaok-feedback-fidelity-20261124/native-b1e25d31/report.json) · [引导及档案对照](../tmp/xiaok-feedback-fidelity-20261124/native-11751b75/guide-archive-comparison.png)。
+
 业主会话和后台私有调试都能使用企业的原生运行时绑定，绑定配置和凭据只在服务端读取。
 
 工地详情校验进度权限后返回业主可见的设置；会话详情提供当前可用的词库、追问和附件设置。首次发送和并发读取施工跟进列表均先锁企业设置，再在同一事务内复核业主当前服务线索授权。`GET /api/miniprogram/assistant/conversations/:id/suggestions` 将追问绑定到当前参与者可读的最近回复。`POST /api/miniprogram/xiaok/stage-answer` 继续检查本人项目和阶段绑定的模板版本。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。

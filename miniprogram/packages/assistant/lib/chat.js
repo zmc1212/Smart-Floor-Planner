@@ -63,7 +63,7 @@ function appendPatch(patch, previousLength) {
   return next;
 }
 const initial = () => ({
-  loading: true, busy: false, error: '', fatal: false, needsLogin: false, needsServiceCode: false,
+  loading: true, busy: false, error: '', connectionInterrupted: false, fatal: false, needsLogin: false, needsServiceCode: false,
   enterpriseId: '', enterpriseName: '', canSend: false, maxChars: 4000,
   shareReferenceEntry: '', staffProfileCapture: false,
   welcomeText: WELCOME, guidanceEnabled: false, guidance: null, selectedOptions: [], selectedOptionMap: {},
@@ -238,7 +238,7 @@ class ChatController {
       if (target) await this.snapshot(target, epoch, background, resume);
       if (!this.valid(epoch)) return;
       this.ready = true;
-      this.setIf(epoch, { loading: false, error: this.state.pendingSend
+      this.setIf(epoch, { loading: false, connectionInterrupted: false, error: this.state.pendingSend
         ? '发送结果尚未确认，请确认同一条消息的发送结果。'
         : this.state.pendingAction ? '操作结果尚未确认，请核对同一次操作。' : '' });
     } catch (error) {
@@ -251,6 +251,7 @@ class ChatController {
   fail(error, epoch, fatal = false) {
     if (!this.valid(epoch)) return;
     const code = error.code || error.error;
+    const connectionInterrupted = !error.statusCode && String(error.errMsg || '').startsWith('request:fail');
     const denied = error.statusCode === 401 || ['assistant_capability_forbidden', 'assistant_resource_not_found',
       'entry_context_invalid', 'identity_context_invalid', 'assistant_service_code_required',
       'customer_service_ambiguous', 'assistant_share_preview_only'].includes(code);
@@ -266,7 +267,9 @@ class ChatController {
       this.set({ messages: this.state.messages.filter(message => !hasPublicSource(message) || message.available === false),
         citation: null, citationLoading: false });
     }
-    this.set({ loading: false, error: errorCopy(error), fatal: fatal || denied, needsLogin: error.statusCode === 401,
+    const errorText = code === 'provider_outcome_unknown' ? '有一轮服务结果尚待核对，请稍后重试。' : errorCopy(error);
+    this.set({ loading: false, error: errorText, connectionInterrupted,
+      fatal: denied || fatal && !(connectionInterrupted && this.state.conversation), needsLogin: error.statusCode === 401,
       needsServiceCode: code === 'assistant_service_code_required',
       ...(code === 'assistant_disabled' ? { canSend: false } : {}) });
   }
@@ -310,7 +313,7 @@ class ChatController {
     const pendingMessage = this.client.pending.get('send:' + id), pendingHandoff = this.client.pending.get('handoff:' + id);
     if (pendingMessage) this.set({ pendingSend: true, pendingText: pendingMessage.body.content.blocks[0].text, draft: pendingMessage.body.content.blocks[0].text });
     if (pendingHandoff) this.set({ pendingAction: 'handoff:' + pendingHandoff.body.action });
-    this.set({ conversation, readOnly: conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(conversation.mode) });
+    this.set({ conversation, connectionInterrupted: false, readOnly: conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(conversation.mode) });
     if (window) this.commitWindow(window);
     this.set({ welcomeText: conversation.guidanceOpening || WELCOME, guidanceEnabled: !!conversation.guidanceEnabled, guidance: conversation.guidance || null,
       ...(!sameQuestion ? { selectedOptions: [], selectedOptionMap: {} } : {}) });
@@ -452,7 +455,7 @@ class ChatController {
     try {
       const run = await this.client.read(`/runs/${id}`);
       if (!this.valid(epoch) || id !== this.state.run.id) return;
-      this.set({ error: '' });
+      this.set({ error: '', connectionInterrupted: false });
       if (ACTIVE.includes(run.status) && (!this.hasPublicWindow() || Date.now() - this.lastFullSyncAt < PUBLIC_SYNC_MS)) this.applyRun(run);
       else await this.snapshot(this.conversationId, epoch);
     } catch (error) { this.syncFailure(error, this.conversationId, epoch); }

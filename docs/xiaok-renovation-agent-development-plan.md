@@ -23,14 +23,14 @@ I6.16 防水 Agent V1.1 候选，复用 I6.15 原咨询委托。V1 冻结值与�
 | 字段 | 当前记录 |
 | --- | --- |
 | 交付与负责人 | 十阶段 Agent 工作台与 C01 对话体验，`codex/xiaok-integration`。方法约束：先验证真实回答，禁止补丁循环。 |
-| 用户入口与结果 | 小K候选点选回填，编辑后主按钮发送。回答末尾纸签发起追问，输入栏反馈录音转写和图片处理。 |
-| 已证缺口 | 首版候选字高、内边距和纸条比例偏离已批准稿。发送失败和断网两种视觉另有待审稿。 |
-| 已完成 | 候选按 v002 校准，追问按 v001 落地。隔离服务核对回填零写入、主发送和追问各一条实写、重进和跨租户拒绝。麦克风以合成输入完成真实本地转写和未发草稿重进。图片实写，丢回执按原键核对并重进。 |
-| 下一动作 | 错误态稿待用户确认实施。后台 TXT 首问已恢复，多轮误拦沿原 Agent 诊断处理。 |
-| 必要验收 | 同场景与批准稿核对，点候选不发消息，主发送和追问各写一次，重进读回并保留原权限。 |
-| 失败与调用边界 | 原合成回执未释放配额触发 409，已改用真实的零模型阶段完成服务。旧批失败保留。本轮模型供应商尝试 0。 |
-| 环境与资源 | 微云1454与对照1455隔离 PG，Stable 390×844。首页内嵌共用组件已做编译图核对，本轮隔离身份未挂载其业主态。SDK 键盘高度替身，真机未验。已恢复模拟环境。 |
-| 证据与后继 | [本轮截图及回执](../tmp/xiaok-stage-chat-development-20261123/native-9c1b2280/report.json) · [同场景对照](../tmp/xiaok-stage-chat-development-20261123/native-9c1b2280/guide-comparison.png) · [语音复验](../tmp/xiaok-stage-chat-development-20261123/native-cff5529e/report.json) · [新错误态](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/stage-chat-experience-v1/feedback-states-v1/README.md) · [原并发和附件](../tmp/xiaok-two-fixes-20261123/preview-7413bbab/report.json)。 |
+| 用户入口与结果 | C01 消息失败就地重试，断网在页头重连。输入引导和户型档案行按批准稿校准。 |
+| 已证缺口 | 旧灯泡是简化轮廓，档案胶囊横向撑满且缺竖分隔，消息失败和连接提示旧样式已替换。 |
+| 已完成 | Stable 核对灯泡及档案行，两个入口打开并保留草稿。实库核对拒绝后重试、断网重连、丢回执原键核对，重进和他租户拒绝通过。 |
+| 下一动作 | 当前 UI 本地验收完成。后台 TXT 多轮误拦沿既有 Agent 诊断处理。 |
+| 必要验收 | 同场景对齐批准稿，区分原消息重试和连接恢复。未知回执按原键核对，恢复历史并保留权限。 |
+| 失败与调用边界 | 本轮使用隔离实服务、模拟传输失败与零模型答复。保留原后台多轮失败证据。供应商模型尝试为零。 |
+| 环境与资源 | 微云1454与对照1455隔离 PG，Stable 390×844。键盘高度由 SDK 模拟，实体输入法和首页业主原生态未验。 |
+| 证据与后继 | [错误恢复](../tmp/xiaok-feedback-fidelity-20261124/native-b1e25d31/report.json) · [引导与档案复验](../tmp/xiaok-feedback-fidelity-20261124/native-11751b75/report.json) · [对照图](../tmp/xiaok-feedback-fidelity-20261124/native-11751b75/guide-archive-comparison.png) · [后台追问历史](../tmp/xiaok-two-fixes-20261123/preview-7413bbab/report.json)。 |
 
 ## 3. 复用哪些成果
 
