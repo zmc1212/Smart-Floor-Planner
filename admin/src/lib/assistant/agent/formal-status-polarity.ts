@@ -48,3 +48,40 @@ export function projectNegativeWorkStatus(text: string) {
   for (const span of negativeWorkStatusSpans(text).reverse()) analysis = analysis.slice(0, span.start) + '待核实状态' + analysis.slice(span.end);
   return analysis;
 }
+
+const previewDenial = /^(?:这(?:些|两|几)(?:项|条)(?:都|均)?)?(?:不代表|不是(?:确认)?|避免被理解成|不(?:要|应)?(?:把[\p{Script=Han}]{1,12}?写成|写(?:成)?)|(?:不能|不可|不宜)(?:据此|直接|替(?:项目)?团队)?(?:确认|认定|视为|作为|当[成作]|看[成作])|未证明)/u;
+const previewStatus = /^(?:现场|上述现场事项)?(已(?:经)?(?:成功)?(?:正式)?(?:批准|确认|排期|开工|完工|完成|验收|定版))/u;
+const statusObject = /^(?:施工|做法|变更|核对|合格)?$/u;
+
+function unquoteStatus(value: string): string {
+  const trimmed = value.trim();
+  const pair = [['“', '”'], ['「', '」'], ['"', '"']].find(([open, close]) =>
+    trimmed.startsWith(open) && trimmed.endsWith(close));
+  return pair ? trimmed.slice(1, -1).trim() : trimmed;
+}
+
+function projectDeniedStatus(item: string): string | null {
+  const value = unquoteStatus(item);
+  const match = previewStatus.exec(value);
+  if (!match) return null;
+  const tail = value.slice(match[0].length);
+  if (!statusObject.test(tail) && !(tail.startsWith('的') && tail.length > 1)) return null;
+  const start = item.indexOf(value) + match[0].length - match[1].length;
+  return item.slice(0, start) + '待核实状态' + item.slice(start + match[1].length);
+}
+
+/** Analyze a denied state or a coordinated list. An attributive phrase can
+ * name what was denied, and any claims in that phrase remain in the guard view. */
+export function projectPreviewStatusDenials(text: string): string {
+  return text.replace(/\[[A-Za-z0-9_-]+\]\(CITE\)/g, '').split(/([，,。；;！？!?\n：:（）()])/u).map(clause => {
+    const value = lead(clause.trim().replace(/^[#>*_\s]+|[*_\s]+$/gu, ''));
+    const denial = previewDenial.exec(value);
+    if (!denial) return clause;
+    const operand = value.slice(denial[0].length);
+    const statuses = unquoteStatus(operand).split(/(、|或(?:者)?)/u);
+    const projected = statuses.map((item, index) => index % 2 ? item : projectDeniedStatus(item));
+    if (projected.includes(null)) return clause;
+    const start = clause.lastIndexOf(value) + denial[0].length;
+    return clause.slice(0, start) + projected.join('') + clause.slice(start + operand.length);
+  }).join('');
+}

@@ -289,11 +289,24 @@ sudo tail -n 100 -F /var/log/nginx/access.log /var/log/nginx/error.log
 From another SSH terminal, send a non-mutating probe, then reproduce the scan:
 
 ```bash
+When a XiaoK worker is running in this Compose project or enabled through
+`COMPOSE_PROFILES=assistant`, it is recreated from the same image after Admin
+becomes healthy. Deployment waits for its health check. Each worker process
+reports its own preflight and tick. A disabled platform switch leaves it healthy
+and idle.
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://smartfloor.zlyun168.com/api/health
 ```
 
 Nginx records access when request processing finishes. If the probe is absent,
 check the matching virtual host and location: `access_log off`, a different file,
+The release baseline tracks the original bytes and order of the deployed
+`0141`–`0143` migrations. The stage Agent upgrade follows them with `0144`–`0146`.
+Compose persists workflow definitions in the dedicated `native_workflow_store`
+volume at `/app/tmp/native-workflow-store` in Admin. The XiaoK worker executes
+through the internal Admin endpoint. An installation that overrides
+`NATIVE_WORKFLOW_STORE_DIR` retains its own persistent mount. Recover workflow
+definitions using the matching volume and PostgreSQL backups.
+
 conditional logging or `buffer`/`flush` can suppress or delay a line. For all
 requests, enable an unconditional `access_log` on the site and remove overriding
 `off` directives from relevant locations. An unbuffered directive such as

@@ -5,7 +5,7 @@ import { fail } from '../contracts';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { originalAnswerOnly } from './read-tool-input';
 import { hasAcceptanceClaim, hasDelegationClaim, projectAcceptanceClaims, projectDeniedApprovalList } from './formal-claim-scope';
-import { projectNegativeWorkStatus } from './formal-status-polarity';
+import { projectNegativeWorkStatus, projectPreviewStatusDenials } from './formal-status-polarity';
 import { generalKnowledgeInstructions } from '../knowledge-policy';
 
 export const agentPromptVersion = 'xiaok-renovation-v123';
@@ -80,6 +80,7 @@ export function buildAgentContext(turns: Array<{ id: string; role: 'user' | 'ass
  * Shared by the built-in reply parser and the FastGPT Agent V2 free-form path;
  * service-authored business snapshots are delivered separately. */
 type CommitmentScope = { formalStatusEvidence?: boolean; acceptanceQuotes?: readonly string[]; acceptanceAdvice?: boolean; delegationReply?: boolean;
+  stagePreview?: boolean;
   /** The bound project snapshot may preserve a record-owner note. Quoting that
    * note (“原话称已完成”) reports provenance; it is not the model's own
    * completion claim. Only this attributed surface is projected. */
@@ -104,7 +105,8 @@ export function guardAnswerCommitments(text: string, options: CommitmentScope = 
   if (options.delegationReply && hasDelegationClaim(text)) fail('unsupported_model_commitment', 502);
   // Formal commitments always come from a business service, never free-form generation.
   // Project explicit absence/denial/question predicates, retaining other claims.
-  const status = options.acceptanceQuotes ? projectAcceptanceClaims(text, options.acceptanceQuotes, options.acceptanceAdvice) : text;
+  const statusText = options.stagePreview ? projectPreviewStatusDenials(text) : text;
+  const status = options.acceptanceQuotes ? projectAcceptanceClaims(statusText, options.acceptanceQuotes, options.acceptanceAdvice) : statusText;
   const completionClaims = projectDeniedApprovalList(options.formalStatusEvidence ? projectNegativeWorkStatus(status) : status)
     // Deny only the immediately scoped completion predicate. A policy saying
     // "不证明点位已落实" is not a completion receipt; later actions, double

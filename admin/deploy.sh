@@ -115,6 +115,12 @@ previous_image=""
 if docker container inspect smart-floor-planner-admin >/dev/null 2>&1; then
   previous_image="$(docker container inspect smart-floor-planner-admin --format '{{.Config.Image}}')"
 fi
+manage_assistant_worker=false
+running_assistant="$("${compose[@]}" --profile assistant ps --status running -q assistant-worker)"
+if grep -Fxq assistant-worker <<<"$compose_services" || [[ -n "$running_assistant" ]]; then
+  manage_assistant_worker=true
+  compose+=(--profile assistant)
+fi
 
 wait_for_postgres() {
   local elapsed=0
@@ -142,8 +148,8 @@ wait_for_admin_health() {
 }
 
 wait_for_worker_health() {
-  local container_id status elapsed=0
-  container_id="$("${compose[@]}" ps -q lead-claim-worker)"
+  local service="$1" container_id status elapsed=0
+  container_id="$("${compose[@]}" ps -q "$service")"
   [[ -n "$container_id" ]] || return 1
   until [[ "$elapsed" -ge "$WORKER_TIMEOUT_SECONDS" ]]; do
     status="$(docker inspect "$container_id" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' 2>/dev/null || true)"
@@ -205,9 +211,16 @@ NODE
 start_and_verify_application() {
   local target_image="$1"
   export SFP_ADMIN_IMAGE="$target_image"
-  "${compose[@]}" up -d --force-recreate admin lead-claim-worker
+  if [[ "$manage_assistant_worker" == true ]]; then
+    "${compose[@]}" stop assistant-worker || return 1
+  fi
+  "${compose[@]}" up -d --force-recreate admin lead-claim-worker || return 1
   wait_for_admin_health || return 1
-  wait_for_worker_health || return 1
+  if [[ "$manage_assistant_worker" == true ]]; then
+    "${compose[@]}" up -d --no-deps --force-recreate assistant-worker || return 1
+    wait_for_worker_health assistant-worker || return 1
+  fi
+  wait_for_worker_health lead-claim-worker || return 1
   run_authenticated_smoke || return 1
 }
 
@@ -309,6 +322,9 @@ if ! start_and_verify_application "$IMAGE_NAME"; then
       echo '[ROLLBACK] Previous application image also failed verification; manual recovery is required.' >&2
     fi
   else
+    if [[ "$manage_assistant_worker" == true ]]; then
+      "${compose[@]}" stop assistant-worker >/dev/null 2>&1 || true
+    fi
     "${compose[@]}" stop admin lead-claim-worker >/dev/null 2>&1 || true
   fi
   exit 1

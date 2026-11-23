@@ -25,6 +25,7 @@ services:
     volumes:
       - ai_assets:/data/ai-assets
       - assistant_health:/shared
+      - native_workflow_store:/app/tmp/native-workflow-store
     networks:
       - default
       # WVP/ZLM live on their own Compose network; camera live/snapshot/
@@ -118,6 +119,7 @@ services:
 volumes:
   ai_assets:
   assistant_health:
+  native_workflow_store:
   postgres_data:
 
 networks:

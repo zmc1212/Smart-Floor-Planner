@@ -22,7 +22,8 @@ function healthStatus({ health, fileError }) {
     return { ...diagnostics, healthy: false, tickStatus: 'failed', reason: health.lastErrorCode ?? 'job_execution_failed' };
   }
   if (processStatus === 'stopped') {
-    return { ...diagnostics, healthy: false, tickStatus: 'failed', reason: 'worker_process_stopped' };
+    const tickStatus = ageMs !== null && ageMs >= 0 && ageMs <= 210000 ? 'fresh' : 'failed';
+    return { ...diagnostics, healthy: false, tickStatus, reason: 'worker_process_stopped' };
   }
   if (health.safetyGate?.status === 'closed') {
     // A super-admin-configured off switch is a healthy idle container, not a
@@ -40,9 +41,6 @@ function healthStatus({ health, fileError }) {
   }
   if (ageMs > 210000) {
     return { ...diagnostics, healthy: false, tickStatus: 'stale', reason: 'heartbeat_stale' };
-  }
-  if (processStatus === 'stopped') {
-    return { ...diagnostics, healthy: false, tickStatus: 'fresh', reason: 'worker_process_stopped' };
   }
   return { ...diagnostics, healthy: true, tickStatus: 'fresh', reason: 'ok' };
 }

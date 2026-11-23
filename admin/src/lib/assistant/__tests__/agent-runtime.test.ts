@@ -6,7 +6,7 @@ import { parseBailianResponses } from '@/lib/ai/providers/bailian-responses';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import { agentToolsForMessage, projectFinalToolOutput, projectNeedBatchOutput } from '../agent/worker';
 import { parseAgentReply } from '../agent/context';
-import { stagePreviewCommitmentIssue } from '../agent/native-executor';
+import { composeNativeDelivery, stagePreviewCommitmentIssue } from '../agent/native-executor';
 import { parseSynthesis } from '../agent/synthesis';
 import { reviewTurnMode, reviewDesignerOnly } from '../agent/review-runtime';
 
@@ -146,9 +146,38 @@ test('the numeric guard sees only visible content and still rejects an unsupport
   await assert.rejects(f.run(), /unsupported_model_commitment/);
 });
 
-test('a stage preview gets one reply repair for the saved attachment commitment rejection', async () => {
+test('the saved TXT preview considers only statuses in the scope of a denial', () => {
+  const draft = [
+    '**客户偏好（业主侧意向，不是企业规定，也不是已批准变更）**',
+    '转述时最好原样带上，避免被理解成已批准：交底状态为待核对。',
+    '这两项都不代表已经排期或已经批准施工，排期和批准仍以项目团队的通知为准。',
+    '不能替项目团队确认现场已完成核对或已批准做法。',
+    '因此不把任何事项写成已确认、已批准或已排期。',
+    '没有业务回执时，只写待确认状态，不写已批准、已排期或已完工[K3](CITE)。',
+    '只能当作业主意向记录，不能当成已经定版或已经批准的排砖方案。',
+    '这些只能说明为交底记录中的待核对状态，不能视为已批准、已排期或已开工。',
+  ].join('\n');
+  assert.equal(stagePreviewCommitmentIssue(draft), null);
+  assert.equal(composeNativeDelivery(draft, '', 1, true, { stagePreview: true }).text, draft);
+  assert.throws(() => composeNativeDelivery(draft, '', 1, true), /unsupported_model_commitment/);
+  for (const unsupported of [
+    draft + '\n项目经理已经批准该施工变更。',
+    '避免被理解成已批准：现场已批准变更。',
+    '不写已批准、已排期，但已经批准施工。',
+    '不写已批准并已付款。',
+    '不能不写已批准。',
+    '不把项目已付款写成已批准。',
+    '不能当成已经批准的排砖方案且已经付款。',
+    '不应在回复中说成已批准，项目已经批准变更。',
+  ]) {
+    assert.equal(stagePreviewCommitmentIssue(unsupported)?.code, 'unsupported_model_commitment', unsupported);
+    assert.throws(() => composeNativeDelivery(unsupported, '', 0, false, { stagePreview: true }), /unsupported_model_commitment/);
+  }
+});
+
+test('a stage preview gets one reply repair for a genuine unsupported commitment', async () => {
   const f = fixture();
-  const declined = '**客户偏好（业主侧意向，不是企业规定，也不是已批准变更）**';
+  const declined = '我已经批准施工变更。';
   const repaired = '业主初选木纹砖，希望窗边短墙竖排。门口收边是否与客厅门槛齐平，仍等设计师和师傅现场核对。';
   f.ports.validateFinal = async text => stagePreviewCommitmentIssue(text);
   let calls = 0;

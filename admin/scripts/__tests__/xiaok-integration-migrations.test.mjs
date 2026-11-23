@@ -488,6 +488,23 @@ test('A. current journal hashes keep validating with and without the allowlist',
   assert.equal(validateLedger(ledgerRows(), activeJournal, {}, allowlist).seen.size, appliedJournal.length);
 });
 
+test('20261120-001 migration ledger accepts the packaged bytes and leaves 0144–0146 pending', () => {
+  const packaged = new Map([
+    ['0141_construction_inspection', '912212d2b865cdddab1d0ca9fe2d1e698768ca418d2757663a0d43b60d81b4dc'],
+    ['0142_tenant_foreign_key_indexes', 'ce0a5ec48018d29cbedcd69b3d76fda9b3aabcf630ed2ded33d5819e0f38adc4'],
+    ['0143_measurement_appointment_contact', '933cf0b8112cc2f4e413e59e7f145f4c4605cd61fb268d1843709e1fd9491263'],
+  ]);
+  for (const [tag, digest] of packaged) assert.equal(baseline.get(tag), digest, tag);
+  const end = journal.findIndex(entry => entry.tag === '0143_measurement_appointment_contact');
+  const deployed = journal.slice(0, end + 1).map(({ when, tag }, index) => ({
+    id: index + 1, created_at: when, hash: packaged.get(tag) ?? baseline.get(tag),
+  }));
+  const { seen } = validateLedger(deployed, activeJournal, {}, allowlist);
+  assert.deepEqual(pendingMigrations(migrations, seen, false).slice(0, 3).map(entry => entry.tag), [
+    '0144_assistant_customer_service', '0145_assistant_stage_agents', '0146_stage_agent_experience',
+  ]);
+});
+
 test('B. the approved 0021 historical hash is recognized', () => {
   const entry = historical.get('0021_platform_notification_config');
   const rows = ledgerRows({ historicalOnly: true });

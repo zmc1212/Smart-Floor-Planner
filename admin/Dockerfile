@@ -73,7 +73,8 @@ RUN sed -i 's|http://dl-cdn.alpinelinux.org|https://dl-cdn.alpinelinux.org|g' /e
  && apk add --no-cache font-noto-cjk libc6-compat
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-RUN mkdir -p /data/ai-assets && chown -R nextjs:nodejs /data/ai-assets
+RUN mkdir -p /data/ai-assets /app/tmp/native-workflow-store /shared \
+ && chown nextjs:nodejs /data/ai-assets /app/tmp/native-workflow-store /shared
 
 # Copy standalone output
 COPY --from=builder /app/public ./public

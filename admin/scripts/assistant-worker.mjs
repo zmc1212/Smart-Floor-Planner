@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { rename, unlink, writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { loadAssistantWorkerConfig, readAssistantWorkerHealth } from './assistant-worker-health.mjs';
+import { loadAssistantWorkerConfig } from './assistant-worker-health.mjs';
 
 const { endpoint, preflightEndpoint, secret, healthFile } = loadAssistantWorkerConfig();
 
@@ -9,16 +9,15 @@ let stopping = false;
 process.on('SIGTERM', () => { stopping = true; });
 process.on('SIGINT', () => { stopping = true; });
 
-const { health: previous } = await readAssistantWorkerHealth(healthFile);
 const health = {
   workerPid: process.pid,
-  lastRequestAt: previous?.lastRequestAt ?? null,
-  lastSuccessAt: previous?.lastSuccessAt ?? null,
-  lastFailureAt: previous?.lastFailureAt ?? null,
-  consecutiveFailures: previous?.consecutiveFailures ?? 0,
-  lastHttpStatus: previous?.lastHttpStatus ?? null,
-  lastErrorCode: previous?.lastErrorCode ?? null,
-  safetyGate: previous?.safetyGate ?? null,
+  lastRequestAt: null,
+  lastSuccessAt: null,
+  lastFailureAt: null,
+  consecutiveFailures: 0,
+  lastHttpStatus: null,
+  lastErrorCode: null,
+  safetyGate: null,
 };
 const temporaryHealthFile = `${healthFile}.${randomUUID()}.tmp`;
 
@@ -175,6 +174,9 @@ async function runLoop() {
   }
 }
 
+// A recreated worker must report its own preflight and tick. A recent reply
+// from the previous container can still be present on the shared volume.
+await saveHealth();
 if (!secret?.trim()) {
   health.lastHttpStatus = null;
   recordFailure('missing_secret');

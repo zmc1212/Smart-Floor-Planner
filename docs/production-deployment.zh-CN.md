@@ -235,8 +235,8 @@ chmod +x auto_deploy.sh
 5. 启动并确认原 PostgreSQL 容器，保留现有 Compose project 和 volume；
 6. 在 `backups/postgresql` 生成迁移前 custom dump，要求文件非空、`pg_restore --list` 可读，并生成独立 SHA-256；
 7. 执行 PostgreSQL 角色准备和 Drizzle 迁移；
-8. 用版本化镜像重建 Admin 与抢单 worker；
-9. 在有限超时内检查 `/api/health`、worker health、真实账号登录、`/api/auth/me` 和配置的只读核心路径；
+8. 用版本化镜像重建 Admin 与抢单 Worker。当前 Compose project 中正在运行的小 K Worker，或通过 `COMPOSE_PROFILES=assistant` 启用的小 K Worker，在 Admin 健康后同步换版。
+9. 在有限超时内检查 `/api/health`、纳入本次发布的 Worker 健康、真实账号登录、`/api/auth/me` 和配置的只读核心路径。
 10. 成功后原子写入 `deploy-state/current-*`、`previous-*` 和部署时间。
 
 Compose 预检会显式启用 `migration` profile，确保仅在该 profile 下可见的
@@ -267,6 +267,10 @@ sudo tail -n 100 -F /var/log/nginx/access.log /var/log/nginx/error.log
 ```bash
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://smartfloor.zlyun168.com/api/health
 ```
+
+阶段 Agent 的工作流定义随 `native_workflow_store` 卷持久保存，默认挂载到 Admin 的 `/app/tmp/native-workflow-store`。Worker 通过 Admin 的内部任务接口读取同一版本。自定义 `NATIVE_WORKFLOW_STORE_DIR` 时沿用其持久挂载。恢复工作流时同时使用对应的卷备份和 PostgreSQL 备份。小 K Worker 重建后以当前进程的预检和轮询上报健康，平台关闭时仍以正常空闲状态运行。
+
+发布基线跟踪已上线的 `0141`–`0143` 原字节和顺序。阶段 Agent 升级在这三条之后执行 `0144`–`0146`。
 
 Nginx 在请求处理结束时记录访问。如果看不到探测请求，核对对应域名与 location 是否有
 `access_log off`、独立日志路径、条件记录或 `buffer` / `flush` 缓冲。需要记录全部请求时，

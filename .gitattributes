@@ -5,6 +5,9 @@ admin/*.ps1 text eol=crlf
 # Preserve the exact bytes of the applied KB-1 migration across Windows checkouts.
 admin/drizzle/0085_assistant_professional_knowledge.sql text eol=lf
 admin/drizzle/0086_assistant_source_files.sql text eol=lf
+admin/drizzle/0141_construction_inspection.sql text eol=lf
+admin/drizzle/0142_tenant_foreign_key_indexes.sql text eol=lf
+admin/drizzle/0143_measurement_appointment_contact.sql text eol=lf
 
 # The Admin-only build verifies the survey mirror against a byte-level manifest.
 admin/src/lib/survey-runtime/**/*.js text eol=lf

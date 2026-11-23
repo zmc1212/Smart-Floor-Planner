@@ -103,7 +103,7 @@ export function nativeExecutorPrompt(knowledgeEnabled: boolean, delegation = fal
 
 export function stagePreviewCommitmentIssue(text: string) {
   try {
-    guardAnswerCommitments(text);
+    guardAnswerCommitments(text, { stagePreview: true });
     return null;
   } catch (error) {
     if (!(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
@@ -1263,6 +1263,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const asksForDesigners = !specialist && lease.actor.principal.kind === 'user' && directDesignerDiscovery(currentQuestionText);
     // Applicability is independent of citation presence: a user/master value the
     // answer endorses cannot borrow an unrelated run quote as support.
+    const stagePreview = stageWorkflow !== null && initial.conversation.purpose === 'knowledge_preview';
     const parameterIssue = (text: string) => {
       const issues = unverifiedParameterEndorsements(text, currentQuestionText,
         [...catalog.values()].flatMap(source => typeof source.quote === 'string' ? [source.quote] : []));
@@ -1336,7 +1337,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           if (issue || parameter) return issue ?? parameter;
           if (specialistIssues.length)
             return { code: specialistIssues[0].issue.code, feedback: specialistIssues.map(item => item.issue.feedback).join('\n') };
-          return stageWorkflow && initial.conversation.purpose === 'knowledge_preview' ? stagePreviewCommitmentIssue(text) : null;
+          return stagePreview ? stagePreviewCommitmentIssue(text) : null;
         },
         checkpoint: state => withTenantTransaction(lease.enterpriseId, async tx => {
           await runContext(tx, lease);
@@ -1387,7 +1388,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       text: [designerText, sites.outcome()?.text, snapshotText].filter(Boolean).join('\n\n'), modelIncluded: false,
     } : publicSitesDelivery(
       composeNativeDelivery(finalText, snapshotText, runCitations, evidenceProvided && !parameterPartial,
-        { delegationReply: policy.longTermMemory === true }, specialistReview ? text => {
+        { delegationReply: policy.longTermMemory === true, stagePreview }, specialistReview ? text => {
           const issue = checkSpecialistDraft(text)[0]?.issue;
           if (issue) fail(issue.code, 502);
         } : undefined), sites.outcome());
