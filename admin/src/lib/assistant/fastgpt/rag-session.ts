@@ -63,11 +63,12 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
       const hasPublicHistory = !!active || (Array.isArray(entry.publicSiteContexts) && entry.publicSiteContexts.length > 0);
       const selected = active ? await publicContextSelection(tx, lease.enterpriseId, active) : null;
       const historyScope = publicHistoryScope(conversation, !!selected?.source);
+      const preview = lease.actor.principal.kind==='admin' && conversation.purpose==='knowledge_preview' && !!entry.stagePreview;
       const originals = await rows(tx, sql`select m.* from app.assistant_messages m join app.assistant_messages trigger
         on trigger.enterprise_id=m.enterprise_id and trigger.conversation_id=m.conversation_id
         where m.enterprise_id=${lease.enterpriseId} and m.conversation_id=${String(conversation.id)} and trigger.id=${String(run.trigger_message_id)}
-          and m.seq<=trigger.seq and (m.author_kind='assistant' or m.author_kind='user' and (m.id=trigger.id or ${historyScope}))
-        order by m.seq desc limit 7`);
+          and m.seq<=trigger.seq and (m.author_kind='assistant' or m.author_kind=${preview?'admin':'user'} and (m.id=trigger.id or ${preview} or ${historyScope}))
+        order by m.seq desc limit ${((run.policy_snapshot as Row).stageHistoryLimit as number | undefined) ?? 7}`);
       if (!originals.length || String(originals[0].id) !== String(run.trigger_message_id)) fail('context_changed');
       const result: RagChatMessage[] = [], history: HistorySnapshot['sources'] = [];
       let keptAssistant = false;

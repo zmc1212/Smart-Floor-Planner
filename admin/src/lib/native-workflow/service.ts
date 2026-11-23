@@ -53,7 +53,7 @@ export interface WorkflowService {
     record: WorkflowDefinitionRecord;
     fixtureSets: readonly WorkflowFixtureSetSummary[];
   }>;
-  createFromTemplate(templateId: NativeWorkflowTemplateId, definitionId?: string): Promise<WorkflowDefinitionRecord>;
+  createFromTemplate(templateId: NativeWorkflowTemplateId, definitionId?: string, name?: string): Promise<WorkflowDefinitionRecord>;
   saveDraft(input: {
     readonly definitionId: string;
     readonly definition: unknown;
@@ -111,7 +111,7 @@ export function createWorkflowService(options: {
       return { record: await requireRecord(definitionId), fixtureSets: fixtureSetSummaries };
     },
 
-    async createFromTemplate(templateId: NativeWorkflowTemplateId, definitionId?: string): Promise<WorkflowDefinitionRecord> {
+    async createFromTemplate(templateId: NativeWorkflowTemplateId, definitionId?: string, name?: string): Promise<WorkflowDefinitionRecord> {
       if (!isNativeWorkflowTemplateId(templateId)) {
         throw new WorkflowOperationError('invalid_request', 400, 'unknown template id');
       }
@@ -120,7 +120,11 @@ export function createWorkflowService(options: {
         && (seed.inputSchema.eventType !== 'stage_consultation' || !/^stage-tool-[a-z0-9][a-z0-9-]{0,51}$/.test(definitionId))) {
         throw new WorkflowOperationError('invalid_request', 400, '自定义阶段模板标识须以 stage-tool- 开头，后接小写字母、数字或短横线');
       }
-      const checked = validateDefinition({ ...seed, definitionId: definitionId ?? templateId });
+      if (name !== undefined && (seed.inputSchema.eventType !== 'stage_consultation' || !name.trim() || name.trim().length > 60)) {
+        throw new WorkflowOperationError('invalid_request', 400, '模板名称应为 1 至 60 个字');
+      }
+      const checked = validateDefinition({ ...seed, definitionId: definitionId ?? templateId,
+        nodes: name ? seed.nodes.map(node => node.nodeId === seed.entryNodeId ? { ...node, config: { ...node.config, name: name.trim() } } : node) : seed.nodes });
       if (!checked.ok) throw new WorkflowDefinitionError([...checked.issues]);
       return store.create({ definition: checked.definition, now: now() });
     },

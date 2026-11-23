@@ -52,6 +52,7 @@ import type { PublishedWorkflowVersion, WorkflowDefinitionRecord } from '@/lib/n
 import type { WorkflowFixtureSetSummary } from '@/lib/native-workflow/fixtures/catalog';
 import { validateDefinition } from '@/lib/native-workflow/validate';
 import { createElectricalInspectionDefinition, createWaterproofInspectionDefinition } from '@/lib/native-workflow/specialist-template';
+import { stageConsultationNodeLabels, stageWorkflowMetadata } from '@/lib/native-workflow/stage-consultation-template';
 import { NativeWorkflowCanvas } from '@/components/admin/native-workflow-canvas';
 import { NativeWorkflowSpecialistStatus } from '@/components/admin/native-workflow-specialist-status';
 import { notify } from '@/components/admin/operation-feedback';
@@ -169,6 +170,7 @@ function NativeWorkflowDetailPageInner() {
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [stageInspector,setStageInspector]=useState<'node'|'test'>('node');
   const [simulating, setSimulating] = useState(false);
   const [fixtureSetId, setFixtureSetId] = useState('');
   const [simSource, setSimSource] = useState<'draft' | 'published'>('draft');
@@ -355,6 +357,7 @@ function NativeWorkflowDetailPageInner() {
         current ? applySaveSuccess(current, submittedText, formatJson(saved.draft.definition), saved.draft.draftRevision) : current,
       );
       notify.success('草稿已保存');
+      return saved;
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '保存草稿失败');
     } finally {
@@ -408,9 +411,9 @@ function NativeWorkflowDetailPageInner() {
     notify.info('已基于远端最新草稿继续；下次保存会覆盖远端草稿');
   };
 
-  const runSimulation = async (source = simSource, revision = simRevision) => {
+  const runSimulation = async (source = simSource, revision = simRevision, savedRecord?:WorkflowDefinitionRecord) => {
     if (!detail) return;
-    const selected = selectedSimulationDefinition(detail.record, source, revision);
+    const selected = selectedSimulationDefinition(savedRecord ?? detail.record, source, revision);
     if (!selected) {
       notify.error('未找到对应的发布版本');
       return;
@@ -672,6 +675,7 @@ function NativeWorkflowDetailPageInner() {
                   onClick={() => {
                     setSimSource('published');
                     setSimRevision(version.revision);
+                    if(callable){setActiveTab('draft');setStageInspector('test');}
                     void runSimulation('published', version.revision);
                   }}
                 >
@@ -1209,6 +1213,42 @@ function NativeWorkflowDetailPageInner() {
     </Space>
   );
 
+  if(callable && visualDefinition) {
+    const testing=stageInspector==='test';
+    const viewingPublished=testing && simSource==='published';
+    const shown=(viewingPublished && selectedSimulationDefinition(record,'published',simRevision)?.definition) || visualDefinition;
+    const run=simulation?.simulation.runs[0];
+    const visited=run?.trace.filter(item=>item.kind==='node_succeeded' && item.nodeId).map(item=>item.nodeId!) ?? [];
+    const result=shown.nodes.filter(node=>node.capabilityRef==='output.stage_guide' && visited.includes(node.nodeId)).map(node=>run?.outputs[node.nodeId]?.text).filter(Boolean).join('\n');
+    const simulateStage=async()=>{
+      if(simSource==='draft' && dirty) {
+        const saved=await saveDraft();
+        if(!saved){setStageInspector('node');return;}
+        await runSimulation('draft',undefined,saved);
+      } else await runSimulation();
+    };
+    const testPanel=<section className="nw-run" aria-label="试运行面板"><h3>试运行</h3><Space direction="vertical" style={{width:'100%'}}>
+      <Segmented value={simSource} options={[{value:'draft',label:'当前草稿'},{value:'published',label:'已发布',disabled:!latest}]} onChange={value=>{setSimSource(value as 'draft'|'published');setSimRevision(latest?.revision);setSimulation(null);}}/>
+      {viewingPublished&&<Select aria-label="已发布版本" value={simRevision} options={record.versions.map(v=>({value:v.revision,label:'v'+v.revision}))} onChange={value=>{setSimRevision(value);setSimulation(null);}}/>}
+      <Select aria-label="测试场景" value={fixtureSetId || undefined} options={compatibleFixtures.map(f=>({value:f.id,label:f.label}))} onChange={v=>{setFixtureSetId(v);setSimulation(null);}}/>
+      <Typography.Text type="secondary">使用样例数据运行节点，查看实际经过的分支和返回值。</Typography.Text>
+      <Button type="primary" loading={simulating||saving} disabled={hasConflict&&!viewingPublished} onClick={()=>void simulateStage()}>{!viewingPublished&&dirty?'保存并试运行':'运行测试'}</Button>
+      {run && <><Tag color={run.status==='failed'?'red':'green'}>{run.status==='failed'?'运行失败':'运行完成'}</Tag>
+      {run.error&&<Alert type="error" message={run.error.message}/>}<strong>执行路径</strong><ol className="nw-trace">{visited.map((id,i)=>{const item=shown.nodes.find(v=>v.nodeId===id);return <li key={i}><button onClick={()=>setFocusNodeId(id)}>{i+1}. {item?stageConsultationNodeLabels[item.capabilityRef]:id}</button></li>;})}</ol>
+      {result&&<><strong>返回给 Agent</strong><p className="nw-result">{result}</p></>}</>}</Space></section>;
+    return <PageContainer header={{title:stageWorkflowMetadata(visualDefinition).name,onBack:()=>router.push('/native-workflow')}}>
+      <div className="nw-stage-toolbar"><Tag color={dirty?'orange':'green'}>{dirty?'有未保存修改':'草稿已保存 · r'+record.draft.draftRevision}</Tag>
+        <Button onClick={()=>setActiveTab(activeTab==='versions'?'draft':'versions')}>{activeTab==='versions'?'返回画布':'版本历史'}</Button>
+        <Button onClick={checkDraft}>结构校验</Button><Button loading={saving} disabled={hasConflict} onClick={()=>void saveDraft()}>保存草稿</Button>
+        <Button type={testing?'default':'primary'} onClick={()=>{setActiveTab('draft');setStageInspector(testing?'node':'test');}}>{testing?'节点配置':'试运行'}</Button>
+        <Popconfirm title="发布当前已保存的草稿？" description="已绑定的阶段继续使用原版本。" okText="发布" cancelText="取消" onConfirm={()=>void publishDraft()}><Button disabled={dirty||hasConflict} loading={publishing}>发布版本</Button></Popconfirm></div>
+      {hasConflict&&<Alert type="warning" message={'草稿已更新至 r'+editor.conflictRevision} action={<Space><Button onClick={()=>void load()}>载入最新草稿</Button><Popconfirm title="保留本地修改以重新保存？" onConfirm={resolveConflictKeepLocal}><Button>保留本地</Button></Popconfirm></Space>}/>}
+      {issues.length>0&&<Alert type="error" message="结构校验未通过" description={issues.map(issue=><div key={issue.path+issue.code}>{issue.message} {issueNodeId(issue.path)&&<Button type="link" size="small" onClick={()=>{setStageInspector('node');setFocusNodeId(issueNodeId(issue.path));}}>定位节点</Button>}</div>)}/>}
+      {activeTab==='versions'?versionsTab:<div className="nw-stage-pane"><NativeWorkflowCanvas definition={shown} focusNodeId={focusNodeId} onSelectNode={setFocusNodeId}
+        invalidNodeIds={invalidNodeIds} visitedNodeIds={testing?visited:undefined} inspector={testing?testPanel:undefined}
+        onChange={viewingPublished?undefined:definition=>{setSimulation(null);setEditor(current=>current?updateDraftText(current,formatJson(definition)):current);}}/></div>}
+    </PageContainer>;
+  }
   return (
     <PageContainer
       header={{

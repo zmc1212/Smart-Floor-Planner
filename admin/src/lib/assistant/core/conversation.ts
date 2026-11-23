@@ -13,6 +13,9 @@ import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledg
 import { fastGPTRagConfiguration, fastGPTRagProtocol } from '../fastgpt/rag-config';
 import { fastGPTAgentV2Configuration, fastGPTAgentV2Presentation, fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
 import { openingScene, sceneForOpeningPurpose } from '../fastgpt/agent-v2/openings';
+import { stagePreviewDraft, type EnterpriseStageAgent } from '@/lib/xiaok-v1/stage-workflow-settings';
+import type { StageId } from '@/lib/xiaok-v1/stages';
+import { currentConversationExperience, currentConversationStageScope, stageSuggestionAvailable } from '@/lib/xiaok-v1/stage-dialogue-workflow';
 import { storedSuggestionQuestions } from '../fastgpt/agent-v2/suggestions';
 import { sourceExcerptProtocol } from '../agent/source-excerpts';
 import { sourceQuestionCoverageProtocol } from '../agent/source-question-coverage';
@@ -90,6 +93,7 @@ export function conversationDto(c: Row, requirementProposalPending = false) {
 
   return { id: String(c.id), purpose: c.purpose, status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, lastSeq: String(c.last_seq), createdAt: c.created_at,
     ...(entry?.requirementReviewMode===true && entry?.requirementWorkflow==='langgraph' ? {reviewWorkflow:'langgraph'} : {}),
+    ...(c.purpose === 'knowledge_preview' && entry.stagePreview ? { stagePreview: { stageId:(entry.stagePreview as EnterpriseStageAgent).stageId, version:(entry.stagePreview as EnterpriseStageAgent).version } } : {}),
     requirementProposalPending,
     guidanceEnabled: !!guidance, guidanceOpening: guidance ? guidanceOpening(guidance) : null,
     humanName: ((c.entry_snapshot as Row)?.handoff as Row)?.ownerName || null };
@@ -174,9 +178,10 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if (speech && !speechBinding) fail('speech_unavailable', 503);
   if ((report ? c.status === 'closed' : c.status !== 'open') || !((speech || report) ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')) fail('context_changed');
   const privateFollowup = c.purpose === 'construction_followup' && actor.capabilities.includes('assistant.followup.self');
-  const staffPreview = actor.principal.kind === 'admin' && c.purpose === 'knowledge_preview'
+  const stagePreview = actor.principal.kind === 'admin' && c.purpose === 'knowledge_preview' && !!(c.entry_snapshot as Row).stagePreview && actor.capabilities.includes('assistant.preview.self');
+  const staffPreview = !stagePreview && actor.principal.kind === 'admin' && c.purpose === 'knowledge_preview'
     && actor.capabilities.includes('assistant.preview.self') && !!fastGPTPreviewConfiguration(actor.enterpriseId);
-  const agent = !speech && (report || actor.principal.kind === 'user' || privateFollowup || staffPreview || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
+  const agent = !speech && (report || actor.principal.kind === 'user' || privateFollowup || staffPreview || stagePreview || (['site.record', 'site.action', 'site.question'].includes(purpose) && actor.capabilities.includes('assistant.project.shared'))) ? agentConfig(settings.agent_config) : null;
   const reference = reportContext(c.entry_snapshot);
   const stageReminderFollowup = !!agent && privateFollowup && purpose === 'reply' && trigger.kind === 'user_message'
     && reference.selection?.kind === 'stage';
@@ -202,13 +207,14 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   // V2 bridge is the bound runtime.
   const nativeExecutor = !agentV2 && agent && (purpose === 'reply' || purpose === 'public.site.intro')
     && trigger.kind === 'user_message'
-    && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && entry.requirementReviewMode !== true
+    && (stagePreview || c.purpose === 'customer_consultation' && actor.principal.kind === 'user') && entry.requirementReviewMode !== true
     ? nativeAgentRuntimeBinding(actor.enterpriseId) : undefined;
   const triggerContent = rag || agentV2 || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
   const textOnlyTrigger = (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text');
+  if (stagePreview && (!nativeExecutor || !agent || !textOnlyTrigger)) fail('stage_preview_unavailable',503);
   const nativeConfigurationIssue = nativeExecutor && agent && textOnlyTrigger ? nativeExecutorConfigurationIssue(agent) : null;
-  if (nativeConfigurationIssue && purpose !== 'reply') fail(nativeConfigurationIssue, 503);
+  if (nativeConfigurationIssue && (stagePreview || purpose !== 'reply')) fail(nativeConfigurationIssue, 503);
   const agentRuntime = agentV2 && (openingReady || enterpriseKnowledgeEnabled(settings.agent_config)) && textOnlyTrigger
     ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding }
     : nativeExecutor && textOnlyTrigger && !nativeConfigurationIssue
@@ -250,11 +256,13 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const copyBudget = await portfolioCopyBudget(tx, actor.enterpriseId);
   if (assistantDailyLimitsEnabled() && (Number(budget.requests) + Number(copyBudget.requests) + 1 > Number(settings.daily_requests) || BigInt(String(budget.tokens)) + BigInt(String(copyBudget.tokens)) + BigInt(tokenReservation) > BigInt(String(settings.daily_tokens))
       || BigInt(String(budget.cost)) + BigInt(String(copyBudget.cost)) + BigInt(costReservation) > BigInt(String(settings.daily_cost_micros)))) fail('assistant_quota_exceeded', 429);
+  const stageConfig = agentRuntime ? await currentConversationExperience(tx,actor,c) : null;
   const r = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,trigger_event_id,trigger_schedule_key,purpose,retry_of_run_id,policy_snapshot,context_revision,knowledge_epoch)
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
     ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
-      knowledgePolicy: c.purpose === 'knowledge_preview' ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
+      ...(stageConfig ? {stageHistoryLimit:stageConfig.historyRounds*2+1} : {}),
+      knowledgePolicy: c.purpose === 'knowledge_preview' && !stagePreview ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
       ...(purpose === 'reply' && c.purpose === 'customer_consultation' && trigger.kind === 'user_message'
         ? { publicSiteSelection: entry.activePublicSite ?? null } : {}),
       ...(nativeRag ? { nativeRag } : {}),
@@ -347,7 +355,11 @@ export class ConversationService {
       const preview=this.actor.principal.kind==='admin';
       if(!preview && Object.keys(previewInput).length) fail('invalid_message',422);
       const baseEntry: Row = { ...this.actor.entry };
-      const entry: Row=preview?{preview:await createPreviewPolicy(repo.tx,this.actor.enterpriseId,previewInput)}
+      const { stageDraft, ...previewPolicyInput } = previewInput;
+      const stagePreview = stageDraft !== undefined && this.actor.principal.kind === 'admin'
+        ? await stagePreviewDraft(repo.tx,this.actor.enterpriseId,this.actor.principal.adminId,stageDraft) : undefined;
+      const previewScope = stagePreview ? { audience: 'customer_public', draftVersionIds: [] } : previewPolicyInput;
+      const entry: Row=preview?{preview:await createPreviewPolicy(repo.tx,this.actor.enterpriseId,previewScope),...(stagePreview ? {stagePreview} : {})}
         : agentConfig(settings!.agent_config) ? developmentReviewEntry(this.actor.enterpriseId, baseEntry) : baseEntry;
       if (!preview && entry.guidanceVersion !== undefined) {
         if (entry.guidanceVersion !== Number(settings!.version)) fail('entry_context_invalid', 409);
@@ -367,7 +379,7 @@ export class ConversationService {
         hasLocationContext: !!(context.nearbyRegion || context.nearbyLocationRequest) };
     }, true);
   }
-  list(cursor = '9223372036854775807', limit = 20) {
+  list(cursor = '9223372036854775807', limit = 20, previewStage?: StageId) {
     if (this.actor.capabilities.includes('assistant.followup.self')) fail('assistant_capability_forbidden', 403);
     return this.scoped(async (repo, settings) => {
       const result = await rows(repo.tx, sql`select c.*, case when coalesce(c.entry_snapshot->>'retentionRedacted','false') != 'true' then
@@ -377,6 +389,7 @@ export class ConversationService {
         from app.assistant_conversations c join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
         where c.enterprise_id=${this.actor.enterpriseId} and ${this.actor.principal.kind==='user'?sql`p.user_id=${this.actor.principal.userId}`:sql`p.admin_id=${this.actor.principal.adminId}`}
         and p.status='active' and c.purpose=${this.actor.principal.kind==='user'?'customer_consultation':'knowledge_preview'} and c.id<${cursor}
+        ${previewStage ? sql`and c.entry_snapshot->'stagePreview'->>'stageId'=${previewStage}` : sql``}
         order by c.id desc limit ${limit}`);
       const items = [];
       for (const c of result) {
@@ -416,7 +429,8 @@ export class ConversationService {
             where p.enterprise_id=${this.actor.enterpriseId} and p.lead_id=${leadId}
               and p.customer_user_id=${this.actor.principal.userId} and p.shared and l.archived_at is null and l.status<>'closed'
           limit 1`));
-      return { ...conversationDto(c, await currentRequirementProposalPending(repo, c, settings)), ownerAvailable, guidance:contentEntry?null:guidance, latestRun: latest ? runDto(latest) : null,
+      const stageConfig = c.mode==='ai' && !contentEntry && !reportContext(entry).selection ? await currentConversationExperience(repo.tx,this.actor,c) : null;
+      return { ...conversationDto(c, await currentRequirementProposalPending(repo, c, settings)), stageExperience:stageConfig ? {lexicon:stageConfig.guideEnabled ? stageConfig.lexicon : [],followUp:stageConfig.followUp,attachments:stageConfig.attachments} : null, ownerAvailable, guidance:contentEntry?null:guidance, latestRun: latest ? runDto(latest) : null,
         ...(hasRequirementSummary ? { hasRequirementSummary: true } : {}),
         reportContext: await reportContextView(repo.tx, this.actor, c),
         ...(contentEntry?{guidanceOpening:contentGreeting(source),guidanceEnabled:false}:{}),
@@ -487,18 +501,24 @@ export class ConversationService {
   suggestions(conversationId: string) {
     return this.scoped(async repo => {
       const c = await repo.conversation(conversationId);
-      const presets = fastGPTAgentV2Presentation(this.actor.enterpriseId)?.presets ?? [];
+      const current = await currentConversationStageScope(repo.tx,this.actor,c);
+      const stage = current?.agent.experience;
+      if (stage?.followUp === 'off') return { conversationId, messageId:null, source:'presets', questions:[] };
+      const presets = nativeAgentRuntimeBinding(this.actor.enterpriseId)?.configuration.presets ?? [];
       if ((c.entry_snapshot as Row)?.retentionRedacted)
         return { conversationId, messageId: null, source: 'presets', questions: presets };
-      const latest = await one(repo.tx, sql`select m.id::text message_id,s.private_checkpoint
+      const latest = await one(repo.tx, sql`select m.id::text message_id,s.private_checkpoint,scope.private_checkpoint as stage_scope
         from app.assistant_messages m join app.assistant_runs r on r.enterprise_id=m.enterprise_id and r.id=m.run_id
         left join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id
           and s.step_seq=1007 and s.kind='agent_suggestions' and s.status='succeeded'
+        left join app.assistant_run_steps scope on scope.enterprise_id=r.enterprise_id and scope.run_id=r.id
+          and scope.step_seq=3100 and scope.kind='stage_workflow_scope' and scope.status='succeeded'
         where m.enterprise_id=${this.actor.enterpriseId} and m.conversation_id=${conversationId}
           and m.author_kind='assistant' and r.status='succeeded'
         order by m.seq desc limit 1`);
       const checkpoint = latest?.private_checkpoint as Row | undefined;
       const questions = storedSuggestionQuestions(checkpoint?.questions);
+      if ((stage && !latest) || !stageSuggestionAvailable(latest?.stage_scope,current)) return { conversationId, messageId:null, source:'presets', questions:[] };
       if (!latest || !questions.length || !await publicMessageAvailable(repo.tx, this.actor.enterpriseId, conversationId, String(latest.message_id)))
         return { conversationId, messageId: null, source: 'presets', questions: presets };
       return { conversationId, messageId: String(latest.message_id), source: checkpoint?.source === 'model' ? 'model' : 'presets', questions };

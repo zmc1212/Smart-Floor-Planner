@@ -1,0 +1,120 @@
+.nw-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.nw-library article,
+.nw-run {
+  background: #fff;
+  border: 1px solid #dce5e1;
+  border-radius: 12px;
+  padding: 20px;
+}
+.nw-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.nw-card-heading > a {
+  font-size: 17px;
+  font-weight: 650;
+  color: #183b31;
+}
+.nw-library p,
+.nw-card-label {
+  color: #60716a;
+}
+.nw-library p {
+  min-height: 22px;
+}
+.nw-card-label {
+  font-size: 12px;
+  margin: 12px 0 4px;
+}
+.nw-callers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 12px;
+}
+.nw-callers a {
+  color: #11694f;
+  background: #eff8f2;
+  border-radius: 5px;
+  padding: 3px 7px;
+}
+.nw-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(270px, 320px);
+  gap: 12px;
+}
+.nw-workspace > .ant-card,
+.nw-run {
+  max-height: clamp(380px, 60vh, 720px);
+  overflow: auto;
+}
+.nw-workspace .ant-card-body .ant-space {
+  max-width: 100%;
+}
+.nw-workspace .ant-select {
+  max-width: 100%;
+}
+.nw-run h3 {
+  margin: 0 0 14px;
+}
+.nw-trace {
+  display: grid;
+  gap: 7px;
+  padding: 0;
+  list-style: none;
+}
+.nw-trace button {
+  text-align: left;
+  background: #edf7f2;
+  color: #216445;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.nw-result {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0 0;
+}
+.nw-stage-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.nw-stage-toolbar .ant-tag {
+  margin-inline-end: auto;
+}
+.nw-stage-pane {
+  background: #fff;
+  border: 1px solid #dde4df;
+  border-radius: 12px;
+  padding: 16px;
+}
+.nw-stage-pane > .ant-space-vertical {
+  width: 100%;
+}
+@media (max-width: 870px) {
+  .nw-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .nw-workspace > .ant-card,
+  .nw-run {
+    max-height: 390px;
+  }
+  .nw-stage-pane {
+    padding: 10px;
+  }
+  .nw-workspace > .ant-flex > div {
+    max-height: 360px;
+  }
+}

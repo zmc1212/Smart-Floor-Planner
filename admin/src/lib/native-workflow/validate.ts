@@ -413,7 +413,7 @@ export function validateDefinition(raw: unknown): ValidationResult {
     if (!consultation) continue;
     const edges = outgoing.get(node.nodeId) ?? [];
     if (node.type === 'condition' && !['true', 'false'].every(branch => edges.some(edge => edge.when === branch))) {
-      issues.push(workflowIssue('condition_branch_required', '$.edges', '阶段模板的两个分支都需要返回结果'));
+      issues.push(workflowIssue('condition_branch_required', nodePath.get(node.nodeId) ?? '$.nodes', '阶段模板的两个分支都需要返回结果'));
     }
     if (node.type === 'output' && (edges.length || nodeMap.get(node.inputs?.text?.nodeId ?? '')?.capabilityRef !== 'read.stage_guide')) {
       issues.push(workflowIssue('invalid_stage_output', '$.nodes', '返回节点应连接阶段知识的文本输出，并结束流程'));

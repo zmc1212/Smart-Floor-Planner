@@ -1,6 +1,8 @@
 # 后台系统当前功能清单
 
-**阶段 Agent 管理（本地 Implemented）。** 有小 K 知识库权限的企业管理员在「小 K 知识库 → 阶段 Agent」为每个装修阶段创建、编辑或停用一个 Agent。可设置名称、职责、最多三张猜你想问卡、多个可调用工作流及默认工作流，也可只配置问题卡。`/assistant-knowledge?tab=stage-agents` 使用 `GET/POST/PUT /api/assistant/stage-agents`。保存时复核当前管理权限、所选企业和配置版本。迁移 `0145` 在 `app.assistant_stage_agents` 按企业隔离配置。平台管理员从「Agent 工作流模板」进入 `/native-workflow`，创建、连线、模拟和发布模板。多个 Agent 可引用同一版本，模板升级后由管理员逐个切换。Web 与 Worker 共用持久化的 `NATIVE_WORKFLOW_STORE_DIR`。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。 [后台表单与保存回读](../tmp/stage-agent-workflows-20261123/ui-2a6719f9/report.json) · [权限、并发保存与版本切换](../tmp/stage-agent-workflows-20261123/contracts-f08bfc8f/report.json)。
+**阶段 Agent 工作台（本地 Implemented）。** 在「小 K 知识库 → 阶段 Agent」选择施工阶段，左侧配置，右侧调试当前草稿。管理员可编辑带变量的开场白、最多三条开场预设问题、回答后的追问和输入词库，也可设置模型参数、工具、获权知识与默认工作流。回答和追问均使用企业授权的模型。真实调试经过原生 Worker，读取面向业主的已发布知识；对话仅对发起的管理员可见。编辑历史与调试日志支持重进。「发布渠道」展示小程序入口。浏览器朗读和文本附件用于后台调试。[交互设计](./design/xiaok-stage-agent-workbench.zh-CN.md)。
+
+`GET/POST/PUT /api/assistant/stage-agents` 核验企业、管理权限和预期版本。迁移 `0146` 为 `app.assistant_stage_agents` 增加可空体验配置和最近编辑记录，旧客户端保存时保留已有配置。预览接口校验阶段草稿，日志按参与者和阶段读取，追问绑定已完成的回复。平台管理员在 `/native-workflow` 用中文创建模板、在线上插入条件、补接出口、连接取值端口，可在画布试运行草稿或发布版并查看执行路径和返回文本。调用阶段可回到对应配置。发布新模板后，各阶段保留原先选定的版本。Web 和 Worker 共用 `NATIVE_WORKFLOW_STORE_DIR`。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。
 
 **三端工地工作台数据（已实现／有限）。** `GET /api/miniprogram/construction/workbench` 从签名企业和实时权限生成三端投影。施工账号按当前项目成员关系进入工人或项目经理视图。员工选择的 `projectId` 必须是当前角色仍有效的工地。工人读本人任务与最近上报回执，经理读草稿与整改复查，设计师读分配给本人的设计事项。老板从共用计划和事项事实取简报，汇总口径为当次最多 20 个工地。
 

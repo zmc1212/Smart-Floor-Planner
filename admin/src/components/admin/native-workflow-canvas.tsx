@@ -1,6 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { connectStageReturn, canInsertStageCondition, insertStageCondition } from '@/lib/native-workflow/stage-graph-edit';
+import { StageWorkflowCallers, useStageCallers } from './stage-workflow-callers';
+import './stage-workflow-studio.css';
+import { useEffect, type ReactNode, useRef, useState } from 'react';
 import { Alert, Button, Card, Descriptions, Empty, Flex, Input, Select, Space, Tag, Typography, theme } from 'antd';
 import type { Graph } from '@antv/x6';
 import { specialists, waterproofAgentId } from '@/lib/assistant/specialists/registry';
@@ -67,6 +70,8 @@ interface CanvasProps {
   focusNodeId?: string | null;
   onSelectNode?: (nodeId: string) => void;
   invalidNodeIds?: readonly string[];
+  inspector?: ReactNode;
+  visitedNodeIds?: readonly string[];
 }
 
 const hasEvidenceBranches = (definition: WorkflowDefinition) =>
@@ -115,17 +120,19 @@ function layout(definition: WorkflowDefinition) {
   });
 }
 
-export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focusNodeId, onSelectNode, invalidNodeIds }: CanvasProps) {
+export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focusNodeId, onSelectNode, invalidNodeIds, inspector, visitedNodeIds }: CanvasProps) {
   const { token } = theme.useToken();
   const frame = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
   const latest = useRef({ definition, onChange, onSelectNode });
-  const fitted = useRef(false);
+  const fitted = useRef('');
   const [graph, setGraph] = useState<Graph | null>(null);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState(definition.entryNodeId);
   const editable = !!onChange;
   const callable = definition.inputSchema.eventType === 'stage_consultation';
+  const callers=useStageCallers(callable && editable);
+  const [showCallers,setShowCallers]=useState(false);
   const capabilities = callable ? stageCapabilities : specialistCapabilities;
 
   useEffect(() => { latest.current = { definition, onChange, onSelectNode }; }, [definition, onChange, onSelectNode]);
@@ -150,6 +157,12 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
         setSelected(node.id);
         latest.current.onSelectNode?.(node.id);
       });
+      instance.on('edge:click', ({edge}) => {
+        const link=edge.getData()?.insert;
+        if(!link || !latest.current.onChange)return;
+        const edit=insertStageCondition(latest.current.definition,link);
+        if(edit){latest.current.onChange(edit.definition);setSelected(edit.id);latest.current.onSelectNode?.(edit.id);}
+      });
       instance.on('edge:connected', ({ edge, isNew }) => {
         if (!isNew) return;
         const from = edge.getSourceCellId(), to = edge.getTargetCellId();
@@ -158,7 +171,7 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
         instance?.removeCell(edge);
         if (next) latest.current.onChange?.(next);
       });
-      fitted.current = false;
+      fitted.current = '';
       setGraph(instance);
     }).catch(() => { if (active) setError(true); });
     return () => { active = false; instance?.dispose(); };
@@ -179,12 +192,13 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
       const spec = getCapability(node.capabilityRef);
       const focused = node.nodeId === (focusNodeId ?? selected) || node.nodeId === pendingNodeId;
       const invalid = invalidNodeIds?.includes(node.nodeId);
+      const visited = visitedNodeIds?.includes(node.nodeId);
       return graph.createNode({
         id: node.nodeId, shape: 'rect', x, y, width: 143, height: 47,
         label: nodeLabel(node.capabilityRef, node.type),
         attrs: {
-          body: { rx: 6, ry: 6, stroke: invalid ? token.colorError : focused ? token.colorPrimary : token.colorBorder, strokeWidth: focused || invalid ? 2 : 1,
-            fill: focused ? token.colorPrimaryBg : token.colorBgContainer },
+          body: { rx: 6, ry: 6, stroke: invalid ? token.colorError : visited ? token.colorSuccess : focused ? token.colorPrimary : token.colorBorder, strokeWidth: focused || invalid ? 2 : 1,
+            fill: visited ? token.colorSuccessBg : focused ? token.colorPrimaryBg : token.colorBgContainer },
           label: { fill: token.colorText, fontSize: 13, fontWeight: focused ? 600 : 400 },
         },
         ports: { groups, items: [
@@ -198,7 +212,8 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
     const ids = new Set(nodes.map(node => node.id));
     const edges = definition.edges.filter(edge => ids.has(edge.from) && ids.has(edge.to)).map(edge => graph.createEdge({
       source: { cell: edge.from, port: controlPort(edge.when) }, target: { cell: edge.to, port: controlInput },
-      labels: edge.when ? [branchLabel(edge.when)] : [],
+      data: {insert:editable && canInsertStageCondition(definition,edge) ? edge : null},
+      labels: edge.when ? [callable && edge.when==='false'?'不满足':branchLabel(edge.when)] : editable && canInsertStageCondition(definition,edge) ? ['⊕'] : [],
       connector: 'rounded', attrs: { line: { stroke: token.colorPrimary, strokeWidth: 1.4 } }, zIndex: -1,
     }));
     const dataEdges = definition.nodes.flatMap(node => Object.entries(node.inputs ?? {}).flatMap(([key, ref]) =>
@@ -207,11 +222,12 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
         connector: 'smooth', attrs: { line: { stroke: token.colorTextTertiary, strokeWidth: 1, strokeDasharray: '4 5' } }, zIndex: -2,
       })]));
     graph.resetCells([...nodes, ...edges, ...dataEdges]);
-    if (!fitted.current && frame.current?.clientWidth && frame.current.clientHeight) {
+    const topology = callable ? JSON.stringify([definition.nodes.map(node=>node.nodeId),definition.edges]) : 'fixed';
+    if (fitted.current !== topology && frame.current?.clientWidth && frame.current.clientHeight) {
       graph.zoomToFit({ padding: 20, maxScale: 1 });
-      fitted.current = true;
+      fitted.current = topology;
     }
-  }, [definition, graph, pendingNodeId, selected, focusNodeId, invalidNodeIds, token]);
+  }, [definition, graph, pendingNodeId, selected, focusNodeId, invalidNodeIds, visitedNodeIds, editable, callable, token]);
 
   const node = definition.nodes.find(item => item.nodeId === (focusNodeId ?? selected));
   const spec = node ? getCapability(node.capabilityRef) : undefined;
@@ -255,16 +271,17 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
   return (
     <Space direction="vertical" size="small" style={{ width: '100%' }}>
       <Space wrap>
-        {editable ? <Select<string> aria-label="添加节点" placeholder="添加节点" value={undefined} style={{ minWidth: 184 }}
+        {editable ? <Select<string> showSearch optionFilterProp="label" aria-label="添加节点" placeholder="添加节点" value={undefined} style={{ minWidth: 184 }}
           disabled={definition.nodes.length >= WORKFLOW_BOUNDS.maxNodes} onSelect={addNode}
           options={palette.map(([value, cap]) => ({ value, label: nodeLabel(value, cap.type) }))} /> : null}
-        <Select aria-label="选择节点" value={focusNodeId ?? selected} onChange={selectNode} style={{ minWidth: 184 }}
+        <Select showSearch allowClear={false} aria-label={callable?'查找节点':'选择节点'} placeholder="查找节点" filterOption={(query,option)=>(String(option?.label)+' '+(definition.nodes.find(n=>n.nodeId===option?.value)?.capabilityRef||'')).toLowerCase().includes(query.toLowerCase())} value={focusNodeId ?? selected} onChange={selectNode} style={{ minWidth: 184 }}
           options={definition.nodes.map(item => ({ value: item.nodeId, label: nodeLabel(item.capabilityRef, item.type) + ' · ' + item.nodeId }))} />
         <Button disabled={!graph} onClick={() => graph?.zoomToFit({ padding: 20, maxScale: 1 })}>适应画布</Button>
       </Space>
       {error ? <Alert type="warning" showIcon message="画布加载失败，仍可用节点配置或 JSON 编辑" /> : null}
+      <div className={callable?'nw-workspace':undefined}>
       <Flex gap={12} align="stretch">
-        {editable ? <Card size="small" title="节点面板" style={{ flex: '0 0 145px' }}>
+        {editable && !callable ? <Card size="small" title="节点面板" style={{ flex: '0 0 145px' }}>
           <Space direction="vertical" size={4}>
             {palette.map(([ref, cap]) => <Button key={ref} size="small" type="text" draggable
               disabled={definition.nodes.length >= WORKFLOW_BOUNDS.maxNodes}
@@ -285,14 +302,14 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
           if (!ref) return;
           event.preventDefault();
           addNode(ref);
-        }} style={{ position: 'relative', height: 390, minWidth: 0, flex: 1, overflow: 'hidden', border: '1px solid ' + token.colorBorderSecondary, borderRadius: token.borderRadius }}>
+        }} style={{ position: 'relative', height: callable?'clamp(380px, 60vh, 720px)':390, minWidth: 0, flex: 1, overflow: 'hidden', border: '1px solid ' + token.colorBorderSecondary, borderRadius: token.borderRadius }}>
           <div ref={container} aria-label="原生工作流画布" style={{ position: 'absolute', inset: 0 }} />
         </div>
       </Flex>
-      {node && spec ? (
+      {inspector || (node && spec ? (
         <Card size="small" title={nodeLabel(node.capabilityRef, node.type)} extra={editable && node.type !== 'trigger'
           ? <Button size="small" danger onClick={() => removeNode(node.nodeId)}>移除节点</Button> : null}>
-          <Descriptions size="small" column={2} items={[
+          {!callable && <Descriptions size="small" column={2} items={[
             { key: 'node', label: '节点', children: <Typography.Text code>{node.nodeId}</Typography.Text> },
             { key: 'cap', label: '能力', children: <Typography.Text code>{node.capabilityRef} · v{node.typeVersion}</Typography.Text> },
             { key: 'type', label: '类型', children: node.type },
@@ -301,7 +318,7 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
             { key: 'failure', label: '异常', children: spec.effect === 'wait' ? '继续等待或记录超时' : '保留错误及当前运行' },
             { key: 'schema', label: '配置 Schema', children: spec.configKeys.length ? spec.configKeys.join(' / ') : '固定能力' },
             { key: 'out', label: 'OUTPUT', children: Object.entries(spec.outputs).map(([name, kind]) => <Tag key={name}>{name} · {kind}</Tag>) },
-          ]} />
+          ]} />}
           <Space wrap>
             {node.capabilityRef === 'trigger.stage_consultation' && <Space direction="vertical">
               <label>模板名称<Input maxLength={60} disabled={!editable} value={String(node.config?.name ?? '')}
@@ -309,6 +326,8 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
               <label>适用场景<Input.TextArea maxLength={240} rows={2} disabled={!editable} value={String(node.config?.description ?? '')}
                 onChange={event => patchNode({ config: { ...node.config, description: event.target.value } })} /></label>
             </Space>}
+            {callable && node.type==='trigger' && editable && <div><Button size="small" onClick={()=>setShowCallers(v=>!v)}>查看调用阶段</Button>{showCallers&&<StageWorkflowCallers id={definition.definitionId} source={callers}/>}</div>}
+            {callable && editable && definition.edges.filter(link=>link.from===node.nodeId && canInsertStageCondition(definition,link)).map(link=><Button key={link.to} size="small" onClick={()=>{const edit=insertStageCondition(definition,link);if(edit){onChange?.(edit.definition);selectNode(edit.id);}}}>＋ 插入条件</Button>)}
             {node.type === 'agent' ? (() => {
               const current = String(node.config?.agentId) + '@' + String(node.config?.agentVersion);
               const choices = publishedAgents.map(agent => ({ value: agentKey(agent),
@@ -355,18 +374,20 @@ export function NativeWorkflowCanvas({ definition, onChange, pendingNodeId, focu
               </Space>;
             })}
             {branches(node).map(when => (
-              <Space wrap key={'branch:' + (when ?? 'next')}><Typography.Text>{branchLabel(when)}</Typography.Text>
+              <Space wrap key={'branch:' + (when ?? 'next')}><Typography.Text>{callable&&when==='false'?'不满足':branchLabel(when)}</Typography.Text>
                 <Select allowClear disabled={!editable} aria-label={'后续节点 ' + (when ?? 'next')} style={{ minWidth: 225 }} placeholder="连接流程节点"
                   value={definition.edges.find(edge => edge.from === node.nodeId && edge.when === when)?.to}
                   options={definition.nodes.filter(item => item.nodeId !== node.nodeId && item.type !== 'trigger')
-                    .map(item => ({ value: item.nodeId, label: item.nodeId }))}
+                    .map(item => ({ value: item.nodeId, label: callable ? nodeLabel(item.capabilityRef,item.type)+' · '+item.nodeId : item.nodeId }))}
                   onChange={to => onChange?.({ ...definition, edges: [...definition.edges.filter(edge => edge.from !== node.nodeId || edge.when !== when),
                     ...(to ? [{ from: node.nodeId, to, ...(when ? { when } : {}) }] : [])] })} />
+                {callable && editable && (when==='true'||when==='false') && !definition.edges.some(edge=>edge.from===node.nodeId&&edge.when===when) && <Button size="small" onClick={()=>{const edit=connectStageReturn(definition,node.nodeId,when);if(edit){onChange?.(edit.definition);selectNode(edit.id);}}}>补接返回节点</Button>}
               </Space>
             ))}
           </Space>
         </Card>
-      ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择节点查看配置" />}
+      ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择节点查看配置" />)}
+      </div>
     </Space>
   );
 }

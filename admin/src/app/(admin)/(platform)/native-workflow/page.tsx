@@ -3,11 +3,15 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
+import { StageWorkflowCallers, useStageCallers } from '@/components/admin/stage-workflow-callers';
+import '@/components/admin/stage-workflow-studio.css';
 import { Button, Input, Modal, Result, Select, Space, Tag, Typography } from 'antd';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface DefinitionSummary {
+  name?: string;
+  description?: string;
   definitionId: string;
   eventType: 'stage_changed' | 'period_report' | 'specialist_followup' | 'stage_consultation';
   periodKind: 'daily' | 'weekly' | null;
@@ -42,7 +46,9 @@ export default function NativeWorkflowListPage() {
   const canManage = ['super_admin', 'admin'].includes(user?.role || '');
   const [creating, setCreating] = useState(false);
   const [templateId, setTemplateId] = useState('stage-guidance');
-  const [customId, setCustomId] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [stageTemplates,setStageTemplates]=useState<DefinitionSummary[]>([]);
+  const callers=useStageCallers(canManage);
   const callable = templateId === 'stage-guidance' || templateId === 'stage-checklist';
   const [createSaving, setCreateSaving] = useState(false);
 
@@ -52,7 +58,7 @@ export default function NativeWorkflowListPage() {
       const response = await fetch('/api/native-workflow/definitions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templateId, ...(callable && customId.trim() ? { definitionId: 'stage-tool-' + customId.trim() } : {}) }),
+        body: JSON.stringify({ templateId, ...(callable ? { name: displayName.trim() || (templateId === 'stage-checklist' ? '现场核对清单' : '阶段知识问答') } : {}) }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.message || result.error || '创建草稿失败');
@@ -123,11 +129,16 @@ export default function NativeWorkflowListPage() {
   return (
     <PageContainer
       header={{
-        title: '家客来原生编排',
-        subTitle: '草稿、发布版本与模拟调试；模拟结果不会真实保存或投递',
+        title: '工作流模板',
+        extra: <Space><Button href="/assistant-knowledge?tab=stage-agents">阶段 Agent</Button><Button type="primary" onClick={()=>{setDisplayName('');setCreating(true);}}>从模板新建</Button></Space>,
       }}
     >
+      <section className="nw-library" aria-label="阶段工作流模板">{stageTemplates.map(row=><article key={row.definitionId}>
+        <div className="nw-card-heading"><a href={'/native-workflow/'+row.definitionId}>{row.name || row.definitionId}</a><Tag color={row.latestPublishedRevision?'green':undefined}>{row.latestPublishedRevision?'v'+row.latestPublishedRevision:'草稿'}</Tag></div>
+        <p>{row.description}</p><div className="nw-card-label">调用阶段</div><StageWorkflowCallers id={row.definitionId} source={callers}/>
+        <Button href={'/native-workflow/'+row.definitionId}>打开画布</Button></article>)}</section>
       <ProTable<DefinitionSummary>
+        headerTitle="业务工作流"
         rowKey="definitionId"
         search={false}
         options={false}
@@ -138,19 +149,16 @@ export default function NativeWorkflowListPage() {
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || result.error || '读取流程失败');
             const data = result.data as DefinitionSummary[];
-            return { data, success: true, total: data.length };
+            setStageTemplates(data.filter(item=>item.eventType==='stage_consultation'));
+            const business=data.filter(item=>item.eventType!=='stage_consultation');
+            return { data:business, success:true, total:business.length };
           } catch (error) {
             notify.error(error instanceof Error ? error.message : '读取流程失败');
             return { data: [], success: false, total: 0 };
           }
         }}
         columns={columns}
-        toolBarRender={() => [
-          <Button key="agents" href="/assistant-knowledge?tab=stage-agents">阶段 Agent 管理</Button>,
-          <Button key="create" type="primary" onClick={() => { setCustomId(''); setCreating(true); }}>
-            从模板新建草稿
-          </Button>,
-        ]}
+        toolbar={undefined}
       />
       <Modal
         title="从模板新建草稿"
@@ -163,8 +171,7 @@ export default function NativeWorkflowListPage() {
       >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Select aria-label="模板类型" value={templateId} onChange={setTemplateId} options={TEMPLATE_OPTIONS} style={{ width: '100%' }} />
-          {callable && <Input addonBefore="stage-tool-" aria-label="自定义模板标识" placeholder="可选，例如 site-check；留空使用内置标识"
-            maxLength={52} value={customId} onChange={event => setCustomId(event.target.value)} />}
+          {callable && <label>模板名称<Input aria-label="模板名称" placeholder={templateId==='stage-checklist'?'现场核对清单':'阶段知识问答'} maxLength={60} value={displayName} onChange={event=>setDisplayName(event.target.value)} /></label>}
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             创建模板会保存草稿。可检查节点、端口和模拟轨迹，正式运行使用已发布版本。
           </Typography.Paragraph>

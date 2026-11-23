@@ -90,6 +90,7 @@ function validFollowupReceipt(pending, data, slot) {
 }
 
 const COPY = {
+  stage_files_disabled: '这个施工阶段已关闭图片上传，可以继续发送文字。',
   portfolio_not_found: '作品或设计师当前不可用，可以返回原咨询看看其他方向。',
   portfolio_forbidden: '当前身份无法查看这份作品，请切换到业主身份。',
   portfolio_owner_conflict: '你已有服务负责人，当前服务人保持不变。可以回原咨询，请设计师协调本次意向。',

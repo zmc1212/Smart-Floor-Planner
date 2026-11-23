@@ -1,4 +1,6 @@
 const messages: Record<string, string> = {
+  stage_preview_unavailable:'此企业尚未启用已验证的对话模型，请在 AI 配置中完成设置后重试。',
+  stage_files_disabled:'此施工阶段已关闭文件上传。',
   knowledge_file_invalid:'请选择4MB以内、扩展名和实际格式一致的DOCX、文字PDF或XLSX，并填写出处与使用许可。',
   knowledge_file_review_required:'请先对照原件核对解析结果和限制，再保存核对范围。',
   knowledge_file_text_limit:'解析文字超过本批16,000字符/48,000字节范围，请上传有出处的较小文件。',

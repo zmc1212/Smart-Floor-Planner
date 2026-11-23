@@ -1,21 +1,31 @@
 import { sql } from 'drizzle-orm';
 import { one } from '@/db/repositories/assistant-repository';
 import type { PostgresTransaction } from '@/db/transaction';
-import { fail } from '@/lib/assistant/contracts';
+import { fail, type ActorContext } from '@/lib/assistant/contracts';
+import type { Row } from '@/db/repositories/assistant-repository';
+import { authorizeKnowledgeManager } from '@/lib/assistant/knowledge/manager';
+import type { EnterpriseStageAgent } from './stage-workflow-settings';
 import type { ModelTool } from '@/lib/assistant/contracts/model';
 import type { Lease } from '@/lib/assistant/infrastructure/job-queue';
 import { answerStageQuestion } from './stage-answer';
 import { resolveStageProject } from './stage-chat-service';
-import { stageIdForConstructionKey } from './stages';
+import { stageIdForConstructionKey, stageDefinition } from './stages';
 import { readStageAgent } from './stage-workflow-settings';
 import { invokeBoundStageWorkflow } from './stage-workflow-invocation';
 
-type Context = { conversationId: string; leadId?: string | null; question: string; eligible: boolean };
+type Context = { conversationId: string; leadId?: string | null; question: string; eligible: boolean; preview?: EnterpriseStageAgent };
 type Scope = { projectId: string; stageKey: string; agentVersion: number };
 
-async function activeScope(tx: PostgresTransaction, lease: Lease, context: Context) {
-  if (!context.eligible || lease.actor.principal.kind !== 'user') return null;
-  const enterprise = lease.enterpriseId, user = lease.actor.principal.userId;
+async function activeScope(tx: PostgresTransaction, actor: ActorContext, context: Context) {
+  if (!context.eligible) return null;
+  const enterprise = actor.enterpriseId;
+  if (actor.principal.kind === 'admin' && context.preview) {
+    await authorizeKnowledgeManager(tx,enterprise,actor.principal.adminId);
+    const agent=context.preview, stageKey=stageDefinition(agent.stageId)?.constructionKeys[0];
+    return stageKey ? {agent, stageKey, projectId:'preview:'+context.conversationId,agentVersion:agent.version} : null;
+  }
+  if (actor.principal.kind !== 'user') return null;
+  const user = actor.principal.userId;
   if (!await one(tx, sql`select 1 from app.assistant_stage_agents where enterprise_id=${enterprise} and enabled limit 1`)) return null;
   const resolved = await resolveStageProject(tx, enterprise, context.conversationId, user);
   if (resolved.status !== 'resolved' || (context.leadId && String(resolved.project.lead_id) !== context.leadId)) return null;
@@ -26,7 +36,25 @@ async function activeScope(tx: PostgresTransaction, lease: Lease, context: Conte
     for share of p,l`);
   const stageId = stageIdForConstructionKey(linked?.stage);
   const agent = stageId && await readStageAgent(tx, enterprise, stageId);
-  return linked && agent?.enabled && agent.workflows.length ? { agent, projectId, stageKey: linked.stage, agentVersion: agent.version } : null;
+  return linked && agent?.enabled && (agent.workflows.length || agent.experience) ? { agent, projectId, stageKey: linked.stage, agentVersion: agent.version } : null;
+}
+
+export async function currentConversationStageScope(tx: PostgresTransaction, actor: ActorContext, conversation: Row) {
+  const entry = conversation.entry_snapshot as Row;
+  if (entry.activePublicSite || !['customer_consultation','knowledge_preview'].includes(String(conversation.purpose))) return null;
+  return activeScope(tx,actor,{conversationId:String(conversation.id),question:'',eligible:true,
+    preview:conversation.purpose==='knowledge_preview' ? entry.stagePreview as EnterpriseStageAgent | undefined : undefined});
+}
+
+export async function currentConversationExperience(tx: PostgresTransaction, actor: ActorContext, conversation: Row) {
+  return (await currentConversationStageScope(tx,actor,conversation))?.agent.experience ?? null;
+}
+
+export function stageSuggestionAvailable(recorded: unknown, current: Scope | null) {
+  if (!recorded) return true;
+  if (typeof recorded !== 'object') return false;
+  const scope = recorded as Partial<Scope>;
+  return !!current && scope.projectId === current.projectId && scope.stageKey === current.stageKey && scope.agentVersion === current.agentVersion;
 }
 
 const sameScope = (a: Scope, b: Scope | null) =>
@@ -36,7 +64,7 @@ export async function prepareStageWorkflowTool(tx: PostgresTransaction, lease: L
   // Bind before the first model dispatch. Resuming a previous graph may not add a new tool.
   const checkpoint = await one<{ scope: Scope }>(tx, sql`select private_checkpoint as scope from app.assistant_run_steps
     where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=3100 and kind='stage_workflow_scope'`);
-  const active = await activeScope(tx, lease, context);
+  const active = await activeScope(tx, lease.actor, context);
   if (checkpoint && !sameScope(checkpoint.scope, active)) fail('context_changed');
   if (!active) return null;
   const { agent, projectId, stageKey, agentVersion } = active;
@@ -52,7 +80,7 @@ export async function prepareStageWorkflowTool(tx: PostgresTransaction, lease: L
       + agent.workflows.map(ref => `${ref.definitionId}：${ref.name}。${ref.description}`).join('\n'),
     parameters: { type: 'object', properties: { workflowId: { type: 'string', enum: ids } }, required: ['workflowId'], additionalProperties: false } };
   const revalidate = async (transaction: PostgresTransaction) => {
-    if (!sameScope(active, await activeScope(transaction, lease, context))) fail('context_changed');
+    if (!sameScope(active, await activeScope(transaction, lease.actor, context))) fail('context_changed');
   };
   const parse = (args: string): string | null => {
     try {
@@ -60,7 +88,7 @@ export async function prepareStageWorkflowTool(tx: PostgresTransaction, lease: L
       return body && Object.keys(body).length === 1 && ids.includes(body.workflowId) ? body.workflowId : null;
     } catch { return null; }
   };
-  return { definition, revalidate, parse,
+  return { definition, agent, hasWorkflows:ids.length>0, revalidate, parse,
     async invoke(transaction: PostgresTransaction, args: string, step: number) {
       const workflowId = parse(args);
       if (!workflowId) fail('invalid_message', 422);

@@ -34,6 +34,8 @@ export const assistantStageAgents = app.table('assistant_stage_agents', {
   workflowRefs: jsonb('workflow_refs').notNull(),
   defaultWorkflowId: text('default_workflow_id'),
   suggestedQuestions: jsonb('suggested_questions').notNull().default([]),
+  experience: jsonb('experience'),
+  editHistory: jsonb('edit_history').notNull().default([]),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, table => [primaryKey({ columns: [table.enterpriseId, table.stageId] })]);
 

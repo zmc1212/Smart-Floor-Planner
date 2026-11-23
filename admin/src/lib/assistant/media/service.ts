@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
+import { currentConversationExperience } from '@/lib/xiaok-v1/stage-dialogue-workflow';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, authorizeHandoffStaff, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, key, type ActorContext } from '../contracts';
@@ -100,6 +101,7 @@ export class AssistantMediaService {
         if (existing.deleted_at) fail('assistant_resource_not_found', 404);
         return { id: String(existing.id), conversationId };
       }
+      if ((await currentConversationExperience(repo.tx,this.actor,c))?.attachments === false) fail('stage_files_disabled',403);
       if (c.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(String(c.mode))) fail('conversation_read_only');
       if (c.purpose === 'construction_followup' && c.mode === 'ai') fail('context_changed');
       const count = await one(repo.tx, sql`select count(*) n from app.assistant_media where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId}`);

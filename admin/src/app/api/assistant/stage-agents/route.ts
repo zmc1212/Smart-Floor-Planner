@@ -15,7 +15,7 @@ async function handle(request: NextRequest) {
         return NextResponse.json({ success: true, data }, { headers });
       }
       const text = await request.text();
-      if (text.length > 8000) fail('invalid_message', 413);
+      if (Buffer.byteLength(text) > 128000) fail('invalid_message', 413);
       let input: unknown;
       try { input = JSON.parse(text); } catch { fail('invalid_message', 422); }
       const create = request.method === 'POST';

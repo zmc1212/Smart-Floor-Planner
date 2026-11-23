@@ -32,7 +32,9 @@ export async function POST(request: Request) {
     if (body.definitionId !== undefined && typeof body.definitionId !== 'string') {
       throw new WorkflowOperationError('invalid_request', 400, 'definitionId must be a string');
     }
-    const record = await getNativeWorkflowService().createFromTemplate(body.templateId, body.definitionId);
+    if (body.name !== undefined && typeof body.name !== 'string') throw new WorkflowOperationError('invalid_request', 400, '模板名称无效');
+    const id = body.definitionId ?? (body.name ? 'stage-tool-' + crypto.randomUUID() : undefined);
+    const record = await getNativeWorkflowService().createFromTemplate(body.templateId, id, body.name);
     return NextResponse.json({ success: true, data: record }, { status: 201 });
   } catch (error) {
     return workflowApiError(error);

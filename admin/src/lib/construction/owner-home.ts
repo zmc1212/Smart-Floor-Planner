@@ -3,6 +3,7 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { one, rows } from '@/db/repositories/assistant-repository';
 import { fail, id } from '@/lib/assistant/contracts';
 import { stageIdForConstructionKey } from '@/lib/xiaok-v1/stages';
+import { publicStageExperience, type StageExperience } from '@/lib/xiaok-v1/stage-experience';
 import type { StageSuggestedQuestion } from '@/lib/xiaok-v1/stage-workflow-settings';
 import { FollowupService } from './followup-service';
 import { currentStage, readStageSettings } from './stages-store';
@@ -46,9 +47,10 @@ export async function ownerSiteHome(identity: { userId: string; contextVersion: 
     const progressAccess = p.customer_access === true;
     const stage = progressAccess ? currentStage(p, (await readStageSettings(tx, eid)).stages) : null;
     const stageId = progressAccess && stageIdForConstructionKey(String(p.current_stage_key));
-    const agent = stageId && await one<{ questions: StageSuggestedQuestion[] }>(tx, sql`select suggested_questions as questions
+    const agent = stageId && await one<{ questions: StageSuggestedQuestion[]; experience: StageExperience | null }>(tx, sql`select suggested_questions as questions, experience
       from app.assistant_stage_agents where enterprise_id=${eid} and stage_id=${stageId} and enabled`);
     return { id: pid, name: String(p.name), leadId: String(p.lead_id), stageName: stage?.name || '', progressAccess,
+      ...(agent && agent.experience && stage ? {stageExperience:publicStageExperience(agent.experience,stage.name)} : {}),
       ...(agent && agent.questions.length ? { suggestedQuestions: agent.questions } : {}) };
   });
   const report = project.progressAccess ? await new FollowupService({

@@ -10,6 +10,9 @@ import { stageWorkflowMetadata } from '@/lib/native-workflow/stage-consultation-
 import { stageAgentRegistry } from './stage-agent-registry';
 import { stageIdSchema, type StageId } from './stages';
 
+import { stageExperienceSchema, type StageExperience, type StageEdit } from './stage-experience';
+import { agentConfig } from '@/lib/assistant/agent/config';
+
 const referenceSchema = z.strictObject({
   definitionId: z.string().regex(/^[a-z][a-z0-9_-]{2,63}$/),
   revision: z.number().int().positive(),
@@ -23,7 +26,8 @@ const questionSchema = z.strictObject({
 });
 export type StageSuggestedQuestion = z.infer<typeof questionSchema>;
 
-const agentInput = z.strictObject({
+export const stageAgentInput = z.strictObject({
+  experience: stageExperienceSchema.optional(),
   expectedEnterpriseId: z.string().regex(/^[1-9]\d*$/),
   expectedVersion: z.number().int().nonnegative(),
   stageId: stageIdSchema,
@@ -39,13 +43,14 @@ const agentInput = z.strictObject({
 export type EnterpriseStageAgent = {
   stageId: StageId; name: string; description: string; version: number; enabled: boolean;
   workflows: StageWorkflowOption[]; defaultWorkflowId: string | null; suggestedQuestions: StageSuggestedQuestion[];
+  experience?: StageExperience | null; history?: StageEdit[];
 };
 export type StageAgentSettings = {
-  enterpriseId: string; agents: EnterpriseStageAgent[]; templates: StageWorkflowOption[];
+  enterpriseId: string; model: string | null; agents: EnterpriseStageAgent[]; templates: StageWorkflowOption[];
 };
 
 const projection = sql`stage_id as "stageId", name, description, version, enabled,
-  workflow_refs as workflows, default_workflow_id as "defaultWorkflowId", suggested_questions as "suggestedQuestions"`;
+  workflow_refs as workflows, default_workflow_id as "defaultWorkflowId", suggested_questions as "suggestedQuestions", experience, edit_history as history`;
 
 export async function readStageAgent(tx: PostgresTransaction, enterpriseId: string, stageId: StageId) {
   return one<EnterpriseStageAgent>(tx, sql`select ${projection} from app.assistant_stage_agents
@@ -75,15 +80,30 @@ async function publishedOptions() {
 export async function listStageAgentSettings(enterpriseId: string, adminId: string): Promise<StageAgentSettings> {
   const stored = await withTenantTransaction(enterpriseId, async tx => {
     await authorizeKnowledgeManager(tx, enterpriseId, adminId);
-    return rows<EnterpriseStageAgent>(tx, sql`select ${projection} from app.assistant_stage_agents where enterprise_id=${enterpriseId}`);
+    const config = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${enterpriseId}`);
+    return { model:agentConfig(config?.agent_config)?.model ?? null, agents:await rows<EnterpriseStageAgent>(tx, sql`select ${projection} from app.assistant_stage_agents where enterprise_id=${enterpriseId}`) };
   });
-  return { enterpriseId, templates: await publishedOptions(), agents: stageAgentRegistry.activeList().map(base =>
-    stored.find(item => item.stageId === base.stageId) ?? { stageId: base.stageId, name: base.name, description: base.description,
+  return { enterpriseId, model:stored.model, templates: await publishedOptions(), agents: stageAgentRegistry.activeList().map(base =>
+    stored.agents.find(item => item.stageId === base.stageId) ?? { stageId: base.stageId, name: base.name, description: base.description,
       version: 0, enabled: false, workflows: [], defaultWorkflowId: null, suggestedQuestions: [] }) };
 }
 
+/** Validate the editor draft under the same tenant, manager and published-version rules as a save. */
+export async function stagePreviewDraft(tx: PostgresTransaction, enterpriseId: string, adminId: string, raw: unknown): Promise<EnterpriseStageAgent> {
+  await authorizeKnowledgeManager(tx, enterpriseId, adminId);
+  const parsed = stageAgentInput.safeParse(raw);
+  if (!parsed.success) fail('invalid_message',422);
+  const input = parsed.data;
+  if (input.expectedEnterpriseId !== enterpriseId) fail('settings_enterprise_changed');
+  const saved = await readStageAgent(tx,enterpriseId,input.stageId);
+  if ((saved?.version ?? 0) !== input.expectedVersion) fail('version_conflict');
+  const workflows = await Promise.all(input.workflows.map(async ref => ({...ref,...stageWorkflowMetadata((await publishedStageWorkflow(ref)).definition)})));
+  return { stageId:input.stageId, name:input.name, description:input.description, enabled:true, workflows, version:input.expectedVersion,
+    defaultWorkflowId:input.defaultWorkflowId, suggestedQuestions:input.suggestedQuestions, experience:input.experience ?? saved?.experience ?? null };
+}
+
 export async function saveStageAgent(enterpriseId: string, adminId: string, raw: unknown, create: boolean) {
-  const parsed = agentInput.safeParse(raw);
+  const parsed = stageAgentInput.safeParse(raw);
   if (!parsed.success || create !== (parsed.data.expectedVersion === 0)) fail('invalid_message', 422);
   const input = parsed.data;
   if (input.expectedEnterpriseId !== enterpriseId) fail('settings_enterprise_changed');
@@ -100,14 +120,17 @@ export async function saveStageAgent(enterpriseId: string, adminId: string, raw:
       const published = await publishedStageWorkflow(ref);
       return { ...ref, ...stageWorkflowMetadata(published.definition) };
     })));
+    const experience = JSON.stringify(input.experience ?? current?.experience ?? null);
+    const history = JSON.stringify([{ version:input.expectedVersion+1, name:input.name, enabled:input.enabled, at:new Date().toISOString() }, ...(current?.history ?? [])].slice(0,30));
     const row = create
       ? await one<EnterpriseStageAgent>(tx, sql`insert into app.assistant_stage_agents
-          (enterprise_id,stage_id,version,name,description,enabled,workflow_refs,default_workflow_id,suggested_questions)
-          values(${enterpriseId},${input.stageId},1,${input.name},${input.description},${input.enabled},${refs}::jsonb,${input.defaultWorkflowId},${JSON.stringify(input.suggestedQuestions)}::jsonb)
+          (enterprise_id,stage_id,version,name,description,enabled,workflow_refs,default_workflow_id,suggested_questions,experience,edit_history)
+          values(${enterpriseId},${input.stageId},1,${input.name},${input.description},${input.enabled},${refs}::jsonb,${input.defaultWorkflowId},${JSON.stringify(input.suggestedQuestions)}::jsonb,nullif(${experience}::jsonb,'null'::jsonb),${history}::jsonb)
           on conflict (enterprise_id,stage_id) do nothing returning ${projection}`)
       : await one<EnterpriseStageAgent>(tx, sql`update app.assistant_stage_agents set name=${input.name},description=${input.description},
           enabled=${input.enabled},workflow_refs=${refs}::jsonb,default_workflow_id=${input.defaultWorkflowId},
-          suggested_questions=${JSON.stringify(input.suggestedQuestions)}::jsonb,version=version+1,updated_at=now()
+          suggested_questions=${JSON.stringify(input.suggestedQuestions)}::jsonb,experience=nullif(${experience}::jsonb,'null'::jsonb),
+          edit_history=${history}::jsonb,version=version+1,updated_at=now()
           where enterprise_id=${enterpriseId} and stage_id=${input.stageId} and version=${input.expectedVersion} returning ${projection}`);
     if (!row) fail('version_conflict');
     return row;

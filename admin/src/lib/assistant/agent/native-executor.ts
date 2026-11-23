@@ -33,6 +33,9 @@ import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-histo
 import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
 import { bindReadToolInput, independentAdviceRequested, readToolContext, readToolContextProtocol, readToolsForContext,
   type ReadToolContext } from './read-tool-input';
+import { stageText } from '@/lib/xiaok-v1/stage-experience';
+import { stageDefinition } from '@/lib/xiaok-v1/stages';
+import type { EnterpriseStageAgent } from '@/lib/xiaok-v1/stage-workflow-settings';
 import { parsePublicRead, publicResearchTools } from './public-research';
 import { applicationWebToolProtocol, configuredApplicationWebSearch, createAgentWebTools } from './web-tool-runtime';
 import { historyRefsAvailable, historySynthesisSources, historyTool, parseHistoryQuery,
@@ -570,9 +573,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
       const state = await runContext(tx, lease);
       const policy = state.run.policy_snapshot as Row;
       const runtime = policy.agentRuntime as Row | undefined;
+      const stagePreview = lease.actor.principal.kind==='admin' && state.conversation.purpose==='knowledge_preview'
+        && !!(state.conversation.entry_snapshot as Row).stagePreview && lease.actor.capabilities.includes('assistant.preview.self');
       if (!runtime || runtime.protocol !== xiaokNativeExecutorProtocol || runtime.binding !== bound.binding
         || nativeAgentRuntimeBinding(lease.enterpriseId)?.binding !== bound.binding
-        || lease.actor.principal.kind !== 'user' || state.conversation.purpose !== 'customer_consultation'
+        || !(stagePreview || lease.actor.principal.kind === 'user' && state.conversation.purpose === 'customer_consultation')
         || !['reply', 'public.site.intro'].includes(String(state.run.purpose))) fail('context_changed');
       const config = agentConfig(policy.agent);
       const current = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
@@ -665,7 +670,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
     }
     const config = agentConfig((initial.run.policy_snapshot as Row).agent);
     if (!config) fail('context_changed');
-    const knowledgeEnabled = runKnowledgeEnabled(initial.run.policy_snapshot as Row);
+    const preview = initial.conversation.purpose === 'knowledge_preview'
+      ? (initial.conversation.entry_snapshot as Row).stagePreview as EnterpriseStageAgent | undefined : undefined;
+    let knowledgeEnabled = runKnowledgeEnabled(initial.run.policy_snapshot as Row);
     const { context, messages, citations, publicRefs: inheritedPublicRefs, businessContextActive, publicSite } =
       await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
     const policy = initial.run.policy_snapshot as Row;
@@ -925,7 +932,17 @@ export async function processNativeAgentAnswer(lease: Lease) {
       for (const { messageId, hash, memoryVersion } of snapshot.sources)
         historyRefs.set(String(messageId), { messageId: String(messageId), hash: String(hash), memoryVersion: Number(memoryVersion) });
     }
-    const rt: DialogueToolRuntime = { lease, protocol: xiaokNativeExecutorProtocol, authorize, context, catalog, messages,
+    const stageQuestion = messages.filter(message => message.role === 'user').at(-1)?.content ?? '';
+    stageWorkflow = await withTenantTransaction(lease.enterpriseId, async tx => {
+      const { conversation } = await runContext(tx, lease);
+      const entry = conversation.entry_snapshot as Row;
+      return prepareStageWorkflowTool(tx, lease, { conversationId: String(conversation.id), leadId: readContext?.leadId, preview,
+        question: stageQuestion, eligible: !!preview || !specialist && !entry.activePublicSite && !reportContext(entry).selection
+          && !currentMessageOnlyRequested(stageQuestion) && !independentAdviceRequested(stageQuestion) });
+    });
+    const experience = stageWorkflow?.agent.experience;
+    if (experience && !experience.knowledge) knowledgeEnabled=false;
+    const rt: DialogueToolRuntime = { lease, searchMode:experience?.searchMode, protocol: xiaokNativeExecutorProtocol, authorize, context, catalog, messages,
       markKnowledgeRetrieved: () => { knowledgeRetrieved = true; }, delivered,
       recovered: { searches: toolState.searches, businesses: toolState.businesses } };
     const search = dialogueEnterpriseSearch(rt);
@@ -950,16 +967,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const drawingRequested = specialist?.agent.agentId === 'electrical-specialist'
       && /图纸|点位图|水电图|电气图|给排水图|平面图/u.test(specialistQuestion);
     const materialRead = drawingRequested ? readToolsForContext([materialTool], readContext)[0] : null;
-    const stageQuestion = messages.filter(message => message.role === 'user').at(-1)?.content ?? '';
-    stageWorkflow = await withTenantTransaction(lease.enterpriseId, async tx => {
-      const { conversation } = await runContext(tx, lease);
-      const entry = conversation.entry_snapshot as Row;
-      return prepareStageWorkflowTool(tx, lease, { conversationId: String(conversation.id), leadId: readContext?.leadId,
-        question: stageQuestion, eligible: !specialist && !entry.activePublicSite && !reportContext(entry).selection
-          && !currentMessageOnlyRequested(stageQuestion) && !independentAdviceRequested(stageQuestion) });
-    });
     const tools: ModelTool[] = [
-      ...(stageWorkflow ? [stageWorkflow.definition] : []),
+      ...(stageWorkflow?.hasWorkflows ? [stageWorkflow.definition] : []),
       ...(knowledgeEnabled ? [enterpriseSearchTool] : []),
       ...(roomProgress ? [{ ...businessRead, parameters: { type: 'object', properties: {
         domain: { type: 'string', enum: ['construction'] }, room: { type: 'string', enum: [roomProgress] },
@@ -980,8 +989,12 @@ export async function processNativeAgentAnswer(lease: Lease) {
         ...(roomProgress ? ['project_progress' as const] : []), ...(delegationTool ? ['followup' as const] : []),
         ...(drawingRequested ? ['drawing' as const] : []),
       ],
-    }), specialist.progressRequested) : tools;
+    }), specialist.progressRequested) : tools.filter(tool => {
+      if (tool.name==='search_web' && experience?.searchWeb===false || tool.name==='read_web' && experience?.readWeb===false) return false;
+      return !preview || ['search_enterprise','search_web','read_web','run_stage_workflow'].includes(tool.name);
+    });
     const validateTool = (name: string, args: string): { code: string; feedback: string } | null => {
+      if (!modelTools.some(tool=>tool.name===name)) return { code:'assistant_capability_forbidden', feedback:'当前阶段没有启用这项工具。' };
       if (name === 'run_stage_workflow' && !stageWorkflow?.parse(args)) return { code: 'invalid_tool_input', feedback: '请选择当前阶段已绑定的 workflowId。' };
       if (name === 'search_enterprise') {
         try {
@@ -1031,6 +1044,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // identities reuse their persisted receipt and never reach this counter.
     let sequence = toolState.nextSequence;
     const toolPort = async (turn: number, index: number, name: string, args: string, callId?: string) => {
+      if (!modelTools.some(tool=>tool.name===name)) fail('assistant_capability_forbidden',403);
       if (name === 'run_stage_workflow') {
         const workflow = stageWorkflow;
         if (!workflow) fail('assistant_capability_forbidden', 403);
@@ -1147,7 +1161,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // The first dispatch must actually read before it answers: this is the
         // native equivalent of the V2 app's required-tool retrieval, and the
         // established legacy-agent requireTool contract.
-        agent: { config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: agentModelLimits.maxOutputTokens,
+        agent: { config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: experience?.maxTokens ?? agentModelLimits.maxOutputTokens,
+          ...(experience ? {temperature:experience.temperature} : {}),
           ...(delegationTool || specialist ? { applicationWebSearch: true } : {}),
           requireTool: nativeFirstTurnRequiresTool(turn, dispatchTools) } },
         metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, turn, purpose: 'answer', probeVersion: config.probeVersion },
@@ -1205,6 +1220,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
     }
     const systemContent: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: nativeExecutorPrompt(knowledgeEnabled, !!delegationTool) },
       ...nativeReplySiteText({ publicSiteText: answerPublicSite?.text, businessContextActive: businessContextActive && !!publicSite.active, includePublicSite })];
+    if (stageWorkflow && experience?.prompt) systemContent.push({type:'text',text:stageText(experience.prompt,stageDefinition(stageWorkflow.agent.stageId)!.name,experience.variables)});
+    if (preview) systemContent.push({type:'text',text:'本次是'+stageDefinition(preview.stageId)!.name+'阶段的管理员调试。没有关联业主的真实工地，涉及项目实况时说明依据。'});
     const systemMessage: ModelMessage = { role: 'system', content: systemContent };
     if (publisherRead || saved.webs.some(isPublisherRead)) {
       const originals = context.sources.filter(source => source.web?.standard?.id === standard?.standard.id
@@ -1216,7 +1233,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         + JSON.stringify(cites.map(({ id, content }, index) => ({ id, content, source: catalog.get(id)?.evidence.web?.standard,
           ...(index === 0 ? { example: '[' + id + '](CITE)' } : {}) }))) });
     }
-    const history: ModelMessage[] = messages.map(m => m.role === 'user'
+    const history: ModelMessage[] = (experience ? messages.slice(-(experience.historyRounds*2+1)) : messages).map(m => m.role === 'user'
       ? { role: 'user', content: [{ type: 'text', text: m.content }] } : { role: 'assistant', content: m.content });
     const specialistReview: SynthesisReviewContext | null = specialist && delegationContext ? {
       currentQuestion: safeText(delegationContext.source.content as MessageContent),
@@ -1372,7 +1389,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // generation keeps the delivered answer and falls back to the configured
     // presets. The 1014 dispatch marker (outside the model-turn band) makes an
     // interrupted call observable without ever replaying a metered dispatch.
-    const presets = bound.configuration.presets ?? [];
+    const presets = experience?.followUp === 'off' ? [] : bound.configuration.presets ?? [];
     let suggestions: SuggestionResolution = resolveSuggestions(null, presets);
     const suggestionStep = await withTenantTransaction(lease.enterpriseId, async tx => {
       await runContext(tx, lease);
@@ -1381,7 +1398,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
           and kind='agent_suggestion_model'`);
     });
     const resumedSuggestions = resumeSuggestionGeneration(suggestionStep ?? undefined);
-    if (resumedSuggestions.action === 'reuse') suggestions = resolveSuggestions(resumedSuggestions.text, presets);
+    if (experience?.followUp === 'off') { /* This stage opts out before any provider dispatch. */ }
+    else if (resumedSuggestions.action === 'reuse') suggestions = resolveSuggestions(resumedSuggestions.text, presets);
     else if (resumedSuggestions.action === 'dispatch') {
       const operationKey = 'native-suggest:' + lease.runId;
       try {
@@ -1400,7 +1418,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
           logicalModelKey: 'chat.general', messages: [], maxTokens: 800,
           agent: { config, input: { messages: [{ role: 'user',
-            content: [{ type: 'text', text: suggestionPrompt(text) }] }], tools: [], maxTokens: 800 } },
+            content: [{ type: 'text', text: suggestionPrompt(text,experience?.followUpPrompt) }] }], tools: [], maxTokens: 800 } },
           metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, purpose: 'suggestions', probeVersion: config.probeVersion },
           // The open usage marker keeps an interrupted dispatch countable as
           // unknown, but it belongs to the real dispatch boundary: the gateway

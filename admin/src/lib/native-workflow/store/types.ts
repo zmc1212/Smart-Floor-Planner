@@ -1,3 +1,4 @@
+import { stageWorkflowMetadata } from '../stage-consultation-template';
 import type { WorkflowDefinition, WorkflowInputSchema } from '../types';
 
 export interface WorkflowDraft {
@@ -27,6 +28,8 @@ export interface WorkflowDefinitionSummary {
   readonly eventType: WorkflowInputSchema['eventType'];
   readonly periodKind: WorkflowInputSchema['periodKind'] | null;
   readonly latestPublishedRevision: number | null;
+  readonly name?: string;
+  readonly description?: string;
   readonly draftRevision: number;
   readonly updatedAt: string;
   readonly publishedAt: string | null;
@@ -53,6 +56,7 @@ export function summarizeRecord(record: WorkflowDefinitionRecord): WorkflowDefin
   const latest = record.versions[record.versions.length - 1] ?? null;
   return {
     definitionId: record.definitionId,
+    ...(record.draft.definition.inputSchema.eventType === 'stage_consultation' ? stageWorkflowMetadata(record.draft.definition) : {}),
     eventType: record.draft.definition.inputSchema.eventType,
     periodKind: record.draft.definition.inputSchema.periodKind ?? null,
     latestPublishedRevision: latest?.revision ?? null,

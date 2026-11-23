@@ -23,6 +23,7 @@ const { planPageMethods } = require('../../../utils/assistant-report-plan');
 const { FollowupChat, emptyFollowupChat, followupChatMethods } = require('../lib/followup-chat');
 const { ReportQuestionController, reportQuestionMethods, emptyReportQuestion } = require('../lib/report-context');
 const { initialOwnerReminder, ownerReminderMethods } = require('./owner-reminders');
+const { inputCandidates } = require('../lib/stage-chat-experience');
 const { ownerSiteContext } = require('../lib/owner-site-context');
 const { measureIntent, measureInvite } = require('../lib/measure-card');
 const api = require('../../../utils/api');
@@ -65,7 +66,7 @@ module.exports = () => ({
 			{ title: '装修风格', helper: '找找灵感', icon: 'requirement-style', text: '想聊聊适合我家的装修风格' },
 			{ title: '预算安排', helper: '先聊想法', icon: 'requirement-budget', text: '想聊聊装修预算怎么安排' },
 		],
-		siteContext: null, siteTopics: [], siteGreeting: '',
+		siteContext: null, siteTopics: [], siteGreeting: '', stageExperience:null, inputCandidates:[], followQuestions:[], followMessageId:'',
 		measureCardVisible: false, measureCardDismissed: false,
 		mediaItems: [], mediaPaths: {}, mediaLoading: false, mediaBusy: false, mediaPending: false, mediaError: '', mediaKind: 0, mediaRoom: '',
 		formalPlans: [], formalRooms: [], formalIndex: 0, formalRoomIndex: 0, mediaPendingFormal: false,
@@ -103,6 +104,14 @@ module.exports = () => ({
 					|| patch.conversation?.id && this.speechController.visible && this.speechController.base !== consultationSpeechPath(patch.conversation.id)) {
 					this.speechController.hide();
 				}
+				if (patch.conversation && Object.prototype.hasOwnProperty.call(patch.conversation,'stageExperience')) {
+					patch.stageExperience=patch.conversation.stageExperience;
+					patch.inputCandidates=[];
+				}
+				if (patch.fatal || patch.needsLogin || patch.conversation===null) {
+					Object.assign(patch,{stageExperience:null,inputCandidates:[],followQuestions:[],followMessageId:''});
+					this._followReceipt='';
+				}
 				const previous = this.data.messages;
 				this.setData(appendPatch(patch, previous.length), () => {
 					if (patch.fatal || patch.needsLogin) {
@@ -115,7 +124,7 @@ module.exports = () => ({
 						if (this.plans) this.plans.clear();
 						this.referenceImages.clear();
 						if (this.media) this.media.dispose(); this.media = null;
-						this.setData({ mediaPaths: {}, mediaItems: [], sheet: '', siteContext: null, siteTopics: [], siteGreeting: '' });
+						this.setData({ mediaPaths: {}, mediaItems: [], sheet: '', siteContext: null, siteTopics: [], siteGreeting: '', stageExperience: null, inputCandidates: [], followQuestions: [], followMessageId: '' });
 					} else if (patch.messages) {
 						if (this._shown && this.liveConsent) this.liveConsent.load(this.controller.conversationId);
 						if (this._shown) this.siteRecords.load(this.controller.conversationId, patch.messages);
@@ -132,6 +141,7 @@ module.exports = () => ({
 					if (patch.conversation === null) { if (this.liveConsent) this.liveConsent.clear(); if (this.floorplans) this.floorplans.clear(); this.recommendations.clear(); this.setData({ portfolioReplyId: '' }); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
 					if (patch.conversation?.id && this.floorplans && this._shown && this.floorplans.id !== String(patch.conversation.id)) this.floorplans.show(String(patch.conversation.id));
 					if (patch.conversation !== undefined && !this.data.followupActive) this.syncReportQuestion();
+					if (patch.messages || patch.conversation || patch.generating===false) void this.loadStageFollowQuestions();
 					const next = patch.messages;
 					const appended = next?.length && next[next.length - 1].id !== previous.at(-1)?.id;
 					if (!this._holdAutoScroll && (appended || patch.sending && patch.pendingText)) {
@@ -259,7 +269,7 @@ module.exports = () => ({
 			// site. Multiple sites stay on the default welcome state instead of
 			// guessing which project the conversation belongs to.
 			if (items.length !== 1) {
-				if (this._alive && this._shown) this.setData({ siteContext: null, siteTopics: [], siteGreeting: '' });
+				if (this._alive && this._shown) this.setData({ siteContext: null, siteTopics: [], siteGreeting: '', stageExperience: null, inputCandidates: [], followQuestions: [], followMessageId: '' });
 				this._siteContextToken = token; this._siteContextAt = Date.now();
 				return;
 			}
@@ -267,14 +277,14 @@ module.exports = () => ({
 			if (!this._alive || !this._shown || sessionToken() !== token || this.controller?.conversationId) return;
 			const view = ownerSiteContext(home?.data?.project, home?.data?.report);
 			if (!view) {
-				this.setData({ siteContext: null, siteTopics: [], siteGreeting: '' });
+				this.setData({ siteContext: null, siteTopics: [], siteGreeting: '', stageExperience: null, inputCandidates: [], followQuestions: [], followMessageId: '' });
 				this._siteContextToken = token; this._siteContextAt = Date.now();
 				return;
 			}
-			this.setData(view);
+			this.setData({stageExperience:null,...view});
 			this._siteContextToken = token; this._siteContextAt = Date.now();
 		} catch (error) {
-			if (this._alive && this._shown) this.setData({ siteContext: null, siteTopics: [], siteGreeting: '' });
+			if (this._alive && this._shown) this.setData({ siteContext: null, siteTopics: [], siteGreeting: '', stageExperience: null, inputCandidates: [], followQuestions: [], followMessageId: '' });
 		} finally {
 			this._siteContextPending = false;
 		}
@@ -346,7 +356,33 @@ module.exports = () => ({
 	},
 	focusInput() { this.setData({ inputFocused: true, ownerReminderPrompt: null }); },
 	blurInput() { if (!this.data.keyboardHeight) this.setData({ inputFocused: false }); },
-	input(event) { this.controller.input(event.detail.value); },
+	input(event) {
+		const text=event.detail.value;
+		this.controller.input(text);
+		this._inputMatch=inputCandidates(text,event.detail.cursor,this.data.stageExperience?.lexicon);
+		this.setData({inputCandidates:this._inputMatch?.items || []});
+	},
+	fillStageQuestion(event) {
+		const m=this._inputMatch, word=event.currentTarget.dataset.text;
+		if (!m?.items.includes(word)) return;
+		const value=this.data.draft || '';
+		this.controller.input(value.slice(0,m.start)+word+value.slice(m.end));
+		this._inputMatch=null;this.setData({inputCandidates:[]});
+	},
+	async loadStageFollowQuestions() {
+		const cid=this.controller?.conversationId, latest=this.data.messages?.at(-1);
+		const eligible=cid && !this.data.readOnly && !this.data.fatal && !this.data.followupActive && this.data.stageExperience
+			&& this.data.stageExperience.followUp!=='off' && latest?.authorKind==='assistant' && latest.available!==false;
+		if (!eligible) {this._followReceipt='';if(this.data.followMessageId)this.setData({followQuestions:[],followMessageId:''});return;}
+		const key=cid+':'+latest.id, token=sessionToken();
+		if (this._followReceipt===key) return;
+		this._followReceipt=key;
+		try {
+			const result=await this.controller.client.read('/conversations/'+cid+'/suggestions');
+			if (!this._alive || !this._shown || this._followReceipt!==key || sessionToken()!==token || this.controller.conversationId!==cid) return;
+			this.setData({followMessageId:String(result.messageId||'')===String(latest.id)?String(latest.id):'',followQuestions:result.questions||[]});
+		} catch (_) {if(this._followReceipt===key)this._followReceipt='';}
+	},
 	async pickPrompt(event) {
 		if (this._promptSending) return;
 		if (this.data.needsLogin) return this.send();
@@ -362,6 +398,8 @@ module.exports = () => ({
 	chooseOption(event) { return this.controller.chooseOption(event.currentTarget.dataset.key, event.currentTarget.dataset.text); },
 	confirmOptions() { return this.controller.confirmOptions(); },
 	async send() {
+		if (this.data.inputCandidates?.length) this.setData({inputCandidates:[]});
+		this._inputMatch=null;
 		if (this.data.needsLogin) { this.login(); return; }
 		if (this.data.contextBusy || this.data.contextPending || this.data.sending) return;
 		if (this.data.speechBusy || this._openingVoice) return;
@@ -472,7 +510,7 @@ module.exports = () => ({
 		});
 	},
 	async openMedia() {
-		if (this.data.mediaBusy) return;
+		if (this.data.mediaBusy || this.data.stageExperience?.attachments===false) return;
 		let id = this.data.conversation && this.data.conversation.id;
 		if (!id) id = await this.controller.handoffConversation();
 		if (!id || !this._alive) return;

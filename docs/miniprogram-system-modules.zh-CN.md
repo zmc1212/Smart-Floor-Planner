@@ -1,6 +1,8 @@
 # 小程序当前功能清单
 
-**阶段 Agent 与猜你想问（本地 Implemented）。** 当业主只有一个可读工地时，原 C01 欢迎页的三张问题卡按项目实际阶段读取企业配置，沿用 [C01 设计台账](./miniprogram-design-restoration-ledger.zh-CN.md) 的卡片位置和图标，未配置的卡位使用系统问题。点击后向当前咨询发送完整问题。工地详情只向有进度权限的业主返回卡片文案。工地里的阶段问答通过 `POST /api/miniprogram/xiaok/stage-answer` 核验本人项目和企业，再运行该阶段默认模板，也接受显式选择已绑定的 `workflowId`。原生 C01 咨询可以按提问选用已绑定模板，结果保存在原会话。未配置或停用时沿用原问答。 从历史记录「开启新对话」也会读取问题卡。Stable 390×844 已验证已配置卡片、正常发送、阶段答复与重进。水电和油漆两组真实模型对话均调用了同一发布版。[原生卡片发送和零模型回执](../tmp/stage-agent-workflows-20261123/cards-12576759/report.json) · [两组模型回答与实际调用记录](../tmp/stage-agent-workflows-20261123/model-235fb76e/report.json)。
+**阶段对话体验（本地 Implemented）。** 业主有一个可读工地时，C01 欢迎页按项目实际阶段读取已启用的企业配置。新对话展开开场白中的变量，显示最多三张预设问题卡，空位沿用系统卡。点卡发送完整问题。输入时匹配该阶段词库，点候选文字可在光标处补全后继续修改，点候选的发送按钮可直接提问。回答后的「猜你想问」跟在对应回复下方，点击进入下一轮。重进重新读取会话及当前授权，停用的阶段回到原咨询。[C01 设计台账](./miniprogram-design-restoration-ledger.zh-CN.md)。
+
+工地详情校验进度权限后返回业主可见的设置；会话详情提供当前可用的词库、追问和附件设置。`GET /api/miniprogram/assistant/conversations/:id/suggestions` 将追问绑定到当前参与者可读的最近回复。`POST /api/miniprogram/xiaok/stage-answer` 继续检查本人项目和阶段绑定的模板版本。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。
 
 **装修画像（Implemented）。** 业主在小 K 会客室照常聊天。可明确对应本人房屋服务档案的新咨询在原欢迎说明处提示用途，小 K 自动把业主原话整理到后台画像。多套房且没有明确档案的咨询、历史私聊和普通公开工地问答保留原咨询范围。新版普通聊天无需打开表单、编辑字段或确认共享。
 

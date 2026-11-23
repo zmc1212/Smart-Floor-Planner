@@ -133,7 +133,7 @@ export async function historyRefsAvailable(tx: PostgresTransaction, enterpriseId
   for (const ref of refs) {
     if (ref.memoryVersion !== version || blocked.has(ref.messageId)) return false;
     const row = await one(tx, sql`select m.content from app.assistant_messages m
-      where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${ref.messageId} and m.author_kind='user'
+      where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${ref.messageId} and (m.author_kind='user' or m.author_kind='admin' and exists(select 1 from app.assistant_conversations c where c.enterprise_id=m.enterprise_id and c.id=m.conversation_id and c.purpose='knowledge_preview' and c.entry_snapshot ? 'stagePreview'))
       and not exists(select 1 from app.assistant_media a where a.enterprise_id=m.enterprise_id and a.conversation_id=m.conversation_id
         and m.client_message_id='media:' || a.request_key)`);
     if (!row || fingerprint(row.content) !== ref.hash) return false;

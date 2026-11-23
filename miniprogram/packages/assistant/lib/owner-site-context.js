@@ -33,7 +33,8 @@ function ownerSiteContext(project, report, now = Date.now()) {
       return custom && custom.title && custom.helper && custom.text
         ? { title: custom.title, helper: custom.helper, text: custom.text, icon: topic.icon } : topic;
     }),
-    siteGreeting
+    siteGreeting: project.stageExperience?.welcome || siteGreeting,
+    ...(project.stageExperience ? { stageExperience:project.stageExperience } : {})
   };
 }
 

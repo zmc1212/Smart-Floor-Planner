@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { one, type Row } from '@/db/repositories/assistant-repository';
+import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, principalKey, type ActorContext } from '@/lib/assistant/contracts';
 import { followupAvailable, projectReportFacts, type ReportFacts } from './report-scope';
 
@@ -51,6 +51,32 @@ export async function resolveReportReference(tx: PostgresTransaction, actor: Act
     periodEnd: iso(r.period_end), cutoffAt: iso(r.cutoff_at), factsHash: fingerprint({ saved: r.facts_hash, project }) };
   if (expected && fingerprint(expected) !== fingerprint(selection)) return null;
   return { selection, project, leadId: String(p.lead_id) };
+}
+/** Home entry may bind only the newest published report of exactly one active,
+ * customer-visible project for this lead. Ambiguous projects or an unresolved
+ * grant leave the conversation unbound instead of guessing a destination. */
+export async function latestCustomerReportContext(tx: PostgresTransaction, actor: ActorContext, leadId: string) {
+  if (actor.principal.kind !== 'user') return null;
+  const candidates = await rows<Row>(tx, sql`select b.id::text as binding_id, r.id::text as report_id,
+      v.revision::int as revision, p.id::text as project_id, v.generated_at
+    from app.construction_followup_bindings b
+    join app.construction_reports r on r.enterprise_id=b.enterprise_id and r.binding_id=b.id
+    join app.construction_report_versions v on v.enterprise_id=r.enterprise_id and v.report_id=r.id and v.status='facts_ready'
+    join app.assistant_runs run on run.enterprise_id=v.enterprise_id and run.id=v.run_id and run.status='succeeded'
+    join app.construction_projects p on p.enterprise_id=b.enterprise_id and p.id=b.project_id
+      and p.lead_id=${id(leadId)} and p.status='active' and p.customer_access
+    where b.enterprise_id=${actor.enterpriseId} and b.principal_key=${principalKey(actor)}
+      and b.audience='customer' and b.status='enabled'
+    order by v.generated_at desc, v.revision desc limit 6`);
+  if (!candidates.length) return null;
+  const top = candidates[0];
+  if (candidates.some(row => String(row.project_id) !== String(top.project_id))) return null;
+  const resolved = await resolveReportReference(tx, actor, {
+    bindingId: String(top.binding_id), reportId: String(top.report_id),
+    revision: Number(top.revision), projectId: String(top.project_id),
+  });
+  if (!resolved) return null;
+  return { protocol: reportContextProtocol, revision: 1, selection: resolved.selection } as ReportContext;
 }
 export async function selectedReport(tx: PostgresTransaction, actor: ActorContext, c: Row) {
   const stored = reportContext(c.entry_snapshot);

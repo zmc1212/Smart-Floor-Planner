@@ -27,6 +27,7 @@ export function enterpriseSourceStatus(status: unknown): SourceStatus {
 }
 export type DialogueToolRuntime = {
   lease: Lease;
+  searchMode?: 'hybrid' | 'keyword' | 'vector';
   /** Executor protocol recorded on every step and receipt. */
   protocol: string;
   /** Revalidates lease, actor and policy on every call. */
@@ -84,7 +85,7 @@ export function dialogueEnterpriseSearch(rt: DialogueToolRuntime) {
           where enterprise_id=${lease.enterpriseId} and operation_key=${operation} and category='query_embedding'`));
         return result;
       } };
-      const retrieved = await retrieveKnowledge(String(state.conversation.id), lease.actor, query, Number(state.run.knowledge_epoch), metered).catch(error => {
+      const retrieved = await retrieveKnowledge(String(state.conversation.id), lease.actor, query, Number(state.run.knowledge_epoch), metered, undefined, undefined, rt.searchMode ? { mode:rt.searchMode } : undefined).catch(error => {
         if (!(error instanceof BailianKnowledgeError) || error.code !== 'retrieval_unavailable') throw error;
         return { unavailable: error instanceof KnowledgeSearchUnavailable ? error.diagnostic
           : { code: error.providerCode, requestId: error.requestId, operation: error.operation } };
