@@ -23,14 +23,14 @@ I6.16 防水 Agent V1.1 候选，复用 I6.15 原咨询委托。V1 冻结值与�
 | 字段 | 当前记录 |
 | --- | --- |
 | 交付与负责人 | 十阶段 Agent 工作台与对话体验，`codex/xiaok-integration`。方法约束：先验证真实回答，禁止补丁循环。 |
-| 用户入口与结果 | 企业在阶段 Agent 配置开场白、预设问题、回答后追问、输入词库并调试草稿；业主在现有小K会话使用。平台可编排和试运行共享模板。 |
-| 已证缺口 | 原表单只能配置开场问题卡，未贯通阶段欢迎语、输入补全、回答后推荐及私有调试。 |
-| 已完成 | 配置保存与重进、工作流中文建模及试运行、原生业主和后台草稿的真实问答均已验证。 |
-| 下一动作 | 本地验收后按既定安排继续房间需求汇总；目标环境迁移与部署单独授权。 |
-| 必要验收 | 阶段权限、旧配置兼容、并发与模板锁版；浏览器创建、绑定、插条件、补分支、试运行和版本历史；Stable 原生开场、候选回填和发送、点卡发问、追问发送与失败反馈、重进。 |
-| 失败与调用边界 | 前轮工地上下文422与旧欢迎卡超时保留。此次首次 Stable 进入会话失败，后续单独验证通过。真实业主和后台草稿各一轮，合计7次模型尝试，金额未知。原生追问展示复用前述真实回执，未增加模型调用。 |
-| 环境与资源 | 微云1454与对照1455隔离PG，Stable原项目390×844。临时模型授权恢复，队列归零。真机、真实微信登录和生产未验。 |
-| 证据与后继 | [设计与源码](design/xiaok-stage-agent-workbench.zh-CN.md) · [服务](../tmp/xiaok-agent-studio-implementation/contracts-4f838436/report.json) · [后台](../tmp/xiaok-agent-studio-implementation/ui-603c3fe2/report.json) · [模型及首轮失败](../tmp/xiaok-agent-studio-implementation/model-d0f9a4f5/report.json) · [原生](../tmp/xiaok-agent-studio-implementation/cards-0d4a25f6/report.json)。 |
+| 用户入口与结果 | 企业在阶段 Agent 配置并调试草稿，业主在小K使用开场卡、输入引导及回答后追问，平台编排共享模板。 |
+| 已证缺口 | 独立构建把精简原生绑定当旧桥接配置校验，发送返回409。修复前回归稳定复现，模型调用为零。 |
+| 已完成 | `d0666292` 接受精简绑定，兼容旧摘要。正式 Worker 完成十阶段文档问答；真实模型完成水电首答、点击本轮追问续聊、油漆及后台草稿四问。 |
+| 下一动作 | 按既定安排继续房间需求汇总；目标环境迁移与部署单独授权。 |
+| 必要验收 | 共享模板同版本不同阶段，原生开场与候选、首次生成追问及重进；后台私有草稿关追问，重载读日志；权限、并发与模板锁版。 |
+| 失败与调用边界 | 保留历史422、原生首轮超时及上轮7次尝试。本轮首轮409在模型前，修后真实尝试13次，费用未知。十阶段通用问答未调用模型。 |
+| 环境与资源 | 微云1454及对照1455隔离PG，Stable原项目390×844。关闭试点Worker、恢复模型授权，队列归零。后台预览按纯文本显示 Markdown。真机与生产未验。 |
+| 证据与后继 | [服务](../tmp/xiaok-agent-studio-implementation/contracts-d9c3348f/report.json) · [后台](../tmp/xiaok-agent-studio-implementation/ui-fe4289d1/browser-checks.json) · [409](../tmp/xiaok-agent-studio-rerun-20261123/model-1ad987a2/report.json) · [复测](../tmp/xiaok-agent-studio-rerun-20261123/model-5ae97e7f/verification.json) · [上轮](../tmp/xiaok-agent-studio-implementation/model-d0f9a4f5/report.json)。 |
 
 ## 3. 复用哪些成果
 
