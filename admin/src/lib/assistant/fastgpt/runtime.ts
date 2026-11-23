@@ -35,7 +35,7 @@ class FastGPTWorkflows {
     if(configuration.nativeKnowledgeAppId) this.nativeKnowledge=new FastGPTNativeKnowledge({
       ...configuration,appId:configuration.nativeKnowledgeAppId,model:configuration.nativeTransportModel!,bridgeKey:configuration.nativeBridgeKey!,
       record:value=>record('nativeKnowledge',value)});
-    const agentV2=parseAgentV2Configurations(configuration.agentV2).filter(item=>item.runtime!=='langgraph-v1');
+    const agentV2=parseAgentV2Configurations(configuration.agentV2).filter((item): item is AgentV2Configuration => item.runtime!=='langgraph-v1');
     if(agentV2.length) this.agentV2=new FastGPTAgentV2(agentV2.map(item=>({...item,baseUrl:configuration.baseUrl,
       apiKey:configuration.apiKey,record:value=>record('agentV2',value)})));
   }

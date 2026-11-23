@@ -9,6 +9,10 @@ export type AgentV2Runtime = 'fastgpt-agent-v2' | 'langgraph-v1';
 export type AgentV2Configuration = { protocol: typeof fastGPTAgentV2Protocol; enterpriseId: string;
   appId: string; model: string; bridgeKey: string; runtime?: AgentV2Runtime;
   welcome?: string; presets?: string[]; suggestionAppId?: string; skills?: AgentV2SkillSelection };
+type NativeConfiguration = Pick<AgentV2Configuration, 'protocol' | 'enterpriseId' | 'presets'> & {
+  runtime: 'langgraph-v1';
+};
+type DeploymentConfiguration = AgentV2Configuration | NativeConfiguration;
 
 const validCopy = (value: unknown) => typeof value === 'string' && value.trim() === value
   && Array.from(value).length >= 1 && Array.from(value).length <= 120;
@@ -42,20 +46,32 @@ export function fastGPTAgentV2Presentation(enterpriseId: string): AgentV2Present
     return { welcome: bound.configuration.welcome ?? null, presets: bound.configuration.presets ?? [] };
   } catch { return; }
 }
-/** One deployment file may bind several enterprises. The existing single-object
- * form stays valid, and every enterprise keeps its own runtime switch. */
-export function parseAgentV2Configurations(value: unknown): AgentV2Configuration[] {
+/** A native-only entry needs the enterprise switch and optional suggestion presets.
+ * Legacy deployments retain their original validation and queued-run digest. */
+function parseDeployment(value: unknown): DeploymentConfiguration {
+  const native = value as NativeConfiguration | null;
+  if (native?.runtime === 'langgraph-v1' &&
+    Object.keys(native).every(key => ['protocol', 'enterpriseId', 'runtime', 'presets'].includes(key))) {
+    if (native.protocol !== fastGPTAgentV2Protocol || typeof native.enterpriseId !== 'string' ||
+      !/^[1-9]\d{0,18}$/.test(native.enterpriseId) ||
+      (native.presets !== undefined && !validPresets(native.presets))) fail('context_changed');
+    return native;
+  }
+  return parseAgentV2Configuration(value);
+}
+/** Accept both the original single binding and one binding per enterprise. */
+export function parseAgentV2Configurations(value: unknown): DeploymentConfiguration[] {
   const list = value === undefined ? [] : Array.isArray(value) ? value : [value];
   if (list.length > 50) fail('context_changed');
-  const configurations = list.map(parseAgentV2Configuration);
+  const configurations = list.map(parseDeployment);
   if (new Set(configurations.map(configuration => configuration.enterpriseId)).size !== configurations.length) fail('context_changed');
   return configurations;
 }
 /** Bind only the enterprise's own configuration: disabling another enterprise
  * in the same file must not invalidate this enterprise's queued runs. */
-const bindingOf = (configuration: AgentV2Configuration) =>
+const bindingOf = (configuration: DeploymentConfiguration) =>
   createHash('sha256').update(JSON.stringify(configuration)).digest('hex');
-export function fastGPTAgentV2Configurations(): Array<{ configuration: AgentV2Configuration; binding: string }> {
+export function fastGPTAgentV2Configurations(): Array<{ configuration: DeploymentConfiguration; binding: string }> {
   const file = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
   if (!file) return [];
   return parseAgentV2Configurations(JSON.parse(fs.readFileSync(file).toString('utf8')).agentV2)
@@ -64,12 +80,12 @@ export function fastGPTAgentV2Configurations(): Array<{ configuration: AgentV2Co
 export function fastGPTAgentV2Configuration(enterpriseId: string): { configuration: AgentV2Configuration; binding: string } | undefined {
   const bound = fastGPTAgentV2Configurations().find(item => item.configuration.enterpriseId === enterpriseId);
   if (!bound || bound.configuration.runtime === 'langgraph-v1') return;
-  return bound;
+  return { configuration: bound.configuration, binding: bound.binding };
 }
 /** The per-enterprise executor switch. `runtime: 'langgraph-v1'` keeps the
  * FastGPT app, tool set and presentation copy intact but routes new reply runs
  * to the XiaoK native executor; `fastgpt-agent-v2` keeps the bridge selection. */
-export function nativeAgentRuntimeBinding(enterpriseId: string): { configuration: AgentV2Configuration; binding: string } | undefined {
+export function nativeAgentRuntimeBinding(enterpriseId: string): { configuration: DeploymentConfiguration; binding: string } | undefined {
   const bound = fastGPTAgentV2Configurations().find(item => item.configuration.enterpriseId === enterpriseId);
   return bound && bound.configuration.runtime === 'langgraph-v1' ? bound : undefined;
 }

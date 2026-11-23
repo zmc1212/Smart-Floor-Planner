@@ -4,6 +4,8 @@
 
 `GET/POST/PUT /api/assistant/stage-agents` 核验企业、管理权限和预期版本。迁移 `0146` 为 `app.assistant_stage_agents` 增加可空体验配置和最近编辑记录，旧客户端保存时保留已有配置。预览接口校验阶段草稿，日志按参与者和阶段读取，追问绑定已完成的回复。平台管理员在 `/native-workflow` 用中文创建模板、在线上插入条件、补接出口、连接取值端口，可在画布试运行草稿或发布版并查看执行路径和返回文本。调用阶段可回到对应配置。发布新模板后，各阶段保留原先选定的版本。Web 和 Worker 共用 `NATIVE_WORKFLOW_STORE_DIR`。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。
 
+原生阶段模型的私有绑定可只填写 `protocol`、`enterpriseId`、`runtime: langgraph-v1`，按需添加预设问题。已有完整格式的绑定继续按原规则校验，已排队任务使用原摘要。
+
 **三端工地工作台数据（已实现／有限）。** `GET /api/miniprogram/construction/workbench` 从签名企业和实时权限生成三端投影。施工账号按当前项目成员关系进入工人或项目经理视图。员工选择的 `projectId` 必须是当前角色仍有效的工地。工人读本人任务与最近上报回执，经理读草稿与整改复查，设计师读分配给本人的设计事项。老板从共用计划和事项事实取简报，汇总口径为当次最多 20 个工地。
 
 精确记录入口在既有项目交流 GET 携带 `recordId`。仅原提交人员或有权经理可扩展读取旧记录位置，原工地权限与媒体权限继续实时核对。上报、事项回复、核对和发布沿既有版本写入及回执。 [小程序入口与设计证据](./miniprogram-system-modules.zh-CN.md#小k工地工作台)。
