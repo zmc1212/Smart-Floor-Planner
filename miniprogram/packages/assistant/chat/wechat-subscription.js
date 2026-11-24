@@ -39,7 +39,8 @@ async function manageWechatSubscription() {
   if (this._wechatSubscriptionBusy || !this.followups || !this.data.followupContext) return;
   this._wechatSubscriptionBusy = true;
   const followups = this.followups, scope = this._boardScope, ctx = this.data.followupContext, epoch = followups.epoch;
-  const active = () => this._alive && this._shown && this._boardScope === scope && followups.current(epoch);
+  const active = () => this._alive && this._shown && this._boardScope === scope &&
+    this.data.followupContext?.bindingId === ctx.bindingId && followups.current(epoch);
   try {
     const headers = await followups.headers(), client = followups.client;
     const projectId = await selectProject(ctx,scope,client,headers,active);
@@ -49,7 +50,13 @@ async function manageWechatSubscription() {
     const post = body => client.read(path,body,headers,'POST');
     let state = await read();
     if (!active()) return;
-    if (!state.published || !state.reports) { await notice('微信订阅','本企业尚未发布主小K的微信报告能力。'); return; }
+    if (!state.published || !state.reports) {
+      if (state.channel && state.channel.status !== 'closed') {
+        const answer=await native('showModal',{title:'微信报告已停用',content:'当前工地的微信推送已停止。需要断开本人微信关联吗？',confirmText:'断开关联'});
+        if (answer.confirm && active()) await post({action:'disconnect',id:state.channel.id});
+      } else await notice('微信订阅','本企业尚未发布主小K的微信报告能力。');
+      return;
+    }
     let c = state.channel;
     if (!c || c.status === 'closed') {
       const confirm = await native('showModal',{title:'关联本人微信',content:'连接后可以在微信里查本工地的报告。日报和周报可分别订阅。',confirmText:'开始关联'});

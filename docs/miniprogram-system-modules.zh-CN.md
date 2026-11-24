@@ -1,6 +1,6 @@
 # 小程序当前功能清单
 
-**微信订阅（Limited，本地开发）。** 报告页「微信订阅」沿用当前收件人和工地，多工地账号可选一个工地。在已有企业主小K会话发送小程序的一次性绑定口令，也可先扫本人连接二维码。收到关联回执后重进，可以分别开启或关闭日报、周报，也可断开关联。`/api/miniprogram/assistant/followups/:bindingId/wechat?projectId=…` 在读取和修改时核对实际登录、角色、收件人和工地。订阅从之后的站内投递开始生效，小程序保留完整报告和原有阅读权限。 当前跟进的设置页也可管理同一收件人的「微信订阅」。[Stable 验证](../tmp/xiaok-main-wechat-20261124/native-1795506929131.json)
+**微信订阅（Limited，本地开发）。** 报告页「微信订阅」沿用当前收件人和工地，多工地账号可选一个工地。在已有企业主小K会话发送小程序的一次性绑定口令，也可先扫本人连接二维码。收到关联回执后重进，可以分别开启或关闭日报、周报，也可断开关联。`/api/miniprogram/assistant/followups/:bindingId/wechat?projectId=…` 在读取和修改时核对实际登录、角色、收件人和工地。订阅从之后的站内投递开始生效，小程序保留完整报告和原有阅读权限。 当前跟进的设置页也可管理同一收件人的「微信订阅」。 企业暂停报告期间，本人仍可断开已有微信关联。 [Stable 验证](../tmp/xiaok-main-wechat-20261124/native-1795506929131.json)
 
 **C01 手账欢迎页（本地已实现）。** 业主首页小K（`pages/index/index`）和独立会客室（`packages/assistant/chat/chat`）共用确认的默认手账欢迎页。主纸页有独立纸纹、叠纸和毛边，三张话题便签分别使用灰绿、奶油、浅桃纸色、真实纸纹和不同卷角。欢迎页的钟面、房屋、沙发、圆形¥和手写引导箭头按稿重绘，输入栏使用校准后的语音、图片和发送图标，首页固定底栏使用对齐稿子的「工地」「我的」图标。需要登录时，便签显示于顶栏下方，点「去登录」打开 `/packages/business/login/login`。离开登录页后便签保留，认证成功和重进后收起。Stable 390×844 复验首屏、原生胶囊、按钮热区、原登录接口和隔离微云会话回读。微信授权使用模拟结果。[确认稿](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/guest-login-v001/01-xiaok-guest-login.png) · [素材映射](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/welcome-fidelity-v001/asset-mapping.json) · [逐项校准](../tmp/xiaok-welcome-fidelity-20261124/stable-d69bf354/visual-review.json) · [原生流程](../tmp/xiaok-welcome-fidelity-20261124/stable-d69bf354/report.json)。
 

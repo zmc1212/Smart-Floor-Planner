@@ -39,3 +39,12 @@ test('leaving the project during selection prevents a stale subscription write',
   global.wx.showActionSheet=o=>{page._boardScope={projectId:'22'};o.success({tapIndex:1});};
   try{await manageWechatSubscription.call(page);assert.deepEqual(writes,[]);}finally{delete global.wx;}
 });
+
+test('the recipient can disconnect their own account while reports are disabled',async()=>{
+  const {page,state,writes}=fixture();state.reports=false;
+  global.wx.showModal=o=>o.success({confirm:true});
+  try {
+    await manageWechatSubscription.call(page);
+    assert.deepEqual(writes,[{action:'disconnect',id:'mine'}]);
+  } finally {delete global.wx;}
+});
