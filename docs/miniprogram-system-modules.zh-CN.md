@@ -4,6 +4,8 @@
 
 **C01 正文流式（本地）。** 业主首页小 K 与独立聊天共用手账气泡，符合条件的文字咨询在生成时逐段显示已校验正文。分块连接中断后可通过运行状态接口恢复当前获权正文。完成后在同一会话显示完整排版、引用和操作。业主带报告引用的追问在整份答复通过原有校验并保存后逐字展开。历史重进直接读取已保存消息。停止、失败、资料撤回时沿用现有反馈并清除临时正文。[获批共用状态](../design-references/xiaok-answer-process-20261124-v1/README.md)。 Stable 390×844 核对了独立入口首段、首页继续同一轮第二段、停止和完成后重进。[原生回执](../tmp/xiaok-streaming-20261124/stable-176fe31a/report.json)。 两条配置模型实问在上游结束前已有可见正文。真机和正式网关待验证。[配置模型实证](../tmp/xiaok-streaming-20261124/stable-fca53210/report.json)。
 
+**C01 长回复阅读（本地）。** 业主首页和独立聊天在文字增长时跟随，直到气泡上沿与消息区上沿对齐。手动拖动可更早停止跟随。本轮正文超出视口下沿时，输入区上方显示手账向下按钮。点一次到当前末尾。后续正文超出时可再次出现按钮，视口停在用户选定的位置。流式气泡换成正式答复时保留阅读位置。 Stable 390×844 使用原服务与受控正文验证两入口的贴顶、44×44px 热区、单次跳转、完成及历史重进。[Stable 回执](../tmp/xiaok-reply-scroll-20261124/stable-4f1bd208/report.json)。
+
 **C01 回答操作与搜索（本地）。** 业主端首页小 K 和独立聊天使用[已批准的四张交互稿](../design-references/xiaok-answer-actions-20261124-v1/README.md)。当前可读的小 K 回答可一键复制纯文本、标记「有帮助」或填写反馈原因，评价随本人和回答保存，支持修改、撤回和重进读回。「我的对话」搜索本人咨询标题与获权正文，点击命中结果定位到原消息。可编辑的本人文字提问长按后带回草稿。更多菜单支持对最近一条符合条件的纯问答生成新版本，并在配置本机语音合成时朗读回答。重答沿用只读计量任务和原答案版本。施工、预约和授权的业务结果以各自回执为准。
 
 小程序调用 `GET /api/miniprogram/assistant/conversations?search=…`（签名入口）、`PATCH …/conversations/:id/messages/:messageId/feedback`、`POST …/messages/:messageId/regenerate` 和 `GET …/messages/:messageId/audio`。历史片段和朗读均按当前会话参与者及来源可见范围读取。客户端按照服务返回的资格显示操作。Stable 390×844 核对了剪贴板正文、反馈重进、历史定位、切换旧回答，并通过真实业主身份入口读回首页内嵌聊天。已观察本机语音下载和播放。截图含微信胶囊，编码 363×785。真机剪贴板及播放仍待验证。[原生证据](../tmp/xiaok-answer-restoration-20261124/stable-44a978e8/report.json) · [播放证据](../tmp/xiaok-answer-restoration-20261124/stable-4280afbc/report.json) · [接口和数据合同](./admin-system-modules.zh-CN.md)。

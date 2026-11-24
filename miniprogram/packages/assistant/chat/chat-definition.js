@@ -27,6 +27,7 @@ const { inputCandidates } = require('../lib/stage-chat-experience');
 const { ownerSiteContext } = require('../lib/owner-site-context');
 const { measureIntent, measureInvite } = require('../lib/measure-card');
 const { initialReplyActions, replyActionsMethods } = require('./reply-actions');
+const { ReplyScroll } = require('./reply-scroll');
 const api = require('../../../utils/api');
 
 function sessionToken() {
@@ -64,7 +65,7 @@ module.exports = () => ({
 		...initialContext(),
 		...initialFollowups(), ...initialEnterprise(), followupChat: emptyFollowupChat(), followupScrollTarget: '', professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
 		viewportHeight: 844, keyboardHeight: 0, inputFocused: false, bottomInset: 34, sheet: '', sheetOpen: false,
-		embedded: false, scrollTarget: '', reconnectingChat: false,
+		embedded: false, scrollTarget: '', replyScrollTop: 0, showReplyEnd: false, reconnectingChat: false,
 		topics: [
 			{ title: '旧房改造', helper: '从哪开始', icon: 'requirement-home', text: '旧房改造有哪些需要先考虑？' },
 			{ title: '装修风格', helper: '找找灵感', icon: 'requirement-style', text: '想聊聊适合我家的装修风格' },
@@ -85,6 +86,7 @@ module.exports = () => ({
 		this._options = options || {};
 		if (resumeConversationId && !this._options.conversationId) this._options.conversationId = resumeConversationId;
 		this._alive = true;
+		this._replyScroll = new ReplyScroll(this);
 		this.speechController = new SpeechController({ identity: sessionToken, emit: patch => { if (this._alive && this._shown) this.setData(patch); },
 			getDraft: () => this.data.draft || '', setDraft: text => { this.clearStageInput(); this.controller.input(text); },
 			reload: () => this.controller.refresh() });
@@ -132,7 +134,6 @@ module.exports = () => ({
 					this._followReceipt='';
 				}
 				const previous = this.data.messages;
-				const firstLiveText = patch.liveAnswerText && !this.data.liveAnswerText;
 				this.setData(appendPatch(patch, previous.length), () => {
 					if (patch.fatal || patch.needsLogin) {
 						if (this.liveConsent) this.liveConsent.clear();
@@ -164,7 +165,10 @@ module.exports = () => ({
 					if (patch.messages || patch.conversation || patch.generating===false) void this.loadStageFollowQuestions();
 					const next = patch.messages;
 					const appended = next?.length && next[next.length - 1].id !== previous.at(-1)?.id;
-					if (!this._holdAutoScroll && (appended || firstLiveText || patch.sending && patch.pendingText)) {
+					const pendingTurn = patch.sending && patch.pendingText;
+					if (pendingTurn) this._replyScroll.reset();
+					const managed = this._replyScroll.sync();
+					if (!this._holdAutoScroll && (pendingTurn || appended && (!managed || next.at(-1).isUser))) {
 						this.scrollBottom();
 					}
 				});
@@ -194,6 +198,7 @@ module.exports = () => ({
 					if (patch.followupOriginal === null && this.followupMedia) this.followupMedia.clear();
 					if (patch.followupOriginal && this.followupMedia && this.data.followupDetail && (this.data.followupDetail.sourceContext || this.data.followupContext))
 						this.followupMedia.loadOriginal(this.data.followupDetail.sourceContext || this.data.followupContext, this.data.followupDetail, patch.followupOriginal);
+					if (patch.followupActive !== undefined) this._replyScroll.sync();
 					if (patch.followupActive === false) this.syncReportQuestion();
 				});
 			} });
@@ -222,6 +227,7 @@ module.exports = () => ({
 		if (!this.plans) this.plans = new PlanChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
 		if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) { this.setData(p); if (p.publicDetail) this.liveConsent.entry(this.data.enterpriseId, p.publicDetail.id); else if (p.publicDetail === null) this.liveConsent.set({ publicLiveEntry: null }); } } });
 		this._shown = true;
+		this._replyScroll?.request();
 		if (nativePreview.shownAfterPreview(this)) return;
 		const app = getApp();
 		if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
@@ -326,9 +332,9 @@ module.exports = () => ({
 		wx.switchTab({ url: '/pages/index/index' });
 	},
 
-	onHide() { if (nativePreview.hiddenByPreview(this)) return; this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+	onHide() { if (nativePreview.hiddenByPreview(this)) return; this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this._replyScroll?.suspend(); this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
 	onUnload() {
-		this._alive = false; clearTimeout(this._sheetTimer);
+		this._alive = false; this._replyScroll?.reset(); clearTimeout(this._sheetTimer);
 		clearTimeout(this._copyAnswerTimer); clearTimeout(this._historySearchTimer);
 		this.stopOwnerReminderRefresh();
 		if (this.liveConsent) this.liveConsent.clear();
@@ -362,7 +368,7 @@ module.exports = () => ({
 			navigationTop: Math.max(info.statusBarHeight || 24, capsuleTop + ((capsule && capsule.height || 32) - navigationHeight) / 2),
 			navigationHeight,
 			navigationRight: Math.max(96, info.windowWidth - (capsule && capsule.left || info.windowWidth - 96) + 10),
-		});
+		}, () => this._replyScroll?.request());
 	},
 	syncKeyboardTab() {
 		const page = getCurrentPages().slice(-1)[0];
@@ -373,9 +379,9 @@ module.exports = () => ({
 		const keyboardHeight = Math.max(0, Number(event.detail.height) || 0);
 		if (!keyboardHeight) this._inputMatch = null;
 		this.setData({ keyboardHeight, ...(keyboardHeight ? { ownerReminderPrompt: null }
-			: this.data.keyboardHeight ? { inputFocused: false, inputCandidates: [], stageInputCursor: -1 } : {}) });
+			: this.data.keyboardHeight ? { inputFocused: false, inputCandidates: [], stageInputCursor: -1 } : {}) }, () => this._replyScroll?.request());
 		this.syncKeyboardTab();
-		if (this.data.messages.length || this.data.pendingText) this.scrollBottom();
+		if (!this._replyScroll?.turn && (this.data.messages.length || this.data.pendingText)) this.scrollBottom();
 	},
 	focusInput(event) {
 		const entering = !this.data.inputFocused;
@@ -550,6 +556,9 @@ module.exports = () => ({
 	scrollBottom() {
 		this.setData({ scrollTarget: '' }, () => this.setData({ scrollTarget: 'conversation-end' }));
 	},
+	watchReplyScroll() { this._replyScroll?.request(); },
+	pauseReplyScroll() { this._replyScroll?.hold(); },
+	jumpToReplyEnd() { this._replyScroll?.jump(); },
 	scrollBottomSettled(attempt = 0) {
 		if (!this._alive || !this._shown) { this._holdAutoScroll = false; return; }
 		// Wait for the closing system message to finish layout before the single
