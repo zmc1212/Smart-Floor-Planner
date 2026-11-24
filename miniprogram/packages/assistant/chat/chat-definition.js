@@ -54,6 +54,7 @@ module.exports = () => ({
 	...planPageMethods,
 	...ownerReminderMethods,
 	...followupChatMethods,
+	...require('./wechat-subscription'),
 	...reportQuestionMethods,
 	...replyActionsMethods,
 	...messageActionsMethods,

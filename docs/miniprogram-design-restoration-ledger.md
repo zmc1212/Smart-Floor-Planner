@@ -1,5 +1,7 @@
 # Mini Program Design Restoration Ledger
 
+On the existing four-role report view, the notebook header’s compact action opens personal WeChat subscriptions. Stable at 390×844 verified the saved report, action, subscription and reentry against the existing report screen and shared header control. [Report screen source](../design-references/xiaok-report-workflow-v1-20261120/README.md) · [Native capture](../tmp/xiaok-main-wechat-20261124/report-page.png)
+
 Standalone C01 and the embedded home chat use input guide v002, follow-ups v001, send failure v002 and disconnect v001. The shared design entry below indexes the other approved branch designs and preserves their evidence scopes.
 
 The current C03 designs are recorded once per route below. The earlier C03-02 browsing and recovery checks and 390×844 captures apply to that revision.

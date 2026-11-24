@@ -1,17 +1,23 @@
 import { sql } from 'drizzle-orm';
+import { createHash, randomBytes } from 'node:crypto';
 import { one } from '@/db/repositories/assistant-repository';
 import { UserRepository } from '@/db/repositories/user-repository';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { decryptText, encryptText } from '@/lib/crypto';
 import { readStageAgent } from '@/lib/xiaok-v1/stage-workflow-settings';
 import type { StageId } from '@/lib/xiaok-v1/stages';
-import { fail } from '../contracts';
+import { fail, principalKey } from '../contracts';
+import { mainRelease } from '@/lib/xiaok-v1/main-publication';
+import { checkRecipient, miniUser, type Recipient } from './recipient';
 import { authorizeKnowledgeManager } from '../knowledge/manager';
 import { weixinClient, weixinOrigin, type WeixinLogin } from './ilink';
 import { wechatSubject } from './subject';
 
 export type ChannelRow = {
-  id: string; enterprise_id: string; stage_id: StageId; status: 'pending' | 'connected' | 'closed';
+  id: string; enterprise_id: string; stage_id: StageId | 'main'; status: 'pending' | 'connected' | 'closed';
+  recipient_key: string | null; recipient_binding_id: string | null; project_id: string | null; mini_user_id: string | null;
+  identity_version: number | null; recipient_requires_service: boolean; verified_at: string | null; recipient_version: number;
+  pair_secret: string | null; pair_until: string | null; latest_context: string | null; daily_since: string | null; weekly_since: string | null;
   login_state: string | null; qr_secret: string | null; expires_at: string | null;
   api_origin: string; bot_id: string; peer_id: string; bot_secret: string;
   user_id: string; conversation_id: string | null; lease_id: string | null; cursor_value: string;
@@ -22,9 +28,11 @@ export type ChannelView = {
   id: string; status: 'pending' | 'connected' | 'closed'; loginState: string | null;
   qr: string | null; expiresAt: string | null; lastPollAt: string | null; lastReplyAt: string | null; error: string | null;
 };
-type Scope = { enterpriseId: string; adminId: string; stage: StageId };
+export type Scope = { enterpriseId: string } & ({ adminId: string; stage: StageId | 'main'; recipient?: never } |
+  { stage: 'main'; recipient: Recipient; adminId?: never });
 
 function qr(row: ChannelRow): WeixinLogin { return JSON.parse(decryptText(row.qr_secret)); }
+export const pairDigest = (value:string) => createHash('sha256').update(value).digest('hex');
 const iso = (value: string | null) => value ? new Date(value).toISOString() : null;
 function view(row?: ChannelRow): ChannelView | null {
   if (!row) return null;
@@ -36,13 +44,21 @@ function view(row?: ChannelRow): ChannelView | null {
 
 function managed<T>(scope: Scope, work: (tx: PostgresTransaction) => Promise<T>) {
   return withTenantTransaction(scope.enterpriseId, async tx => {
-    await authorizeKnowledgeManager(tx, scope.enterpriseId, scope.adminId);
+    if (scope.recipient) {
+      if (scope.recipient.actor.enterpriseId !== scope.enterpriseId) fail('settings_enterprise_changed');
+      await checkRecipient(tx, scope.recipient);
+    } else await authorizeKnowledgeManager(tx, scope.enterpriseId, scope.adminId);
     return work(tx);
   });
 }
 function current(tx: PostgresTransaction, scope: Scope) {
   return one<ChannelRow>(tx, sql`select * from app.assistant_wechat_channels where enterprise_id=${scope.enterpriseId}
-    and stage_id=${scope.stage} order by created_at desc,id desc limit 1 for update`);
+    and stage_id=${scope.stage} and ${scope.recipient ? sql`mini_user_id=${miniUser(scope.recipient.actor)}` : sql`recipient_key is null`}
+    order by (status<>'closed') desc,created_at desc,id desc limit 1 for update`);
+}
+async function targetEnabled(tx: PostgresTransaction, scope: Scope) {
+  return scope.stage === 'main' ? (await mainRelease(tx, scope.enterpriseId))?.enabled :
+    (await readStageAgent(tx, scope.enterpriseId, scope.stage))?.enabled;
 }
 export async function closeChannel(tx: PostgresTransaction, row: ChannelRow, reason: string) {
   if (row.conversation_id && row.status === 'connected') {
@@ -55,7 +71,8 @@ export async function closeChannel(tx: PostgresTransaction, row: ChannelRow, rea
     and status in ('received','running','sending')`);
   return (await one<ChannelRow>(tx, sql`update app.assistant_wechat_channels set status='closed', login_state=${reason},
     qr_secret=null,expires_at=null,bot_id=null,peer_id=null,bot_secret=null,cursor_value='',lease_id=null,
-    last_error=null where id=${row.id} and enterprise_id=${row.enterprise_id} returning *`))!;
+    last_error=null,pair_secret=null,pair_digest=null,pair_until=null,latest_context=null,verified_at=null,daily_since=null,weekly_since=null,
+    recipient_version=recipient_version+1 where id=${row.id} and enterprise_id=${row.enterprise_id} returning *`))!;
 }
 
 export async function closeStageWechatChannel(tx: PostgresTransaction, enterpriseId: string, stage: StageId) {
@@ -71,15 +88,20 @@ export async function startChannel(scope: Scope, client = weixinClient) {
   // Only serialize QR creation for this enterprise/stage. QR status long-polling happens outside transactions.
   return managed(scope, async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'wechat:' + scope.enterpriseId + ':' + scope.stage},0))`);
-    const agent = await readStageAgent(tx, scope.enterpriseId, scope.stage);
-    if (!agent?.enabled) fail('wechat_stage_disabled');
+    if (!await targetEnabled(tx, scope)) fail('wechat_stage_disabled');
     const previous = await current(tx, scope);
     if (previous && view(previous)?.status !== 'closed') return view(previous);
     if (previous?.status === 'pending') await closeChannel(tx, previous, 'expired');
+    const recipient = scope.recipient;
+    const code = recipient ? randomBytes(8).toString('hex').toUpperCase() : null;
     const login = await client.login();
     return view(await one<ChannelRow>(tx, sql`insert into app.assistant_wechat_channels
-      (enterprise_id,stage_id,status,login_state,qr_secret,expires_at,api_origin)
-      values(${scope.enterpriseId},${scope.stage},'pending','wait',${encryptText(JSON.stringify(login))},now()+interval '5 minutes',${weixinOrigin}) returning *`));
+      (enterprise_id,stage_id,status,login_state,qr_secret,expires_at,api_origin,recipient_key,recipient_binding_id,project_id,mini_user_id,
+        identity_version,recipient_requires_service,pair_secret,pair_digest,pair_until)
+      values(${scope.enterpriseId},${scope.stage},'pending','wait',${encryptText(JSON.stringify(login))},now()+interval '5 minutes',${weixinOrigin},
+        ${recipient ? principalKey(recipient.actor) : null},${recipient?.bindingId ?? null},${recipient?.projectId ?? null},
+        ${recipient ? miniUser(recipient.actor) : null},${recipient?.actor.contextVersion ?? null},${!!recipient?.actor.customerServiceRequired},
+        ${code ? encryptText(code) : null},${code ? pairDigest(code) : null},now()+interval '15 minutes') returning *`));
   });
 }
 export async function pollChannel(scope: Scope, channelId: string, pin?: string, client = weixinClient) {
@@ -97,7 +119,7 @@ export async function pollChannel(scope: Scope, channelId: string, pin?: string,
     if (Date.parse(row.expires_at!) <= Date.now() || result.state === 'expired') return view(await closeChannel(tx, row, 'expired'));
     if (result.state === 'already_bound') return view(await closeChannel(tx, row, 'already_bound'));
     if (result.state === 'confirmed') {
-      if (!(await readStageAgent(tx, scope.enterpriseId, scope.stage))?.enabled) return view(await closeChannel(tx, row, 'disabled'));
+      if (!await targetEnabled(tx, scope)) return view(await closeChannel(tx, row, 'disabled'));
       // This channel subject has no Mini Program OpenID, credentials, administrator role or project membership.
       const subject = await new UserRepository(tx).create({ enterpriseId: BigInt(scope.enterpriseId), nickname: '微信 ClawBot 咨询' });
       return view(await one<ChannelRow>(tx, sql`update app.assistant_wechat_channels set status='connected', login_state=null,
@@ -114,5 +136,38 @@ export function disconnectChannel(scope: Scope, channelId: string) {
     const row = await current(tx, scope);
     if (!row || row.id !== channelId) fail('version_conflict');
     return view(row.status === 'closed' ? row : await closeChannel(tx, row, 'disconnected'));
+  });
+}
+
+type RecipientAction = {kind:'state'} | {kind:'renew'} | {kind:'preferences'; daily:boolean; weekly:boolean};
+export function recipientState(recipient: Recipient, action: RecipientAction = {kind:'state'}, expected?: {id:string;version:number}) {
+  const scope = {enterpriseId:recipient.actor.enterpriseId,stage:'main' as const,recipient};
+  return managed(scope,async tx => {
+    const app = await mainRelease(tx,scope.enterpriseId);
+    let row = await current(tx,scope);
+    const base = { published:!!app?.enabled, reports:!!app?.enabled && app.reports };
+    if (!row || row.status === 'closed') return {...base,channel:null};
+    const same = () => row!.recipient_key === principalKey(recipient.actor) && row!.identity_version === recipient.actor.contextVersion
+      && row!.recipient_binding_id === recipient.bindingId && row!.project_id === recipient.projectId;
+    if (action.kind !== 'state') {
+      if (!expected || expected.id !== row.id || expected.version !== row.recipient_version) fail('version_conflict');
+      if (!same() || !base.published) fail('context_changed');
+      if (action.kind === 'renew') {
+        if (row.verified_at) fail('context_changed');
+        const code=randomBytes(8).toString('hex').toUpperCase();
+        row = (await one<ChannelRow>(tx,sql`update app.assistant_wechat_channels set pair_secret=${encryptText(code)},pair_digest=${pairDigest(code)},
+          pair_until=now()+interval '15 minutes',recipient_version=recipient_version+1 where id=${row.id} returning *`))!;
+      } else {
+        if (!row.verified_at || !base.reports || row.status !== 'connected') fail('context_changed');
+        row = (await one<ChannelRow>(tx,sql`update app.assistant_wechat_channels set
+          daily_since=case when ${action.daily} then coalesce(daily_since,now()) end,
+          weekly_since=case when ${action.weekly} then coalesce(weekly_since,now()) end,recipient_version=recipient_version+1 where id=${row.id} returning *`))!;
+      }
+    }
+    const match = same();
+    const publicState = view(row)!;
+    return {...base,channel:{...publicState,qr:match ? publicState.qr : null,id:row.id,version:row.recipient_version,match,
+      verified:match && !!row.verified_at,daily:match && !!row.daily_since,weekly:match && !!row.weekly_since,
+      command:match && row.pair_secret && row.pair_until && new Date(row.pair_until).getTime()>Date.now() ? '绑定 '+decryptText(row.pair_secret) : null}};
   });
 }

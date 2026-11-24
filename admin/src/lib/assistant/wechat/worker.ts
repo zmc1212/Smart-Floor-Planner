@@ -3,14 +3,17 @@ import { AssistantRepository, one } from '@/db/repositories/assistant-repository
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { decryptText, encryptText } from '@/lib/crypto';
 import { resolveWorkerDeployment } from '@/lib/xiaok-v1/worker-runtime-config';
-import { AssistantError, safeText, type MessageContent } from '../contracts';
+import { AssistantError, fail, safeText, type MessageContent } from '../contracts';
 import { ConversationService } from '../core/conversation';
 import { projectMessage } from '../knowledge/sources';
-import { closeChannel, type ChannelRow } from './channels';
+import { closeChannel, pairDigest, type ChannelRow } from './channels';
+import { checkRecipient, savedRecipient } from './recipient';
 import { weixinClient } from './ilink';
 import { wechatSubject } from './subject';
+import { queueWechatReports, reportText, type ReportEvent } from './reports';
+import { mainRelease } from '@/lib/xiaok-v1/main-publication';
 
-type Event = { id: string; event_key: string; context_secret: string; text_value: string | null;
+type Event = ReportEvent & { id: string; event_key: string; context_secret: string; text_value: string | null;
   status: 'received' | 'running' | 'sending'; run_id: string | null };
 type Reply = { event: Event; notice?: string; output?: { id: string; seq: string; conversation: string } };
 const unavailable = '小K暂时无法回答这个问题，请稍后再试。';
@@ -42,6 +45,7 @@ async function prepare(tx: PostgresTransaction, c: ChannelRow, event: Event): Pr
   const actor = wechatSubject(c);
   const repo = new AssistantRepository(tx, actor);
   await repo.settings(true);
+  if (event.proactive) return {event};
   if (event.status === 'running') {
     const run = await one(tx, sql`select r.status,r.output_message_id,m.seq from app.assistant_runs r
       left join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.conversation_id=r.conversation_id and m.id=r.output_message_id
@@ -52,6 +56,25 @@ async function prepare(tx: PostgresTransaction, c: ChannelRow, event: Event): Pr
     return { event, notice: unavailable };
   }
   if (event.text_value === null) return { event, notice: '这个微信入口支持文字提问，请把问题写成文字发给小K。' };
+  if (/^绑定\s+[a-f0-9]{16}$/iu.test(event.text_value.trim())) {
+    if (c.stage_id !== 'main') return {event,notice:'请把绑定口令发到主小K的微信会话。当前会话是阶段专属入口。'};
+    const provided = event.text_value.trim().split(/\s+/u)[1].toUpperCase();
+    const candidate = await one<ChannelRow>(tx,sql`select * from app.assistant_wechat_channels where enterprise_id=${c.enterprise_id}
+      and stage_id='main' and pair_digest=${pairDigest(provided)} and pair_until>now() and status<>'closed' and verified_at is null
+      and (id=${c.id} or (${c.recipient_key === null} and status='pending')) for update`);
+    if (candidate) {
+      const recipient = savedRecipient({...candidate,verified_at:new Date().toISOString()});
+      if (!recipient) fail('context_changed');
+      await checkRecipient(tx,recipient);
+      if (candidate.id !== c.id) await closeChannel(tx,candidate,'linked_existing');
+      await tx.execute(sql`update app.assistant_wechat_channels set verified_at=now(),pair_secret=null,pair_digest=null,pair_until=null,
+        recipient_key=${candidate.recipient_key},recipient_binding_id=${candidate.recipient_binding_id},project_id=${candidate.project_id},
+        mini_user_id=${candidate.mini_user_id},identity_version=${candidate.identity_version},recipient_requires_service=${candidate.recipient_requires_service},
+        latest_context=${event.context_secret},recipient_version=recipient_version+1 where id=${c.id}`);
+      return {event,notice:'本人微信已关联。可以直接问小K工地的日报或周报，也可以在小程序报告页订阅日报、周报。'};
+    }
+    return {event,notice:'绑定口令无效或已到期，请到小程序的工地日报与周报页重新获取。'};
+  }
   if (['Reset','/reset'].includes(event.text_value)) {
     await tx.execute(sql`update app.assistant_wechat_channels set conversation_id=null where id=${c.id}`);
     return { event, notice: '已开启新对话。' };
@@ -86,6 +109,16 @@ async function send(lease: ChannelRow, reply: Reply, client: typeof weixinClient
     const repo = new AssistantRepository(tx, wechatSubject(c));
     await repo.settings(true, 'share');
     let text = reply.notice ?? withdrawn;
+    if (c.stage_id === 'main') {
+      const publication = await mainRelease(tx,c.enterprise_id);
+      if (!publication?.enabled || output && await one(tx,sql`select 1 from app.assistant_run_steps s
+        left join app.assistant_stage_agents a on a.enterprise_id=s.enterprise_id and a.stage_id=s.input_summary->>'stage'
+        where s.enterprise_id=${c.enterprise_id} and s.run_id=${event.run_id} and
+        (s.kind='main_publication' and (s.private_checkpoint->>'v')::int<>${publication.version}
+        or s.capability_name='consult_renovation_stage' and not a.enabled)`)) {
+        await finish(tx,c,event.id,'failed','context_changed'); return;
+      }
+    }
     if (output && checked) {
       const conversation = await repo.conversation(output.conversation, 'share');
       const raw = await one(tx, sql`select * from app.assistant_messages where enterprise_id=${c.enterprise_id}
@@ -93,8 +126,15 @@ async function send(lease: ChannelRow, reply: Reply, client: typeof weixinClient
       const current = raw && await projectMessage(tx, repo.actor, conversation, raw);
       if (current?.available && safeText(current.content as MessageContent) === checked) text = checked;
     }
+    if (event.report_id && (event.proactive || output && checked && text === checked)) {
+      const report = await reportText(tx,c,event);
+      if (!report && event.proactive) { await finish(tx,c,event.id,'failed','wechat_report_unavailable'); return; }
+      text = report || '这份工地报告当前已不可查看，请从小程序核对工地和权限。';
+    }
+    const context = event.proactive ? c.latest_context : event.context_secret;
+    if (!context) { await finish(tx,c,event.id,'failed','wechat_report_unavailable'); return; }
     try {
-      await client.reply(account(c), decryptText(event.context_secret), 'xiaok-' + c.id + '-' + event.id, text);
+      await client.reply(account(c), decryptText(context), 'xiaok-' + c.id + '-' + event.id, text);
     } catch (error) {
       const code = error instanceof AssistantError ? error.code : 'wechat_delivery_unknown';
       const rejected = code === 'wechat_provider_rejected' || code === 'wechat_login_invalid';
@@ -107,15 +147,19 @@ async function send(lease: ChannelRow, reply: Reply, client: typeof weixinClient
 }
 
 async function take(enterpriseId: string) {
-  return withTenantTransaction(enterpriseId, tx => one<ChannelRow>(tx, sql`update app.assistant_wechat_channels c
+  return withTenantTransaction(enterpriseId, async tx => {
+    await queueWechatReports(tx,enterpriseId);
+    return one<ChannelRow>(tx, sql`update app.assistant_wechat_channels c
     set lease_id=gen_random_uuid(),poll_after=now()+interval '120 seconds' from (
       select ch.id from app.assistant_wechat_channels ch
       join app.enterprises e on e.id=ch.enterprise_id and e.status='active'
       join app.assistant_enterprise_settings s on s.enterprise_id=ch.enterprise_id and s.enabled
       left join app.assistant_stage_agents a on a.enterprise_id=ch.enterprise_id and a.stage_id=ch.stage_id
       where ch.enterprise_id=${enterpriseId} and ch.status='connected' and coalesce(a.enabled,true)
+      and (ch.stage_id<>'main' or exists(select 1 from app.assistant_main_publications p where p.enterprise_id=ch.enterprise_id and p.enabled))
       and ch.poll_after<=now() order by ch.poll_after limit 1 for update of ch skip locked
-    ) available where c.id=available.id returning c.*`));
+    ) available where c.id=available.id returning c.*`);
+  });
 }
 function firstPending(tx: PostgresTransaction, c: ChannelRow) {
   return one<Event>(tx, sql`select * from app.assistant_wechat_events
@@ -136,7 +180,9 @@ export async function tickWechatChannel(enterpriseId: string, client = weixinCli
             on conflict (channel_id,event_key) do nothing`);
         }
         // Commit the cursor and inbox together before admitting the first event.
+        const latest = updates.messages.at(-1);
         await tx.execute(sql`update app.assistant_wechat_channels set cursor_value=${updates.cursor},last_poll_at=now(),
+          latest_context=coalesce(${latest && c.recipient_key ? encryptText(latest.context) : null},latest_context),
           last_error=case when last_error='wechat_service_unavailable' then null else last_error end where id=${c.id}`);
         if (updates.messages.length) return firstPending(tx, c);
       });

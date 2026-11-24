@@ -13,6 +13,7 @@ import { stageIdForConstructionKey, stageDefinition } from './stages';
 import { readStageAgent } from './stage-workflow-settings';
 import { invokeBoundStageWorkflow } from './stage-workflow-invocation';
 import { authorizedWechatStage, isWechatConsultation } from '@/lib/assistant/wechat/subject';
+import { mainRelease } from './main-publication';
 
 type Context = { conversationId: string; leadId?: string | null; question: string; eligible: boolean; preview?: EnterpriseStageAgent };
 type Scope = { projectId: string; stageKey: string; agentVersion: number };
@@ -20,6 +21,7 @@ type Scope = { projectId: string; stageKey: string; agentVersion: number };
 async function activeScope(tx: PostgresTransaction, actor: ActorContext, context: Context) {
   if (isWechatConsultation(actor)) {
     const stage = await authorizedWechatStage(tx, actor);
+    if (stage === 'main') return null;
     const agent = await readStageAgent(tx, actor.enterpriseId, stage);
     if (!agent?.enabled) fail('context_changed');
     return { agent, stageKey: stageDefinition(stage)!.constructionKeys[0],
@@ -42,7 +44,9 @@ async function activeScope(tx: PostgresTransaction, actor: ActorContext, context
     and p.id=${projectId} and p.customer_access and p.status<>'archived' and l.archived_at is null and l.customer_user_id=${user}
     for share of p,l`);
   const stageId = stageIdForConstructionKey(linked?.stage);
-  const agent = stageId && await readStageAgent(tx, enterprise, stageId);
+  const live = stageId && await readStageAgent(tx, enterprise, stageId);
+  const publication = live?.enabled && await mainRelease(tx,enterprise);
+  const agent = publication && publication.enabled ? publication.stages.find(s => s.stageId === stageId) : live;
   return linked && agent?.enabled && (agent.workflows.length || agent.experience) ? { agent, projectId, stageKey: linked.stage, agentVersion: agent.version } : null;
 }
 

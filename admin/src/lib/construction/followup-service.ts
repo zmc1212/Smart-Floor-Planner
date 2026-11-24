@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { withTenantTransaction } from '@/db/transaction';
+import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, key, principalKey, requireCapability, type ActorContext } from '@/lib/assistant/contracts';
 import { idempotent } from '@/lib/assistant/core/conversation';
@@ -18,13 +18,14 @@ type ReminderPreferences = { stage: boolean; daily: boolean; weekly: boolean };
 const preferences = (b: Row): ReminderPreferences => ({ stage: b.remind_stage !== false, daily: b.remind_daily !== false, weekly: b.remind_weekly !== false });
 
 export class FollowupService {
-  constructor(readonly actor: ActorContext) { requireCapability(actor, 'assistant.followup.self'); }
+  constructor(readonly actor: ActorContext, private readonly transaction?: PostgresTransaction) { requireCapability(actor, 'assistant.followup.self'); }
   private scoped<T>(work: (repo: AssistantRepository) => Promise<T>, write = false) {
-    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+    const run = async (tx: PostgresTransaction) => {
       const repo = new AssistantRepository(tx, this.actor);
       await repo.settings(write);
       return work(repo);
-    });
+    };
+    return this.transaction ? run(this.transaction) : withTenantTransaction(this.actor.enterpriseId, run);
   }
   private async destination(repo: AssistantRepository, b: Row, afterProjectId?: string, projectId?: string) {
     const c = await repo.conversation(String(b.conversation_id)), eid = this.actor.enterpriseId;

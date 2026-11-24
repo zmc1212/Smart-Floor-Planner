@@ -19,7 +19,7 @@ const deliveryErrors: Record<string,string> = {
   wechat_service_unavailable: '收发服务暂不可用，后台将自动重试。',
 };
 
-export function StageWechatChannel({ enterprise, stage, enabled }: { enterprise: string; stage: StageId; enabled: boolean }) {
+export function StageWechatChannel({ enterprise, stage, enabled }: { enterprise: string; stage: StageId | 'main'; enabled: boolean }) {
   const [channel, setChannel] = useState<ChannelView | null>();
   const [open, setOpen] = useState(false), [pin, setPin] = useState(''), [busy, setBusy] = useState(false);
   const [pinRejected, setPinRejected] = useState(false);
@@ -91,7 +91,7 @@ export function StageWechatChannel({ enterprise, stage, enabled }: { enterprise:
       {(connected || pending) && <Popconfirm title={pending ? '取消本次扫码？' : '断开后将停止收发微信消息，确认断开？'}
         onConfirm={() => mutate('disconnect')}><Button loading={busy}>{pending ? '取消连接' : '断开连接'}</Button></Popconfirm>}
     </Space>
-    <p>用自己的微信扫码后，在「微信 ClawBot」里与当前阶段的小K文字私聊。发送 /reset 可开启新对话。</p>
+    <p>{stage === 'main' ? '此码用于体验主小K。收取本人报告，请从小程序的工地日报与周报页关联微信。' : '用自己的微信扫码后，在「微信 ClawBot」里与当前阶段的小K文字私聊。发送 /reset 可开启新对话。'}</p>
     {connected && <p>{channel?.lastPollAt ? '上次收信检查 ' + formatTime(channel.lastPollAt) : '等待本企业的小K Worker 接收消息'}
       {channel?.lastReplyAt ? ' · 上次微信接收回复 ' + formatTime(channel.lastReplyAt) : ''}</p>}
     {issue && !open && <Alert type="warning" showIcon message={issue} action={<Button onClick={() => refresh(n => n + 1)}>刷新</Button>} />}

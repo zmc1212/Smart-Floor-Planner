@@ -38,6 +38,10 @@ export async function followupHttp(request: Request, path: string[]) {
   }
 }
 export async function handleFollowup(request: Request, path: string[], actor: ActorContext) {
+  if (path.length === 2 && path[1] === 'wechat') {
+    const { recipientHttp } = await import('@/lib/assistant/wechat/recipient-http');
+    return recipientHttp(request,actor,path[0]);
+  }
   if (path[1] === 'conversation') return followupConversationHttp(request, path, actor);
   if (path[0] === 'plan') {
     if (actor.principal.kind !== 'admin') fail('construction_forbidden', 403);

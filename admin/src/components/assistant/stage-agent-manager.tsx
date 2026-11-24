@@ -11,9 +11,11 @@ import { assistantError, assistantRequest, formatTime } from './client';
 import { draftIssue, makeDraft, stagePayload, StageStudioFields, type StudioDraft } from './stage-studio-fields';
 import { StageStudioChat } from './stage-studio-chat';
 import { StageWechatChannel } from './stage-wechat-channel';
+import { MainPublication } from './main-publication';
 import './stage-studio.css';
 
 export function StageAgentManager({ canPublish }: { canPublish: boolean }) {
+  const [main,setMain] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('stage')==='main');
   const [settings, setSettings] = useState<StageAgentSettings>(),
     [drafts, setDrafts] = useState<Partial<Record<StageId, StudioDraft>>>({});
   const [stage, setStage] = useState<StageId>(() => {
@@ -130,26 +132,31 @@ export function StageAgentManager({ canPublish }: { canPublish: boolean }) {
           <Bot size={18} />
           <Select
             aria-label="装修阶段"
-            value={stage}
+            value={main ? 'main' : stage}
             disabled={saving}
             popupMatchSelectWidth={205}
-            options={stageDefinitions.map((s) => {
+            options={[{value:'main',label:'主小K'},...stageDefinitions.map((s) => {
               const a = settings.agents.find((v) => v.stageId === s.stageId);
               return {
                 value: s.stageId,
                 label: s.name + '阶段 · ' + (a?.version ? (a.enabled ? '已启用' : '已停用') : '系统默认'),
               };
-            })}
-            onChange={choose}
+            })]}
+            onChange={(value:StageId|'main')=>{
+              setMain(value==='main');
+              if(value!=='main') {choose(value);return;}
+              setTab('应用配置');
+              const url=new URL(window.location.href);url.searchParams.set('stage','main');window.history.replaceState(null,'',url);
+            }}
           />
         </div>
         <Segmented
           aria-label="阶段应用"
-          options={['应用配置', '发布渠道', '对话日志']}
+          options={main?['应用配置','报告计划','发布渠道']:['应用配置', '发布渠道', '对话日志']}
           value={tab}
           onChange={(v) => setTab(String(v))}
         />
-        <Space size={7}>
+        {!main && <Space size={7}>
           {canPublish && (
             <Button
               type="text"
@@ -187,8 +194,10 @@ export function StageAgentManager({ canPublish }: { canPublish: boolean }) {
               <Button type="primary" aria-label="更多保存选项" icon={<ChevronDown size={13} />} />
             </Dropdown>
           </Space.Compact>
-        </Space>
+        </Space>}
       </header>
+      {main && <MainPublication key={settings.enterpriseId} enterprise={settings.enterpriseId} tab={tab}/>}
+      {!main && <>
       {error && (
         <Alert type="error" showIcon message={error} action={<Button onClick={fresh}>读取最新配置</Button>} />
       )}
@@ -242,6 +251,7 @@ export function StageAgentManager({ canPublish }: { canPublish: boolean }) {
           );
         })}
       </div>
+      </>}
       <Modal title="编辑历史" open={history} footer={null} onCancel={() => setHistory(false)}>
         {saved.history?.length ? (
           saved.history.map((h) => (

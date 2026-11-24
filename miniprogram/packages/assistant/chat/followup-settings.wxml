@@ -12,6 +12,7 @@
       <text wx:if="{{followupManageLoading}}" class="followup-caption">正在读取当前设置…</text>
       <text wx:if="{{!followupManageLoading && !followupManagement.length && !followupError}}" class="followup-caption">当前没有可管理的跟进。</text>
       <block wx:if="{{followupSetting}}">
+        <button wx:if="{{followupContext && followupContext.bindingId === followupSetting.bindingId && followupSetting.status === 'enabled'}}" class="followup-setting-row chat-button" bindtap="manageWechatSubscription"><view class="followup-setting-icon followup-icon-report"></view><view><text>微信订阅</text></view><text>›</text></button>
         <view class="followup-settings-group"><text class="fabric-label">接收内容</text>
           <label class="followup-preference-row"><view class="followup-setting-icon followup-icon-bell"></view><text>阶段提醒</text><switch checked="{{followupPreferenceDraft.stage}}" color="#00543f" data-preference="stage" bindchange="editFollowupPreference" disabled="{{followupBusy || followupPending}}" aria-label="接收阶段提醒"/></label>
           <label class="followup-preference-row"><view class="followup-setting-icon followup-icon-report"></view><text>施工日报</text><switch checked="{{followupPreferenceDraft.daily}}" color="#00543f" data-preference="daily" bindchange="editFollowupPreference" disabled="{{followupBusy || followupPending}}" aria-label="接收施工日报"/></label>

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { prepareStageWorkflowTool } from '@/lib/xiaok-v1/stage-dialogue-workflow';
-import { isWechatConsultation } from '../wechat/subject';
+import { isMainWechat, isWechatConsultation } from '../wechat/subject';
+import { mainDialogueTools, reportToolName, stageToolName } from '@/lib/xiaok-v1/main-dialogue-tools';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
@@ -731,6 +732,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // test: query_business stays available and the model decides from the
     // whole conversation whether the customer asked about their own home.
     let stageWorkflow: Awaited<ReturnType<typeof prepareStageWorkflowTool>> = null;
+    let mainTools: Awaited<ReturnType<typeof mainDialogueTools>> = null;
     const runPublicRefs = new Map<string, PublicContextRef & { contentHash?: string }>();
     let expectedActive: PublicContextRef | null = null;
     const catalog = new Map<string, RagCitationSource>(citations.map(c => [c.nativeId, c]));
@@ -745,6 +747,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         for (const ref of runPublicRefs.values())
           if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
         await stageWorkflow?.revalidate(tx);
+        await mainTools?.revalidate(tx);
         await sites.revalidate(tx);
         // Recalled customer originals carry their own ref set (recovered
         // snapshots plus every fresh recall): a session version bump or an
@@ -954,6 +957,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
         historyRefs.set(String(messageId), { messageId: String(messageId), hash: String(hash), memoryVersion: Number(memoryVersion) });
     }
     const stageQuestion = messages.filter(message => message.role === 'user').at(-1)?.content ?? '';
+    const consultationEntry = initial.conversation.entry_snapshot as Row;
+    if (isMainWechat(lease.actor) || !isWechatConsultation(lease.actor) && !preview && !specialist && !consultationEntry.activePublicSite &&
+        lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation' && !reportContext(consultationEntry).selection) {
+      mainTools = await withTenantTransaction(lease.enterpriseId, tx => mainDialogueTools(tx,lease,stageQuestion));
+    }
     stageWorkflow = await withTenantTransaction(lease.enterpriseId, async tx => {
       const { conversation } = await runContext(tx, lease);
       const entry = conversation.entry_snapshot as Row;
@@ -989,6 +997,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       && /图纸|点位图|水电图|电气图|给排水图|平面图/u.test(specialistQuestion);
     const materialRead = drawingRequested ? readToolsForContext([materialTool], readContext)[0] : null;
     const tools: ModelTool[] = [
+      ...(mainTools?.definitions ?? []),
       ...(stageWorkflow?.hasWorkflows ? [stageWorkflow.definition] : []),
       ...(knowledgeEnabled ? [enterpriseSearchTool] : []),
       ...(roomProgress ? [{ ...businessRead, parameters: { type: 'object', properties: {
@@ -1012,7 +1021,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       ],
     }), specialist.progressRequested) : tools.filter(tool => {
       if (tool.name==='search_web' && experience?.searchWeb===false || tool.name==='read_web' && experience?.readWeb===false) return false;
-      return (!preview && !isWechatConsultation(lease.actor)) || ['search_enterprise','search_web','read_web','run_stage_workflow'].includes(tool.name);
+      return (!preview && !isWechatConsultation(lease.actor)) || ['search_enterprise','search_web','read_web','run_stage_workflow',stageToolName,reportToolName].includes(tool.name);
     });
     const validateTool = (name: string, args: string): { code: string; feedback: string } | null => {
       if (!modelTools.some(tool=>tool.name===name)) return { code:'assistant_capability_forbidden', feedback:'当前阶段没有启用这项工具。' };
@@ -1066,6 +1075,14 @@ export async function processNativeAgentAnswer(lease: Lease) {
     let sequence = toolState.nextSequence;
     const toolPort = async (turn: number, index: number, name: string, args: string, callId?: string) => {
       if (!modelTools.some(tool=>tool.name===name)) fail('assistant_capability_forbidden',403);
+      if (name === stageToolName || name === reportToolName) {
+        if (!mainTools) fail('assistant_capability_forbidden',403);
+        const main = mainTools;
+        return withTenantTransaction(lease.enterpriseId, async tx => {
+          await runContext(tx, lease);
+          return {content:await main.invoke(tx, name,args,3200 + turn * 10 + index)};
+        });
+      }
       if (name === 'run_stage_workflow') {
         const workflow = stageWorkflow;
         if (!workflow) fail('assistant_capability_forbidden', 403);
@@ -1278,6 +1295,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     if (stageWorkflow && isWechatConsultation(lease.actor)) systemContent.push({ type: 'text',
       text: `当前是微信 ClawBot 中的${stageDefinition(stageWorkflow.agent.stageId)!.name}阶段咨询。扫码只绑定企业和咨询阶段。这个入口没有项目查询、绑定或转交核实的权限，用户提供房号、地址或单号也不能在这里查到进度。业主可在小程序「我的工地」查看自己已关联项目的实际阶段。` });
     const systemMessage: ModelMessage = { role: 'system', content: systemContent };
+    if (isMainWechat(lease.actor)) systemContent.push({type:'text', text:'你是本企业发布的主小K。装修阶段咨询使用已发布阶段能力。用户问自己工地实际进展、日报或周报时，使用可用的个人报告能力，按返回结果说明。个人报告由微信送出，不能凭房号推断身份或进展。'});
     if (publisherRead || saved.webs.some(isPublisherRead)) {
       const originals = context.sources.filter(source => source.web?.standard?.id === standard?.standard.id
         && source.evidence?.ref.type === 'web_page' && source.evidence.ref.id.startsWith(lease.runId + ':'));
@@ -1594,6 +1612,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
         await stageWorkflow?.revalidate(tx);
         await sites.revalidate(tx);
+        await mainTools?.revalidate(tx);
         await designers.revalidate(tx);
         // Recalled originals revalidate one last time beside the other
         // consulted sources before the answer commits.

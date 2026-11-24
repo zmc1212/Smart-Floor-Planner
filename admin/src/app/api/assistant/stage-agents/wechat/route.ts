@@ -7,7 +7,7 @@ import { stageIdSchema } from '@/lib/xiaok-v1/stages';
 
 export const runtime = 'nodejs';
 const options = { headers: { 'Cache-Control': 'private, no-store' } };
-const scopeFields = { stage: stageIdSchema, enterprise: z.string().regex(/^[1-9]\d*$/) };
+const scopeFields = { stage: z.union([stageIdSchema,z.literal('main')]), enterprise: z.string().regex(/^[1-9]\d*$/) };
 const query = z.strictObject(scopeFields);
 const mutation = z.discriminatedUnion('action', [
   z.strictObject({ ...scopeFields, action: z.literal('start') }),
