@@ -850,8 +850,19 @@ class ChatController {
         : group ? { ...excerpts[0], quote: excerpts.map(excerpt => excerpt.quote).join('\n\n') } : excerpts[0];
       const citation = await this.referenceImage(data);
       if (!this.valid(epoch) || request !== this.citationRequest) return;
-      this.set({ citation });
-      if (!citation.available) {
+      if (citation.available) {
+        const page = citation.page ? `第 ${citation.page} 页` : '';
+        const location = citation.sourceLocation || '';
+        const pageSuffix = ` · ${page}`;
+        const source = page && location.endsWith(pageSuffix) ? location.slice(0, -pageSuffix.length) : location;
+        const version = citation.versionLabel || (citation.versionNumber == null ? ''
+          : `版本 ${citation.versionNumber}${citation.historical ? ' · 回答时引用的历史版本' : ''}`);
+        const paragraphs = (citation.quote || '').split(/\r?\n\r?\n/).filter(Boolean)
+          .map((text, index) => ({ text, index }));
+        const meta = [source, version].filter(Boolean).join(citation.sourceUrl ? '\n' : ' · ');
+        this.set({ citation: { ...citation, paper: { page, meta, paragraphs } } });
+      } else {
+        this.set({ citation });
         this.lastFullSyncAt = 0;
         await this.snapshot(this.conversationId, epoch);
       }

@@ -855,9 +855,18 @@ test('chat and answer process use one entry per cited page and open all of its s
     assert.equal(reply.answerProcess.sources[0].detail, '企业工艺 · 第 29 页 · 2 段');
     assert.deepEqual(reply.blocks.map(block => block.text), ['贴砖之前先确认排版。']);
   };
+  citations[0].page = 29;
+  citations[0].sourceLocation = '工艺资料 · 第 29 页';
+  citations[0].versionNumber = 1;
+  citations[0].historical = true;
   await show();
   await f.controller.openCitation('31');
   assert.equal(f.controller.state.citation.quote, quotes.slice(0, 2).join('\n\n'));
+  assert.deepEqual(f.controller.state.citation.paper, {
+    page: '第 29 页',
+    meta: '工艺资料 · 版本 1 · 回答时引用的历史版本',
+    paragraphs: quotes.slice(0, 2).map((text, index) => ({ text, index })),
+  });
   await f.controller.openCitation('33');
   assert.equal(f.controller.state.citation.quote, quotes[2]);
   f.controller.hide();

@@ -23,9 +23,12 @@ test('closing sheet or changing identity during image writing prevents late priv
   }finally{global.wx=previous;}
 });
 test('chat reference source uses the existing citation state, without selection writes, and fences stale results', async () => {
-  const calls=[];let identity='customer-a',resolveImage;
-  const controller=new ChatController({emit:()=>{},identity:()=>identity,client:{read:async path=>{calls.push(path);return {id:'7',available:true,reference:{imageBase64:'test'}};}},referenceImage:()=>new Promise(resolve=>{resolveImage=resolve;})});
-  controller.session=identity;const pending=controller.openCitation('7');await Promise.resolve();
+  const calls=[];let identity='customer-a',resolveImage, imageStarted;
+  const started = new Promise(resolve => { imageStarted = resolve; });
+  const controller=new ChatController({emit:()=>{},identity:()=>identity,client:{read:async path=>{calls.push(path);return {id:'7',available:true,reference:{imageBase64:'test'}};}},referenceImage:()=>new Promise(resolve=>{
+    resolveImage = resolve; imageStarted();
+  })});
+  controller.session=identity;const pending=controller.openCitation('7');await started;
   identity='customer-b';resolveImage({id:'7',available:true,imagePath:'/private/stale.jpg'});await pending;
   assert.equal(controller.state.citation,null);assert.deepEqual(calls,['/citations/7']);
 });
