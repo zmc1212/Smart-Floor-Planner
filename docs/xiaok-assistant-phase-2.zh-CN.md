@@ -3250,6 +3250,8 @@ P2M.0–P2M.3保持 **Limited**：开发企业1454已从现有小程序入口启
 
 微信只读取常规日周报服务已完成站内投递的原报告，发送前复核订阅、成员、角色、来源及报告版本。每位员工每期一条，业主按工地区分。自动投递与主动查询独立，模型历史仅保留报告定位。微信保存独立回执，拒收或结果不明时仍可在小程序查阅原报告，结果不明不重发。腾讯渠道使用最近入站消息的会话凭据，长期静默已有拒收反馈。[腾讯渠道实现](https://github.com/Tencent/openclaw-weixin) · [会话凭据失效反馈](https://github.com/Tencent/openclaw-weixin/issues/309)
 
+老板主动周报按获权事实快照渲染固定手账模板，逻辑宽度 390 px，输出 780 px 宽的 PNG，高度随工地条目增长。沿用已批准稿的墨绿书脊、纸纹、宋体和布签。每个工地显示当前阶段、最近的现场进展，以及已有的跟进事项或下周计划。排期待核实与有依据的落后分开呈现。图片加密上传后，发前重新校验权限、报告版本和投影内容。投影变化且报告仍可读时发送当前短摘要。绘制或上传失败、微信明确拒绝图片时也可发短摘要。最终送达不明时保留 `unknown`。渲染模型调用为零。图片真机送达和显示待验。[已批准长图](../design-references/xiaok-report-workflow-v1-20261120/05-boss-wechat-weekly-notebook-v003.png) · [腾讯媒体协议](https://github.com/Tencent/openclaw-weixin/blob/main/docs/protocol_zh_CN.md#cdn-媒体流程) · [隔离投递](../tmp/xiaok-wechat-weekly-notebook-20261124/isolated-final/service-binding.json) · [Alpine 出图](../tmp/xiaok-wechat-weekly-notebook-20261124/alpine/boss-weekly-template-preview.png)
+
 角色扩展在微云隔离库以五处本企业工地和一处外企业工地验证四端日周报、升级、去重、超限、下一期新增工地、发前撤权及微信退订后站内续收。Stable 390×844 验证已登录四端的订阅写入、重进和退订，模拟器 PNG 为 363×785。角色摘要使用原报告，新增模型调用为零。扩展尚待正式发布。[隔离服务验证](../tmp/xiaok-wechat-roles-20261124/service-roles-20261124-225810.json) · [原生验证](../tmp/xiaok-wechat-roles-20261124/native-1795531826128.json)
 
 老板真机回归通过。用户扫码连接主小K并发送完整口令后，两条主动队列记录均获微信受理，用户确认手机收到日报34和周报35。两份原报告覆盖6个合成工地且均已站内投递。首条缺少「绑定」前缀的口令进入普通咨询队列，测试取消了未派发请求，再用完整口令关联。后台和小程序的51项定向检查通过，测试连接已关闭。长期静默后送达尚待验证。[真机回执](../tmp/xiaok-wechat-roles-20261124/live-delivery/phone-evidence.json)

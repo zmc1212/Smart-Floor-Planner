@@ -1,10 +1,11 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { fail } from '../contracts';
 
 // The wire version follows Tencent/openclaw-weixin's v3 protocol.
 export const weixinOrigin = 'https://ilinkai.weixin.qq.com';
 const appHeaders = { 'iLink-App-Id': 'bot', 'iLink-App-ClientVersion': String(3 << 16) };
 const baseInfo = { channel_version: '3.0.0/xiaok-1', bot_agent: 'XiaoK/1.0' };
+const weixinCdn = 'https://novac2c.cdn.weixin.qq.com/c2c';
 
 export function weixinApiOrigin(value: string) {
   let url: URL;
@@ -44,6 +45,30 @@ export type LoginResult =
   | { state: 'confirmed'; origin: string; token: string; bot: string; peer: string };
 export type WeixinInbound = { key: string; context: string; text: string | null };
 export type WeixinAccount = { origin: string; token: string; bot: string; peer: string };
+export type WeixinImageItem = { type: 2; image_item: { media: {
+  encrypt_query_param: string; aes_key: string; encrypt_type: 1;
+}; mid_size: number } };
+
+async function sendItem(account: WeixinAccount, context: string, clientId: string, item: WeixinImageItem | { type: 1; text_item: { text: string } }) {
+  const result = await request(account.origin, 'sendmessage', { base_info: baseInfo, msg: {
+    from_user_id: '', to_user_id: account.peer, client_id: clientId, message_type: 2, message_state: 2,
+    context_token: context, item_list: [item],
+  } }, account.token, 8500);
+  // iLink may omit a zero ret in its JSON acknowledgement.
+  if (result.ret !== undefined && result.ret !== 0) fail('wechat_delivery_unknown', 502);
+}
+
+function uploadUrl(full: unknown, param: unknown, filekey: string) {
+  if (!nonempty(full)) {
+    if (!nonempty(param)) return fail('wechat_protocol_error', 502);
+    return `${weixinCdn}/upload?encrypted_query_param=${encodeURIComponent(param)}&filekey=${filekey}`;
+  }
+  let url: URL;
+  try { url = new URL(full); } catch { return fail('wechat_protocol_error', 502); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash ||
+      !url.hostname.endsWith('.cdn.weixin.qq.com')) return fail('wechat_protocol_error', 502);
+  return url.href;
+}
 
 function nonempty(v: unknown): v is string { return typeof v === 'string' && v.length > 0; }
 function inbound(raw: unknown, account: WeixinAccount): WeixinInbound | null {
@@ -95,11 +120,34 @@ export const weixinClient = {
     return { cursor: nonempty(value.get_updates_buf) ? value.get_updates_buf : cursor, messages };
   },
   async reply(account: WeixinAccount, context: string, clientId: string, text: string) {
-    const result = await request(account.origin, 'sendmessage', { base_info: baseInfo, msg: {
-      from_user_id: '', to_user_id: account.peer, client_id: clientId, message_type: 2, message_state: 2,
-      context_token: context, item_list: [{ type: 1, text_item: { text } }],
-    } }, account.token, 8500);
-    // iLink may omit a zero ret in its JSON acknowledgement.
-    if (result.ret !== undefined && result.ret !== 0) fail('wechat_delivery_unknown', 502);
+    await sendItem(account, context, clientId, { type: 1, text_item: { text } });
+  },
+  async uploadImage(account: WeixinAccount, image: Buffer): Promise<WeixinImageItem> {
+    // Prepare encrypted CDN media before the final send/permission transaction.
+    const filekey = randomBytes(16).toString('hex');
+    const key = randomBytes(16);
+    const aeskey = key.toString('hex');
+    const cipher = createCipheriv('aes-128-ecb', key, null);
+    const encrypted = Buffer.concat([cipher.update(image), cipher.final()]);
+    const value = await request(account.origin, 'getuploadurl', {
+      filekey, media_type: 1, to_user_id: account.peer, rawsize: image.length,
+      rawfilemd5: createHash('md5').update(image).digest('hex'), filesize: encrypted.length,
+      no_need_thumb: true, aeskey, base_info: baseInfo,
+    }, account.token, 8500);
+    const response = await fetch(uploadUrl(value.upload_full_url, value.upload_param, filekey), {
+      method: 'POST', body: new Uint8Array(encrypted), headers: { 'Content-Type': 'application/octet-stream' },
+      signal: AbortSignal.timeout(8500), redirect: 'error', cache: 'no-store',
+    });
+    const reference = response.headers.get('x-encrypted-param');
+    await response.body?.cancel().catch(() => undefined);
+    if (response.status !== 200 || !reference) return fail('wechat_protocol_error', 502);
+    return { type: 2, image_item: { media: { encrypt_query_param: reference,
+      aes_key: Buffer.from(aeskey, 'utf8').toString('base64'), encrypt_type: 1 }, mid_size: encrypted.length } };
+  },
+  async replyImage(account: WeixinAccount, context: string, clientId: string, item: WeixinImageItem) {
+    await sendItem(account, context, clientId, item);
   },
 };
+
+export type WeixinDeliveryClient = Pick<typeof weixinClient, 'updates' | 'reply'> &
+  Partial<Pick<typeof weixinClient, 'uploadImage' | 'replyImage'>>;

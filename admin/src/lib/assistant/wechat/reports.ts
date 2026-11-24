@@ -7,10 +7,12 @@ import { mainRelease } from '@/lib/xiaok-v1/main-publication';
 import { AssistantError, fail, principalKey } from '../contracts';
 import { checkRecipient, checkReportBinding, savedRecipient, type Recipient } from './recipient';
 import type { ChannelRow } from './channels';
+import { bossWeeklyNotebookText, buildBossWeeklyNotebook, type BossWeeklyNotebook } from './weekly-notebook';
 
 export type Period = 'daily' | 'weekly';
 export type ReportEvent = { report_kind: Period | null; report_id: string | null; report_revision: number | null;
   recipient_version: number | null; proactive: boolean; role_delivery_key?: string | null };
+type WechatReportMessage = { text: string; notebook?: BossWeeklyNotebook };
 
 type RoleRecipient = Extract<Recipient, { audience: FollowupAudience }>;
 type ReportProjectView = {
@@ -185,7 +187,7 @@ export async function selectReport(tx: PostgresTransaction, channel: ChannelRow,
   return '已选中本人当前工地的报告，微信将在发送时核验权限并展示已保存的摘要。';
 }
 
-async function roleReportText(tx: PostgresTransaction, c: ChannelRow, recipient: RoleRecipient, event: ReportEvent, since: string | null) {
+async function roleReportMessage(tx: PostgresTransaction, c: ChannelRow, recipient: RoleRecipient, event: ReportEvent, since: string | null): Promise<WechatReportMessage | null> {
   if (event.proactive && !since) return null;
   await checkRecipient(tx, recipient);
   const current = await one<{binding_id:string; revision:number; kind:Period}>(tx,sql`select r.binding_id::text as binding_id,r.latest_revision as revision,r.kind
@@ -199,12 +201,18 @@ async function roleReportText(tx: PostgresTransaction, c: ChannelRow, recipient:
   if (!current) return null;
   const binding = await checkReportBinding(tx, recipient, current.binding_id);
   if (event.proactive && binding[event.report_kind === 'daily' ? 'remind_daily' : 'remind_weekly'] === false) return null;
-  const report = await new FollowupService(recipient.actor, tx).detail(String(binding.id), event.report_id!, current.revision) as ReportView;
-  if (!report.available || !report.facts || report.kind !== event.report_kind || !report.facts.projects?.length) return null;
-  return buildWechatReportSummary(report, event.report_kind, recipient.audience);
+  const report = await new FollowupService(recipient.actor, tx).detail(String(binding.id), event.report_id!, current.revision);
+  if (!report.available || !report.facts?.projects.length || !('kind' in report) || report.kind !== event.report_kind) return null;
+  if (event.proactive && recipient.audience === 'boss' && event.report_kind === 'weekly') {
+    const notebook = buildBossWeeklyNotebook({ reportId: report.reportId, revision: report.revision,
+      periodStart: report.periodStart as Date | string, periodEnd: report.periodEnd as Date | string, projects: report.facts.projects });
+    return { notebook, text: bossWeeklyNotebookText(notebook) };
+  }
+  const text = buildWechatReportSummary(report, event.report_kind, recipient.audience);
+  return text ? { text } : null;
 }
 
-export async function reportText(tx: PostgresTransaction, c: ChannelRow, event: ReportEvent) {
+export async function reportMessage(tx: PostgresTransaction, c: ChannelRow, event: ReportEvent): Promise<WechatReportMessage | null> {
   const recipient = savedRecipient(c);
   if (!recipient || !event.report_id || !event.report_revision || !event.report_kind) return null;
   if (event.proactive && Boolean(event.role_delivery_key) !== isRoleRecipient(recipient)) return null;
@@ -213,7 +221,7 @@ export async function reportText(tx: PostgresTransaction, c: ChannelRow, event: 
   const app = await mainRelease(tx, c.enterprise_id);
   if (!app?.enabled || !app.reports) return null;
   try {
-    if (isRoleRecipient(recipient)) return await roleReportText(tx, c, recipient, event, since);
+    if (isRoleRecipient(recipient)) return await roleReportMessage(tx, c, recipient, event, since);
     const binding = await checkRecipient(tx, recipient);
     if (!binding) return null;
     if (event.proactive && binding[event.report_kind === 'daily' ? 'remind_daily' : 'remind_weekly'] === false) return null;
@@ -236,9 +244,10 @@ export async function reportText(tx: PostgresTransaction, c: ChannelRow, event: 
     const date = (value:unknown) => new Date(String(value)).toLocaleDateString('zh-CN', {timeZone:'Asia/Shanghai'});
     const start = date(report.periodStart), end = date(report.periodEnd);
     const period = start === end ? start : start+' 至 '+end;
-    return [project.name+' · '+name+'（'+period+'）', project.stageName ? '本期阶段：' + project.stageName : '',
+    const text = [project.name+' · '+name+'（'+period+'）', project.stageName ? '本期阶段：' + project.stageName : '',
       ...(progress.length ? progress : records.length ? records : ['本期暂无可展示的已发布进展记录。']).slice(0,3),
       reportFooter].filter(Boolean).join('\n').slice(0,1600);
+    return { text };
   } catch (error) {
     if (error instanceof AssistantError && [401,403,404,409].includes(error.status)) return null;
     throw error;

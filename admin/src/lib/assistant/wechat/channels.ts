@@ -112,7 +112,7 @@ export function readChannel(scope: Scope) {
     return row && recipient && !await matchesRecipient(tx, row, recipient) ? null : view(row);
   });
 }
-export async function startChannel(scope: Scope, client = weixinClient) {
+export async function startChannel(scope: Scope, client: Pick<typeof weixinClient, 'login'> = weixinClient) {
   // Only serialize QR creation for this enterprise/stage. QR status long-polling happens outside transactions.
   return managed(scope, async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'wechat:' + scope.enterpriseId + ':' + scope.stage},0))`);
@@ -136,7 +136,7 @@ export async function startChannel(scope: Scope, client = weixinClient) {
         ${code ? encryptText(code) : null},${code ? pairDigest(code) : null},now()+interval '15 minutes',${recipient?.audience ?? null}) returning *`));
   });
 }
-export async function pollChannel(scope: Scope, channelId: string, pin?: string, client = weixinClient) {
+export async function pollChannel(scope: Scope, channelId: string, pin?: string, client: Pick<typeof weixinClient, 'status'> = weixinClient) {
   const pending = await managed(scope, async tx => {
     const row = await current(tx, scope);
     if (!row || row.id !== channelId) fail('version_conflict');

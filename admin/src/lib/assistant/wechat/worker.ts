@@ -3,14 +3,15 @@ import { AssistantRepository, one } from '@/db/repositories/assistant-repository
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { decryptText, encryptText } from '@/lib/crypto';
 import { resolveWorkerDeployment } from '@/lib/xiaok-v1/worker-runtime-config';
-import { AssistantError, fail, safeText, type MessageContent } from '../contracts';
+import { AssistantError, fail, fingerprint, safeText, type MessageContent } from '../contracts';
 import { ConversationService } from '../core/conversation';
 import { projectMessage } from '../knowledge/sources';
 import { closeChannel, pairDigest, type ChannelRow } from './channels';
 import { checkRecipient, savedRecipient } from './recipient';
-import { weixinClient } from './ilink';
+import { weixinClient, type WeixinDeliveryClient } from './ilink';
 import { wechatSubject } from './subject';
-import { queueWechatReports, reportText, type ReportEvent } from './reports';
+import { queueWechatReports, reportMessage, type ReportEvent } from './reports';
+import { renderBossWeeklyNotebook } from './weekly-notebook';
 import { mainRelease } from '@/lib/xiaok-v1/main-publication';
 
 type Event = ReportEvent & { id: string; event_key: string; context_secret: string; text_value: string | null;
@@ -95,7 +96,23 @@ async function prepare(tx: PostgresTransaction, c: ChannelRow, event: Event): Pr
   return 'queued';
 }
 
-async function send(lease: ChannelRow, reply: Reply, client: typeof weixinClient) {
+async function stageWeeklyImage(lease: ChannelRow, event: Event, client: WeixinDeliveryClient) {
+  if (!event.proactive || event.report_kind !== 'weekly' || lease.recipient_audience !== 'boss' ||
+      !client.uploadImage || !client.replyImage) return null;
+  const report = await locked(lease, (tx, c) => reportMessage(tx, c, event));
+  if (!report?.notebook) return null;
+  try {
+    const image = renderBossWeeklyNotebook(report.notebook);
+    const item = await client.uploadImage(account(lease), image);
+    return { item, source: fingerprint(report.notebook) };
+  } catch (error) {
+    if (error instanceof AssistantError && error.code === 'wechat_login_invalid') throw error;
+    // An upload cannot deliver a message. The final check can still send the text digest.
+    return null;
+  }
+}
+
+async function send(lease: ChannelRow, reply: Reply, client: WeixinDeliveryClient) {
   const { output, event } = reply;
   let checked = '';
   if (output) {
@@ -104,6 +121,7 @@ async function send(lease: ChannelRow, reply: Reply, client: typeof weixinClient
     const message = page.items.find(m => m.id === output.id && m.authorKind === 'assistant' && m.available);
     if (message) checked = safeText(message.content as MessageContent);
   }
+  const staged = await stageWeeklyImage(lease, event, client);
   const armed = await locked(lease, async (tx, c) => one(tx, sql`update app.assistant_wechat_events set status='sending'
     where id=${event.id} and channel_id=${c.id} and status in ('received','running') returning id`));
   if (!armed) return;
@@ -113,6 +131,7 @@ async function send(lease: ChannelRow, reply: Reply, client: typeof weixinClient
     const repo = new AssistantRepository(tx, wechatSubject(c));
     await repo.settings(true, 'share');
     let text = reply.notice ?? withdrawn;
+    let matchingImage = false;
     if (c.stage_id === 'main') {
       const publication = await mainRelease(tx,c.enterprise_id);
       if (!publication?.enabled || output && await one(tx,sql`select 1 from app.assistant_run_steps s
@@ -131,14 +150,26 @@ async function send(lease: ChannelRow, reply: Reply, client: typeof weixinClient
       if (current?.available && safeText(current.content as MessageContent) === checked) text = checked;
     }
     if (event.report_id && (event.proactive || output && checked && text === checked)) {
-      const report = await reportText(tx,c,event);
+      const report = await reportMessage(tx,c,event);
       if (!report && event.proactive) { await finish(tx,c,event.id,'failed','wechat_report_unavailable'); return; }
-      text = report || '这份工地报告当前已不可查看，请从小程序核对工地和权限。';
+      text = report?.text || '这份工地报告当前已不可查看，请从小程序核对工地和权限。';
+      matchingImage = !!(staged && report?.notebook && fingerprint(report.notebook) === staged.source);
     }
     const context = event.proactive ? c.latest_context : event.context_secret;
     if (!context) { await finish(tx,c,event.id,'failed','wechat_report_unavailable'); return; }
     try {
-      await client.reply(account(c), decryptText(context), 'xiaok-' + c.id + '-' + event.id, text);
+      const session = account(c), token = decryptText(context), clientId = 'xiaok-' + c.id + '-' + event.id;
+      if (staged && matchingImage && client.replyImage) {
+        try {
+          await client.replyImage(session, token, clientId, staged.item);
+        } catch (error) {
+          if (!(error instanceof AssistantError) || error.code !== 'wechat_provider_rejected') throw error;
+          // An explicit iLink rejection permits one text fallback. Unknown sends never fall back.
+          await client.reply(session, token, clientId + '-text', text);
+        }
+      } else {
+        await client.reply(session, token, clientId, text);
+      }
     } catch (error) {
       const code = error instanceof AssistantError ? error.code : 'wechat_delivery_unknown';
       const rejected = code === 'wechat_provider_rejected' || code === 'wechat_login_invalid';
@@ -169,7 +200,7 @@ function firstPending(tx: PostgresTransaction, c: ChannelRow) {
   return one<Event>(tx, sql`select * from app.assistant_wechat_events
     where enterprise_id=${c.enterprise_id} and channel_id=${c.id} and status in ('received','running','sending') order by id limit 1`);
 }
-export async function tickWechatChannel(enterpriseId: string, client = weixinClient) {
+export async function tickWechatChannel(enterpriseId: string, client: WeixinDeliveryClient = weixinClient) {
   const lease = await take(enterpriseId);
   if (!lease) return false;
   let backoff = 1;

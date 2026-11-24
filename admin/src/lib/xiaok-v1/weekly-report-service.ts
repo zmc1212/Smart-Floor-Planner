@@ -25,7 +25,7 @@ function nextStageName(stageKey: string | null) {
   return index >= 0 && index < stageDefinitions.length - 1 ? stageDefinitions[index + 1].name : null;
 }
 
-function stageNameOf(project: ReportProject) {
+export function weeklyProjectStageName(project: Pick<ReportProject, 'stageKey' | 'stageName' | 'weekStageNames'>) {
   if (!project.stageKey) return null;
   if (project.weekStageNames?.[project.stageKey]) return project.weekStageNames[project.stageKey];
   return project.stageName || stageDefinitions.find(stage => constructionKeys(stage).includes(project.stageKey!))?.name || null;
@@ -83,7 +83,7 @@ export function buildRoleWeeklyDigest(input: {
     const issues = role === 'owner' ? [] : (project.issues || []);
     return {
       projectId: project.id, projectName: project.name,
-      stageId, stageKey: project.stageKey, stageName: stageNameOf(project),
+      stageId, stageKey: project.stageKey, stageName: weeklyProjectStageName(project),
       stageEnteredAt: stageEvent?.at ?? null, stageEventId: stageEvent?.id ?? null,
       nextStageName: nextStageName(project.stageKey),
       plan: planOf(project.weekSchedule),

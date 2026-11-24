@@ -1028,6 +1028,8 @@ Phase 7 最终治理已实现：纯 geometry/read-model 依赖方向、全模块
 
 **微信订阅（Limited，本地开发）。** 报告页和跟进设置沿用「微信订阅」，通过 `/api/miniprogram/assistant/followups/:bindingId/wechat?scope=role` 管理本人角色范围。业主按每个仍有权限的自家工地收摘要，施工人员和设计师按参与工地收每期汇总，老板按本企业报告计划收每期汇总，每期覆盖最多 20 个工地。用本人登录身份和一次性口令确认 ClawBot。日报和周报分别开启，默认关闭。旧单工地收件人可维持原范围，或确认升级后在同一微信连接上重新选择开关。暂停报告时仍可断开。小程序继续独立接收原报告。Stable 390×844 已验证四端进入报告、订阅写入、重进和退订。 [原生验证](../tmp/xiaok-wechat-roles-20261124/native-1795531826128.json)
 
+老板订阅的主动周报在 ClawBot 中以手账长图呈现周期和逐工地小结。图片确定失败时发送短摘要。需要核对明细时，可从小程序「企业日周报」按当前权限读取原报告。图片真机送达待验。[已批准长图](../design-references/xiaok-report-workflow-v1-20261120/05-boss-wechat-weekly-notebook-v003.png)
+
 业主从「工地 → 查看日报与周报」进入；施工人员、设计师从工地工作台的「工地日报与周报」进入并保留所选工地；老板从「企业日周报」进入，默认周报。共用 `packages/assistant/chat/chat?reportBoard=1` 和已批准的[四端单屏设计](../design-references/xiaok-report-workflow-v1-20261120/README.md)。切换保留原收件人与项目范围，历史复用月份、周期及项目筛选，已阅写入现有精确版本回执。
 
 业主「我家进展」的周期栏以[业主 V002 单屏](../design-references/xiaok-report-workflow-v1-20261120/01-owner-daily-v002-390.png)为准。390×844 下两枚约 84×29px 的页签从左侧 34px 起排，12px 文字，选中为深绿底白字，日期与截止时间位于同一行右侧，长日期可换行。「历史」在项目名右侧，约 60×24px，使用已收录的 `welcome-notebook/clock.png`，可见时钟约 13px。三个按钮的点击区域均高 44px。 Stable 在 390×844 逻辑视口核对两种选中态和跨日截止时间，实际点按切换、打开历史、读回与重进。[日报](../tmp/report-board-owner-tabs-20261124/owner-daily.png) · [周报](../tmp/report-board-owner-tabs-20261124/owner-weekly.png) · [验证](../tmp/report-board-owner-tabs-20261124/native.json)。

@@ -15,12 +15,12 @@ import { deliverConstructionReports, processConstructionReport } from '@/lib/con
 import { FollowupService } from '@/lib/construction/followup-service';
 import { SiteChatService, recordVersion } from '@/lib/construction/site-chat';
 import { appendMessage, cancelRuns } from '@/lib/assistant/core/conversation';
-import type { ActorContext } from '@/lib/assistant/contracts';
+import { AssistantError, type ActorContext } from '@/lib/assistant/contracts';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { pollChannel, recipientState, startChannel } from '@/lib/assistant/wechat/channels';
 import { queueWechatReports } from '@/lib/assistant/wechat/reports';
 import { tickWechatChannel } from '@/lib/assistant/wechat/worker';
-import { weixinOrigin, type WeixinAccount, type WeixinInbound } from '@/lib/assistant/wechat/ilink';
+import { weixinOrigin, type WeixinAccount, type WeixinDeliveryClient, type WeixinInbound } from '@/lib/assistant/wechat/ilink';
 import { manageMainPublication } from '@/lib/xiaok-v1/main-publication';
 import { stageIds } from '@/lib/xiaok-v1/stages';
 import { ConstructionReportService } from '@/lib/construction/report-service';
@@ -28,7 +28,7 @@ import { xiaokTestDatabase } from './xiaok-test-database';
 
 type RoleAudience = 'customer' | 'worker' | 'designer' | 'boss';
 type RoleClient = {
-  client: {
+  client: WeixinDeliveryClient & {
     login(): Promise<{ code: string; display: string }>;
     status(): Promise<{ state: 'confirmed'; origin: string; bot: string; peer: string; token: string }>;
     updates(): Promise<{ cursor: string; messages: WeixinInbound[] }>;
@@ -182,6 +182,9 @@ test('主小K个人微信四端角色、多工地报告与租户隔离', { skip:
   } as const;
   const roleClients = new Map<RoleAudience, RoleClient>();
   const channelIds = {} as Record<RoleAudience, string>;
+  let bossMedia: 'image' | 'upload-failure' | 'rejected' | 'unknown' | 'scope-change' = 'image';
+  let imageSends = 0;
+  const bossImages: Buffer[] = [];
   const verifyRoleChannel = async (audience: RoleAudience) => {
     const suffix = randomUUID().slice(0, 6), bot = `role-${audience}-${suffix}`, peer = `peer-${audience}-${suffix}`;
     const input: WeixinInbound[] = [], sent: string[] = [];
@@ -191,6 +194,29 @@ test('主小K个人微信四端角色、多工地报告与租户隔离', { skip:
       async updates() { return { cursor: randomUUID(), messages: input.splice(0) }; },
       async reply(account: WeixinAccount, context: string, _id: string, text: string) { assert.equal(account.peer, peer); assert.ok(context); sent.push(text); },
     } };
+    if (audience === 'boss') {
+      let pendingImage: Buffer;
+      roleClient.client.uploadImage = async (account, image) => {
+        assert.equal(account.peer, peer);
+        assert.equal(image.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+        if (bossMedia === 'upload-failure') throw new Error('test upload failure');
+        pendingImage = image;
+        if (bossMedia === 'scope-change') {
+          await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_projects set status='archived'
+            where enterprise_id=${eid} and id=${project5Id}`));
+        }
+        return { type: 2, image_item: { media: { encrypt_query_param: 'fixture-image', aes_key: 'fixture', encrypt_type: 1 }, mid_size: image.length } };
+      };
+      roleClient.client.replyImage = async (account, context, _id, image) => {
+        imageSends++;
+        assert.equal(account.peer, peer);
+        assert.ok(context);
+        assert.equal(image.image_item.mid_size, pendingImage.length);
+        if (bossMedia === 'rejected') throw new AssistantError('wechat_provider_rejected', 502);
+        if (bossMedia === 'unknown') throw new Error('test acknowledgement timeout');
+        bossImages.push(pendingImage);
+      };
+    }
     roleClients.set(audience, roleClient);
     const recipient = audience === 'customer' ? { ...requested.customer, projectId: project1Id } : requested[audience];
     const scope = { enterpriseId: eid, stage: 'main' as const, recipient };
@@ -307,14 +333,18 @@ test('主小K个人微信四端角色、多工地报告与租户隔离', { skip:
     const pending = await withTenantTransaction(eid, tx => one(tx, sql`select id from app.assistant_wechat_events
       where enterprise_id=${eid} and channel_id=${channelIds[audience]} and proactive and status<>'sent'`));
     assert.equal(pending, undefined);
-    assert.equal(roleClients.get(audience)!.sent.length, before + 2);
-    const messages = roleClients.get(audience)!.sent.slice(-2);
+    const textCount = audience === 'boss' ? 1 : 2;
+    assert.equal(roleClients.get(audience)!.sent.length, before + textCount);
+    const messages = roleClients.get(audience)!.sent.slice(-textCount);
     assert.ok(messages.every(text => text.includes('日报') || text.includes('周报')));
     assert.ok(messages.every(text => text.includes('完整报告可在小程序')));
     if (audience === 'boss') assert.ok(messages.some(text => text.includes('共5个工地')));
     if (audience === 'customer') assert.ok(messages.every(text => text.includes(fact1)));
     if (audience !== 'customer') assert.ok(messages.some(text => text.includes(fact1)) && messages.some(text => text.includes(fact2)));
   }
+  assert.equal(imageSends, 1);
+  assert.equal(bossImages.length, 1);
+  assert.equal(bossImages[0].readUInt32BE(16), 780);
 
   const reportManager = new ConstructionReportService({ enterpriseId: eid, adminId: fixture.boss });
   const reportSettings = await reportManager.settings();
@@ -372,6 +402,41 @@ test('主小K个人微信四端角色、多工地报告与租户隔离', { skip:
   await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_projects set customer_access=true where enterprise_id=${eid} and id=${project1Id}`));
   await assert.rejects(recipientState({ ...requested.boss, actor: { ...actors.boss, enterpriseId: '1455' } }), /(not_found|forbidden|context_changed)/);
 
+  const scenarios = [
+    { mode: 'upload-failure', status: 'sent', images: 0, texts: 1 },
+    { mode: 'rejected', status: 'sent', images: 1, texts: 1 },
+    { mode: 'unknown', status: 'unknown', images: 1, texts: 0 },
+    { mode: 'scope-change', status: 'sent', images: 0, texts: 1 },
+  ] as const;
+  const bossSent = roleClients.get('boss')!.sent;
+  for (const [index, scenario] of scenarios.entries()) {
+    const [report] = await generateReports([{ audience: 'boss', kind: 'weekly' }], new Date(cutoff.getTime() + (index + 2) * 86400000));
+    reports.push(report);
+    const beforeImages: number = imageSends;
+    const beforeTexts = bossSent.length;
+    bossMedia = scenario.mode;
+    try {
+      await tickRole('boss');
+      const status = await withTenantTransaction(eid, tx => one(tx, sql`select status from app.assistant_wechat_events
+        where enterprise_id=${eid} and channel_id=${channelIds.boss} and report_id=${report.reportId} and proactive`));
+      assert.equal(status?.status, scenario.status, scenario.mode);
+      assert.equal(imageSends - beforeImages, scenario.images, scenario.mode);
+      assert.equal(bossSent.length - beforeTexts, scenario.texts, scenario.mode);
+      if (scenario.texts) {
+        const text = bossSent.at(-1)!;
+        assert.match(text, /企业工地周报/u);
+        assert.match(text, /下一期工地/u);
+        if (scenario.mode === 'scope-change') assert.doesNotMatch(text, /设计专属工地/u);
+      }
+      await tickRole('boss');
+      assert.equal(imageSends - beforeImages, scenario.images, `${scenario.mode} duplicate image`);
+      assert.equal(bossSent.length - beforeTexts, scenario.texts, `${scenario.mode} duplicate text`);
+    } finally {
+      if (scenario.mode === 'scope-change') await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_projects set status='active'
+        where enterprise_id=${eid} and id=${project5Id}`));
+    }
+  }
+
   // Body composition is not needed by the Stable role driver: facts and the
   // delivered report are already durable. Cancel only its queued background
   // jobs so this fixture does not leave an idle-queue guard behind.
@@ -388,6 +453,7 @@ test('主小K个人微信四端角色、多工地报告与租户隔离', { skip:
   const output = process.env.XIAOK_WECHAT_QA_OUTPUT;
   if (output) {
     mkdirSync(output, { recursive: true });
+    writeFileSync(join(output, 'boss-weekly-notebook.png'), bossImages[0]);
     const finalStates = {} as Record<RoleAudience, Record<string, unknown>>;
     for (const audience of ['customer', 'worker', 'designer', 'boss'] as const)
       finalStates[audience] = ((await recipientState(requested[audience])).channel || {}) as Record<string, unknown>;

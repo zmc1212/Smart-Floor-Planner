@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createDecipheriv, createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { weixinApiOrigin, weixinClient, weixinOrigin } from '../wechat/ilink';
 
@@ -30,6 +31,70 @@ test('Weixin login, PIN and redirected polling use the documented transport and 
   assert.equal(calls[3].url.searchParams.get('verify_code'), '021305');
   assert.ok(calls.every(c => !c.headers.has('Authorization')));
   await assert.rejects(weixinClient.status(weixinOrigin, login.code), /wechat_protocol_error/);
+});
+
+test('Weixin uploads an encrypted original and sends one image item using the same recipient and context', async t => {
+  const account = { origin: weixinOrigin, token: 'fake-token', bot: 'bot', peer: 'me' };
+  const image = Buffer.from('fixture image bytes');
+  let aeskey = '', filekey = '', count = 0;
+  t.mock.method(globalThis, 'fetch', async (input: string, init: RequestInit) => {
+    const url = new URL(input), headers = new Headers(init.headers);
+    count++;
+    if (count === 1) {
+      assert.equal(url.pathname, '/ilink/bot/getuploadurl');
+      assert.equal(headers.get('Authorization'), 'Bearer fake-token');
+      const request = JSON.parse(String(init.body));
+      ({ aeskey, filekey } = request);
+      assert.match(aeskey, /^[a-f0-9]{32}$/u);
+      assert.equal(request.to_user_id, account.peer);
+      assert.equal(request.media_type, 1);
+      assert.equal(request.rawsize, image.length);
+      assert.equal(request.fileSize, undefined);
+      assert.equal(request.filesize, 32);
+      assert.equal(request.rawfilemd5, createHash('md5').update(image).digest('hex'));
+      assert.equal(request.no_need_thumb, true);
+      return Response.json({ upload_param: 'signed+param' });
+    }
+    if (count === 2) {
+      assert.equal(url.origin + url.pathname, 'https://novac2c.cdn.weixin.qq.com/c2c/upload');
+      assert.equal(url.searchParams.get('encrypted_query_param'), 'signed+param');
+      assert.equal(url.searchParams.get('filekey'), filekey);
+      assert.equal(init.method, 'POST');
+      assert.equal(init.redirect, 'error');
+      assert.equal(headers.has('Authorization'), false);
+      const decipher = createDecipheriv('aes-128-ecb', Buffer.from(aeskey, 'hex'), null);
+      assert.deepEqual(Buffer.concat([decipher.update(init.body as Uint8Array), decipher.final()]), image);
+      return new Response(null, { headers: { 'x-encrypted-param': 'download-ref' } });
+    }
+    assert.equal(url.pathname, '/ilink/bot/sendmessage');
+    const { msg } = JSON.parse(String(init.body));
+    assert.equal(msg.to_user_id, account.peer);
+    assert.equal(msg.context_token, 'ctx');
+    assert.equal(msg.client_id, 'report-event');
+    assert.deepEqual(msg.item_list, [{ type: 2, image_item: { media: { encrypt_query_param: 'download-ref',
+      aes_key: Buffer.from(aeskey, 'utf8').toString('base64'), encrypt_type: 1 }, mid_size: 32 } }]);
+    return Response.json({ ret: 0 });
+  });
+  const item = await weixinClient.uploadImage(account, image);
+  assert.equal(count, 2);
+  await weixinClient.replyImage(account, 'ctx', 'report-event', item);
+  assert.equal(count, 3);
+});
+
+test('a CDN upload fails before sending when the origin is unexpected or its receipt is missing', async t => {
+  const account = { origin: weixinOrigin, token: 'fake-token', bot: 'bot', peer: 'me' };
+  let call = 0;
+  t.mock.method(globalThis, 'fetch', async (input: string) => {
+    call++;
+    if (call === 1) return Response.json({ upload_full_url: 'https://not-weixin.example/upload' });
+    if (call === 2) return Response.json({ upload_full_url: 'https://novac2c.cdn.weixin.qq.com/c2c/upload?ticket=123', upload_param: 'old' });
+    assert.equal(input, 'https://novac2c.cdn.weixin.qq.com/c2c/upload?ticket=123');
+    return new Response(null);
+  });
+  await assert.rejects(weixinClient.uploadImage(account, Buffer.from('image')), /wechat_protocol_error/);
+  assert.equal(call, 1);
+  await assert.rejects(weixinClient.uploadImage(account, Buffer.from('image')), /wechat_protocol_error/);
+  assert.equal(call, 3);
 });
 
 test('Weixin accepts direct messages from the bound scanner and preserves distinct 64-bit IDs and reply receipts', async t => {
