@@ -14,6 +14,14 @@ test('both XiaoK entry styles directly import the focused archive controls', () 
   }
 });
 
+test('shared chat resets native button width before per-control sizing', () => {
+  const chatStyle = readFileSync(path.join(__dirname, '../packages/assistant/chat/chat.less'), 'utf8');
+  const nativeWidthReset = chatStyle.match(/^\.chat-page \.chat-button\s*\{[^}]*\bwidth:\s*auto;/m);
+  const fullWidthDiscovery = chatStyle.match(/^\.chat-page \.designer-discovery-action\s*\{[^}]*\bwidth:\s*100%;/m);
+  assert.ok(nativeWidthReset && fullWidthDiscovery);
+  assert.ok(nativeWidthReset.index < fullWidthDiscovery.index);
+});
+
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
