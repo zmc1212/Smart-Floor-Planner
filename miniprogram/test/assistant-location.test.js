@@ -6,7 +6,8 @@ test('the composer send reaches the controller directly and location stays off t
   const previous = global.Page; let page;
   global.Page = value => { page = value; };
   try { require('../packages/assistant/chat/chat'); } finally { global.Page = previous; }
-  const events = [], context = { _alive: true, _shown: true, data: { draft: '我想看看附近的工地', canSend: true },
+  const events = [], context = { ...page, _alive: true, _shown: true,
+    data: { ...page.data, draft: '我想看看附近的工地', canSend: true },
     controller: { send: async () => events.push('send') },
     syncLocation: async () => { events.push('location'); return {}; } };
   await page.send.call(context); assert.deepEqual(events, ['send']);

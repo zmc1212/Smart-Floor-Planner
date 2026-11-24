@@ -265,8 +265,12 @@ test('customer-service-home component follows stage-companion contract', () => {
   assert.doesNotMatch(wxml, /bindtap="openBell"/);
   assert.doesNotMatch(js, /openBell\(/);
   assert.doesNotMatch(js, /switchTab\(\{\s*url:\s*'\/pages\/mine\/mine'/);
-  assert.match(js, /free-design-service\/free-design-service/);
-  assert.match(js, /onboarding\/onboarding/);
+  assert.match(js, /resolveServiceEntryUrl\(scanResult\)/);
+  const { resolveServiceEntryUrl } = require('../utils/service-entry');
+  for (const route of ['free-design-service', 'onboarding']) {
+    const path = 'packages/business/' + route + '/' + route + '?token=sample';
+    assert.equal(resolveServiceEntryUrl({ path }), '/' + path);
+  }
   assert.match(js, /customer-guide\/customer-guide/);
   assert.doesNotMatch(js, /staff-activity-code\/staff-activity-code/);
   assert.match(js, /pageLifetimes:\s*\{[\s\S]*show\(\)\s*\{[\s\S]*this\.load\(/);
