@@ -37,6 +37,10 @@ function uncertain(error) {
   return !error.statusCode || error.statusCode >= 500 || error.statusCode === 408;
 }
 
+function isTransportInterruption(error) {
+  return !error?.statusCode && String(error?.errMsg || '').startsWith('request:fail');
+}
+
 function validOwnerReceipt(slot, pending, data) {
   const match = /^\/conversations\/([1-9]\d*)\/public-sites\/([1-9]\d*)\/(preview|approve|decline|withdraw)$/.exec(pending.path);
   if (!match || slot !== `public-owner:${match[1]}:${match[2]}`) return false;
@@ -384,4 +388,4 @@ function messagesForView(items, formatAssistantText) {
   }).sort((a, b) => String(a.seq).length - String(b.seq).length || String(a.seq).localeCompare(String(b.seq)));
 }
 
-module.exports = { AssistantClient, entryInput, errorCopy, uncertain, messagesForView, latestDesignerCard };
+module.exports = { AssistantClient, entryInput, errorCopy, uncertain, isTransportInterruption, messagesForView, latestDesignerCard };

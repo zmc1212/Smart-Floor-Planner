@@ -1,4 +1,4 @@
-const { errorCopy, uncertain } = require('./assistant-client');
+const { errorCopy, uncertain, isTransportInterruption } = require('./assistant-client');
 const { SiteRecordMedia } = require('./assistant-site-records');
 const api = require('./api');
 const { initialSettings, settingsMethods, operationKind } = require('./assistant-followup-settings');
@@ -6,7 +6,7 @@ const { initialPlan, planMethods } = require('./assistant-report-plan');
 const { initialHistory, historyMethods } = require('./assistant-report-history');
 const BASE = '/followups';
 const initialFollowups = () => ({ followupActive: false, followupBindings: [], followupListLoading: false, followupLoading: false,
-  followupError: '', followupBusy: false, followupPending: false, followupContext: null, followupReports: [], followupCursor: null,
+  followupError: '', followupConnectionInterrupted: false, followupBusy: false, followupPending: false, followupContext: null, followupReports: [], followupCursor: null,
   followupDetail: null, followupOriginal: null, followupOriginalLoading: false, followupHasCards: false, ...initialSettings(), ...initialPlan(), ...initialHistory() });
 function dateLabel(value, time = false) {
   if (value === null || value === undefined || value === '') return '';
@@ -84,7 +84,14 @@ class FollowupController {
     this.client = client; this.emit = emit; this.identity = identity; this.headers = headers; this.state = initialFollowups(); this.epoch = 0;
     this.schedule = schedule; this.unschedule = unschedule;
   }
-  set(patch) { if (patch.followupReports) patch.followupHasCards = patch.followupReports.some(r => r.deliveryState !== 'muted'); Object.assign(this.state, patch); this.emit(patch); }
+  set(patch) {
+    if (patch.followupReports) patch.followupHasCards = patch.followupReports.some(r => r.deliveryState !== 'muted');
+    if (patch.followupError !== undefined && patch.followupConnectionInterrupted === undefined) {
+      patch.followupConnectionInterrupted = false;
+    }
+    Object.assign(this.state, patch);
+    this.emit(patch);
+  }
   current(epoch = this.epoch) { return this.visible && epoch === this.epoch && this.session === this.identity(); }
   hide() {
     this.rememberHistory();
@@ -131,7 +138,7 @@ class FollowupController {
       finally { if (this.current(epoch)) this.set({ followupLoading: false }); }
       return;
     }
-    await this.loadList();
+    await this.loadList({ threadRead: autoOpen });
     if (!this.current() || this.state.followupError) return;
     this.startPolling();
     if ([...this.client.pending.keys()].some(slot => slot.startsWith('followup:plan:')) || this.planReentry) {
@@ -167,7 +174,7 @@ class FollowupController {
       }
       return;
     }
-    if (this.selected) return this.state.followupBindings.some(b => b.bindingId === this.selected) ? this.select(this.selected) : this.openSettings(this.selected);
+    if (this.selected) return this.state.followupBindings.some(b => b.bindingId === this.selected) ? this.select(this.selected, this.selectedProjectId) : this.openSettings(this.selected);
     if (autoOpen) {
       const available = this.state.followupBindings.filter(b => b.status !== 'deleted');
       if (available.length === 1) return this.select(available[0].bindingId);
@@ -187,7 +194,7 @@ class FollowupController {
     this.timer = this.schedule(async () => {
       if (!this.current()) return;
       if (!this.state.followupBusy && !this.state.followupPending && !this.state.followupLoading) {
-        await this.loadList({ background: true });
+        await this.loadList({ background: true, threadRead: this.state.followupActive });
         if (this.current() && this.state.followupManageOpen) await this.loadManagement();
         if (this.current() && this.state.followupPlanOpen) await this.loadPlan();
         if (this.current() && this.selected && this.state.followupActive) await this.sync();
@@ -196,12 +203,14 @@ class FollowupController {
     }, 7000);
   }
   async sync() {
-    const epoch = this.epoch, bid = this.selected;
+    const epoch = this.epoch, bid = this.selected, projectId = this.selectedProjectId;
+    const query = projectId ? { projectId } : {};
     try {
-      const headers = await this.headers(), context = await this.client.read(`${BASE}/${bid}`, {}, headers);
-      const reports = await this.client.read(`${BASE}/${bid}/reports`, {}, headers);
+      const headers = await this.headers(), context = await this.client.read(`${BASE}/${bid}`, query, headers);
+      const reports = await this.client.read(`${BASE}/${bid}/reports`, query, headers);
       if (!this.current(epoch) || this.state.followupBusy || this.state.followupPending) return;
-      this.set({ followupContext: context, followupReports: reports.items.map(r => reportForView(r, context)), followupCursor: reports.nextCursor });
+      this.set({ followupContext: context, followupReports: reports.items.map(r => reportForView(r, context, projectId)), followupCursor: reports.nextCursor,
+        ...(this.state.followupConnectionInterrupted ? { followupError: '' } : {}) });
       const old = this.state.followupDetail;
       if (old) {
         const latest = await this.client.read(`${BASE}/${bid}/reports/${old.reportId}`, { revision: old.revision }, headers);
@@ -213,32 +222,37 @@ class FollowupController {
         }
       }
       if (this.current(epoch) && this.state.followupHistoryOpen) await this.loadHistory({ background: true });
-    } catch (e) { if (this.current(epoch)) { this.set({ followupOriginal: null }); this.failure(e); } }
+    } catch (e) { if (this.current(epoch)) { this.set({ followupOriginal: null }); this.failure(e, { threadRead: true }); } }
   }
-  failure(e) {
+  failure(e, { threadRead = false } = {}) {
     if (!this.current()) return;
     const denied = e.statusCode === 401 || e.statusCode === 403 || ['assistant_resource_not_found','identity_context_invalid'].includes(e.code || e.error);
+    const interrupted = !denied && threadRead && isTransportInterruption(e);
     if (denied) { this.planReentry = null; this.set({ ...initialFollowups(), followupActive: !!this.selected }); }
     this.set({ followupError: ['assistant_capability_forbidden','construction_forbidden'].includes(e.code || e.error)
-      ? '当前身份无法查看这些施工跟进，请重新选择身份。' : errorCopy(e) });
+      ? '当前身份无法查看这些施工跟进，请重新选择身份。' : errorCopy(e),
+      followupConnectionInterrupted: interrupted, ...(interrupted ? { followupActive: true } : {}) });
   }
-  async loadList({ background = false } = {}) {
+  async loadList({ background = false, threadRead = false } = {}) {
     if (!this.current()) return;
     const epoch = this.epoch; this.set({ followupListLoading: true });
     try {
       const list = await this.client.read(BASE, {}, await this.headers()); if (!this.current(epoch)) return;
       this.set({ followupBindings: (list.items || []).map(b => ({ ...b, latestDateLabel: b.latestReport ? dateLabel(b.latestReport.generatedAt, true) : '' })), ...(!background ? { followupError: '' } : {}) });
-    } catch (e) { if (this.current(epoch)) this.failure(e); }
+    } catch (e) { if (this.current(epoch)) this.failure(e, { threadRead }); }
     finally { if (this.current(epoch)) this.set({ followupListLoading: false }); }
   }
   async select(bindingId, projectId = '', { readReports = true } = {}) {
-    if (this.state.followupBusy || this.state.followupPending || !this.visible) return;
-    if (this.selected !== String(bindingId)) { this.historyReentry = null; this.historyPages = 1; this.set(initialHistory()); }
-    const epoch = ++this.epoch; this.selected = String(bindingId);
+    if (!bindingId || this.state.followupBusy || this.state.followupPending || !this.visible) return;
+    const sameBinding = this.selected === String(bindingId);
+    const reconnecting = sameBinding && this.selectedProjectId === projectId && this.state.followupConnectionInterrupted;
+    if (!sameBinding) { this.historyReentry = null; this.historyPages = 1; this.set(initialHistory()); }
+    const epoch = ++this.epoch; this.selected = String(bindingId); this.selectedProjectId = projectId;
     const stored = [...this.client.pending.entries()].find(([slot, op]) => slot.startsWith('followup:') && op.path.startsWith(`${BASE}/${this.selected}/`));
     if (stored && !this.operation) { const [slot, op] = stored; this.operation = { slot, ...op,
       kind: operationKind({ slot, ...op }) }; }
-    this.set({ followupActive: true, followupLoading: true, followupContext: null, followupDetail: null, followupOriginal: null, followupReports: [], followupError: '' });
+    this.set({ followupActive: true, followupLoading: true, followupDetail: null, followupOriginal: null,
+      ...(reconnecting ? {} : { followupContext: null, followupReports: [], followupError: '' }) });
     try {
       const headers = await this.headers();
       const query = projectId ? { projectId } : {};
@@ -246,12 +260,12 @@ class FollowupController {
         readReports ? this.client.read(BASE + '/' + bindingId + '/reports', query, headers) : { items: [], nextCursor: null }]);
       if (!this.current(epoch)) return;
       this.set({ followupContext: context, followupReports: reports.items.map(r => reportForView(r, context, projectId)), followupCursor: reports.nextCursor,
-        followupPending: !!this.operation });
+        followupError: '', followupPending: !!this.operation });
       const reentry = this.historyReentry; this.historyReentry = null;
       if (reentry?.bindingId === this.selected && !this.operation) {
         this.set({ followupHistoryFilters: reentry.filters, followupHistoryScroll: reentry.scroll }); await this.openHistory();
       }
-    } catch (e) { if (this.current(epoch)) this.failure(e); }
+    } catch (e) { if (this.current(epoch)) this.failure(e, { threadRead: readReports }); }
     finally { if (this.current(epoch)) this.set({ followupLoading: false }); }
   }
   async more() {

@@ -1,4 +1,4 @@
-const { AssistantClient, entryInput, errorCopy, uncertain, messagesForView: projectMessages } = require('./client');
+const { AssistantClient, entryInput, errorCopy, uncertain, isTransportInterruption, messagesForView: projectMessages } = require('./client');
 const { markdownForBlock, revealMarkdown, copyableReplyText } = require('./message-markdown');
 const { LiveAnswer } = require('./answer-stream');
 
@@ -284,7 +284,7 @@ class ChatController {
     if (!this.valid(epoch)) return;
     this.liveAnswer.stop();
     const code = error.code || error.error;
-    const connectionInterrupted = !error.statusCode && String(error.errMsg || '').startsWith('request:fail');
+    const connectionInterrupted = isTransportInterruption(error);
     const denied = error.statusCode === 401 || ['assistant_capability_forbidden', 'assistant_resource_not_found',
       'entry_context_invalid', 'identity_context_invalid', 'assistant_service_code_required',
       'customer_service_ambiguous', 'assistant_share_preview_only'].includes(code);

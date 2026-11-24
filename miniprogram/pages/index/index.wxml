@@ -10,7 +10,7 @@
   </block>
   <block wx:elif="{{roleWorkbenchRole === 'designer' || roleWorkbenchRole === 'enterprise_admin'}}">
     <site-workbench id="site-workbench" wx:if="{{siteWorkbenchTab === 'workbench'}}" role="{{roleWorkbenchRole}}" bindsheetchange="onSiteWorkbenchSheetChange" />
-    <xiaok-chat wx:else active="{{true}}" staff-tab="{{true}}" />
+    <xiaok-chat wx:else id="xiaok-chat" active="{{true}}" staff-tab="{{true}}" />
   </block>
   <role-workbench id="role-workbench" wx:elif="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" />
 </view>

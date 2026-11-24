@@ -1,0 +1,9 @@
+<template name="chat-network">
+  <view class="chat-network-card" role="alert">
+    <image class="chat-network-icon" src="../assets/chat-network-offline.png" mode="aspectFit" aria-hidden="true"/>
+    <text class="chat-network-copy">网络暂时断开</text>
+    <button class="chat-network-reconnect chat-button {{disabled ? 'is-disabled' : ''}}" bindtap="{{action}}" disabled="{{disabled}}">
+      <text class="chat-text">{{reconnecting ? '连接中…' : '重新连接'}}</text>
+    </button>
+  </view>
+</template>

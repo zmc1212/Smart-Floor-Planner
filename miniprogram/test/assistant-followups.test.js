@@ -34,6 +34,62 @@ function fixture() {
   return { client, controller, context, report, calls, emitted, intercept(fn) { intercept = fn; }, identity(value) { session = value; } };
 }
 
+test('staff follow-up can reopen its original entry after a transport failure before binding selection', async () => {
+  const f = fixture();
+  f.intercept(({ path }) => {
+    if (path === '/followups') throw { errMsg: 'request:fail simulated offline' };
+  });
+  await f.controller.show({ autoOpen: true });
+  assert.equal(f.controller.state.followupActive, true);
+  assert.equal(f.controller.state.followupConnectionInterrupted, true);
+  assert.equal(f.controller.state.followupContext, null);
+
+  f.intercept(null);
+  await f.controller.show({ autoOpen: true });
+  assert.equal(f.controller.state.followupConnectionInterrupted, false);
+  assert.equal(f.controller.state.followupContext.bindingId, '27');
+  assert.equal(f.controller.state.followupReports[0].reportId, '98');
+  assert.ok(f.calls.every(call => call.method === 'GET'));
+  f.controller.hide();
+});
+
+test('reconnecting the same project retains its visible reports until the new read and clears them on denial', async () => {
+  const f = fixture();
+  await f.controller.show();
+  await f.controller.select('27', '248');
+  f.intercept(({ path }) => {
+    if (path === '/followups/27') throw { errMsg: 'request:fail simulated offline' };
+  });
+  await f.controller.sync();
+  assert.equal(f.controller.state.followupConnectionInterrupted, true);
+  assert.equal(f.controller.state.followupReports[0].reportId, '98');
+
+  let completeRead;
+  f.intercept(({ path }) => {
+    if (path === '/followups/27') return new Promise(resolve => { completeRead = resolve; });
+  });
+  const reconnect = f.controller.select('27', f.controller.selectedProjectId);
+  assert.equal(f.controller.state.followupLoading, true);
+  assert.equal(f.controller.state.followupConnectionInterrupted, true);
+  assert.equal(f.controller.state.followupReports[0].selectedProjectId, '248');
+  await new Promise(resolve => setImmediate(resolve));
+  completeRead(f.context);
+  await reconnect;
+  assert.equal(f.controller.state.followupConnectionInterrupted, false);
+  assert.equal(f.controller.state.followupError, '');
+  assert.ok(f.calls.filter(call => call.path.startsWith('/followups/27')).every(call => call.body.projectId === '248'));
+
+  f.intercept(() => { throw { errMsg: 'request:fail simulated offline' }; });
+  await f.controller.sync();
+  f.intercept(() => { throw { statusCode: 403, code: 'construction_forbidden' }; });
+  await f.controller.select('27', '248');
+  assert.equal(f.controller.state.followupConnectionInterrupted, false);
+  assert.match(f.controller.state.followupError, /当前身份无法查看/);
+  assert.equal(f.controller.state.followupContext, null);
+  assert.deepEqual(f.controller.state.followupReports, []);
+  f.controller.hide();
+});
+
 test('approved staff daily card labels retain full detail identity, original facts and non-daily ranges', () => {
   const f = fixture(), now = Date.parse('2026-11-01T09:00:00+08:00');
   const worker = reportForView(f.report, { ...f.context, audience: 'worker' }, '', now);

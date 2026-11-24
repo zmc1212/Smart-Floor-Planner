@@ -282,8 +282,7 @@ module.exports = () => ({
 			this.setData({ professionalFollowup: true, loading: false });
 			this.prepareFollowupEnterprise(currentIdentity);
 			if (this.data.followupPlatform && !currentIdentity.enterpriseId) { this.followups.hide(); this.setData({ followupActive: true }); return; }
-			const staffProjectId = String(this._options.staffProjectId || '');
-			await this.followups.show({ autoOpen: true, projectId: /^[1-9]\d*$/.test(staffProjectId) ? staffProjectId : '' }); return;
+			return this.showProfessionalFollowup();
 		}
 		return this.showConsultation();
 	},
@@ -856,7 +855,17 @@ module.exports = () => ({
 		const selected = await this.askFollowupReport({ currentTarget: { dataset: {} } });
 		if (selected) await this.sendFollowup();
 	},
-	refreshFollowup() { return this._ownerReport ? this.readOwnerSiteReport() : this.followups.select(this.followups.selected); },
+	showProfessionalFollowup() {
+		const staffProjectId = String(this._options.staffProjectId || '');
+		return this.followups.show({ autoOpen: true, projectId: /^[1-9]\d*$/.test(staffProjectId) ? staffProjectId : '' });
+	},
+	refreshFollowup() {
+		if (this.data.followupLoading || this.data.followupListLoading || this.data.followupBusy || this.data.followupPending) return;
+		if (this._ownerReport) return this.readOwnerSiteReport();
+		if (!this.followups.selected) return this.data.professionalFollowup ? this.showProfessionalFollowup() : undefined;
+		this.followups.startPolling();
+		return this.followups.select(this.followups.selected, this.followups.selectedProjectId);
+	},
 	readFollowupReport(event) { const d = event.currentTarget.dataset; this.setData({ followupManageOpen: false }); return this.followups.readReport(String(d.report), Number(d.revision), this.followups.selected, d.project ? String(d.project) : ''); },
 	closeFollowupReport() { this.followups.closeReport(); if (this._ownerReport) this.back(); },
 	moreFollowupReports() { return this.followups.more(); },
