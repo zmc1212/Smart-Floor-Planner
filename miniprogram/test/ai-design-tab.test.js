@@ -166,12 +166,10 @@ test('contextual AI entries preserve plan and room scope across switchTab', () =
     '/packages/ai-workflow/scheme-studio/scheme-studio?leadId=1&workflowId=2&startNewRound=1'
   );
 
-  const indexSource = fs.readFileSync(path.join(miniRoot, 'pages', 'index', 'index.js'), 'utf8');
   const leadDetailSource = fs.readFileSync(
     path.join(miniRoot, 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
-  assert.match(indexSource, /openAIDesignEntry/);
   assert.match(leadDetailSource, /openAIDesignEntry/);
 });
 

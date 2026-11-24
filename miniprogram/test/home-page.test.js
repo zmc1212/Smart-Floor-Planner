@@ -24,7 +24,7 @@ function createPage(definition, data = {}) {
   };
 }
 
-test('未登录访问首页会停留在三项免费权益服务页，而不是立刻切到登录入口', () => {
+test('未登录访问首页时打开小K手账', () => {
   const definition = loadHomePageDefinition();
   const originalWx = global.wx;
   const originalGetApp = global.getApp;
@@ -48,6 +48,7 @@ test('未登录访问首页会停留在三项免费权益服务页，而不是�
 
     assert.deepEqual(switchedTabs, []);
     assert.equal(page.data.roleWorkbenchRole, 'customer');
+    assert.equal(page.data.customerTab, 'xiaok');
     assert.equal(tabBarSynced, true);
   } finally {
     global.wx = originalWx;
@@ -78,35 +79,73 @@ test('Customer Site tab reuses the 我的 selected tab treatment', () => {
   assert.ok(fs.statSync(activeIcon).size > 0);
 });
 
-test('Home uses the shared community-first identity for every recent-plan title', () => {
-  const page = createPage(loadHomePageDefinition(), {
-    homeDashboard: {
-      bluetooth: {},
-      stats: {},
-      recentPlans: [{
-        id: 'plan-1',
-        name: '正式量房-20260805',
-        customerName: '王女士',
-        communityName: '江南壹号',
-        display: {
-          projectTitle: '江南壹号',
-          projectSubtitle: '王女士 · 第 1 次量房',
-        },
-        status: 'draft',
-        updatedAt: '2026-08-05T07:41:00.000Z',
-      }],
-    },
+test('客户首页在登录态恢复后原地挂载小K', async (t) => {
+  const page = createPage(loadHomePageDefinition());
+  let finishHydration;
+  const globalData = {
+    token: 'stored-token',
+    sessionHydrationPromise: new Promise(resolve => { finishHydration = resolve; }),
+  };
+  const { getApp, getCurrentPages, wx } = global;
+  t.after(() => Object.assign(global, { getApp, getCurrentPages, wx }));
+  global.getApp = () => ({ globalData });
+  global.getCurrentPages = () => [page];
+  const launches = [];
+  global.wx = { reLaunch: ({ url }) => launches.push(url) };
+
+  page.onLoad();
+  const shown = page.onShow();
+  assert.equal(page.data.roleWorkbenchRole, '');
+  const homeWxml = fs.readFileSync(path.join(__dirname, '..', 'pages', 'index', 'index.wxml'), 'utf8');
+  assert.doesNotMatch(homeWxml, /airy-hero-card|选户型 · 免费设计整屋/);
+
+  globalData.bootstrap = { current: { role: 'customer' } };
+  globalData.sessionHydrationPromise = null;
+  finishHydration();
+  await shown;
+
+  assert.equal(page.data.roleWorkbenchRole, 'customer');
+  assert.equal(page.data.customerTab, 'xiaok');
+  assert.deepEqual(launches, []);
+});
+
+test('登录态恢复未取得角色时回到小K入口', async (t) => {
+  const page = createPage(loadHomePageDefinition());
+  const globalData = { token: 'stored-token' };
+  globalData.sessionHydrationPromise = Promise.resolve().then(() => {
+    globalData.sessionHydrationPromise = null;
+    globalData.sessionRecovery = { retryable: true, reason: 'bootstrap_unavailable' };
   });
+  const { getApp, getCurrentPages } = global;
+  t.after(() => Object.assign(global, { getApp, getCurrentPages }));
+  global.getApp = () => ({ globalData });
+  global.getCurrentPages = () => [page];
 
-  page.syncHomeDashboard();
+  page.onLoad();
+  assert.equal(page.data.roleWorkbenchRole, '');
+  await page.onShow();
 
-  assert.equal(page.data.recentPlans[0].displayName, '江南壹号');
-  assert.equal(page.data.recentPlans[0].measureSubtitle, '王女士 · 第 1 次量房');
+  assert.equal(page.data.roleWorkbenchRole, 'customer');
+  assert.equal(page.data.customerTab, 'xiaok');
+});
 
-  const homeWxml = fs.readFileSync(
-    path.join(__dirname, '..', 'pages', 'index', 'index.wxml'),
-    'utf8'
-  );
-  assert.match(homeWxml, /class="plan-title">\{\{recentPlans\[0\]\.displayName\}\}<\/text>/);
-  assert.doesNotMatch(homeWxml, /class="plan-community"/);
+test('家人链接进入指定工地且推广码进入小K', (t) => {
+  const definition = loadHomePageDefinition();
+  const globalData = { token: 'customer-token', userInfo: { role: 'user' } };
+  const { getApp } = global;
+  t.after(() => { global.getApp = getApp; });
+  global.getApp = () => ({ globalData });
+
+  const family = createPage(definition);
+  family.onLoad({ familyProject: '19' });
+  assert.equal(family.data.roleWorkbenchRole, 'customer');
+  assert.equal(family.data.customerTab, 'service');
+  assert.equal(family.data.requestedFamilyProjectId, '19');
+
+  const promotion = createPage(definition);
+  const promotionCode = 'p'.repeat(32);
+  promotion.onLoad({ promotionCode });
+  assert.equal(promotion.data.roleWorkbenchRole, 'customer');
+  assert.equal(promotion.data.customerTab, 'xiaok');
+  assert.equal(promotion.data.promotionCode, promotionCode);
 });

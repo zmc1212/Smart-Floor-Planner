@@ -60,7 +60,6 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(componentTemplate, /xiao-k-designer-3d\.png/);
   assert.match(componentTemplate, /xiao-k-measurer-3d\.png/);
   assert.doesNotMatch(home, /xiao-k-mascot-3d\.png/);
-  assert.match(home, /\/images\/airy-v1\/thumbs-up-xiao-k\.png/);
   assert.doesNotMatch(componentTemplate, /packages\/business\/assets\/referral-service-v1\/thumbs-up-xiao-k\.png/);
   assert.doesNotMatch(home, /packages\/business\/assets\/referral-service-v1\/thumbs-up-xiao-k\.png/);
   assert.match(componentTemplate, /立即量房/);
@@ -304,7 +303,7 @@ test('salesperson uses promotion TabBar and staff Mine dashboard without role-wo
   );
   assert.match(indexJs, /salesperson/);
   assert.match(indexJs, /reLaunch/);
-  assert.match(indexJs, /promotion-records\/promotion-records/);
+  assert.match(indexJs, /getRoleLanding\(identity\)/);
   assert.match(mineJs, /STAFF_MINE_ROLES = \['designer', 'measurer', 'construction_staff', 'enterprise_admin', 'salesperson', 'platform_admin'\]/);
   assert.doesNotMatch(mineJs, /ROLE_SHELL_MINE_ROLES = \[[^\]]*salesperson/);
   assert.equal(promotionJson.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
@@ -324,7 +323,7 @@ test('platform admin uses review and devices subpackage tabs instead of index', 
   assert.match(navigation, /platform_admin: '\/packages\/platform\/devices\/devices'/);
   assert.match(navigation, /platform_admin: \['platform\.review', 'platform\.devices', 'account'\]/);
   assert.match(indexJs, /platform_admin/);
-  assert.match(indexJs, /packages\/platform\/devices\/devices/);
+  assert.match(indexJs, /getRoleLanding\(identity\)/);
   assert.doesNotMatch(indexJs, /platform_admin'\]/);
   assert.equal(indexJson.usingComponents['platform-device-workbench'], undefined);
 
