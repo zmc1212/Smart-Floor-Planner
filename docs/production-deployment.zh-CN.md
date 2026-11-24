@@ -2,9 +2,19 @@
 
 本文是 `admin/release.bat`、`admin/auto_deploy.sh` 和 `admin/deploy.sh` 的正式运维合同。发布脚本只做应用发布、迁移前备份和应用版本回滚；它不会自动把生产数据库恢复到旧备份，也不会逆向执行迁移。
 
-## 当前装修画像发布
+## 当前阶段 Agent 发布
 
-正式 Admin、线索 Worker 和小K Worker 已更新至 `20261118-003`，镜像 config digest 为 `sha256:996b7e77b8d70684c06dada4678c2717ab9514f08625e7eed4d95a424ce01887`。本版沿 `002` 补房屋提取修正，并保留其普通咨询路由修复。没有新迁移，账本保持 135 条，具体哈希随包保存在 `SOURCE_BINDING.json`。数据库 HTTP 健康、两个 Worker、管理员登录冒烟及获准测试业户画像回读均通过。`003` 四轮定向验证前后的 11 个运行时文件及试验输入哈希一致，较早 `002` 的 11 轮及房屋投影失败独立保留。[发布与验证](../tmp/staff-profile-housing-correction-20261118/production-verification.json)。
+正式后台、抢单 Worker 和小 K Worker 已同步至 `20261124-001`，镜像 config digest 为 `sha256:cbd8a9e9f85f75f961f0a0a77d687761e19a7670e15a3825772f9df52c847ac1`。标准打包使用工作区应用源码快照 `637444cf0a60ed240b8c51fd1aad4edfec1a88e5`。ZIP SHA-256 为 `ae1aef6968219b8ffb9859af1922ee689a549336abc55999e1caaf9c963d7c26`。上一后台版本为 `20261120-001`。[源码绑定](../tmp/production-release-20261124-001/source-binding.json) · [服务核验](../tmp/production-release-20261124-001/production-server.log)
+
+原 PostgreSQL 数据卷应用 `0144`–`0147`，迁移账本从 140 条增至 144 条。首次尝试遇到 `sfp_migrator` 定义函数配置参数的权限限制并回滚。迁移前备份 `smart_floor_planner-20261124T021950Z-pre-20261124-001.dump` 校验通过。在同一事务内临时授予迁移角色对 `app.is_platform_admin` 的 `SET` 权限，以迁移角色执行原包 SQL，并在提交前撤销权限。随后复用同一发布包完成标准发布。[首次记录](../tmp/production-release-20261124-001/production-deploy.log) · [重试记录](../tmp/production-release-20261124-001/production-retry.log) · [PostgreSQL 17 参数授权](https://www.postgresql.org/docs/17/sql-grant.html)
+
+已启用小 K 的企业 1、3 通过卷内 `/app/tmp/native-workflow-store/.runtime/agent-binding.json` 使用现有模型。获权管理员可直接使用十个系统默认阶段。正式测试企业 3 读到全部默认项，水电试问实际调用 `stage-system-guidance@1`，重新登录可读回已保存回复。缺少知识库菜单权限的测试账号返回 `403`。临时 SSH 公钥已撤销并验证重新登录被拒。[工作流回执](../tmp/production-release-20261124-001/production-receipts.log) · [回复回读](../tmp/production-release-20261124-001/production-preview-reentry.json) · [公钥撤销](../tmp/production-release-20261124-001/production-key-reauth.log)
+
+应用回滚时按需用 `/datas/smartfloor/backups/pre-20261124-001.XWQRoOLN` 下的受保护基线恢复运行时配置。重建 `20261120-001` 时恢复保留的家人邀请码热修文件。微信小程序正式版仍待发布。
+
+## 2026-11-18 装修画像发布
+
+正式 Admin、线索 Worker 和小 K Worker 当时更新至 `20261118-003`，镜像 config digest 为 `sha256:996b7e77b8d70684c06dada4678c2717ab9514f08625e7eed4d95a424ce01887`。本版沿 `002` 补房屋提取修正，并保留其普通咨询路由修复。没有新迁移，账本保持 135 条，具体哈希随包保存在 `SOURCE_BINDING.json`。数据库 HTTP 健康、两个 Worker、管理员登录冒烟及获准测试业户画像回读均通过。`003` 四轮定向验证前后的 11 个运行时文件及试验输入哈希一致，较早 `002` 的 11 轮及房屋投影失败独立保留。[发布与验证](../tmp/staff-profile-housing-correction-20261118/production-verification.json)。
 
 标准发布流程已验证发布前 custom 备份 `/datas/smartfloor/backups/postgresql/smart_floor_planner-20261117T185039Z-pre-20261118-003.dump`（37,015,839 字节）的 SHA-256 和归档目录，PostgreSQL 数据卷身份前后一致。服务器回执位于 `deploy-state/first-reply-20261118-003/`。此前 `001` 的迁移失败、事务回滚和旧画像表/生命周期函数归属对齐为现有 `sfp_migrator` 的记录仍保存在 `deploy-state/staff-profile-20261118-001/`，强制 RLS 和 `sfp_app` 数据权限在该批已核对。[当前发布日志](../tmp/staff-profile-housing-correction-20261118/production-deploy.log)、[原迁移回执](../tmp/staff-profile-release-20261118/production-backup-and-health.txt)。
 

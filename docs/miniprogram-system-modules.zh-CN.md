@@ -10,7 +10,7 @@
 
 **C01 聊天恢复与档案栏。** 发送失败把状态和重试放在原消息下方，保留草稿。结果待确认时沿原键核对。传输中断在页头下方显示重连纸条，保留已获权的聊天记录。明确的服务拒绝在对应消息处反馈。输入聚焦时显示批准稿的灯泡、短档案胶囊、竖分隔线和独立的查看入口。[错误态批准稿](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/stage-chat-experience-v1/feedback-states-v1/README.md) · [恢复回执](../tmp/xiaok-feedback-fidelity-20261124/native-b1e25d31/report.json) · [引导及档案对照](../tmp/xiaok-feedback-fidelity-20261124/native-11751b75/guide-archive-comparison.png)。
 
-业主会话和后台私有调试都能使用企业的原生运行时绑定，绑定配置和凭据只在服务端读取。
+业主会话和后台私有调试都能使用企业的原生运行时绑定，绑定配置和凭据只在服务端读取。企业未保存自定义配置时，获权业主可使用当前施工阶段的系统默认工作流，项目访问、企业模型资格和资料权限沿现有规则校验。
 
 工地详情校验进度权限后返回业主可见的设置；会话详情提供当前可用的词库、追问和附件设置。首次发送和并发读取施工跟进列表均先锁企业设置，再在同一事务内复核业主当前服务线索授权。`GET /api/miniprogram/assistant/conversations/:id/suggestions` 将追问绑定到当前参与者可读的最近回复。`POST /api/miniprogram/xiaok/stage-answer` 继续检查本人项目和阶段绑定的模板版本。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。
 

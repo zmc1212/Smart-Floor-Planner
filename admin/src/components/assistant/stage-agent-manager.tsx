@@ -158,7 +158,7 @@ export function StageAgentManager({ canPublish }: { canPublish: boolean }) {
               icon={<Workflow size={16} />}
             />
           )}
-          <span className="ss-state">{dirty ? '有未保存修改' : saved.version ? '已保存' : '待创建'}</span>
+          <span className="ss-state">{dirty ? '有未保存修改' : saved.version ? '已保存' : '系统默认'}</span>
           <Button
             title="编辑历史"
             aria-label="编辑历史"
@@ -169,10 +169,10 @@ export function StageAgentManager({ canPublish }: { canPublish: boolean }) {
             <Button
               type="primary"
               loading={saving}
-              disabled={!!saved.version && !dirty}
+              disabled={!dirty}
               onClick={() => void save()}
             >
-              {saved.version ? '保存' : draft.enabled ? '创建并启用' : '创建 Agent'}
+              保存
             </Button>
             <Dropdown
               menu={{

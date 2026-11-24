@@ -8,9 +8,11 @@
 
 重答采用 AI SDK 的消息 ID 触发方式，执行仍沿用小 K 的任务、计量、参与者与来源校验。隔离迁移和 HTTP 已核对本人评价读回、同企业其他业主和跨企业拒绝、参与者撤权。两条固定 `qwen3.7-flash` 样例成功保存独立版本，源码绑定无漂移。另有一次早期调用因审计查询故障未留存结果，仅作未知记录。已验证 Windows 本机合成和播放，Linux eSpeak 配置待实测。[AI SDK 触发方式](https://ai-sdk.dev/docs/reference/ai-sdk-ui/use-chat#regenerate) · [模型试验](../tmp/xiaok-answer-restoration-20261124/stable-e7f27490/report.json) · [原审计故障](../tmp/xiaok-answer-restoration-20261124/stable-bc33c754/report.json) · [HTTP 与原生证据](../tmp/xiaok-answer-restoration-20261124/stable-44a978e8/report.json)。
 
-**阶段 Agent 工作台（本地 Implemented）。** 在「小 K 知识库 → 阶段 Agent」选择施工阶段，左侧配置，右侧调试当前草稿。管理员可编辑带变量的开场白、最多三条开场预设问题、回答后的追问和输入词库，也可设置模型参数、工具、获权知识与默认工作流。回答和追问均使用企业授权的模型。真实调试经过原生 Worker，读取面向业主的已发布知识；对话仅对发起的管理员可见。编辑历史与调试日志支持重进。「发布渠道」展示小程序入口。浏览器朗读和文本附件用于后台调试。附件原文随调试消息发送，TXT 调试和历史交付按分句识别明确否定的并列状态，保留原答复、来源和引用。肯定式正式批准仍须真实业务回执。候选答复若违反承诺边界，继续沿原生执行器的一次修正机会复核。[调试范围与证据](./xiaok-assistant-phase-2.zh-CN.md#一期ppt工艺资料试问limited) · [交互设计](./design/xiaok-stage-agent-workbench.zh-CN.md)。
+**阶段 Agent 工作台（Implemented，已上线）。** 在「小 K 知识库 → 阶段 Agent」选择施工阶段，左侧配置，右侧调试当前草稿。管理员可编辑带变量的开场白、最多三条开场预设问题、回答后的追问和输入词库，也可设置模型参数、工具、获权知识与默认工作流。回答和追问均使用企业授权的模型。真实调试经过原生 Worker，读取面向业主的已发布知识；对话仅对发起的管理员可见。编辑历史与调试日志支持重进。「发布渠道」展示小程序入口。浏览器朗读和文本附件用于后台调试。附件原文随调试消息发送，TXT 调试和历史交付按分句识别明确否定的并列状态，保留原答复、来源和引用。肯定式正式批准仍须真实业务回执。候选答复若违反承诺边界，继续沿原生执行器的一次修正机会复核。[调试范围与证据](./xiaok-assistant-phase-2.zh-CN.md#一期ppt工艺资料试问limited) · [交互设计](./design/xiaok-stage-agent-workbench.zh-CN.md)。
 
 `GET/POST/PUT /api/assistant/stage-agents` 核验企业、管理权限和预期版本。迁移 `0146` 为 `app.assistant_stage_agents` 增加可空体验配置和最近编辑记录，旧客户端保存时保留已有配置。预览接口校验阶段草稿，日志按参与者和阶段读取，追问绑定已完成的回复。平台管理员在 `/native-workflow` 用中文创建模板、在线上插入条件、补接出口、连接取值端口，可在画布试运行草稿或发布版并查看执行路径和返回文本。调用阶段可回到对应配置。发布新模板后，各阶段保留原先选定的版本。Compose 将模板保存在独立 `native_workflow_store` 卷。小 K Worker 通过同版 Admin 的内部接口执行，独立执行器沿用 `NATIVE_WORKFLOW_STORE_DIR` 配置。[阶段 Agent 合同](./xiaok-stage-agent-architecture.md)。
+
+企业未保存自定义配置的阶段默认启用。十个阶段绑定内置只读「阶段知识问答」工作流（`stage-system-guidance@1`），各自读取对应阶段的知识包。工作台显示「系统默认」，管理员修改后可保存企业覆盖。已保存的模板、阶段配置和明确停用优先。空工作流卷也可运行默认模板，继续沿用企业的小 K、模型和来源授权。正式企业 3 在 `20261124-001` 读到十个默认项，实际调用默认模板回答水电问题并重进读回。[正式发布](./production-deployment.zh-CN.md#当前阶段-agent-发布)
 
 原生阶段模型的私有绑定可只填写 `protocol`、`enterpriseId`、`runtime: langgraph-v1`，按需添加预设问题。已有完整格式的绑定继续按原规则校验，已排队任务使用原摘要。
 

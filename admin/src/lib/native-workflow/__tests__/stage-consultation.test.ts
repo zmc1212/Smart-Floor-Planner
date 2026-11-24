@@ -4,9 +4,31 @@ import { createWorkflowService } from '../service';
 import { createMemoryWorkflowStore } from '../store/memory-store';
 import { createStageConsultationDefinition } from '../stage-consultation-template';
 import { validateDefinition } from '../validate';
+import type { PostgresTransaction } from '../../../db/transaction';
 import { answerStageQuestion } from '../../xiaok-v1/stage-answer';
-import { executeStageWorkflow } from '../../xiaok-v1/stage-workflow-invocation';
+import { applyStageWorkflow, executeStageWorkflow } from '../../xiaok-v1/stage-workflow-invocation';
+import { publishedStageWorkflow, readStageAgent } from '../../xiaok-v1/stage-workflow-settings';
 import { stageDefinitions } from '../../xiaok-v1/stages';
+
+test('stage consultation has an executable default for every unconfigured stage', async () => {
+  const tx = { execute: async () => ({ rows: [] }) } as unknown as PostgresTransaction;
+  for (const stage of stageDefinitions) {
+    const base = answerStageQuestion({ constructionStageKey: stage.constructionKeys[0], question: '这个阶段去现场可以先看什么？' });
+    const result = await applyStageWorkflow(tx, '1454', base, 'owner', stage.stageId);
+    assert.equal(result.answer, base.answer);
+    assert.equal(result.workflow?.definitionId, 'stage-system-guidance');
+    assert.equal(result.workflow?.revision, 1);
+    assert.equal(result.workflow?.agentVersion, 0);
+    assert.deepEqual(result.workflow?.nodes, ['entry', 'guide', 'reply']);
+  }
+
+  const saved = { ...(await readStageAgent(tx, '1454', 'utilities'))!, version: 1, enabled: false };
+  const disabledTx = { execute: async () => ({ rows: [saved] }) } as unknown as PostgresTransaction;
+  const base = answerStageQuestion({ constructionStageKey: 'utilities', question: '这个阶段去现场可以先看什么？' });
+  assert.equal(await applyStageWorkflow(disabledTx, '1454', base, 'owner', 'disabled'), base);
+  await assert.rejects(applyStageWorkflow(disabledTx, '1454', base, 'owner', 'disabled', saved.workflows[0].definitionId), /assistant_capability_forbidden/);
+  await assert.rejects(publishedStageWorkflow({ ...saved.workflows[0], digest: '0'.repeat(64) }), /stage_workflow_unavailable/);
+});
 
 test('the same published graph serves all ten stages with separate invocation state', async () => {
   const service = createWorkflowService({ store: createMemoryWorkflowStore() });

@@ -26,7 +26,6 @@ async function activeScope(tx: PostgresTransaction, actor: ActorContext, context
   }
   if (actor.principal.kind !== 'user') return null;
   const user = actor.principal.userId;
-  if (!await one(tx, sql`select 1 from app.assistant_stage_agents where enterprise_id=${enterprise} and enabled limit 1`)) return null;
   const resolved = await resolveStageProject(tx, enterprise, context.conversationId, user);
   if (resolved.status !== 'resolved' || (context.leadId && String(resolved.project.lead_id) !== context.leadId)) return null;
   const projectId = String(resolved.project.id);

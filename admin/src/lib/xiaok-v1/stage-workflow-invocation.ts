@@ -9,7 +9,7 @@ import type { StageAnswer, StageAudience } from './stage-answer';
 
 export type StageWorkflowReceipt = StageWorkflowRef & { agentVersion: number; nodes: string[] };
 
-export function executeStageWorkflow(version: PublishedWorkflowVersion, base: StageAnswer, audience: StageAudience, eventId: string) {
+export function executeStageWorkflow(version: Pick<PublishedWorkflowVersion, 'definition' | 'digest'>, base: StageAnswer, audience: StageAudience, eventId: string) {
   const pack = base.stageId && stageKnowledgeRegistry.get(base.stageId);
   if (!pack || base.intent !== 'stage_knowledge' || version.definition.inputSchema.eventType !== 'stage_consultation') {
     fail('stage_workflow_unavailable', 409);

@@ -6,8 +6,8 @@ import { fail } from '@/lib/assistant/contracts';
 import { authorizeKnowledgeManager } from '@/lib/assistant/knowledge/manager';
 import { definitionDigest } from '@/lib/native-workflow/compile';
 import { getNativeWorkflowService } from '@/lib/native-workflow/configured-service';
-import { stageWorkflowMetadata } from '@/lib/native-workflow/stage-consultation-template';
-import { stageAgentRegistry } from './stage-agent-registry';
+import { createStageConsultationDefinition, stageWorkflowMetadata } from '@/lib/native-workflow/stage-consultation-template';
+import { stageAgentRegistry, type StageAgentRegistration } from './stage-agent-registry';
 import { stageIdSchema, type StageId } from './stages';
 
 import { stageExperienceSchema, type StageExperience, type StageEdit } from './stage-experience';
@@ -49,15 +49,36 @@ export type StageAgentSettings = {
   enterpriseId: string; model: string | null; agents: EnterpriseStageAgent[]; templates: StageWorkflowOption[];
 };
 
+// Keep this built-in revision stable because enterprises can save a reference to its digest.
+const systemDefinition = { ...createStageConsultationDefinition('stage-guidance'), definitionId: 'stage-system-guidance' };
+const systemWorkflow = { definition: systemDefinition, digest: definitionDigest(systemDefinition) };
+const systemOption: StageWorkflowOption = {
+  definitionId: systemDefinition.definitionId, revision: systemDefinition.revision, digest: systemWorkflow.digest,
+  ...stageWorkflowMetadata(systemDefinition),
+};
+
+function defaultStageAgent(base: StageAgentRegistration): EnterpriseStageAgent {
+  return {
+    stageId: base.stageId, name: base.name, description: base.description, version: 0, enabled: true,
+    workflows: [{ ...systemOption }], defaultWorkflowId: systemOption.definitionId, suggestedQuestions: [],
+  };
+}
+
 const projection = sql`stage_id as "stageId", name, description, version, enabled,
   workflow_refs as workflows, default_workflow_id as "defaultWorkflowId", suggested_questions as "suggestedQuestions", experience, edit_history as history`;
 
 export async function readStageAgent(tx: PostgresTransaction, enterpriseId: string, stageId: StageId) {
-  return one<EnterpriseStageAgent>(tx, sql`select ${projection} from app.assistant_stage_agents
+  const saved = await one<EnterpriseStageAgent>(tx, sql`select ${projection} from app.assistant_stage_agents
     where enterprise_id=${enterpriseId} and stage_id=${stageId} for share`);
+  const base = stageAgentRegistry.active(stageId);
+  return saved ?? (base ? defaultStageAgent(base) : null);
 }
 
 export async function publishedStageWorkflow(ref: StageWorkflowRef) {
+  if (ref.definitionId === systemOption.definitionId) {
+    if (ref.revision !== systemOption.revision || ref.digest !== systemOption.digest) fail('stage_workflow_unavailable', 409);
+    return systemWorkflow;
+  }
   const { record } = await getNativeWorkflowService().getDefinition(ref.definitionId);
   const version = record.versions.find(item => item.revision === ref.revision);
   if (!version || version.definition.inputSchema.eventType !== 'stage_consultation'
@@ -70,11 +91,12 @@ export async function publishedStageWorkflow(ref: StageWorkflowRef) {
 
 async function publishedOptions() {
   const service = getNativeWorkflowService();
-  const summaries = (await service.listDefinitions()).filter(item => item.eventType === 'stage_consultation' && item.latestPublishedRevision);
+  const summaries = (await service.listDefinitions()).filter(item => item.eventType === 'stage_consultation'
+    && item.latestPublishedRevision && item.definitionId !== systemOption.definitionId);
   const definitions = await Promise.all(summaries.map(item => service.getDefinition(item.definitionId)));
-  return definitions.flatMap(({ record }) => [...record.versions].reverse().map(version => ({
+  return [systemOption, ...definitions.flatMap(({ record }) => [...record.versions].reverse().map(version => ({
     definitionId: record.definitionId, revision: version.revision, digest: version.digest, ...stageWorkflowMetadata(version.definition),
-  })));
+  })))];
 }
 
 export async function listStageAgentSettings(enterpriseId: string, adminId: string): Promise<StageAgentSettings> {
@@ -84,8 +106,7 @@ export async function listStageAgentSettings(enterpriseId: string, adminId: stri
     return { model:agentConfig(config?.agent_config)?.model ?? null, agents:await rows<EnterpriseStageAgent>(tx, sql`select ${projection} from app.assistant_stage_agents where enterprise_id=${enterpriseId}`) };
   });
   return { enterpriseId, model:stored.model, templates: await publishedOptions(), agents: stageAgentRegistry.activeList().map(base =>
-    stored.agents.find(item => item.stageId === base.stageId) ?? { stageId: base.stageId, name: base.name, description: base.description,
-      version: 0, enabled: false, workflows: [], defaultWorkflowId: null, suggestedQuestions: [] }) };
+    stored.agents.find(item => item.stageId === base.stageId) ?? defaultStageAgent(base)) };
 }
 
 /** Validate the editor draft under the same tenant, manager and published-version rules as a save. */
