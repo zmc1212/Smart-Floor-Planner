@@ -9,6 +9,7 @@ import { fail, fingerprint, key, principalKey, requireCapability, safeText, user
 import { bindSpeechToMessage } from '../speech/link';
 import { speechConfigurationHash } from '../speech/local';
 import { answerProcesses, answerProgress, projectAnswerProcess, showsAnswerProcess } from './answer-process';
+import { readReplyPreview, replyStreamAvailable, replyStreamProtocol } from './answer-stream';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
 import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { fastGPTRagConfiguration, fastGPTRagProtocol } from '../fastgpt/rag-config';
@@ -270,6 +271,9 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         ? { publicSiteSelection: entry.activePublicSite ?? null } : {}),
       ...(nativeRag ? { nativeRag } : {}),
       ...(agentRuntime ? { agentRuntime } : {}),
+      ...(agentRuntime && agent && ['dashscope', 'bailian', 'deepseek', 'siliconflow'].includes(agent.providerKey)
+        && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
+        && purpose === 'reply' && !entry.activePublicSite && !reference.selection ? { replyStream: replyStreamProtocol } : {}),
       ...(nativeConfigurationIssue ? { agentRuntimeRouting: { executor: 'langgraph-v1', reason: nativeConfigurationIssue } } : {}),
       ...(staffPreview && agent ? { staffKnowledgePreview: fastGPTPreviewProtocol } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'
@@ -469,7 +473,8 @@ export class ConversationService {
               and p.customer_user_id=${this.actor.principal.userId} and p.shared and l.archived_at is null and l.status<>'closed'
           limit 1`));
       const stageConfig = c.mode==='ai' && !contentEntry && !reportContext(entry).selection ? await currentConversationExperience(repo.tx,this.actor,c) : null;
-      const latestRun = latest ? { ...runDto(latest), ...await answerProgress(repo.tx, this.actor, c, latest) } : null;
+      const latestRun = latest ? { ...runDto(latest), ...await answerProgress(repo.tx, this.actor, c, latest),
+        ...(replyStreamAvailable(this.actor, c, latest) ? { answerStreaming: true, answerPreview: await readReplyPreview(repo.tx, this.actor, latest) } : {}) } : null;
       return { ...conversationDto(c, await currentRequirementProposalPending(repo, c, settings)), stageExperience:stageConfig ? {lexicon:stageConfig.guideEnabled ? stageConfig.lexicon : [],followUp:stageConfig.followUp,attachments:stageConfig.attachments} : null, ownerAvailable, guidance:contentEntry?null:guidance, latestRun,
         regenerateMessageId,
         ...(hasRequirementSummary ? { hasRequirementSummary: true } : {}),
@@ -726,7 +731,8 @@ export class ConversationService {
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${runId}`);
       if (!r) fail('assistant_resource_not_found', 404);
       const c = await repo.conversation(String(r.conversation_id));
-      if (!action) return { ...runDto(r), ...await answerProgress(repo.tx, this.actor, c, r) };
+      if (!action) return { ...runDto(r), ...await answerProgress(repo.tx, this.actor, c, r),
+        ...(replyStreamAvailable(this.actor, c, r) ? { answerStreaming: true, answerPreview: await readReplyPreview(repo.tx, this.actor, r) } : {}) };
       return idempotent(repo.tx, this.actor, action + ':' + runId, requestKey!, {}, async () => {
         if (action === 'cancel') {
           await cancelRuns(repo.tx, this.actor, String(c.id), runId);

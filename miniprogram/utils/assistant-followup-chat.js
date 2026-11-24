@@ -1,5 +1,5 @@
 const api = require('./api');
-const emptyFollowupChat = () => ({ conversation: null, messages: [], draft: '', loading: false, busy: false, pendingSend: false, pendingAction: '', error: '', fatal: false, mediaPaths: {}, mediaBusy: false, mediaPending: false, mediaError: '', citation: null, citationLoading: false, citationError: '', runLabel: '', generating: false, retryable: false, uncertainRun: false });
+const emptyFollowupChat = () => ({ conversation: null, messages: [], draft: '', loading: false, busy: false, pendingSend: false, pendingAction: '', error: '', fatal: false, mediaPaths: {}, mediaBusy: false, mediaPending: false, mediaError: '', citation: null, citationLoading: false, citationError: '', runLabel: '', liveAnswerText: '', revealingReplyId: '', generating: false, retryable: false, uncertainRun: false });
 
 /** Reuse C01's controller and journal, keeping its ordinary draft/destination
  * untouched. The transport resolves only the verified private binding. */
@@ -32,7 +32,7 @@ class FollowupChat {
     this.session = session; this.visible = true;
     if (this.chat && this.cid === cid && this.bid === bid) {
       this.chat.visible = true; this.set({});
-      try { await this.chat.snapshot(cid, this.chat.epoch, !reentry); }
+      try { await this.chat.snapshot(cid, this.chat.epoch, !reentry, reentry); }
       catch (e) { this.chat.fail(e, this.chat.epoch); }
       finally { this.set({ loading: false }); }
       return;
@@ -44,7 +44,7 @@ class FollowupChat {
     const facade = { pending,
       read: async (p, body, _headers, method) => this.client.read(this.path(p), body, await this.headers(), method),
       mutate: async (slot, p, body, method) => this.client.mutate(slot, this.path(p), body, method, await this.headers()) };
-    this.chat = new this.Controller({ client: facade, identity: this.identity, referenceImage: this.referenceImage, emit: p => {
+    this.chat = new this.Controller({ client: facade, identity: this.identity, referenceImage: this.referenceImage, revealReportReply: context.audience === 'customer', emit: p => {
       this.set(p); if (p.messages && this.visible) this.loadImages(p.messages);
     } });
     this.chat.visible = true; this.chat.session = session; this.chat.set({ canSend: true });

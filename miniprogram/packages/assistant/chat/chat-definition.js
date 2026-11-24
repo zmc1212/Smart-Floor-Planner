@@ -132,6 +132,7 @@ module.exports = () => ({
 					this._followReceipt='';
 				}
 				const previous = this.data.messages;
+				const firstLiveText = patch.liveAnswerText && !this.data.liveAnswerText;
 				this.setData(appendPatch(patch, previous.length), () => {
 					if (patch.fatal || patch.needsLogin) {
 						if (this.liveConsent) this.liveConsent.clear();
@@ -163,7 +164,7 @@ module.exports = () => ({
 					if (patch.messages || patch.conversation || patch.generating===false) void this.loadStageFollowQuestions();
 					const next = patch.messages;
 					const appended = next?.length && next[next.length - 1].id !== previous.at(-1)?.id;
-					if (!this._holdAutoScroll && (appended || patch.sending && patch.pendingText)) {
+					if (!this._holdAutoScroll && (appended || firstLiveText || patch.sending && patch.pendingText)) {
 						this.scrollBottom();
 					}
 				});

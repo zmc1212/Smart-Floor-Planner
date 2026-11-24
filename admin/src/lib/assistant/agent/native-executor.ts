@@ -7,6 +7,7 @@ import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { AssistantError, fail, fingerprint, safeText, type Evidence, type MessageContent } from '../contracts';
 import { agentModelLimits, modelTurnProtocolIssue, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import { recordAgentModelUsage } from '../core/model-usage';
+import { replyStreamAvailable, saveReplyPreview } from '../core/answer-stream';
 import { completeRun, completeDelegationReply, delegationAnswerRejected, failRun, heartbeat, markProviderStarted, recoverKnowledgeAnswer, runContext, type Lease } from '../infrastructure/job-queue';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { saveKnowledgeCitation } from '../knowledge/save-citation';
@@ -22,6 +23,7 @@ import { businessToolDefinitions, parseBusinessQuery, type BusinessSnapshot } fr
 import { materialTool, parseMaterialQuery, queryMaterials } from './materials';
 import { guardAnswerCommitments } from './context';
 import { runRenovationAgent, type AgentCheckpoint } from './runtime';
+import { finishContextTool, nativePlanningMessages } from './native-final';
 import { synthesisContextAvailable } from './synthesis-sources';
 import { dialogueBusinessQuery, dialogueEnterpriseSearch, modelBusinessReceipt, snapshotHeading, type DialogueToolRuntime } from './dialogue-tools';
 import { assertModelTurnBand, modelStepBase, modelStepStride, maxModelTurns, dialogueWebResearch, webCitations,
@@ -600,6 +602,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       return state;
     });
     const initial = await authorize();
+    const streamReply = replyStreamAvailable(lease.actor, initial.conversation, initial.run);
     // A public-site opening is a one-shot system event on the customer's own
     // consultation, not a question and not a tool turn. It keeps the same
     // published-material, provider-attempt, usage and recovery contracts as a
@@ -1139,6 +1142,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       }
       fail('assistant_capability_forbidden', 403);
     };
+    let publishedPreview = '';
     const model = async (turn: number, modelMessages: ModelMessage[], modelTools: ModelTool[]): Promise<ModelTurnOutput> => {
       // Turn 9 is the last whose ten tool slots stay below the 1200 web band.
       const step = assertModelTurnBand(turn);
@@ -1159,7 +1163,35 @@ export async function processNativeAgentAnswer(lease: Lease) {
         lastAttemptId = String(persisted.provider_attempt_id);
         return output;
       }
-      const dispatchTools = delegationTool && specialist && turn === 0 && modelTools.length ? [delegationTool] : modelTools;
+      let dispatchTools = delegationTool && specialist && turn === 0 && modelTools.length ? [delegationTool] : modelTools;
+      if (streamReply && turn === 0 && dispatchTools.some(tool => tool.name !== finishContextTool.name))
+        dispatchTools = dispatchTools.filter(tool => tool.name !== finishContextTool.name);
+      if (publishedPreview) {
+        await saveReplyPreview(lease, '');
+        publishedPreview = '';
+      }
+      const planning = streamReply && dispatchTools.some(tool => tool.name === finishContextTool.name);
+      const wireMessages = planning ? nativePlanningMessages(modelMessages,
+        '这个回合先调用需要的工具。资料已足够时调用 finish_context({})。正文由下一回合生成。') : modelMessages;
+      let buffered = '', completeLength = 0;
+      const onFinalText = streamReply && !dispatchTools.length ? async (delta: string) => {
+        buffered += delta;
+        const boundaries = buffered.slice(completeLength).matchAll(/\n[ \t\r]*\n/gu);
+        let end = completeLength;
+        for (const boundary of boundaries) end = completeLength + boundary.index + boundary[0].length;
+        if (end === completeLength) return;
+        completeLength = end;
+        const preview = verifiedPreview(buffered.slice(0, end));
+        if (preview === null) {
+          if (publishedPreview) await saveReplyPreview(lease, '');
+          publishedPreview = '';
+          return;
+        }
+        if (!preview || preview === publishedPreview) return;
+        await guard();
+        await saveReplyPreview(lease, preview, { context, history: [...historyRefs.values()] });
+        publishedPreview = preview;
+      } : undefined;
       await withTenantTransaction(lease.enterpriseId, async tx => {
         await runContext(tx, lease);
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
@@ -1174,10 +1206,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // The first dispatch must actually read before it answers: this is the
         // native equivalent of the V2 app's required-tool retrieval, and the
         // established legacy-agent requireTool contract.
-        agent: { config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: experience?.maxTokens ?? agentModelLimits.maxOutputTokens,
+        agent: { config, input: { messages: wireMessages, tools: dispatchTools, maxTokens: experience?.maxTokens ?? agentModelLimits.maxOutputTokens,
           ...(experience ? {temperature:experience.temperature} : {}),
           ...(delegationTool || specialist ? { applicationWebSearch: true } : {}),
-          requireTool: nativeFirstTurnRequiresTool(turn, dispatchTools) } },
+          ...(onFinalText ? { onFinalText } : {}),
+          requireTool: planning || nativeFirstTurnRequiresTool(turn, dispatchTools) } },
         metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, turn, purpose: 'answer', probeVersion: config.probeVersion },
         beforeProviderCall,
       }).catch(error => { textFailure = error; throw error; });
@@ -1271,6 +1304,25 @@ export async function processNativeAgentAnswer(lease: Lease) {
     };
     const checkSpecialistDraft = (text: string) => specialistReview
       ? nativeSpecialistDraftIssues(text, catalog.values(), context.sources, specialistReview) : [];
+    const verifiedPreview = (raw: string): string | null => {
+      if (!raw.trim() || asksForDesigners || designers.text() || sites.outcome() || runPublicRefs.size) return null;
+      const text = normalizeNativeCitationCarrier(raw, catalog.values());
+      if (modelTurnProtocolIssue({ text, toolCalls: [], finishReason: 'stop' })) return null;
+      const required = knowledgeRetrieved || webRetrieved;
+      const citations = assessNativeCitations(text, catalog.values(), required);
+      if (citations.invalid.length || required && !citations.runCitations || parameterIssue(text)) return null;
+      try {
+        // Reuse the same paragraph checks that gate specialist delivery, and
+        // the same commitment rules on the final customer reply.
+        if (nativeSpecialistDraftIssues(text, catalog.values(), context.sources,
+          specialistReview ?? { currentQuestion: currentQuestionText, projectSnapshotAuthoritative: true }).length) return null;
+        guardAnswerCommitments(text, { stagePreview });
+      } catch (error) {
+        if (error instanceof AssistantError) return null;
+        throw error;
+      }
+      return ragAnswerParts(text, [...catalog.values()]).flatMap(part => 'text' in part ? [part.text] : []).join('').trim();
+    };
     // The one-shot repair covers both invalid ids and a draft that ignores this
     // run's sources: once it was issued (or a previous process already spent it)
     // the gate stays silent, so delivery can fall back to the authoritative
@@ -1283,6 +1335,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     let parameterPartial = false;
     const result = await runRenovationAgent({
       messages: [systemMessage, ...history], tools: modelTools, resume: agentResume,
+      nativeFinalization: streamReply,
       ports: { authorize: guard, model, tool: toolPort, validateTool,
         canFinalizeContext: () => reviewedOriginals && !specialist?.companyPractice,
         resolveToolReply: delegationTool ? () => withTenantTransaction(lease.enterpriseId, async tx => {

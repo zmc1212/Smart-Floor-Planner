@@ -1,5 +1,6 @@
 const { AssistantClient, entryInput, errorCopy, uncertain, messagesForView: projectMessages } = require('./client');
 const { markdownForBlock, copyableReplyText } = require('./message-markdown');
+const { LiveAnswer } = require('./answer-stream');
 
 function messagesForView(items) {
   const views = projectMessages(items, markdownForBlock);
@@ -87,24 +88,29 @@ const initial = () => ({
   conversation: null, readOnly: false, messages: [], messageCursor: null, run: null, sending: false,
   history: [], historyCursor: null, historyLoading: false, historyError: '',
   draft: '', pendingText: '', pendingSend: false, pendingAction: '', handoffBusy: false,
-  runLabel: '', retryable: false, generating: false, uncertainRun: false,
+  runLabel: '', liveAnswerText: '', revealingReplyId: '', retryable: false, generating: false, uncertainRun: false,
   citation: null, citationLoading: false, citationError: '',
   contactLoading: false,
 });
 
 class ChatController {
   constructor({ emit, client = new AssistantClient(), identity = () => '', schedule = setTimeout, unschedule = clearTimeout, referenceImage = async value => value,
-    resumeConversationId = '', onResumeInvalid = null, prepareFirstSend = null }) {
+    resumeConversationId = '', onResumeInvalid = null, prepareFirstSend = null, revealReportReply = true }) {
     this.emit = emit; this.client = client; this.identity = identity;
     this.schedule = schedule; this.unschedule = unschedule;
     this.referenceImage = referenceImage;
     this.prepareFirstSend = prepareFirstSend;
     this.resumeConversationId = String(resumeConversationId || ''); this.onResumeInvalid = onResumeInvalid;
     this.state = initial(); this.epoch = 0; this.visible = false; this.hidden = false; this.ready = false;
+    this.revealReportReply = revealReportReply;
+    this.liveAnswer = new LiveAnswer((text, messageId) => {
+      if (!text || this.visible && this.session === this.identity()) this.set({ liveAnswerText: text, revealingReplyId: messageId });
+    });
     this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false;
   }
 
   resetWindow() {
+    this.liveAnswer.stop();
     this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false; this.olderFloor = '';
     this.createdAwaitingDetail = null; this.firstSendConversation = null; this.acceptedMessage = null;
   }
@@ -112,7 +118,7 @@ class ChatController {
 
   set(patch) { Object.assign(this.state, patch); this.emit(patch); }
   valid(epoch) { return this.epoch === epoch && this.session === this.identity(); }
-  hide() { this.visible = false; this.hidden = true; this.showTicket = (this.showTicket || 0) + 1; this.unschedule(this.timer); }
+  hide() { this.visible = false; this.hidden = true; this.showTicket = (this.showTicket || 0) + 1; this.unschedule(this.timer); this.liveAnswer.stop(); }
   dispose() { this.hide(); this.epoch += 1; }
   clear() {
     this.operationalDraft = null;
@@ -268,6 +274,7 @@ class ChatController {
   setIf(epoch, patch) { if (this.valid(epoch)) this.set(patch); }
   fail(error, epoch, fatal = false) {
     if (!this.valid(epoch)) return;
+    this.liveAnswer.stop();
     const code = error.code || error.error;
     const connectionInterrupted = !error.statusCode && String(error.errMsg || '').startsWith('request:fail');
     const denied = error.statusCode === 401 || ['assistant_capability_forbidden', 'assistant_resource_not_found',
@@ -331,16 +338,35 @@ class ChatController {
     const pendingMessage = this.client.pending.get('send:' + id), pendingHandoff = this.client.pending.get('handoff:' + id);
     if (pendingMessage) this.set({ pendingSend: true, pendingText: pendingMessage.body.content.blocks[0].text, draft: pendingMessage.body.content.blocks[0].text });
     if (pendingHandoff) this.set({ pendingAction: 'handoff:' + pendingHandoff.body.action });
+    const run = conversation.mode === 'ai' ? conversation.latestRun : null;
     this.set({ conversation, connectionInterrupted: false, readOnly: conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(conversation.mode) });
+    if (!ACTIVE.includes(run?.status)) this.finishLiveReply(resume ? null : run, window, conversation);
     if (window) this.commitWindow(window);
     this.set({ welcomeText: conversation.guidanceOpening || WELCOME, guidanceEnabled: !!conversation.guidanceEnabled, guidance: conversation.guidance || null,
       ...(!sameQuestion ? { selectedOptions: [], selectedOptionMap: {} } : {}) });
-    this.applyRun(conversation.mode === 'ai' ? conversation.latestRun : null);
+    this.applyRun(run);
     const hasPublic = this.hasPublicWindow();
     if (this.visible && !this.state.generating && (hasPublic || conversation.status === 'open'
       && (['handoff_requested', 'human'].includes(conversation.mode) || !this.state.run || this.state.run.status === 'succeeded'))) {
       this.scheduleConversation(id, epoch, conversation.mode === 'ai' ? PUBLIC_SYNC_MS : 3000);
     }
+  }
+
+  finishLiveReply(run, window, conversation) {
+    const raw = window?.cache.rawMessages;
+    if (this.liveAnswer.finalId && run?.outputMessageId === this.liveAnswer.finalId) {
+      if (raw && !raw.some(message => message.id === this.liveAnswer.finalId && message.available !== false)) this.liveAnswer.stop();
+      return;
+    }
+    if (this.visible && this.state.generating && this.state.run?.id === run?.id && run?.status === 'succeeded'
+      && (run.answerStreaming || this.revealReportReply && conversation.reportContext?.selected)) {
+      const reply = raw?.find(message => message.id === run.outputMessageId && message.authorKind === 'assistant' && message.available !== false);
+      const paragraphs = reply?.content?.blocks?.filter(block => block.type === 'text' && block.text?.trim());
+      const text = run.answerStreaming ? paragraphs?.map(block => block.text).join('').trim()
+        : paragraphs?.map(block => block.text.trim()).join('\n\n');
+      if (text && text.length <= 16000) { this.liveAnswer.finish(reply.id, text); return; }
+    }
+    this.liveAnswer.stop();
   }
 
   // Reads the authoritative conversation metadata, then only the messages that
@@ -467,6 +493,8 @@ class ChatController {
         cancelled: '已停止回答', failed: '这次回答没有完成',
         indeterminate: '回答结果正在核实，暂时不能重复生成。' })[status] || '',
     });
+    if (this.visible && ACTIVE.includes(status)) this.liveAnswer.sync(run);
+    else if (!this.liveAnswer.finalId || run?.outputMessageId !== this.liveAnswer.finalId) this.liveAnswer.stop();
     this.unschedule(this.timer);
     if (this.visible && ACTIVE.includes(status)) this.timer = this.schedule(() => this.poll(), Math.max(1500, Number(run.nextPollMs) || 1500));
   }
@@ -485,7 +513,10 @@ class ChatController {
 
   syncFailure(error, id, epoch) {
     this.fail(error, epoch);
-    if (!this.state.fatal && this.hasPublicWindow()) this.scheduleConversation(id, epoch);
+    if (!this.state.fatal && this.state.generating && this.state.run?.answerStreaming) {
+      this.unschedule(this.timer);
+      this.timer = this.schedule(() => this.poll(), 1500);
+    } else if (!this.state.fatal && this.hasPublicWindow()) this.scheduleConversation(id, epoch);
   }
 
   input(value) {

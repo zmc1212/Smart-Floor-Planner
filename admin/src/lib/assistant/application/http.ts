@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { AssistantError, fail, id, key } from '../contracts';
 import { ConversationService } from '../core/conversation';
+import { replyStreamResponse } from '../core/answer-stream';
 import { RequirementWorkflow } from '../requirements/workflow';
 import { customerIdentity, entryContext, fromEntry, locate } from './auth';
 import { HandoffWorkflow } from '../handoff/workflow';
@@ -183,6 +184,10 @@ export async function assistantHttp(request: Request, path: string[]) {
     } else if (path[0] === 'runs' && path.length <= 3) {
       const target = id(path[1]); const service = new ConversationService(await locate(identity, 'run', target)); only(body, []);
       if (path.length === 2 && method === 'GET') data = await service.run(target);
+      else if (path[2] === 'answer-stream' && path.length === 3 && method === 'GET' && !params.size) {
+        const read = () => service.run(target);
+        return replyStreamResponse(read, await read(), request.signal);
+      }
       else if (path.length === 3 && ['cancel', 'retry'].includes(path[2]) && method === 'POST') {
         data = await service.run(target, path[2] as 'cancel' | 'retry', requestKey()); status = path[2] === 'retry' ? 202 : 200;
       } else fail('assistant_resource_not_found', 404);

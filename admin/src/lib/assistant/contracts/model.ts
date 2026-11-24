@@ -25,6 +25,8 @@ export type ModelTurnInput = {
   applicationWebSearch?: true;
   /** Server-bound opt-in only; never emitted as a provider/model argument. */
   profile?: 'bailian-deepseek-flash-consultation-v1' | 'bailian-qwen37-flash-long-v1'; deadlineAt?: number;
+  /** Internal consumer for the dedicated, tool-free customer answer turn. */
+  onFinalText?: (delta: string) => Promise<void>;
 };
 export type ModelTurnOutput = {
   /** Assistant message content from the wire, still subject to final-answer validation. */

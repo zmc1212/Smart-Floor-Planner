@@ -9,11 +9,13 @@ import { assertToolPairs, toolSchemaIssue } from '@/lib/assistant/agent/tool-pro
 import { bailianBinding, bailianExplicitCacheCapable, bailianFinalFormat } from './bailian-capabilities';
 import { bailianResponsesApplies, bailianResponsesEnabled, bailianResponsesSettings } from './bailian-responses-capabilities';
 import { executeBailianResponses } from './bailian-responses-client';
+import { collectFinalChatStream } from './final-chat-stream';
 import { cacheObservation, modelPrefixObservation } from './model-observation';
 
 const invalid = () => { throw new AiProviderError('Invalid Agent model response', 'INVALID_PROVIDER_RESPONSE', 'unknown', 502); };
 export const agentChatProtocolVersion = 'native-final-cache-tools-v3';
 export const qwenSystemProtocolVersion = 'qwen35-leading-system-v1';
+const streamsFinalText = (input: ModelTurnInput) => !!input.onFinalText && !input.tools.length && !input.outputMode && !input.jsonOutput;
 function leadingSystems(messages: ModelMessage[]): ModelMessage[] {
   const systems = messages.flatMap(message => message.role === 'system' ? [message] : []);
   if (!systems.length || (systems.length === 1 && messages[0].role === 'system')) return messages;
@@ -80,6 +82,7 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
   const formatBody: {response_format?: {type:string;json_schema?:unknown}} = finalSchema ? {response_format:finalSchema}
     : input.jsonOutput ? {response_format:{type:'json_object'}} : {};
   return { model: input.model, messages, ...temperatureBody(baseUrl, input.temperature ?? 0), max_tokens: input.maxTokens,
+    ...(streamsFinalText(input) ? { stream: true, stream_options: { include_usage: true } } : {}),
     ...formatBody,
     ...thinkingBody(baseUrl, input.enableThinking),
     ...(input.tools.length && !finalSchema ? { tools: input.tools.map(tool => ({ type: 'function', function: tool })),
@@ -210,7 +213,7 @@ export function responsesWireSelected(
   input: ModelTurnInput,
   env: Record<string, string | undefined> = process.env,
 ) {
-  return bailianResponsesApplies(input) && bailianResponsesEnabled(runtime, input.model, env);
+  return !streamsFinalText(input) && bailianResponsesApplies(input) && bailianResponsesEnabled(runtime, input.model, env);
 }
 
 /** No transport retries or provider fallback: an unknown accepted request may already be billable. */
@@ -224,9 +227,11 @@ export async function executeAgentChat(runtime: AiProviderRuntimeConfig, input: 
   const body = agentChatBody(input, runtime.baseUrl);
   const started = Date.now();
   const response = await providerFetch(providerUrl(runtime.baseUrl, '/v1/chat/completions'), {
-    method: 'POST', headers: bearerHeaders(runtime.apiKey), body: JSON.stringify(body),
+    method: 'POST', headers: { ...bearerHeaders(runtime.apiKey), ...(body.stream ? { Accept: 'text/event-stream' } : {}) },
+    body: JSON.stringify(body),
   }, Math.min(runtime.timeoutMs, 90000), 'Assistant model', { redactErrorBody: true });
-  const payload = await parseJson(response, 'Assistant model');
+  const payload = body.stream && response.headers.get('content-type')?.includes('text/event-stream')
+    ? await collectFinalChatStream(response, input.onFinalText!) : await parseJson(response, 'Assistant model');
   const requestId = response.headers.get('x-siliconcloud-trace-id') || response.headers.get('x-request-id');
   let decodePayload = payload, wireNormalization: ModelTurnOutput['wireNormalization'];
   // Exact observed model/official transport/final channel only. All business
