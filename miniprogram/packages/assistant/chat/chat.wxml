@@ -148,7 +148,7 @@
 <block wx:for="{{messages}}" wx:key="id">
 <template wx:if="{{item.id === revealingReplyId && item.answerProcess && !staffTab && !professionalFollowup && !ownerSiteReport}}" is="answer-process"
   data="{{process: item.answerProcess, messageId: item.id, expanded: expandedAnswerProcessId === item.id}}"/>
-<block wx:if="{{item.id !== revealingReplyId && (!item.replyVersion || (replyVersionChoice['r' + item.replyVersion.root] || item.replyVersion.latest) === item.id)}}">
+<view wx:if="{{item.id !== revealingReplyId && (!item.replyVersion || (replyVersionChoice['r' + item.replyVersion.root] || item.replyVersion.latest) === item.id)}}" class="message-range">
 <view wx:if="{{item.constructionClosure}}" class="message construction-paper-message" id="message-{{item.id}}">
   <template is="construction-closure-card" data="{{receipt: item.constructionClosure, record: item.siteRecordList[0], paths: siteRecordPaths, photoError: siteRecordError}}"/>
 </view>
@@ -251,7 +251,8 @@
     </block>
   </view>
 </view>
-</block>
+<view wx:if="{{!item.isUser}}" id="message-{{item.id}}-end" class="message-range-end" aria-hidden="true"></view>
+</view>
 </block>
 <button wx:if="{{designerCardError}}" class="designer-card-retry chat-button" bindtap="retryDesignerCards">{{designerCardError}}</button><view wx:if="{{planError || planPending}}" class="notice"><text class="chat-text">{{planError || '有一项方案决定等待核对。'}}</text><button class="notice-action chat-button {{(planBusy) ? 'is-disabled' : ''}}" bindtap="retryPlan" disabled="{{planBusy}}">核对同次决定</button><button wx:if="{{!planPending}}" class="notice-action chat-button" bindtap="refresh">重新读取</button></view>
 <view wx:if="{{publicPending || (publicError && !publicReplyId)}}" class="notice">
@@ -272,10 +273,11 @@
   <text wx:if="{{!busy && !sending && !pendingSend && !connectionInterrupted && !fatal && error}}" class="chat-send-detail">{{error}}</text>
 </view><template wx:if="{{runLabel && generating && run.answerPhase && !revealingReplyId && !connectionInterrupted && !staffTab && !professionalFollowup && !ownerSiteReport}}" is="answer-process-running" data="{{label: runLabel, busy, pendingAction}}"/>
 <view wx:elif="{{runLabel && !revealingReplyId}}" class="run-state"><view class="avatar"><image class="chat-image" src="../assets/xiaok-chat-avatar.png" mode="aspectFit"/></view><view class="run-paper"><text class="run-label">{{runLabel}}</text><view wx:if="{{generating}}" class="processing-dots" aria-hidden="true"><view class="chat-group"></view><view class="chat-group"></view><view class="chat-group"></view></view><button wx:if="{{generating}}" class="run-action chat-button {{(busy || pendingAction) ? 'is-disabled' : ''}}" bindtap="stop" disabled="{{busy || pendingAction}}"><text>停止回答</text></button><button wx:elif="{{retryable && canSend && !readOnly}}" class="run-action chat-button {{(busy || pendingAction) ? 'is-disabled' : ''}}" bindtap="retryRun" disabled="{{busy || pendingAction}}"><text>重新回答</text><image class="chat-image" src="../assets/chat-arrow-up-right.png" mode="aspectFit"/></button><button wx:elif="{{uncertainRun}}" class="run-action chat-button {{(busy) ? 'is-disabled' : ''}}" bindtap="refresh" disabled="{{busy}}"><text>刷新状态</text></button></view></view>
-<view wx:if="{{(generating || revealingReplyId) && liveAnswerText && !staffTab && !professionalFollowup && !ownerSiteReport}}" class="message assistant-message owner-text-reply" id="answer-stream-message">
+<view wx:if="{{(generating || revealingReplyId) && liveAnswerText && !staffTab && !professionalFollowup && !ownerSiteReport}}" class="message message-range assistant-message owner-text-reply" id="answer-stream-message">
   <view class="message-main"><view class="bubble">
     <template is="message-text" data="{{text: liveAnswerText, markdown: liveAnswerMarkdown, messageId: 'answer-stream', blockKey: 0, selectable: true}}"/>
   </view></view>
+  <view id="answer-stream-message-end" class="message-range-end" aria-hidden="true"></view>
 </view>
 <view wx:if="{{readOnly && conversation.mode !== 'human' && conversation.mode !== 'handoff_requested'}}" class="archive-note"><text class="chat-text">{{conversation.status === 'open' ? '这段对话当前只可查看记录。' : '这段对话已结束，记录仍为你保留。'}}</text><button wx:if="{{canSend}}" class="notice-action chat-button" bindtap="newConversation">开启新对话</button></view></view><view id="conversation-end" class="conversation-end"></view></view></scroll-view>
 <view wx:if="{{showReplyEnd && !followupActive}}" class="reply-end-float">

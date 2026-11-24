@@ -1,17 +1,17 @@
 const EDGE = 2;
 
-function replyScrollPosition({ view, bubble, end, held, jump, contentBottom = bubble.bottom, anchorShift = 0 }) {
+function replyScrollPosition({ view, start, end, transcriptEnd, held, jump, anchorShift = 0 }) {
   const offset = Math.max(0, view.scrollTop);
-  const bottom = Math.max(0, offset + end.bottom - view.bottom);
-  const roomAbove = bubble.top - view.top;
-  const hidden = Math.max(bubble.bottom, contentBottom) - view.bottom;
+  const maxTop = Math.max(0, offset + transcriptEnd.bottom - view.bottom);
+  const roomAbove = start.top - view.top;
+  const hidden = end.bottom - view.bottom;
   let top = offset;
-  if (jump) top = bottom;
+  if (jump) top += Math.max(0, hidden);
   else if (held) top += anchorShift;
   else top += Math.min(roomAbove, Math.max(0, hidden));
-  top = Math.round(Math.min(bottom, Math.max(0, top)));
+  top = Math.round(Math.min(maxTop, Math.max(0, top)));
   const stopped = held || jump || roomAbove - (top - offset) <= EDGE;
-  return { top, held: stopped, showEnd: contentBottom - view.bottom - (top - offset) > EDGE };
+  return { top, held: stopped, showEnd: hidden - (top - offset) > EDGE };
 }
 
 /** Only handles the on-screen reply of a run observed in this view. */
@@ -30,13 +30,13 @@ class ReplyScroll {
     return !!this.turn;
   }
 
-  bubble() {
+  reply() {
     const { conversation, run, generating, revealingReplyId, liveAnswerText } = this.host.data;
     if (run?.id !== this.turn?.id || conversation?.id !== this.turn?.conversation) return null;
     if ((generating || revealingReplyId) && liveAnswerText)
       return { id: 'answer-stream-message', phase: generating ? 'streaming' : 'revealing' };
     const latest = conversation.latestRun?.id === run.id ? conversation.latestRun : run;
-    return latest?.outputMessageId ? { id: 'message-' + latest.outputMessageId, phase: 'saved', outputId: latest.outputMessageId } : null;
+    return latest?.outputMessageId ? { id: 'message-' + latest.outputMessageId, phase: 'saved' } : null;
   }
 
   hold() { if (this.turn) this.turn.held = true; }
@@ -55,12 +55,14 @@ class ReplyScroll {
   suspend() {
     if (this.turn) this.turn = { ...this.turn, held: true, jump: false };
     this.clearTimer();
+    this.disconnectObserver();
     this.show(false);
   }
 
   reset() {
     this.turn = null;
     this.clearTimer();
+    this.disconnectObserver();
     this.show(false);
   }
 
@@ -72,46 +74,63 @@ class ReplyScroll {
 
   request() {
     if (!this.turn || !this.host._alive || !this.host._shown) return;
-    const immediate = this.turn.sample && this.turn.sample.phase !== this.bubble()?.phase;
+    const immediate = this.turn.sample && this.turn.sample.phase !== this.reply()?.phase;
     if (this.timer && !immediate) return;
     if (this.timer) this.clearTimer();
     if (this.measuring) { this.repeat = true; return; }
     this.timer = setTimeout(() => { this.timer = null; this.measure(); }, immediate ? 0 : 40);
   }
 
+  observeEnd(selector) {
+    if (this.observedEnd?.selector === selector || typeof wx.createIntersectionObserver !== 'function') return;
+    this.disconnectObserver();
+    const observer = wx.createIntersectionObserver(this.host, { thresholds: [1] });
+    this.observedEnd = { selector, observer };
+    observer.relativeTo('.conversation-scroll', { bottom: EDGE }).observe(selector, () => {
+      if (this.observedEnd?.observer === observer) this.request();
+    });
+  }
+
+  disconnectObserver() {
+    const observed = this.observedEnd;
+    this.observedEnd = null;
+    observed?.observer.disconnect();
+  }
+
   measure() {
-    const turn = this.turn, reply = turn && this.bubble(), host = this.host;
-    if (!reply || !host._shown) { this.show(false); return; }
-    const query = host.createSelectorQuery ? host.createSelectorQuery() : wx.createSelectorQuery();
-    const message = '#' + reply.id;
-    query.select('.conversation-scroll').fields({ rect: true, size: true, scrollOffset: true });
-    query.select(message + ' .bubble').boundingClientRect();
-    query.select('#conversation-end').boundingClientRect();
-    query.selectAll(message + ' .bubble .message-block').boundingClientRect();
-    if (reply.outputId) {
-      query.select(message + ' .designer-cards').boundingClientRect();
-      query.select(message + ' .designer-discovery-card').boundingClientRect();
-      query.select('#discovery-' + reply.outputId).boundingClientRect();
+    const turn = this.turn, reply = turn && this.reply(), host = this.host;
+    if (!reply || !host._shown) {
+      this.disconnectObserver();
+      this.show(false);
+      return;
     }
+    const query = host.createSelectorQuery ? host.createSelectorQuery() : wx.createSelectorQuery();
+    const startSelector = '#' + reply.id, endSelector = startSelector + '-end';
+    query.select('.conversation-scroll').fields({ rect: true, size: true, scrollOffset: true });
+    query.select(startSelector).boundingClientRect();
+    query.select(endSelector).boundingClientRect();
+    query.select('#conversation-end').boundingClientRect();
     this.measuring = true;
-    query.exec(([view, bubble, end, textBlocks, ...cards] = []) => {
+    query.exec(([view, start, end, transcriptEnd] = []) => {
       this.measuring = false;
       const again = this.repeat;
       this.repeat = false;
-      const current = this.turn && this.bubble();
+      const current = this.turn && this.reply();
       if (host._shown && turn === this.turn && current?.phase === reply.phase && current.id === reply.id) {
-        if (view && bubble && end && Number.isFinite(view.scrollTop)) {
-          const contentBottom = Math.max(textBlocks?.at(-1)?.bottom ?? bubble.bottom, ...cards.map(card => card?.bottom ?? -Infinity));
-          this.layout(turn, reply, view, bubble, end, contentBottom);
+        if (view && start && end && transcriptEnd && Number.isFinite(view.scrollTop)) {
+          this.observeEnd(endSelector);
+          this.layout(turn, reply, view, start, end, transcriptEnd);
+        } else {
+          this.disconnectObserver();
+          this.show(false);
         }
-        else this.show(false);
       }
       if (again) this.request();
     });
   }
 
-  layout(turn, reply, view, bubble, end, contentBottom) {
-    const screenTop = bubble.top - view.top;
+  layout(turn, reply, view, start, end, transcriptEnd) {
+    const screenTop = start.top - view.top;
     const contentTop = screenTop + view.scrollTop;
     const previous = turn.sample;
     // Moving between the typing and saved bubbles also replaces the process
@@ -119,7 +138,7 @@ class ReplyScroll {
     // the remaining visible movement when that row changes the layout.
     const changedRow = previous && previous.phase !== reply.phase && Math.abs(contentTop - previous.contentTop) > EDGE;
     const anchorShift = changedRow ? screenTop - previous.screenTop : 0;
-    const position = replyScrollPosition({ view, bubble, end, held: turn.held, jump: turn.jump, contentBottom, anchorShift });
+    const position = replyScrollPosition({ view, start, end, transcriptEnd, held: turn.held, jump: turn.jump, anchorShift });
     const jumped = turn.jump;
     turn.jump = false;
     turn.held = position.held;
