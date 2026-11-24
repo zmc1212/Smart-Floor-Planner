@@ -1,24 +1,24 @@
-/* Approved answer-process screens use a 274px paper strip at the 390px viewport. */
+/* C01 wide reply and process share the same paper edges. */
 .notebook-chat {
-  --process-width: 528rpx;
-  --process-indent: 94rpx;
   --process-ink: #173f32;
   --process-muted: #526759;
   --process-border: #d8dfd0;
   --process-paper: #f0f2e8;
   --process-header: #e5eadb;
 
+  .answer-process,
+  .owner-text-reply {
+    // The 35rpx spine and 28rpx paper margin start 13rpx past the 50rpx transcript inset.
+    margin-left: 13rpx;
+  }
   .answer-process {
-    width: var(--process-width);
-    max-width: calc(100% - var(--process-indent));
-    margin: -22rpx 0 44rpx var(--process-indent);
+    margin-top: -22rpx;
+    margin-bottom: 44rpx;
     color: var(--process-ink);
   }
-  .message.answer-process-answer { gap: 14rpx; }
-  .answer-process-answer > .message-main {
-    width: var(--process-width);
-    max-width: calc(100% - var(--process-indent));
-  }
+  .owner-text-reply > .avatar { display: none; }
+  .owner-text-reply > .message-main { width: 100%; max-width: 100%; }
+  .owner-text-reply .bubble { padding-inline: 26rpx; }
 
   .answer-process-toggle,
   .answer-process-source,
