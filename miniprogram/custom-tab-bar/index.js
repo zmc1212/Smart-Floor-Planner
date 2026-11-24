@@ -5,8 +5,8 @@ const { roleForIdentity } = require('../utils/identity-navigation.js');
 
 const STAFF_TABS = [
   { key: 'xiaok', capability: 'construction.projects', pagePath: '/pages/index/index', staffView: 'xiaok', text: '小K', icon: 'chat', tab: true },
-  { key: 'workbench', capability: 'construction.projects', pagePath: '/pages/index/index', staffView: 'workbench', text: '工作台', icon: 'home', tab: true },
-  { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', icon: 'mine', tab: true },
+  { key: 'workbench', capability: 'construction.projects', pagePath: '/pages/index/index', staffView: 'workbench', text: '工作台', icon: 'home', dockedIconPath: './assets/notebook-dock-home.png', tab: true },
+  { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', icon: 'mine', dockedIconPath: './assets/notebook-dock-mine.png', tab: true },
 ].map(item => ({
   ...item,
   iconPath: './assets/notebook-' + item.icon + '.png',
@@ -96,7 +96,7 @@ Component({
     selected: 0,
     suppressed: false,
     customerNavigation: false, staffNavigation: false, keyboardHidden: false,
-    twoTabs: false,
+    staffFloating: false, twoTabs: false,
     compactMeasureTab: true,
     badgeUnavailable: false,
     badgeUnavailableText: '',
@@ -106,20 +106,30 @@ Component({
   lifetimes: {
     attached() {
       this.syncSelected();
+    },
+    detached() {
+      this.cancelTabTransition();
     }
   },
 
   pageLifetimes: {
     show() {
       this.syncSelected();
+    },
+    hide() {
+      this.cancelTabTransition();
     }
   },
 
   methods: {
+    cancelTabTransition() {
+      if (this._tabTransition) clearTimeout(this._tabTransition.timer);
+      this._tabTransition = null;
+    },
     async switchTab(e) {
       const index = e.currentTarget.dataset.index;
       const item = this.data.list[index];
-      if (!item) return;
+      if (!item || this._tabTransition) return;
 
       if (!item.visible) {
         this.syncSelected();
@@ -131,21 +141,37 @@ Component({
         return;
       }
 
-      this.setData({ selected: index });
-      if (item.staffView) {
-        const global = getApp().globalData;
-        const previous = global.siteWorkbenchTab;
-        global.siteWorkbenchTab = item.staffView;
-        const pages = getCurrentPages(), page = pages[pages.length - 1];
-        if (page && '/' + page.route === item.pagePath) {
-          page.setData({ siteWorkbenchTab: item.staffView }, () => this.syncSelected());
+      const globalData = getApp().globalData;
+      const role = currentRole(globalData);
+      const staffFloating = this.data.staffNavigation && item.key !== 'xiaok';
+      const animate = this.data.staffNavigation && staffFloating !== this.data.staffFloating
+        && !globalData.reduceMotion;
+
+      this.setData({ selected: index, staffFloating });
+      const navigate = () => {
+        this._tabTransition = null;
+        const current = getApp().globalData;
+        if (animate && (currentRole(current) !== role || !visibleItems(current).some(tab => tab.key === item.key))) {
+          this.syncSelected();
           return;
         }
-        wx.switchTab({ url: item.pagePath, fail: () => { global.siteWorkbenchTab = previous; this.syncSelected(); } });
-        return;
-      }
-      const navigate = item.tab === false || item.pagePath.startsWith('/packages/') ? 'reLaunch' : 'switchTab';
-      wx[navigate]({ url: item.pagePath, fail: () => this.syncSelected() });
+        if (item.staffView) {
+          const previous = current.siteWorkbenchTab;
+          current.siteWorkbenchTab = item.staffView;
+          const pages = getCurrentPages(), page = pages[pages.length - 1];
+          if (page && '/' + page.route === item.pagePath) {
+            page.setData({ siteWorkbenchTab: item.staffView }, () => this.syncSelected());
+            return;
+          }
+          wx.switchTab({ url: item.pagePath, fail: () => { current.siteWorkbenchTab = previous; this.syncSelected(); } });
+          return;
+        }
+        const method = item.tab === false || item.pagePath.startsWith('/packages/') ? 'reLaunch' : 'switchTab';
+        wx[method]({ url: item.pagePath, fail: () => this.syncSelected() });
+      };
+
+      if (animate) this._tabTransition = { role, key: item.key, timer: setTimeout(navigate, 320) };
+      else navigate();
     },
 
     async openMostRecentlyEditedSurvey() {
@@ -196,12 +222,16 @@ Component({
       const hasWorkbenchTab = list.some(item => item.staffView);
       const customerView = globalData.customerTab || 'xiaok';
       const staffView = globalData.siteWorkbenchTab || 'workbench';
-      const index = list.findIndex((item) => item.pagePath === current && !item.center
+      // Session and badge refreshes can run before the pending route change.
+      const pending = this._tabTransition;
+      const pendingIndex = pending?.role === role ? list.findIndex(item => item.key === pending.key) : -1;
+      const index = pendingIndex >= 0 ? pendingIndex : list.findIndex((item) => item.pagePath === current && !item.center
         && (!item.customerView || item.customerView === customerView) && (!item.staffView || item.staffView === staffView));
       this.setData({
         list,
         customerNavigation,
         staffNavigation,
+        staffFloating: staffNavigation && list[index]?.key !== 'xiaok',
         twoTabs: staffNavigation && list.filter(item => item.visible).length === 2,
         suppressed: list.length === 0 || customerNavigation,
         compactMeasureTab: list.some((item) => item.center) && list.filter((item) => item.visible).length === 4,

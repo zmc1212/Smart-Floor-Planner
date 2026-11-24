@@ -172,7 +172,8 @@ test('unchanged roles retain earnings icons and native tool pages stay registere
   );
 });
 
-test('staff XiaoK and workbench switch on the shared native tab and Mine remains a separate tab', async () => {
+test('staff tabs animate between the docked XiaoK and floating destinations', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
   const globalData = {
     userInfo: { role: 'staff', mode: 'staff', staffRole: 'enterprise_admin' },
     bootstrap: {
@@ -206,10 +207,27 @@ test('staff XiaoK and workbench switch on the shared native tab and Mine remains
     const page = { route: 'pages/index/index', setData(update, callback) { this.update = update; callback(); } };
     global.getCurrentPages = () => [page];
     await definition.methods.switchTab.call(component, { currentTarget: { dataset: { index: 0 } } });
+    assert.equal(component.data.staffFloating, false);
+    assert.equal(page.update, undefined);
+    component.syncSelected();
+    assert.equal(component.data.staffFloating, false);
+    assert.equal(component.data.selected, 0);
+    context.mock.timers.tick(320);
     assert.deepEqual(page.update, { siteWorkbenchTab: 'xiaok' });
     assert.equal(component.data.selected, 0);
+
     await definition.methods.switchTab.call(component, { currentTarget: { dataset: { index: 2 } } });
+    assert.equal(component.data.staffFloating, true);
+    assert.equal(navigations.length, 1);
+    context.mock.timers.tick(320);
     assert.deepEqual(navigations.at(-1), ['switchTab', '/pages/mine/mine']);
+
+    component.syncSelected();
+    await definition.methods.switchTab.call(component, { currentTarget: { dataset: { index } } });
+    globalData.bootstrap.current.capabilities = ['account'];
+    context.mock.timers.tick(320);
+    assert.deepEqual(page.update, { siteWorkbenchTab: 'xiaok' });
+    assert.deepEqual(component.data.list.map(item => item.key), ['mine']);
   } finally {
     restore();
   }

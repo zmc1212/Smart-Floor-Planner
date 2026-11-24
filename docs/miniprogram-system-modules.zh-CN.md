@@ -996,7 +996,7 @@ C01 `packages/assistant/chat/chat` 展示防水专业回答、有据检查清单
 
 已签名施工员工、设计师和企业负责人在 `pages/index/index` 使用[批准的四张工作台稿](../design-references/site-role-workbenches-20261117/)。施工经理和工人显示「工地／我的」。设计师和企业负责人显示「小K／工作台／我的」。「小K」在首页打开该角色原有的私人跟进。现场顾问沿用量房工作台，业主继续使用单独批准的「我家工地」。
 
-设计师、施工经理、工人和老板的工作台与「我的」共用 `custom-tab-bar/index` 的入口配置、手账纸面、图标、字号及选中态。签名角色与实际权限决定可见入口。只显示「我的」时，按同一紧凑宽度居中。Stable 390×844 使用合成权限验证四个角色和设计师仅账户态，核对了 26px 图标框、纸面和选中态。[工作台确认稿](../design-references/site-role-workbenches-20261117/README.md) · [工人端确认稿](../design-references/worker-site-saas-v1-20261118/README.md) · [原生核验](../tmp/staff-tab-audit-20261124/stable-aa4e9e04/report.json)。
+设计师、施工经理、工人和老板共用 `custom-tab-bar/index`，由当前签名角色和实际权限决定可见入口。仅有「我的」时复用 118px 居中项。员工端与用户端共用 `styles/notebook-tab-bar.less`，小K底栏为 50px 加底部安全区，其他页为 114rpx 高的悬浮胶囊，左右缩进 36rpx，距安全区上方 14rpx。离开小K时整条底栏用 320ms 收窄上浮，返回时反向展开。选中项用墨绿实心图标和加粗文字，单项背景透明。贴底未选中的工作台和「我的」图标复用用户端 `packages/assistant/assets/welcome-notebook/dock-{service,mine}.png`，打包到 `custom-tab-bar/assets/notebook-dock-{home,mine}.png`。施工经理和工人的「工地」「我的」均使用悬浮态。页面滚动区在底栏下方留出间距。Stable 390×844 使用合成角色权限和项目数据核验两种终态及返回小K时展开的中间帧。离开小K的中间帧未在最小化窗口采到。[用户端底栏确认稿](../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/README.md#默认tab与动效) · [原生核验](../tmp/staff-tabs-customer-style-20261124/stable-160b7309/report.json) · [贴底图标核验](../tmp/staff-tabs-customer-style-20261124/stable-8f2bbe8d/report.json)。
 
 获权的 AI 设计动作从工作台和线索详情进入。`pages/ai-design/ai-design` 保留原生注册，供 `wx.switchTab` 带入户型和房间上下文。
 

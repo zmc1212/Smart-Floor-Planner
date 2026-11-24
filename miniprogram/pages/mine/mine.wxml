@@ -94,7 +94,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
   </view>
 </template>
 
-<view class="mine-page {{isLoggedIn ? 'sfp-tab-page' : 'guest-page sfp-tab-page'}}">
+<view class="mine-page {{isLoggedIn ? 'sfp-tab-page' : 'guest-page sfp-tab-page'}} {{isLoggedIn && (activeRole === 'designer' || activeRole === 'construction_staff' || activeRole === 'enterprise_admin') ? 'staff-notebook-mine' : ''}}">
   <scroll-view class="mine-scroll" scroll-y enhanced show-scrollbar="{{false}}">
     <view wx:if="{{!isLoggedIn}}" class="login-state">
       <view

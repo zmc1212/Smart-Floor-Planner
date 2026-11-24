@@ -1,3 +1,5 @@
+@import "../styles/notebook-tab-bar.less";
+
 .tabbar-shell {
   position: fixed;
   left: 0;
@@ -14,18 +16,14 @@
   box-sizing: border-box;
 }
 
-.staff-notebook-tabs {
-  height: calc(66px + env(safe-area-inset-bottom));
-  border: 1rpx solid #efebe1;
-  border-radius: 11px 11px 0 0;
-  background: rgba(255,253,249,.98);
-  box-shadow: 0 -2rpx 12rpx #ada88d12;
+/* Both presentations use the same surface and item rules as the customer bar. */
+.staff-notebook-tabs { .notebook-tab-bar(); }
+.staff-notebook-tabs.staff-floating-tabs { .notebook-tab-bar-floating(); }
+
+@media (prefers-reduced-motion: reduce) {
+  .staff-notebook-tabs { transition: none; }
 }
-.staff-notebook-tabs .tabbar { height:56px; padding:3px 4px; }
-.staff-notebook-tabs .tab-item { height:54px; margin:0 3px; color:#607b7e; }
-.staff-notebook-tabs .tab-item.active { background:#e9eee6; border-radius:11px; color:#034b36; }
-.staff-notebook-tabs .tab-icon,.staff-notebook-tabs .tab-image { width:26px; height:26px; }
-.staff-notebook-tabs .tab-text { font-size:13px; line-height:1.2; margin-top:2px; }
+
 .staff-notebook-tabs.two-tabs .tabbar { justify-content:center; gap:18px; }
 .staff-notebook-tabs.two-tabs .tab-item,
 .staff-notebook-tabs .tab-item:only-child { flex:0 1 118px; }
