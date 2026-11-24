@@ -1,6 +1,6 @@
 /* C01 owner's message menu, calibrated against the approved 390px viewport. */
 .notebook-chat {
-  .message-actions-layer { position: fixed; inset: 0; z-index: 20; }
+  .message-actions-layer { position: fixed; inset: 0; z-index: 1001; }
   .message-actions-mask { position: absolute; inset: 0; background: rgba(29, 50, 39, .28); }
   .message-action-focus.user-message {
     position: absolute;
@@ -16,6 +16,7 @@
     position: relative;
     width: 100%;
     border-color: #7a937b;
+    box-shadow: inset 0 0 0 .5px #7a937b;
   }
   .message-action-panel {
     position: absolute;
@@ -47,7 +48,7 @@
     box-sizing: border-box;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 15px;
     width: 100%;
     height: 44px;
     min-height: 44px;
@@ -57,13 +58,18 @@
     border-radius: 0;
     background: transparent;
     color: #16392e;
-    font-size: 15.5px;
-    font-weight: 500;
-    line-height: 44px;
     text-align: left;
   }
   .message-action-row::after { border: 0; }
   .message-action-row image { width: 19px; height: 19px; flex: none; }
+  .message-action-label {
+    position: relative;
+    top: -1px;
+    font-family: 'XiaoK Menu Sans', 'Noto Sans SC', 'PingFang SC', sans-serif;
+    font-size: 15.5px;
+    font-weight: 500;
+    line-height: 22px;
+  }
   .message-action-row.message-action-danger { border-top: 1px solid #e0ddd0; color: #a7443b; }
   .message-action-row[disabled] { color: #788878; }
   .message-action-row[disabled] image { opacity: .45; }

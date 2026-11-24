@@ -2,7 +2,7 @@ const { errorCopy, uncertain } = require('../lib/client');
 
 const messageActionItems = [
   { id: 'edit', text: '修改', icon: 'message-actions/edit', needsIdle: true },
-  { id: 'copy', text: '复制', icon: 'reply-actions/copy' },
+  { id: 'copy', text: '复制', icon: 'message-actions/copy' },
   { id: 'share', text: '分享', icon: 'message-actions/share' },
   { id: 'quote', text: '引用', icon: 'message-actions/quote', needsIdle: true },
   { id: 'delete', text: '删除', icon: 'message-actions/delete', needsIdle: true },
