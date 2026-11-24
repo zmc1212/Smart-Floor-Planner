@@ -123,7 +123,7 @@ export async function citationProjection(tx:PostgresTransaction,actor:ActorConte
   const sourceLocation = source.platform_knowledge ? ['平台公共知识', location].filter(Boolean).join(' · ') : location;
   return {id:String(citation.id),available:true,title:source.title,version:String(citation.document_version_id),versionNumber:Number(source.version_number),
     sourceHash:String(citation.source_hash),contentHash:String(source.content_hash),
-    knowledge:knowledgeProvenance(source),chapter:file?.section ?? [],page:file?.page ?? origin?.page ?? null,
+    knowledge:knowledgeProvenance(source),chapter:file?.section ?? [],page:file?.extraction?.pdfPage ?? file?.page ?? origin?.page ?? null,
     referenceCase:source.source_type==='reference_case',
     quote:source.text?String(citation.quote_snapshot):'',locator:citation.locator,isDraft:citation.is_draft,
     ...(sourceLocation ? { sourceLocation } : {}),
@@ -145,6 +145,31 @@ export async function webCitationProjection(tx: PostgresTransaction, actor: Acto
   if (!reason) return citation;
   const errorCode = checked && source && webSourceErrorCode(checked, source.hash);
   return { id: citationId, available: false, reason, ...(errorCode ? { errorCode } : {}) };
+}
+
+type CitationPageGroup = { page: number; ids: string[] };
+type MessageCitation = Awaited<ReturnType<typeof citationProjection | typeof webCitationProjection>>;
+
+/** Only group the authorized citations of one saved message. Keep their IDs
+ * and exact excerpts intact for the existing citation endpoint. */
+export function citationPageGroups(citations: MessageCitation[]): CitationPageGroup[] {
+  const groups = new Map<string, CitationPageGroup>();
+  for (const citation of citations) {
+    if (!citation.available) continue;
+    const web = citationWebSource(citation);
+    const pdf = web?.document?.mediaType === 'application/pdf' ? web.document : undefined;
+    const knowledge = 'knowledge' in citation ? citation.knowledge : undefined;
+    const page = pdf?.page ?? ('page' in citation ? citation.page : undefined);
+    if (typeof page !== 'number' || !Number.isSafeInteger(page) || page < 1) continue;
+    const source = knowledge ? ['knowledge', knowledge.scope, knowledge.documentId, knowledge.versionId]
+      : pdf && web ? ['web', web.url, pdf.hash] : undefined;
+    if (!source) continue;
+    const key = JSON.stringify([...source, page]);
+    const group = groups.get(key);
+    if (group) group.ids.push(citation.id);
+    else groups.set(key, { page, ids: [citation.id] });
+  }
+  return [...groups.values()].filter(group => group.ids.length > 1);
 }
 /** Explain why a saved answer can no longer be replayed. A retryable store
  * failure is not described as deleted content, and a lost grant is not
@@ -184,7 +209,7 @@ async function projectSavedMessage(tx:PostgresTransaction, actor:ActorContext, c
     on m.enterprise_id=a.enterprise_id and m.conversation_id=a.conversation_id and m.client_message_id='media:' || a.request_key
     where m.enterprise_id=${actor.enterpriseId} and m.id=${String(message.id)}`);
   const citations=await rows(tx,sql`select * from app.assistant_message_citations where enterprise_id=${actor.enterpriseId} and message_id=${String(message.id)} order by id`);
-  const projected=[];
+  const projected: MessageCitation[] = [];
   for(const citation of citations)projected.push(await citationProjection(tx,actor,c,citation));
   const webIds = [...new Set(((message.content as { blocks?: Array<{ type?: string; citationId?: string }> })?.blocks || [])
     .filter(b => b.type === 'citation' && b.citationId && parseWebCitationId(b.citationId)).map(b => b.citationId!))];
@@ -196,6 +221,7 @@ async function projectSavedMessage(tx:PostgresTransaction, actor:ActorContext, c
   const siteResult = sourceAvailable && message.purpose === 'construction.result'
     ? await siteResultProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null;
   const available = sourceAvailable && siteResult?.available !== false;
+  const citationGroups = available ? citationPageGroups(projected) : [];
   // Only a public-source denial names its reason; other blocks keep the generic
   // fallback. The client renders fallbackText, so no client change is needed.
   const webReason = projected.find(x => !x.available && 'reason' in x && webIds.includes(x.id) && x.reason !== 'source_unavailable');
@@ -210,7 +236,8 @@ async function projectSavedMessage(tx:PostgresTransaction, actor:ActorContext, c
     ...(publicProjection ? { publicSourceBound: true } : {}),
     content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',
       ...(publicReason?{reason:publicReason}:{}),fallbackText:unavailableNoticeText(publicReason)}]},
-    citations:publicReason ? [] : projected,createdAt:message.created_at,constructionReminder: available && message.purpose === 'construction.stage',
+    citations:publicReason ? [] : projected, ...(citationGroups.length ? { citationGroups } : {}),
+    createdAt:message.created_at,constructionReminder: available && message.purpose === 'construction.stage',
     constructionFollowUp: available && message.purpose === 'construction.followup',
     planDecision: available && planProjection?.available ? planProjection.planDecision : null,
     siteRecord: available && message.purpose === 'construction.record' ? await siteRecordProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,

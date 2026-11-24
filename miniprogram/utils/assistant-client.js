@@ -307,10 +307,12 @@ function messagesForView(items, formatAssistantText) {
   return (items || []).map(item => {
     // WXML uses the projected blocks. Keep the raw content in the controller
     // so it isn't serialized twice or sent to the view after withdrawal.
-    const { content, answerProcess, ...metadata } = item;
+    const { content, answerProcess, citationGroups = [], ...metadata } = item;
     const available = item.available !== false;
     const blocks = content?.blocks || [];
     const citations = available ? item.citations || [] : [];
+    const groupsById = new Map(citationGroups.map(group => [group.ids[0], group]));
+    const groupedCitationIds = new Set(citationGroups.flatMap(group => group.ids.slice(1)));
     const process = available && item.authorKind === 'assistant'
       && Number.isSafeInteger(answerProcess?.elapsedSeconds) && answerProcess.elapsedSeconds >= 0
       ? {
@@ -319,7 +321,13 @@ function messagesForView(items, formatAssistantText) {
           const label = { enterprise_knowledge: '查阅企业工艺', public_search: '查找公开资料', public_read: '核对公开资料' }[id];
           return typeof label === 'string' ? [{ id, label }] : [];
         }),
-        sources: (answerProcess.sources || []).filter(source => citations.some(citation => citation.id === source.id && citation.available)),
+        sources: (answerProcess.sources || []).filter(source => !groupedCitationIds.has(source.id)
+          && citations.some(citation => citation.id === source.id && citation.available)).map(source => {
+          const group = groupsById.get(source.id);
+          if (!group) return source;
+          const page = source.kind === 'web' ? '第 ' + group.page + ' 页' : '';
+          return { ...source, detail: [source.detail, page, group.ids.length + ' 段'].filter(Boolean).join(' · ') };
+        }),
       } : null;
     return {
       ...metadata,
@@ -350,7 +358,7 @@ function messagesForView(items, formatAssistantText) {
         const markdown = item.authorKind === 'assistant' && block.type === 'text' ? formatAssistantText?.(block) : null;
         return markdown ? { key: index, text, markdown } : { key: index, text };
       }),
-      citations: citations.map(citation => ({
+      citations: citations.filter(citation => !groupedCitationIds.has(citation.id)).map(citation => ({
         id: citation.id, available: citation.available,
         title: citation.available ? citation.title : '资料已不可用',
       })),

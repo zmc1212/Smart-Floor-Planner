@@ -806,12 +806,17 @@ class ChatController {
   async openCitation(id) {
     const epoch = this.epoch;
     this.citationMessageId = this.state.messages.find(message => message.citations?.some(citation => citation.id === String(id)))?.id;
+    const message = this.rawMessages?.find(item => item.id === this.citationMessageId);
+    const group = message?.citationGroups?.find(item => item.ids[0] === String(id));
     this.citationRequest = (this.citationRequest || 0) + 1;
     const request = this.citationRequest;
     this.set({ citation: null, citationLoading: true, citationError: '' });
     try {
-      const data = await this.client.read(`/citations/${id}`);
+      const excerpts = await Promise.all((group?.ids || [id]).map(sourceId => this.client.read(`/citations/${sourceId}`)));
       if (!this.valid(epoch) || request !== this.citationRequest) return;
+      const unavailable = excerpts.find(excerpt => !excerpt.available);
+      const data = unavailable ? { ...unavailable, id: String(id) }
+        : group ? { ...excerpts[0], quote: excerpts.map(excerpt => excerpt.quote).join('\n\n') } : excerpts[0];
       const citation = await this.referenceImage(data);
       if (!this.valid(epoch) || request !== this.citationRequest) return;
       this.set({ citation });
@@ -820,8 +825,9 @@ class ChatController {
         await this.snapshot(this.conversationId, epoch);
       }
     } catch (error) {
+      if (!this.valid(epoch) || request !== this.citationRequest) return;
       if (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 404) this.fail(error, epoch);
-      else if (request === this.citationRequest) this.setIf(epoch, { citationError: errorCopy(error) });
+      else this.setIf(epoch, { citationError: errorCopy(error) });
     } finally { if (request === this.citationRequest) this.setIf(epoch, { citationLoading: false }); }
   }
 

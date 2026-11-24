@@ -819,6 +819,67 @@ test('known citation chips replace duplicate fallback labels without dropping un
   assert.deepEqual(message.citations, [{ id: '31', available: true, title: '施工参考' }]);
 });
 
+test('chat and answer process use one entry per cited page and open all of its saved excerpts', async () => {
+  const f = fixture();
+  const quotes = ['先安排排版。', '核对纹理方向。', '另一页的摘录。'];
+  const citations = quotes.map((quote, index) => ({
+    id: String(31 + index), available: true, title: '瓷砖施工工艺', quote,
+  }));
+  f.db.items = [{
+    id: '21', seq: '1', authorKind: 'assistant', available: true, citations,
+    citationGroups: [{ page: 29, ids: ['31', '32'] }],
+    content: { blocks: [
+      { type: 'text', text: '贴砖之前先确认排版。' },
+      ...citations.map(citation => ({ type: 'citation', citationId: citation.id, fallbackText: '知识来源' })),
+    ] },
+    answerProcess: {
+      elapsedSeconds: 2, steps: ['enterprise_knowledge'],
+      sources: citations.map(({ id, title }) => ({
+        id, title, kind: 'document', detail: id === '33' ? '企业工艺 · 第 30 页' : '企业工艺 · 第 29 页',
+      })),
+    },
+  }];
+  let unavailable = false, failSecondExcerpt = false;
+  f.intercept(call => {
+    if (!call.url.startsWith('/citations/')) return;
+    const citation = citations.find(item => call.url === '/citations/' + item.id);
+    if (citation.id === '32' && failSecondExcerpt) throw { statusCode: 503 };
+    return { success: true, data: citation.id === '32' && unavailable ? { id: '32', available: false } : citation };
+  });
+
+  const show = async () => {
+    await f.controller.show({ conversationId: '11' });
+    const [reply] = f.controller.state.messages;
+    assert.deepEqual(reply.citations.map(citation => citation.id), ['31', '33']);
+    assert.deepEqual(reply.answerProcess.sources.map(source => source.id), ['31', '33']);
+    assert.equal(reply.answerProcess.sources[0].detail, '企业工艺 · 第 29 页 · 2 段');
+    assert.deepEqual(reply.blocks.map(block => block.text), ['贴砖之前先确认排版。']);
+  };
+  await show();
+  await f.controller.openCitation('31');
+  assert.equal(f.controller.state.citation.quote, quotes.slice(0, 2).join('\n\n'));
+  await f.controller.openCitation('33');
+  assert.equal(f.controller.state.citation.quote, quotes[2]);
+  f.controller.hide();
+  await show();
+
+  failSecondExcerpt = true;
+  await f.controller.openCitation('31');
+  assert.equal(f.controller.state.citation, null);
+  assert.ok(f.controller.state.citationError);
+  failSecondExcerpt = false;
+  await f.controller.openCitation('31');
+  assert.equal(f.controller.state.citation.quote, quotes.slice(0, 2).join('\n\n'));
+
+  unavailable = true;
+  f.db.items[0] = { ...f.db.items[0], available: false, citations: [], citationGroups: [],
+    content: { blocks: [{ type: 'notice', fallbackText: '资料已不可用' }] } };
+  await f.controller.openCitation('31');
+  assert.equal(f.controller.state.citation?.quote, undefined);
+  assert.deepEqual(f.controller.state.messages[0].citations, []);
+  assert.equal(f.controller.state.messages[0].answerProcess, null);
+});
+
 test('message projection orders bigint sequences exactly and treats unknown blocks as plain text', () => {
   const messages = messagesForView([
     { id: '2', seq: '9007199254740993', content: { blocks: [{ type: 'unknown', fallbackText: '<button>plain text</button>', action: 'execute' }] } },
