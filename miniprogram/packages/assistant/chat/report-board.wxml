@@ -26,29 +26,66 @@
   </view>
 </template>
 
-<scroll-view wx:if="{{reportBoard && followupActive}}" class="report-board" scroll-y enhanced scroll-top="{{reportBoardScroll}}"
-  bindscroll="scrollReportBoard" refresher-enabled refresher-triggered="{{reportBoardRefreshing}}" bindrefresherrefresh="refreshReportBoard">
-  <view class="report-board-inner {{reportBoardRole === 'customer' ? 'report-board-owner' : ''}}">
-    <text class="report-board-title">{{reportBoardTitle || '工地日报与周报'}}</text>
-    <view class="report-board-meta-row">
-      <text wx:if="{{reportBoardView.subtitle || followupContext.enterprise.name}}" class="report-board-meta">{{reportBoardView.subtitle || followupContext.enterprise.name}}</text>
-      <button wx:if="{{reportBoardRole === 'customer' && followupContext}}" class="report-board-history report-board-owner-history chat-button" bindtap="reportBoardHistory">
-        <view class="report-board-history-label">
-          <image class="report-board-history-icon" src="../assets/welcome-notebook/clock.png" mode="aspectFit" aria-hidden="true"/>
-          <text>历史</text>
-        </view>
+<template name="report-book-heading">
+  <view class="chat-nav report-book-nav" style="padding-top: {{top}}px; padding-right: {{right}}px;">
+    <view class="nav-lane" style="min-height: {{height}}px;">
+      <button class="notebook-history chat-button" bindtap="back" aria-label="返回"><view class="history-paper"><view class="followup-back"/></view></button>
+      <text class="notebook-brand">小K</text>
+      <button wx:if="{{hasContext}}" size="mini" class="designer-entry wechat-subscription-entry chat-button" bindtap="manageWechatSubscription">
+        <text class="chat-text">微信订阅</text><image class="chat-image" src="../assets/chat-arrow-up-right.png" mode="aspectFit"/>
       </button>
     </view>
-    <text wx:if="{{reportBoardView.scopeName}}" class="report-board-meta">{{reportBoardView.scopeName}}</text>
-    <view class="report-board-toolbar {{reportBoardRole === 'boss' ? 'report-board-toolbar-boss' : ''}}">
-      <view class="report-board-tabs" aria-label="报告周期">
-        <button class="{{reportBoardKind === 'daily' ? 'active' : ''}} chat-button" data-kind="daily" bindtap="switchReportBoard" aria-pressed="{{reportBoardKind === 'daily'}}"><text class="report-board-tab-label">日报</text></button>
-        <button class="{{reportBoardKind === 'weekly' ? 'active' : ''}} chat-button" data-kind="weekly" bindtap="switchReportBoard" aria-pressed="{{reportBoardKind === 'weekly'}}"><text class="report-board-tab-label">周报</text></button>
-      </view>
-      <text wx:if="{{reportBoardRole === 'customer' && reportBoardView.period}}" class="report-board-period">{{reportBoardView.period}}</text>
-      <button wx:if="{{reportBoardRole !== 'customer' && followupContext}}" class="report-board-history chat-button" bindtap="reportBoardHistory">历史 <text aria-hidden="true">›</text></button>
+  </view>
+  <view class="report-book-toolbar">
+    <view class="report-book-tabs" aria-label="报告周期">
+      <button class="{{kind === 'daily' ? 'active' : ''}} chat-button" data-kind="daily" bindtap="switchReportBoard" aria-pressed="{{kind === 'daily'}}"><text class="report-book-tab">日报</text></button>
+      <button class="{{kind === 'weekly' ? 'active' : ''}} chat-button" data-kind="weekly" bindtap="switchReportBoard" aria-pressed="{{kind === 'weekly'}}"><text class="report-book-tab">周报</text></button>
     </view>
-    <text wx:if="{{reportBoardRole !== 'customer' && reportBoardView.period}}" class="report-board-period">{{reportBoardView.period}}</text>
+    <button wx:if="{{hasContext}}" class="report-book-history chat-button" bindtap="reportBoardHistory">历史 <text aria-hidden="true">›</text></button>
+  </view>
+</template>
+
+<view wx:if="{{reportBoard && followupActive}}" class="report-book"
+  bindtouchstart="startReportBookTouch" bindtouchmove="moveReportBookTouch" bindtouchend="endReportBookTouch" bindtouchcancel="cancelReportBookTouch">
+  <view class="report-book-page report-book-back {{reportBookPage === 1 ? '' : 'report-book-inactive'}}"
+    aria-hidden="{{reportBookPage !== 1}}" style="padding-bottom: {{bottomInset}}px;">
+    <image class="report-book-paper" src="../assets/welcome-notebook/paper-grain.png" mode="aspectFill" aria-hidden="true"/>
+    <template is="report-book-heading" data="{{top: navigationTop, right: navigationRight, height: navigationHeight, kind: reportBoardKind, hasContext: followupContext}}"/>
+    <scroll-view class="report-book-image-scroll" scroll-y="{{!reportBookMoving}}" enhanced show-scrollbar="{{false}}">
+      <view wx:if="{{reportBookImage}}" class="report-book-image-wrap">
+        <image class="report-book-image" src="{{reportBookImage}}" mode="widthFix" data-path="{{reportBookImage}}"
+          aria-label="{{reportBoardKind === 'weekly' ? '工地周报手账长图' : '工地日报手账长图'}}" binderror="reportBookImageFailed"/>
+        <button class="report-book-original chat-button" bindtap="previewReportBookImage">
+          <view class="report-book-original-tab">原图 <text aria-hidden="true">↗</text></view>
+        </button>
+      </view>
+      <view wx:else class="report-book-image-feedback">
+        <text role="status">{{reportBookImageState === 'unavailable' ? '这期图版暂不可查看。' : reportBookImageState === 'error' ? '图版暂时读取失败。' : reportBookImageState === 'loading' || reportBoardLoading ? '正在读取图版…' : reportBoardKind === 'weekly' ? '暂无可查看的周报图版。' : '暂无可查看的日报图版。'}}</text>
+        <button wx:if="{{reportBookImageState === 'error' || reportBookImageState === 'unavailable'}}" class="report-board-link chat-button" bindtap="retryReportBookImage">重新读取</button>
+      </view>
+    </scroll-view>
+    <view class="report-book-folio {{reportBookPage !== 1 ? 'report-book-folio-pending' : ''}}">
+      <button class="report-book-turn chat-button" data-page="0" bindtap="tapReportBook" aria-label="右滑或轻点，回到详情">
+        <view class="report-book-turn-icon report-book-return-icon" aria-hidden="true"><view/></view>
+        <view class="report-book-turn-copy"><text>回到详情</text><text>右滑或轻点</text></view>
+      </button>
+      <view class="report-book-location report-book-location-right"><text>图版</text><text><text class="report-book-page-number">02</text> / 02</text></view>
+    </view>
+  </view>
+  <view class="report-book-page report-book-front {{reportBookPage === 1 && !reportBookMoving ? 'report-book-covered' : ''}}"
+    aria-hidden="{{reportBookPage !== 0}}"
+    style="padding-bottom: {{bottomInset}}px; {{reportBookClip ? 'clip-path:' + reportBookClip + ';-webkit-clip-path:' + reportBookClip + ';' : ''}}">
+    <image class="report-book-paper" src="../assets/welcome-notebook/paper-grain.png" mode="aspectFill" aria-hidden="true"/>
+    <template is="report-book-heading" data="{{top: navigationTop, right: navigationRight, height: navigationHeight, kind: reportBoardKind, hasContext: followupContext}}"/>
+    <scroll-view class="report-board report-book-detail-scroll" scroll-y="{{!reportBookMoving}}" enhanced show-scrollbar="{{false}}" scroll-top="{{reportBoardScroll}}"
+      bindscroll="scrollReportBoard" refresher-enabled="{{!reportBookMoving}}" refresher-triggered="{{reportBoardRefreshing}}" bindrefresherrefresh="refreshReportBoard">
+      <view class="report-board-inner">
+        <text class="report-board-title">{{reportBoardTitle || '工地日报与周报'}}</text>
+        <view class="report-book-meta">
+          <text wx:if="{{reportBoardView.subtitle || followupContext.enterprise.name}}" class="report-board-meta">{{reportBoardView.subtitle || followupContext.enterprise.name}}</text>
+          <text wx:if="{{reportBoardView.period}}" class="report-board-period">{{reportBoardView.period}}</text>
+        </view>
+        <text wx:if="{{reportBoardView.scopeName}}" class="report-board-meta">{{reportBoardView.scopeName}}</text>
     <view wx:if="{{reportBoardError || followupError || followupPending}}" class="report-board-paper report-board-feedback" role="alert">
       <text>{{followupPending ? '上次操作结果正在核对。' : reportBoardError || followupError}}</text>
       <button class="report-board-link chat-button" bindtap="{{followupPending ? 'recoverFollowup' : 'refreshReportBoard'}}">{{followupPending ? '核对结果' : '重新读取'}}</button>
@@ -154,10 +191,21 @@
           <text wx:for="{{reportBoardView.plans}}" wx:key="key" class="report-board-line">{{item.projectName}} · {{item.text}}</text>
           <text wx:if="{{!reportBoardView.plans.length}}" class="report-board-meta">暂无已确认安排。</text>
         </view>
-        <button class="report-board-button chat-button" bindtap="reportBoardProjects">查看全部工地 <text aria-hidden="true">›</text></button>
+        <button class="report-board-row report-book-all-sites chat-button" bindtap="reportBoardProjects">查看全部工地 <text aria-hidden="true">›</text></button>
       </block>
       <text wx:if="{{reportBoardView.truncated}}" class="report-board-meta report-board-note-label">本份简报未包含全部工地。</text>
       <button class="report-board-link report-board-more chat-button {{(followupBusy || followupPending) ? 'is-disabled' : ''}}" bindtap="openReportBoardDetail" disabled="{{followupBusy || followupPending}}">{{reportBoardKind === 'weekly' ? '查看完整周报' : '查看完整日报'}} ↗</button>
     </block>
+      </view>
+    </scroll-view>
+    <view wx:if="{{reportBoardView.detail.ready}}" class="report-book-folio">
+      <view class="report-book-location"><text>详情</text><text><text class="report-book-page-number">01</text> / 02</text></view>
+      <button class="report-book-turn report-book-next chat-button" data-page="1" bindtap="tapReportBook"
+        aria-label="{{reportBoardKind === 'weekly' ? '左滑或轻点，查看周报图版' : '左滑或轻点，查看日报图版'}}">
+        <view class="report-book-turn-copy"><text>{{reportBoardKind === 'weekly' ? '周报图版' : '日报图版'}}</text><text>左滑或轻点</text></view>
+        <view class="report-book-turn-icon" aria-hidden="true"><view/></view>
+      </button>
+    </view>
   </view>
-</scroll-view>
+  <canvas type="2d" id="report-book-curl" class="report-book-curl {{reportBookMoving ? 'report-book-curl-active' : ''}}" aria-hidden="true"/>
+</view>

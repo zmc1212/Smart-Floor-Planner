@@ -57,7 +57,8 @@ export async function handleFollowup(request: Request, path: string[], actor: Ac
   }
   const service = new FollowupService(actor), method = request.method, params = new URL(request.url).searchParams;
   const workbench = path.length === 4 && path[1] === 'reports' && path[3] === 'workbench';
-  const allowed = path.length === 1 ? path[0] === 'manage' ? ['beforeId'] : ['afterProjectId','projectId'] : path[1] === 'reports' ? path.length === 2 ? ['beforeId','projectId','month','kind'] : workbench ? ['revision','projectId'] : ['revision'] : [];
+  const reportImage = path.length === 4 && path[1] === 'reports' && path[3] === 'image';
+  const allowed = path.length === 1 ? path[0] === 'manage' ? ['beforeId'] : ['afterProjectId','projectId'] : path[1] === 'reports' ? path.length === 2 ? ['beforeId','projectId','month','kind'] : workbench || reportImage ? ['revision','projectId'] : ['revision'] : [];
   if ([...params.keys()].some(k => !allowed.includes(k) || params.getAll(k).length !== 1)) fail('invalid_construction', 422);
   if (method === 'GET') {
     if (!path.length) return service.list();
@@ -74,6 +75,13 @@ export async function handleFollowup(request: Request, path: string[], actor: Ac
         if (!revision) fail('invalid_construction', 422);
         return service.workbench(bid, rid, revision, params.has('projectId') ? id(params.get('projectId')) : undefined);
       }
+      if (reportImage && revision) {
+        const image = await service.reportImage(bid, rid, revision, params.has('projectId') ? id(params.get('projectId')) : undefined);
+        return new Response(new Uint8Array(image), { headers: {
+          'Content-Type': 'image/png', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+        } });
+      }
+      if (reportImage) fail('invalid_construction', 422);
       if (path[3] === 'projects' && path[5] === 'sources' && (path.length === 7 || path.length === 8 && path[7] === 'original') && revision) {
         const source = await service.knowledgeSource(bid, rid, revision, id(path[4]), path[6], path.length === 8);
         if (path.length === 7) return source;

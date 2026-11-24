@@ -1032,13 +1032,11 @@ Phase 7 最终治理已实现：纯 geometry/read-model 依赖方向、全模块
 
 业主从「工地 → 查看日报与周报」进入；施工人员、设计师从工地工作台的「工地日报与周报」进入并保留所选工地；老板从「企业日周报」进入，默认周报。共用 `packages/assistant/chat/chat?reportBoard=1` 和已批准的[四端单屏设计](../design-references/xiaok-report-workflow-v1-20261120/README.md)。切换保留原收件人与项目范围，历史复用月份、周期及项目筛选，已阅写入现有精确版本回执。
 
-业主「我家进展」的周期栏以[业主 V002 单屏](../design-references/xiaok-report-workflow-v1-20261120/01-owner-daily-v002-390.png)为准。390×844 下两枚约 84×29px 的页签从左侧 34px 起排，12px 文字，选中为深绿底白字，日期与截止时间位于同一行右侧，长日期可换行。「历史」在项目名右侧，约 60×24px，使用已收录的 `welcome-notebook/clock.png`，可见时钟约 13px。三个按钮的点击区域均高 44px。 Stable 在 390×844 逻辑视口核对两种选中态和跨日截止时间，实际点按切换、打开历史、读回与重进。[日报](../tmp/report-board-owner-tabs-20261124/owner-daily.png) · [周报](../tmp/report-board-owner-tabs-20261124/owner-weekly.png) · [验证](../tmp/report-board-owner-tabs-20261124/native.json)。
-
-「企业工地简报」的日报、周报按钮与标题下方分隔线之间留 10 个逻辑像素，按钮点击区域高 44px。Stable 在 390×844 核对两种选中态，在隔离企业验证双向切换、打开历史、重进和已阅回执保留。[已批准的企业简报单屏](../design-references/xiaok-report-workflow-v1-20261120/04-boss-weekly-v001-390.png) · [日报](../tmp/report-board-boss-spacing-20261124/boss-daily.png) · [周报](../tmp/report-board-boss-spacing-20261124/boss-weekly.png) · [原生验证](../tmp/report-board-boss-spacing-20261124/native.json)。
+共用 V004 手账阅读页，每个周期含详情和图版两张整屏书页。左滑从右上角卷起，页眉、周期书签、正文及页脚随书页翻动。右滑从左上角回到详情，页脚也可点按。图版按手机宽度排版，纵向滚动读完长图，同一期来回翻页保留图版的滚动位置。「原图」会重新核验权限并打开原尺寸图片。微信原生胶囊使用系统安全区。[确认稿 V004](../design-references/xiaok-report-workflow-v1-20261120/README.md#整屏翻阅-v004)。
 
 业主优先看到需要本人决定的正式方案、获权已发布现场照片和进展；待沟通文字仍在现场记录分组。确认卡打开原会话的方案与已批准操作，需要原版预览才能同意。「问小K」先选中当前报告，等待用户发问。设计师看本人核对和已回复，点按进入原事项。工人看可补交的原上报、已补交回执、当前任务和上报入口。老板看已授权工地的当前异常、负责人与当期已关闭计数，节点及事项直达原页。当前处理信息和当期报告事实分开呈现，已读与处理互不替代。
 
-工作页对每个周期先读原报告索引，再读取 `GET /api/miniprogram/assistant/followups/:bindingId/reports/:reportId/workbench?revision=…&projectId=…`。原始图片沿同一报告版本的认证下载路径，切换、隐藏或重进时释放旧图。读取失败可重试，来源撤回、身份或项目授权变化时重验。原正式记录、流程服务、周报版本和收件人权限继续作为数据依据。[隔离库及 Stable 证据](../tmp/report-board-20261120/isolated-1795162447605/report.json)覆盖八份真实投递、四端含胶囊主屏、业主保护图片及四次原生周期切换。真机、真实微信登录和业主原生点击确认待验，方案服务已复验原预览和决定。后台边界见[模块清单](./admin-system-modules.zh-CN.md)。
+工作页对每个周期先读原报告索引，再读取 `GET /api/miniprogram/assistant/followups/:bindingId/reports/:reportId/workbench?revision=…&projectId=…`。同级 `/image` 返回同一授权版本及工地范围的私有长图。切换、隐藏或重进时释放旧临时图。图版读取失败可就地重试，读取时重验身份、工地授权及原来源。隔离服务测过四端双周期出图，同企业其他收件人与跨企业访问均被拒绝。Stable 390×844 验证老板入口的双向翻页、纵向滚动、图片重试、历史、重进及「原图」点按重新取图。原生预览窗口、真机、真实微信登录及业主在模拟器点按确认待验。[V004 服务及原生证据](../tmp/report-book-native-20261125/native-current.json) · [此前四端与业主照片验证](../tmp/report-board-20261120/isolated-1795162447605/report.json) · [后台模块](./admin-system-modules.zh-CN.md)。
 
 ### 四端阶段提醒与周报入口（I7.3，已实现）
 

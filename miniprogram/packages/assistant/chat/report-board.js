@@ -1,5 +1,6 @@
 const { reportForView, dateLabel, FollowupRecordMedia } = require('../../../utils/assistant-followups');
 const { errorCopy } = require('../../../utils/assistant-client');
+const { initialBook, reportBookMethods } = require('./report-book');
 
 const titles = { customer: '我家进展', designer: '设计跟进', worker: '施工跟进', boss: '企业工地简报' };
 const validId = value => /^[1-9]\d{0,18}$/.test(String(value || ''));
@@ -11,7 +12,7 @@ const projectRoutes = {
 };
 const initialBoard = () => ({ reportBoard: false, reportBoardView: null, reportBoardKind: 'daily', reportBoardRole: '',
   reportBoardTitle: '', reportBoardLoading: false, reportBoardError: '', reportBoardPaths: {},
-  reportBoardPhotoError: '', reportBoardScroll: 0, reportBoardDecision: '', reportBoardRefreshing: false });
+  reportBoardPhotoError: '', reportBoardScroll: 0, reportBoardDecision: '', reportBoardRefreshing: false, ...initialBook() });
 
 function photoView(photo) {
   return { ...photo, key: [photo.recordId, photo.version, photo.mediaId].join('_') };
@@ -91,6 +92,7 @@ function boardView(report, workbench, context, kind, projectId) {
 }
 
 const reportBoardMethods = {
+  ...reportBookMethods,
   async showReportBoard(identity, mode, session) {
     const options = this._options, owner = validId(options.reportProject) && validId(options.leadId);
     const projectId = owner ? options.reportProject : validId(options.staffProjectId) ? options.staffProjectId : '';
@@ -132,7 +134,7 @@ const reportBoardMethods = {
     const current = () => this._alive && this._shown && ticket === this._boardTicket && followups.current(epoch);
     this._boardKind = kind;
     this.boardMedia?.clear();
-    this.setData({ reportBoardKind: kind, reportBoardLoading: true, reportBoardError: '', reportBoardView: null, reportBoardPhotoError: '' });
+    this.setData({ ...this.clearReportBook(), reportBoardKind: kind, reportBoardLoading: true, reportBoardError: '', reportBoardView: null, reportBoardPhotoError: '' });
     const path = '/followups/' + context.bindingId + '/reports';
     const filter = scope.projectId ? { projectId: scope.projectId } : {};
     try {
@@ -150,7 +152,10 @@ const reportBoardMethods = {
       if (!current()) return;
       const view = boardView(result.report, result.workbench, context, kind, scope.projectId);
       this.setData({ reportBoardView: view, reportBoardLoading: false }, () => {
-        if (!current() || this.data.followupHistoryOpen) return;
+        if (!current()) return;
+        this.measureReportBook();
+        if (view.detail.ready) void this.loadReportBookImage();
+        if (this.data.followupHistoryOpen) return;
         if (this._boardScroll) this.setData({ reportBoardScroll: this._boardScroll });
         const detail = { ...view.detail, bindingId: context.bindingId };
         void followups.renderedReport(detail);
@@ -174,7 +179,7 @@ const reportBoardMethods = {
     this._boardTicket = (this._boardTicket || 0) + 1;
     this._boardScope = null;
     this.boardMedia?.clear();
-    this.setData({ reportBoardView: null, reportBoardPaths: {}, reportBoardLoading: true, reportBoardDecision: '', reportBoardRefreshing: false, reportBoardScroll: 0 });
+    this.setData({ ...this.clearReportBook(true), reportBoardView: null, reportBoardPaths: {}, reportBoardLoading: true, reportBoardDecision: '', reportBoardRefreshing: false, reportBoardScroll: 0 });
   },
   switchReportBoard(e) {
     const kind = e.currentTarget.dataset.kind;

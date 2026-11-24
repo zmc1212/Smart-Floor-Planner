@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const { boardView, initialBoard, reportBoardMethods } = require('../packages/assistant/chat/report-board');
 const { PlanChatController } = require('../packages/assistant/lib/plans');
 const { FollowupController } = require('../utils/assistant-followups');
+const api = require('../utils/api');
+const { fold, topCornerAngle } = require('../packages/assistant/chat/report-page-curl');
 
 const project = { id: '10', name: '验收工地', stageKey: 'utilities', stageEvents: [],
   records: [{ id: '30', version: 2, room: '厨房', data: { completed: '客厅线管已铺设' } }],
@@ -79,6 +81,47 @@ test('period refresh reads the same scoped project and ignores a response from t
   assert.ok(calls.every(call => call.query.projectId === '10'));
   page.hideReportBoard();
   assert.equal(page.data.reportBoardView, null);
+});
+
+test('the page curls from the right top corner and comes back in from the left top corner', () => {
+  const forward = fold(390, 844, .14, topCornerAngle(0, -.08)).front;
+  assert.ok(forward.some(({ x, y }) => y === 844 && x === 390));
+  assert.ok(Math.max(...forward.filter(point => point.y === 0).map(point => point.x)) < 345);
+  const reverse = fold(390, 844, .86, topCornerAngle(1, .08)).front;
+  assert.ok(reverse.some(point => point.y === 0));
+  assert.ok(Math.max(...reverse.map(point => point.y)) < 422);
+});
+
+test('a late image download never replaces a different report period or keeps its obsolete file', async () => {
+  const originalDownload = api.downloadFile, previousWx = global.wx;
+  const unlinked = [], urls = [];
+  let completeDaily;
+  global.wx = { getFileSystemManager: () => ({ unlink: ({ filePath }) => unlinked.push(filePath) }) };
+  api.downloadFile = url => {
+    urls.push(url);
+    return url.includes('/21/') ? new Promise(resolve => { completeDaily = resolve; })
+      : Promise.resolve({ tempFilePath: 'weekly.png' });
+  };
+  const page = { ...reportBoardMethods, _alive: true, _shown: true, _boardScope: { projectId: '10' }, _boardTicket: 1,
+    followups: { state: { followupContext: context('customer') }, current: () => true, headers: async () => ({}) },
+    data: { ...initialBoard(), reportBoard: true, reportBoardView: { detail: { reportId: '21', revision: 2, ready: true } } },
+    setData(patch) { Object.assign(this.data, patch); } };
+  try {
+    const daily = page.loadReportBookImage();
+    await Promise.resolve();
+    ++page._boardTicket;
+    page.setData({ ...page.clearReportBook(), reportBoardView: { detail: { reportId: '22', revision: 1, ready: true } } });
+    assert.equal(await page.loadReportBookImage(), 'weekly.png');
+    completeDaily({ tempFilePath: 'daily.png' });
+    assert.equal(await daily, '');
+    assert.deepEqual(unlinked, ['daily.png']);
+    assert.equal(page.data.reportBookImage, 'weekly.png');
+    assert.deepEqual(urls, ['/miniprogram/assistant/followups/12/reports/21/image?revision=2&projectId=10',
+      '/miniprogram/assistant/followups/12/reports/22/image?revision=1&projectId=10']);
+  } finally {
+    api.downloadFile = originalDownload;
+    global.wx = previousWx;
+  }
 });
 
 test('opening the original plan from a report preserves the existing explicit preview and approval workflow', async () => {

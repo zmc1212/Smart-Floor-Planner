@@ -1,6 +1,94 @@
 .notebook-chat {
-  .report-board { flex: 1; min-height: 0; height: 0; }
-  .report-board-inner { padding: 0 18px calc(22px + env(safe-area-inset-bottom)) 34px; color: #073c30; }
+  .report-book { position: absolute; z-index: 5; top: 0; right: 0; bottom: 0; left: 0; overflow: hidden; touch-action: pan-y; }
+  .report-book-page {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+    box-sizing: border-box; display: flex; flex-direction: column; background: #f7f3e9;
+  }
+  .report-book-back { z-index: 1; }
+  .report-book-front { z-index: 2; }
+  .report-book-covered { visibility: hidden; pointer-events: none; }
+  .report-book-inactive { pointer-events: none; }
+  .report-book-paper { position: absolute; z-index: -1; left: 0; top: 0; width: 100%; height: 100%; opacity: .28; pointer-events: none; }
+  .report-book-curl {
+    position: absolute; z-index: 3; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none;
+  }
+  .report-book-curl-active { opacity: 1; }
+  .report-book-nav { padding-left: 24px; }
+  .report-book-toolbar {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; flex: none;
+    margin: 0 18px 0 34px; border-bottom: 1px solid #aeba9e;
+  }
+  .report-book-tabs { display: flex; gap: 5px; }
+  .report-book-tabs .chat-button {
+    display: flex; align-items: flex-end; width: 74px; height: 44px; padding: 0; margin: 0;
+    border: 0; border-radius: 0; background: transparent; color: #43634f;
+  }
+  .report-book-tab {
+    position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 33px;
+    clip-path: polygon(4px 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%, 0 4px);
+    background: linear-gradient(#f1ebda, #eae2ce); box-shadow: inset 0 1px #d5cdb5;
+    font: 700 15px/1 'Chat Serif', 'Songti SC', SimSun, serif;
+  }
+  .report-book-tabs .active .report-book-tab {
+    height: 36px; background: repeating-linear-gradient(98deg, #fff9e00b 0 1px, transparent 1px 3px), linear-gradient(105deg, #185a44, #0b4937);
+    color: #fff9e8; box-shadow: none;
+  }
+  .report-book-tabs .active .report-book-tab::after {
+    content: ''; position: absolute; top: 3px; right: 4px; bottom: 0; left: 4px; border: 1px dashed #b8c3a380; border-bottom: 0;
+  }
+  .report-book-history {
+    display: flex; align-items: center; gap: 4px; min-height: 44px; min-width: 44px; padding: 4px 0 0; margin: 0;
+    background: transparent; color: #073c30; font-size: 14px; font-weight: 650;
+  }
+  .report-book-history > text { font-size: 20px; }
+  .report-book-tabs .chat-button::after, .report-book-history::after, .report-book-turn::after, .report-book-original::after { border: 0; }
+  .report-book-detail-scroll, .report-book-image-scroll { flex: 1; min-height: 0; height: 0; touch-action: pan-y; }
+  .report-board-inner { padding: 18px 18px 18px 34px; color: #073c30; }
+  .report-book-meta { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 3px 8px; }
+  .report-book-image-wrap { position: relative; }
+  .report-book-image { display: block; width: 100%; }
+  .report-book-original {
+    position: absolute; z-index: 1; top: 5px; right: 12px; display: flex; align-items: center;
+    min-height: 44px; margin: 0; padding: 0;
+    background: transparent; color: #173f31; font: 700 12px/1 'Chat Serif', 'Songti SC', SimSun, serif;
+  }
+  .report-book-original-tab {
+    display: flex; align-items: center; justify-content: center; gap: 4px; width: 57px; height: 24px;
+    background: #eee6ce; box-shadow: inset 0 0 0 1px #ded4b7;
+    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
+  }
+  .report-book-image-feedback { padding: 28px 18px 22px 34px; color: #465d54; font-size: 15px; }
+  .report-book-image-feedback .report-board-link { display: flex; margin: 3px 0 0; }
+  .report-book-folio {
+    display: flex; flex: none; align-items: center; justify-content: space-between; height: 72px; column-gap: 12px;
+    min-width: 0; margin: 0 19px 0 34px; border-top: 1px solid #b7b99d;
+  }
+  .report-book-folio-pending > view, .report-book-folio-pending > button { visibility: hidden; }
+  .report-book-location { display: flex; flex-direction: column; gap: 3px; color: #536354; font-size: 12px; line-height: 1.2; white-space: nowrap; }
+  .report-book-location-right { text-align: right; }
+  .report-book-location > text:last-child { letter-spacing: .12em; font-variant-numeric: tabular-nums; color: #676d58; }
+  .report-book-page-number { color: #214435; font-weight: 650; }
+  .report-book-turn {
+    display: flex; align-items: center; gap: 12px; min-height: 52px; min-width: 129px; margin: 0; padding: 4px 0;
+    border: 0; background: transparent; color: #173f31; text-align: left;
+  }
+  .report-book-next { justify-content: flex-end; text-align: right; }
+  .report-book-turn-copy { display: flex; flex-direction: column; gap: 4px; white-space: nowrap; }
+  .report-book-turn-copy > text:first-child { font: 700 20px/1.14 'Chat Serif', 'Songti SC', SimSun, serif; letter-spacing: .04em; }
+  .report-book-turn-copy > text:last-child { color: #536451; font-size: 12px; line-height: 1.2; }
+  .report-book-turn-icon {
+    box-sizing: border-box; display: flex; flex: none; align-items: center; justify-content: center; width: 34px; height: 34px;
+    border: 1px solid #7e967c; border-radius: 50%; background: #e9ede080; color: #234b3b;
+  }
+  .report-book-turn-icon > view { position: relative; width: 16px; height: 13px; }
+  .report-book-turn-icon > view::before { content: ''; position: absolute; top: 6px; right: 0; left: 2px; border-top: 1.5px solid; }
+  .report-book-turn-icon > view::after {
+    content: ''; position: absolute; top: 3px; left: 2px; width: 7px; height: 7px; border: solid currentColor;
+    border-width: 0 0 1.5px 1.5px; transform: rotate(45deg); box-sizing: border-box;
+  }
+  .report-book-return-icon > view { transform: scaleX(-1); }
+  .report-book-turn.button-hover .report-book-turn-icon { background: #dce6d4; }
+  .report-book-all-sites { margin-top: 9px; border-top: 0; border-bottom: 1px solid #b7b99d; font-weight: 700; }
   .report-board-title, .report-board-item-title {
     display: block; font-family: 'Chat Serif', 'Songti SC', SimSun, serif; font-weight: 700; overflow-wrap: anywhere;
   }
@@ -8,49 +96,6 @@
   .report-board-item-title { font-size: 19px; line-height: 1.38; }
   .report-board-meta, .report-board-period { display: block; color: #465d54; font-size: 13px; line-height: 1.5; }
   .report-board-period { text-align: right; padding-bottom: 2px; }
-  .report-board-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid #9bac92; margin-top: 7px; padding-top: 2px; }
-  .report-board-toolbar.report-board-toolbar-boss { padding-top: 10px; }
-  .report-board-tabs { display: flex; gap: 2px; }
-  .report-board-tabs .chat-button, .report-board-history {
-    margin: 0; padding: 0 12px; min-height: 44px; min-width: 56px; border: 1px solid #809986;
-    border-radius: 7px; background: transparent; color: #073c30; font-size: 14px; line-height: 42px; font-weight: 600;
-  }
-  .report-board-tabs .chat-button { min-width: 78px; }
-  .report-board-tabs .chat-button.active { background: #00513c; border-color: #00513c; color: #fffdf7; }
-  .report-board-history { border-color: transparent; padding-right: 0; }
-  .report-board-owner {
-    .report-board-meta-row {
-      position: relative; display: flex; align-items: center; min-height: 24px; padding-right: 68px;
-    }
-    .report-board-meta-row .report-board-meta { min-width: 0; overflow-wrap: anywhere; }
-    .report-board-owner-history {
-      position: absolute; z-index: 1; top: 50%; right: 0; transform: translateY(-50%);
-      display: flex; align-items: center; width: 60px; height: 44px; padding: 0; border: 0; background: transparent;
-      font-size: 12px; line-height: 1; color: #073c30;
-    }
-    .report-board-history-label {
-      box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 4px;
-      width: 100%; height: 24px; border: 1px solid #9bad9b; border-radius: 12px;
-    }
-    .report-board-history-icon { flex: none; width: 15px; height: 15px; }
-    .report-board-toolbar { margin-top: 6px; padding-top: 0; }
-    .report-board-tabs { flex: none; }
-    .report-board-tabs .chat-button {
-      display: flex; align-items: center; width: 84px; min-width: 0; height: 44px;
-      padding: 0; border: 0; background: transparent; font-size: 12px; line-height: 1;
-    }
-    .report-board-tabs .chat-button.active { background: transparent; }
-    .report-board-tab-label {
-      box-sizing: border-box; display: flex; align-items: center; justify-content: center;
-      width: 100%; height: 29px; border: 1px solid #9bad9b; border-radius: 8px;
-    }
-    .report-board-tabs .active .report-board-tab-label { background: #00513c; border-color: #00513c; }
-    .report-board-tabs .button-hover .report-board-tab-label,
-    .report-board-owner-history.button-hover .report-board-history-label { opacity: .72; }
-    .report-board-period {
-      min-width: 0; padding-bottom: 0; color: #456860; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere;
-    }
-  }
   .report-board-paper {
     position: relative; display: block; margin-top: 15px; padding: 12px 14px 13px;
     border: 1px solid #f8f3e7; border-radius: 1px; background: #fbf7ed; box-shadow: 0 3px 8px #826e432b;
@@ -67,7 +112,7 @@
   .report-board-button, .report-board-link, .report-board-row, .report-board-photo {
     background: transparent; color: #073c30; font-size: 15px; min-height: 44px; padding: 0; margin: 0; line-height: 1.4;
   }
-  .report-board-button::after, .report-board-link::after, .report-board-row::after, .report-board-photo::after, .report-board-tabs .chat-button::after, .report-board-history::after { border: 0; }
+  .report-board-button::after, .report-board-link::after, .report-board-row::after, .report-board-photo::after { border: 0; }
   .report-board-button {
     display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 10px;
     border: 1px solid #557864; border-radius: 6px; font-weight: 600; padding: 5px 9px;
@@ -83,6 +128,7 @@
     padding: 8px 0; border-radius: 0; border-top: 1px solid #cbd4be; overflow-wrap: anywhere;
   }
   .report-board-row > .chat-group, .report-board-row > .chat-text:first-child { flex: 1; min-width: 0; }
+  .report-board-row.report-book-all-sites { border-top: 0; }
   .report-board-photos { display: flex; gap: 8px; margin-top: 8px; }
   .report-board-photo { flex: 1; min-width: 0; text-align: left; border-radius: 0; }
   .report-board-photo .chat-image { display: block; width: 100%; height: 108px; border-radius: 6px; background: #e4e9db; }
