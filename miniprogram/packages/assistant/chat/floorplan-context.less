@@ -2,7 +2,8 @@
   .floorplan-context-row {
     display: flex;
     align-items: center;
-    gap: 0;
+    justify-content: space-between;
+    gap: 12rpx;
     padding: 6rpx 0 0;
     margin: 4rpx 8rpx 0 3rpx;
     border-top: 1rpx solid #aeb49c;
@@ -13,7 +14,7 @@
     flex: 0 1 322rpx;
     min-width: 0;
     min-height: 44px;
-    margin: 0 auto 0 0;
+    margin: 0;
     padding: 0;
     border-radius: 0;
     background: transparent;
@@ -36,14 +37,15 @@
   .floorplan-scope-pill > .chat-image { width: 41rpx; height: 41rpx; margin-right: 2rpx; flex: none; }
   .floorplan-scope-pill > .chat-text { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .context-chevron { width: 13rpx; height: 13rpx; flex: none; border-right: 3rpx solid #123e30; border-bottom: 3rpx solid #123e30; transform: rotate(45deg); margin: -6rpx 2rpx 0 2rpx; }
-  .floorplan-context-divider { width: 1rpx; height: 46rpx; flex: none; margin-right: 11rpx; background: #aaa78c; }
+  .floorplan-context-link { display: flex; align-items: center; gap: 12rpx; flex: none; }
+  .floorplan-context-divider { width: 1rpx; height: 46rpx; flex: none; background: #aaa78c; }
   .floorplan-browse {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 4rpx;
-    flex: none;
-    width: 148rpx;
+    flex: 0 0 164rpx;
+    min-width: 164rpx;
     min-height: 44px;
     font-size: 24rpx;
     color: #123e30;

@@ -100,7 +100,8 @@
   .send-button { flex: 0 0 76rpx; width: 76rpx; min-width: 76rpx; max-width: 76rpx; height: 76rpx; background: #004d39; border: 1rpx solid #007a55; }
   .send-button .chat-image { width: 46rpx; height: 46rpx; }
   .send-button.is-disabled { background: #174f3d !important; opacity: .75; }
-  .composer-focused { margin-left: 24rpx; margin-right: 12rpx; padding: 8rpx 16rpx 10rpx; border: 1rpx solid #dfd3bc; border-radius: 32rpx; background: #fbf8f0; box-shadow: inset 0 0 0 4rpx #fffdf7,0 -1rpx 7rpx #9c88643b; }
+  .composer-focused { z-index: 7; margin-left: 24rpx; margin-right: 12rpx; padding: 8rpx 16rpx 10rpx; border: 1rpx solid #dfd3bc; border-radius: 32rpx; background: #fbf8f0; box-shadow: inset 0 0 0 4rpx #fffdf7,0 -1rpx 7rpx #9c88643b; }
+  .composer-focused.keyboard-open { margin-bottom: 6rpx; }
   .composer-focused .composer { padding: 8rpx 6rpx; border: 0; border-radius: 24rpx; box-shadow: none; background: none; }
   .composer-focused .composer-input { padding-left: 18rpx; background: #fffdfa; border: 1rpx solid #eee4d5; border-radius: 24rpx; }
   .context-error { display: flex; align-items: center; gap: 10rpx; font-size: 22rpx; color: #886a40; line-height: 1.5; padding: 6rpx 0; }

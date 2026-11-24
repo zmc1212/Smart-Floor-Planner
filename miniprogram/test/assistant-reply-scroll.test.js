@@ -7,7 +7,6 @@ function position(overrides = {}) {
     view: { top: 100, bottom: 720, scrollTop: 120 },
     bubble: { top: 180, bottom: 600 },
     end: { bottom: 650 },
-    growing: true,
     held: false,
     ...overrides,
   });
@@ -24,7 +23,7 @@ test('following stops at the bubble start, with an arrow only while text is belo
     { top: 200, held: true, showEnd: false });
   assert.deepEqual(position({ bubble: { top: 180, bottom: 1030 }, end: { bottom: 1046 } }),
     { top: 200, held: true, showEnd: true });
-  assert.deepEqual(position({ bubble: { top: 180, bottom: 813 }, textBottom: 799, end: { bottom: 829 } }),
+  assert.deepEqual(position({ bubble: { top: 180, bottom: 813 }, contentBottom: 799, end: { bottom: 829 } }),
     { top: 200, held: true, showEnd: false });
 });
 
@@ -34,10 +33,22 @@ test('manual reading holds the screen and jumping to the end is a one-time move'
   assert.deepEqual(position({ ...later, jump: true }), { top: 320, held: true, showEnd: false });
 });
 
-test('completion never chases the tail and only compensates for the process row replacement', () => {
-  const done = { growing: false, bubble: { top: 75, bottom: 1100 }, end: { bottom: 1130 } };
+test('completion preserves a held position and compensates for the process row replacement', () => {
+  const done = { held: true, bubble: { top: 75, bottom: 1100 }, end: { bottom: 1130 } };
   assert.deepEqual(position(done), { top: 120, held: true, showEnd: true });
   assert.deepEqual(position({ ...done, anchorShift: -25 }), { top: 95, held: true, showEnd: true });
+});
+
+test('a fully rendered reply follows to its opening even when only the cards are below the viewport', () => {
+  const done = { bubble: { top: 510, bottom: 610 }, contentBottom: 1390, end: { bottom: 1430 } };
+  assert.deepEqual(position(done), { top: 530, held: true, showEnd: true });
+  assert.deepEqual(position({ ...done, jump: true }), { top: 830, held: true, showEnd: false });
+});
+
+test('a native scroll to the bottom during insertion can be corrected to the start of the reply', () => {
+  const done = { bubble: { top: 24, bottom: 120 }, contentBottom: 695, end: { bottom: 720 } };
+  assert.deepEqual(position(done), { top: 44, held: true, showEnd: true });
+  assert.deepEqual(position({ ...done, held: true }), { top: 120, held: true, showEnd: false });
 });
 
 test('replacing the process row does not compensate twice when the native view keeps the bubble in place', () => {

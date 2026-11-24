@@ -33,7 +33,7 @@ import { assertModelTurnBand, modelStepBase, modelStepStride, maxModelTurns, dia
   type WebToolRuntime } from './dialogue-web-tools';
 import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publicSitesDelivery,
   type RecommendToolRuntime } from './dialogue-recommend-tools';
-import { directDesignerDiscovery } from '../core/discovery';
+import { canOfferDesignerRecommendation, directDesignerDiscovery } from '../core/discovery';
 import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
 import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
 import { bindReadToolInput, independentAdviceRequested, readToolContext, readToolContextProtocol, readToolsForContext,
@@ -85,7 +85,7 @@ const enterpriseSearchTool: ModelTool = {
 // model guess can never become a recommendation condition.
 const designerRecommendationTool: ModelTool = {
   name: 'recommend_designers',
-  description: '浏览本企业公开设计师作品。无需参数；服务端依据已获权的工地署名、房屋城市与客户明确的方向决定结果。返回状态与说明，作品卡片随回复展示；不编造设计师、作品或可预约时间。',
+  description: '用户本轮希望找设计师、查看公开作品、查询工地设计师署名，或补充刚才查找的条件时调用。装修风格介绍、比较、选择和搭配建议直接回答。无需参数；服务端按已获权条件返回公开作品卡片。',
   parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
 };
 const publicSitesRecommendationTool: ModelTool = {
@@ -964,7 +964,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
       for (const { messageId, hash, memoryVersion } of snapshot.sources)
         historyRefs.set(String(messageId), { messageId: String(messageId), hash: String(hash), memoryVersion: Number(memoryVersion) });
     }
-    const stageQuestion = messages.filter(message => message.role === 'user').at(-1)?.content ?? '';
+    const userTurns = messages.filter(message => message.role === 'user');
+    const stageQuestion = userTurns.at(-1)?.content ?? '';
+    const customerConsultation = lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation';
+    const designerToolAvailable = !customerConsultation || canOfferDesignerRecommendation(stageQuestion, userTurns.at(-2)?.content);
     const consultationEntry = initial.conversation.entry_snapshot as Row;
     if (isMainWechat(lease.actor) || !isWechatConsultation(lease.actor) && !preview && !specialist && !consultationEntry.activePublicSite &&
         lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation' && !reportContext(consultationEntry).selection) {
@@ -1014,7 +1017,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       measureOfferTool,
       ...(materialRead ? [materialRead] : []),
       ...publicResearchTools([webSearchTool], true, true),
-      designerRecommendationTool, publicSitesRecommendationTool,
+      ...(designerToolAvailable ? [designerRecommendationTool] : []), publicSitesRecommendationTool,
       ...(saved.triggerSeq ? [historyTool] : []),
       ...(delegationTool ? [delegationTool] : []),
     ];
@@ -1325,7 +1328,6 @@ export async function processNativeAgentAnswer(lease: Lease) {
         context.sources.push(...webSynthesisSources(unseen));
       }
     }
-    const customerConsultation = lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation';
     const systemContent: Array<{ type: 'text'; text: string }> = [
       { type: 'text', text: nativeExecutorPrompt(knowledgeEnabled, !!delegationTool, customerConsultation) },
       ...nativeReplySiteText({ publicSiteText: answerPublicSite?.text, businessContextActive: businessContextActive && !!publicSite.active, includePublicSite })];
@@ -1360,7 +1362,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     if (specialistReview && saved.searches.some(step =>
       ((step.input_summary as Row | null)?.receipt as Row | undefined)?.status === 'retrieval_unavailable'))
       specialistReview.enterpriseUnavailable = true;
-    const currentQuestionText = [...messages].reverse().find(message => message.role === 'user')?.content || '';
+    const currentQuestionText = stageQuestion;
     const asksForDesigners = !specialist && lease.actor.principal.kind === 'user' && directDesignerDiscovery(currentQuestionText);
     // Applicability is independent of citation presence: a user/master value the
     // answer endorses cannot borrow an unrelated run quote as support.

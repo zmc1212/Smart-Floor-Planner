@@ -34,7 +34,7 @@ import { buildAgentContext, parseAgentReply, agentPromptVersion, ownerNoArchiveP
 import { knowledgeTools, runKnowledgeEnabled, generalKnowledgeInstructions } from '../knowledge-policy';
 import { recommendationRegion } from '../location/region';
 import { recordRunLocationUse } from '../location/run-context';
-import { directDesignerDiscovery, discoveryIntent } from '../core/discovery';
+import { designerClarificationFollowup, designerIntent, directDesignerDiscovery, discoveryIntent } from '../core/discovery';
 import { publicCandidates, selectPublicCandidates } from '@/lib/construction/public-read';
 import { hydrateImages, resolveAgentImage, resolveAgentMedia, specialistSitePhotos, withoutImageBytes, type AgentMediaDependency, type MediaDependency, type SitePhotoDependency } from './media-context';
 import { businessToolDefinitions, queryBusiness, parseBusinessQuery, parseDesignerQuery, businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
@@ -42,8 +42,6 @@ import { floorplanContext } from '../media/floorplan-selection';
 import { prepareMaterialShare, revokeMaterialShare, materialSharingRequested } from '@/lib/construction/material-sharing';
 import { materialShareCompletionClaim } from '@/lib/construction/material-sharing-contract';
 import { recommendDesigners, revalidateDesignerSnapshot, designerNoMatch, designerNotice, type DesignerCard, type DesignerSnapshot } from '@/lib/portfolio/designer-recommendation';
-import { LAYOUT_OPTIONS, STYLE_OPTIONS } from '@/lib/portfolio/options';
-import { CITY_OPTIONS } from '@/lib/portfolio/regions';
 import { authorizeKnowledgeRead, KnowledgeSearchUnavailable, readKnowledgeTarget, retrieveKnowledge, type KnowledgeSearchOptions, type RetrievalDiagnostic } from '../knowledge/retrieval';
 import { createKnowledgeToolRegistry, isKnowledgeTool, knowledgeToolsForProvider, knowledgeToolNames, knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { BailianKnowledgeError, knowledgeProviderMode } from '../knowledge/bailian-provider';
@@ -206,20 +204,6 @@ export function needToolsForRetry(messages: ModelMessage[], tools: ModelTool[]):
   return tools;
 }
 const checkpointSeq = 1000;
-const designerIntent = /设计师|设计室|谁设计|推荐.{0,4}设计师|擅长.{0,6}(?:户型|风格)|找.{0,6}设计师/;
-/** After XiaoK asked for a city/style/layout, the next customer turn often
- * contains only those values. Keep the bounded designer intent from history
- * without treating earlier saved statements as this turn's source. */
-export function designerClarificationFollowup(historyText: string, text: string): boolean {
-  if (!designerIntent.test(historyText)) return false;
-  const preferences = [
-    ...CITY_OPTIONS.map(option => option.label.replace(/市$/, '')),
-    ...STYLE_OPTIONS.filter(option => option !== '其他'),
-    ...LAYOUT_OPTIONS.filter(option => option !== '其他'),
-  ];
-  return preferences.some(value => text.includes(value))
-    || /也可以|都行|都可以|换成|改成|再看看|按这个|就按|没有特别|不限/.test(text);
-}
 /** Questions/meta-conversation stay conversational; only explicit statements are eligible for memory writes. */
 export function agentToolsForMessage(text: string, enabled: boolean, businessFollowup = false, webEnabled = false, designerFollowup = false, materialShareFollowup = false): ModelTool[] {
   if (!enabled) return [];

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { agentToolsForMessage, assertDesignerReply, designerClarificationFollowup } from '../agent/worker';
+import { agentToolsForMessage, assertDesignerReply } from '../agent/worker';
+import { canOfferDesignerRecommendation, designerClarificationFollowup } from '../core/discovery';
 import type { DesignerCard } from '@/lib/portfolio/designer-recommendation';
 
 const card = {} as DesignerCard;
@@ -37,4 +38,13 @@ test('designer replies cannot claim appointments, prices, availability or visits
     assert.doesNotThrow(() => assertDesignerReply(text, [card]), text);
   assert.throws(() => assertDesignerReply('为你推荐4位设计师。', [card, card]), /invalid_model_citation/);
   assert.doesNotThrow(() => assertDesignerReply('为你推荐2位设计师。', [card, card]));
+});
+test('owner style advice does not offer the public designer directory', () => {
+  assert.equal(canOfferDesignerRecommendation('有哪些设计风格', '水电阶段要注意什么？'), false);
+  assert.equal(canOfferDesignerRecommendation('有哪些设计风格', '想看看做原木风的设计师。'), false);
+  assert.equal(canOfferDesignerRecommendation('原木风和奶油风有什么区别？', '有哪些设计风格'), false);
+  assert.equal(canOfferDesignerRecommendation('有做原木风的设计师吗？'), true);
+  assert.equal(canOfferDesignerRecommendation('想看几套原木风的作品。'), true);
+  assert.equal(canOfferDesignerRecommendation('我家在成都，两居。', '想找个做这种风格的设计师。'), true);
+  assert.equal(canOfferDesignerRecommendation('这个工地是谁设计的？'), true);
 });

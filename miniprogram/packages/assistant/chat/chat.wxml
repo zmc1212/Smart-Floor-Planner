@@ -369,10 +369,12 @@
         <view class="context-chevron" aria-hidden="true"></view>
       </view>
     </button>
-    <view class="floorplan-context-divider" aria-hidden="true"></view>
-    <button class="floorplan-browse chat-button {{(contextBusy || loading || fatal) ? 'is-disabled' : ''}}" bindtap="browseFloorplan" disabled="{{contextBusy || loading || fatal}}">
-      <text>查看档案</text><image class="chat-image" src="../assets/chat-arrow-up-right.png" mode="aspectFit" aria-hidden="true"/>
-    </button>
+    <view class="floorplan-context-link">
+      <view class="floorplan-context-divider" aria-hidden="true"></view>
+      <button class="floorplan-browse chat-button {{(contextBusy || loading || fatal) ? 'is-disabled' : ''}}" bindtap="browseFloorplan" disabled="{{contextBusy || loading || fatal}}">
+        <text>查看档案</text><image class="chat-image" src="../assets/chat-arrow-up-right.png" mode="aspectFit" aria-hidden="true"/>
+      </button>
+    </view>
   </view><view wx:if="{{contextError}}" class="context-error"><text>{{contextError}}</text><button class="chat-button" bindtap="reloadFloorplanContext">重试</button></view><view wx:if="{{draft.length > maxChars - 200}}" class="composer-footer"><text>{{draft.length}}/{{maxChars}}</text></view></view>
 
 <template wx:if="{{messageMenu && !sheet && !followupActive}}" is="message-actions-menu" data="{{menu:messageMenu, actions:messageActionItems, idle:canSend && !busy && !pendingSend && !pendingAction && !generating}}"/>

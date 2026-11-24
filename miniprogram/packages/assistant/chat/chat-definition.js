@@ -108,7 +108,9 @@ module.exports = () => ({
 		this.measureWindow();
 		this.referenceImages = new ReferenceImage();
 		this.siteRecords = new SiteRecordMedia({ identity: sessionToken, emit: patch => { if (this._alive && this._shown) this.setData(patch); } });
-		this.recommendations = new RecommendationController({ identity: sessionToken, emit: patch => { if (this._alive) this.setData(patch); } });
+		this.recommendations = new RecommendationController({ identity: sessionToken, emit: patch => {
+			if (this._alive) this.setData(patch, () => this._replyScroll.request());
+		} });
 		this._designerCardConversation = ''; this._designerCardKey = '';
 		this.controller = new ChatController({
 			identity: sessionToken,
@@ -251,7 +253,7 @@ module.exports = () => ({
 			})), emit: p => { if (this._alive && this._shown) this.setData(p); } });
 		if (!this.location) this.location = new NearbyLocationController({ identity: sessionToken, client: this.controller.client });
 		if (!this.plans) this.plans = new PlanChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
-		if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) { this.setData(p); if (p.publicDetail) this.liveConsent.entry(this.data.enterpriseId, p.publicDetail.id); else if (p.publicDetail === null) this.liveConsent.set({ publicLiveEntry: null }); } } });
+		if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) { this.setData(p, () => this._replyScroll.request()); if (p.publicDetail) this.liveConsent.entry(this.data.enterpriseId, p.publicDetail.id); else if (p.publicDetail === null) this.liveConsent.set({ publicLiveEntry: null }); } } });
 		this._shown = true;
 		this._replyScroll?.request();
 		if (nativePreview.shownAfterPreview(this)) return;
@@ -1171,7 +1173,8 @@ module.exports = () => ({
 			this.setData({ designerCardImages: {}, designerCardPortraits: {}, designerCardError: '' });
 		}
 		const key = latest ? String(latest.id) : '';
-		this.setData({ latestDesignerMessageId: key });
+		if (key !== this.data.latestDesignerMessageId)
+			this.setData({ latestDesignerMessageId: key }, () => this._replyScroll.request());
 		if (key === this._designerCardKey) return;
 		this._designerCardKey = key;
 		if (!latest || !conversationId || !this.designerCardMedia) return;

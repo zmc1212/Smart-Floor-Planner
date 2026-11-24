@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, safeText } from '../contracts';
-import { STYLE_OPTIONS } from '@/lib/portfolio/options';
+import { LAYOUT_OPTIONS, STYLE_OPTIONS } from '@/lib/portfolio/options';
+import { CITY_OPTIONS } from '@/lib/portfolio/regions';
 
 const browsing = /看看|看下|看一下|看一看|(?:想(?:先|再)?|能不能|能否|可以|可不可以|能|给我|带我|先|只)(?:去)?看(?:看|下|一下|一看)?|参观|围观|浏览|观摩|了解一下|(?:想|帮我)(?:先)?找|(?:^|请|帮我|给我|想|可以|能否|能不能)推荐/;
 const site = /工地|施工现场|施工实况|施工直播|在建项目/;
@@ -69,4 +70,24 @@ export async function discoveryRequest(tx: PostgresTransaction, enterpriseId: st
 
 export function directDesignerDiscovery(text: string) {
   return discoveryIntent(text).works && /设计师|设计工作室|设计室/.test(text);
+}
+
+export const designerIntent = /设计师|设计室|谁设计|推荐.{0,4}设计师|擅长.{0,6}(?:户型|风格)|找.{0,6}设计师/;
+
+export function designerClarificationFollowup(previousText: string, text: string): boolean {
+  if (!designerIntent.test(previousText) && !discoveryIntent(previousText).works) return false;
+  const preferences = [
+    ...CITY_OPTIONS.map(option => option.label.replace(/市$/, '')),
+    ...STYLE_OPTIONS.filter(option => option !== '其他'),
+    ...LAYOUT_OPTIONS.filter(option => option !== '其他'),
+  ];
+  return preferences.some(value => text.includes(value))
+    || /也可以|都行|都可以|换成|改成|再看看|按这个|就按|没有特别|不限/.test(text);
+}
+
+/** A directory lookup may supply the entire public-card reply. Keep it out of
+ * a fresh advisory turn unless the customer asks about the directory or
+ * continues the immediately preceding request. */
+export function canOfferDesignerRecommendation(text: string, previousText = '') {
+  return designerIntent.test(text) || discoveryIntent(text).works || designerClarificationFollowup(previousText, text);
 }
