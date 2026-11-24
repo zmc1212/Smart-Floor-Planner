@@ -40,7 +40,7 @@
       </button>
     </view>
     <text wx:if="{{reportBoardView.scopeName}}" class="report-board-meta">{{reportBoardView.scopeName}}</text>
-    <view class="report-board-toolbar">
+    <view class="report-board-toolbar {{reportBoardRole === 'boss' ? 'report-board-toolbar-boss' : ''}}">
       <view class="report-board-tabs" aria-label="报告周期">
         <button class="{{reportBoardKind === 'daily' ? 'active' : ''}} chat-button" data-kind="daily" bindtap="switchReportBoard" aria-pressed="{{reportBoardKind === 'daily'}}"><text class="report-board-tab-label">日报</text></button>
         <button class="{{reportBoardKind === 'weekly' ? 'active' : ''}} chat-button" data-kind="weekly" bindtap="switchReportBoard" aria-pressed="{{reportBoardKind === 'weekly'}}"><text class="report-board-tab-label">周报</text></button>
