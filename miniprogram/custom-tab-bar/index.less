@@ -27,8 +27,10 @@
 .staff-notebook-tabs .tab-icon,.staff-notebook-tabs .tab-image { width:26px; height:26px; }
 .staff-notebook-tabs .tab-text { font-size:13px; line-height:1.2; margin-top:2px; }
 .staff-notebook-tabs.two-tabs .tabbar { justify-content:center; gap:18px; }
-.staff-notebook-tabs.two-tabs .tab-item { flex:0 1 118px; margin:0; }
-.staff-notebook-tabs.two-tabs .tab-item.active { border-radius:12px; }
+.staff-notebook-tabs.two-tabs .tab-item,
+.staff-notebook-tabs .tab-item:only-child { flex:0 1 118px; }
+.staff-notebook-tabs.two-tabs .tab-item { margin:0; }
+.staff-notebook-tabs .tab-item:only-child { margin:0 auto; }
 
 .tabbar {
   position: relative;

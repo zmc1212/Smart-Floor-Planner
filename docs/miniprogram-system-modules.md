@@ -1197,7 +1197,9 @@ operator must tap a candidate arrow explicitly.
 
 ### XiaoK construction workbenches
 
-The approved [workbench designs](../design-references/site-role-workbenches-20261117/) render on `pages/index/index` for signed construction staff, designers and enterprise owners. These three roles use XiaoK / Workbench / Mine. XiaoK opens the existing private role follow-up in the home tab. The measurer continues to use the surveying workbench. The customer uses the separately approved My Site state.
+The approved [workbench designs](../design-references/site-role-workbenches-20261117/) render on `pages/index/index` for signed construction staff, designers and enterprise owners. Construction managers and workers use the Site and Mine tabs. Designers and enterprise owners use XiaoK, Workbench and Mine. XiaoK opens the existing private role follow-up in the home tab. The measurer continues to use the surveying workbench. The customer uses the separately approved My Site state.
+
+Staff workbenches and Mine use one `custom-tab-bar/index` item catalog and notebook presentation for designers, construction managers, workers and enterprise owners. The signed role and capabilities determine which destinations render. A single remaining Mine tab uses the same compact centered item as the two-tab layout. Stable 390×844 measured the shared 26px icon boxes, paper surface and selection across four role projections and an account-only designer projection. [Approved workbench navigation](../design-references/site-role-workbenches-20261117/README.md) · [Worker navigation](../design-references/worker-site-saas-v1-20261118/README.md) · [Native checks](../tmp/staff-tab-audit-20261124/stable-aa4e9e04/report.json).
 
 Authorized AI Design actions open from the workbench and lead details. The Design page `pages/ai-design/ai-design` stays registered for contextual `wx.switchTab` navigation, including plan and room context.
 

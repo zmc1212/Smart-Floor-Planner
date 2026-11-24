@@ -994,7 +994,9 @@ C01 `packages/assistant/chat/chat` 展示防水专业回答、有据检查清单
 
 ### 小K工地工作台
 
-已签名施工员工、设计师和企业负责人在 `pages/index/index` 使用[批准的四张工作台稿](../design-references/site-role-workbenches-20261117/)。三端底栏为「小K／工作台／我的」。「小K」在首页打开该角色原有的私人跟进。现场顾问沿用量房工作台，业主继续使用单独批准的「我家工地」。
+已签名施工员工、设计师和企业负责人在 `pages/index/index` 使用[批准的四张工作台稿](../design-references/site-role-workbenches-20261117/)。施工经理和工人显示「工地／我的」。设计师和企业负责人显示「小K／工作台／我的」。「小K」在首页打开该角色原有的私人跟进。现场顾问沿用量房工作台，业主继续使用单独批准的「我家工地」。
+
+设计师、施工经理、工人和老板的工作台与「我的」共用 `custom-tab-bar/index` 的入口配置、手账纸面、图标、字号及选中态。签名角色与实际权限决定可见入口。只显示「我的」时，按同一紧凑宽度居中。Stable 390×844 使用合成权限验证四个角色和设计师仅账户态，核对了 26px 图标框、纸面和选中态。[工作台确认稿](../design-references/site-role-workbenches-20261117/README.md) · [工人端确认稿](../design-references/worker-site-saas-v1-20261118/README.md) · [原生核验](../tmp/staff-tab-audit-20261124/stable-aa4e9e04/report.json)。
 
 获权的 AI 设计动作从工作台和线索详情进入。`pages/ai-design/ai-design` 保留原生注册，供 `wx.switchTab` 带入户型和房间上下文。
 

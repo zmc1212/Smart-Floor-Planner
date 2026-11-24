@@ -110,6 +110,7 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
     globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'account'] } };
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['mine']);
+    assert.equal(component.data.staffNavigation, true);
 
     globalData.bootstrap = { current: { role: 'measurer', capabilities: ['staff.schedule', 'staff.data', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'] } };
     definition.methods.syncSelected.call(component);
