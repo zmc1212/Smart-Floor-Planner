@@ -2,9 +2,17 @@
 
 本文是 `admin/release.bat`、`admin/auto_deploy.sh` 和 `admin/deploy.sh` 的正式运维合同。发布脚本只做应用发布、迁移前备份和应用版本回滚；它不会自动把生产数据库恢复到旧备份，也不会逆向执行迁移。
 
+## 当前正式发布
+
+正式后台、抢单 Worker 和小 K Worker 运行 `20261124-002`，对应干净提交 `4c9f72bc`，镜像 config digest 为 `sha256:f98470f26b9e8cac524084a416a1ad6a9b4f3e1706741f27a41b60f880813b8d`。标准包 ZIP SHA-256 为 `527e2f12261e9bf8174332a29b68137c6ed690c173250a0cf7f7b92b3eb27f77`，上一应用镜像保留为 `20261124-001`。[源码绑定](../tmp/production-release-20261124-002/source-binding.json) · [发布回执](../tmp/production-release-20261124-002/production-server.log)
+
+`0148_assistant_wechat_channels` 和 `0149_xiaok_publications` 已应用。迁移账本从 144 条增至 146 条，三张新表均启用强制 RLS，保留原 PostgreSQL 数据卷。迁移前备份 `smart_floor_planner-20261124T085052Z-pre-20261124-002.dump` 的 SHA-256 和归档目录已校验。后台健康接口返回 200，两项 Worker 健康、实际登录和核心接口冒烟均通过。[迁移试跑](../tmp/production-release-20261124-002/isolated-migrations-checked.log) · [正式发布日志](../tmp/production-release-20261124-002/production-deploy.log)
+
+发布包通过标准构建检查，小程序源码全量测试 2,387 项通过。微信小程序正式版仍待独立发布。本次临时 SSH 公钥已撤销，重新连接确认被拒。[构建](../tmp/production-release-20261124-002/build.log) · [小程序测试](../tmp/production-release-20261124-002/miniprogram-tests-checked.log) · [公钥撤销](../tmp/production-release-20261124-002/production-key-reauth.log)
+
 ## 当前阶段 Agent 发布
 
-正式后台、抢单 Worker 和小 K Worker 已同步至 `20261124-001`，镜像 config digest 为 `sha256:cbd8a9e9f85f75f961f0a0a77d687761e19a7670e15a3825772f9df52c847ac1`。标准打包使用工作区应用源码快照 `637444cf0a60ed240b8c51fd1aad4edfec1a88e5`。ZIP SHA-256 为 `ae1aef6968219b8ffb9859af1922ee689a549336abc55999e1caaf9c963d7c26`。上一后台版本为 `20261120-001`。[源码绑定](../tmp/production-release-20261124-001/source-binding.json) · [服务核验](../tmp/production-release-20261124-001/production-server.log)
+正式后台、抢单 Worker 和小 K Worker 上一版为 `20261124-001`，镜像 config digest 为 `sha256:cbd8a9e9f85f75f961f0a0a77d687761e19a7670e15a3825772f9df52c847ac1`。标准打包使用工作区应用源码快照 `637444cf0a60ed240b8c51fd1aad4edfec1a88e5`。ZIP SHA-256 为 `ae1aef6968219b8ffb9859af1922ee689a549336abc55999e1caaf9c963d7c26`。上一后台版本为 `20261120-001`。[源码绑定](../tmp/production-release-20261124-001/source-binding.json) · [服务核验](../tmp/production-release-20261124-001/production-server.log)
 
 原 PostgreSQL 数据卷应用 `0144`–`0147`，迁移账本从 140 条增至 144 条。首次尝试遇到 `sfp_migrator` 定义函数配置参数的权限限制并回滚。迁移前备份 `smart_floor_planner-20261124T021950Z-pre-20261124-001.dump` 校验通过。在同一事务内临时授予迁移角色对 `app.is_platform_admin` 的 `SET` 权限，以迁移角色执行原包 SQL，并在提交前撤销权限。随后复用同一发布包完成标准发布。[首次记录](../tmp/production-release-20261124-001/production-deploy.log) · [重试记录](../tmp/production-release-20261124-001/production-retry.log) · [PostgreSQL 17 参数授权](https://www.postgresql.org/docs/17/sql-grant.html)
 
