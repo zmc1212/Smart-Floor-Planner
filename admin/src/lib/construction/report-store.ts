@@ -106,12 +106,16 @@ export function pilotScopedReportSettings(settings: Row, pilotProjectIds: readon
   return { ...settings, project_ids: scope.projectIds };
 }
 
-export async function discoverFollowups(tx: PostgresTransaction, eid: string, settings: Row) {
-  const projects = await rows(tx, sql`select p.id,l.customer_user_id from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
+export function reportPlanProjects(tx: PostgresTransaction, eid: string, settings: Row) {
+  return rows(tx, sql`select p.id,l.customer_user_id from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
     where p.enterprise_id=${eid} and ${activeReportProject} and l.archived_at is null
     and (jsonb_array_length(${JSON.stringify(settings.project_ids)}::jsonb)=0 or ${JSON.stringify(settings.project_ids)}::jsonb ? p.id::text)
     and (jsonb_array_length(${JSON.stringify(settings.stage_keys)}::jsonb)=0 or ${JSON.stringify(settings.stage_keys)}::jsonb ? p.current_stage_key)
     order by p.id limit 21 for share of p,l`);
+}
+
+export async function discoverFollowups(tx: PostgresTransaction, eid: string, settings: Row) {
+  const projects = await reportPlanProjects(tx, eid, settings);
   if (projects.length > 20) fail('construction_report_scope_too_large', 409);
   const result: Row[] = [];
   for (const p of projects) {

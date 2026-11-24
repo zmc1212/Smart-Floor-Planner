@@ -11,7 +11,8 @@ import { readStageSettings } from './stages-store';
 import { readSchedule } from './site-schedule';
 import type { ConstructionStage } from './stages';
 
-export type FollowupAudience = 'customer' | 'worker' | 'designer' | 'boss';
+export const reportAudiences = ['customer', 'worker', 'designer', 'boss'] as const;
+export type FollowupAudience = typeof reportAudiences[number];
 // Existing lifecycle fields: paused/archived status, completion/move_in stages.
 // Historical reads deliberately do not use this scheduling-only predicate.
 export const activeReportProject = sql`p.status='active' and coalesce(p.current_stage_key,'') not in ('completion','move_in')`;

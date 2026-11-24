@@ -4,11 +4,12 @@ import { one } from '@/db/repositories/assistant-repository';
 import { UserRepository } from '@/db/repositories/user-repository';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { decryptText, encryptText } from '@/lib/crypto';
+import type { FollowupAudience } from '@/lib/construction/report-scope';
 import { readStageAgent } from '@/lib/xiaok-v1/stage-workflow-settings';
 import type { StageId } from '@/lib/xiaok-v1/stages';
-import { fail, principalKey } from '../contracts';
+import { AssistantError, fail, principalKey } from '../contracts';
 import { mainRelease } from '@/lib/xiaok-v1/main-publication';
-import { checkRecipient, miniUser, type Recipient } from './recipient';
+import { checkRecipient, miniUser, resolveRecipient, savedRecipient, type Recipient, type RequestedRecipient } from './recipient';
 import { authorizeKnowledgeManager } from '../knowledge/manager';
 import { weixinClient, weixinOrigin, type WeixinLogin } from './ilink';
 import { wechatSubject } from './subject';
@@ -16,6 +17,7 @@ import { wechatSubject } from './subject';
 export type ChannelRow = {
   id: string; enterprise_id: string; stage_id: StageId | 'main'; status: 'pending' | 'connected' | 'closed';
   recipient_key: string | null; recipient_binding_id: string | null; project_id: string | null; mini_user_id: string | null;
+  recipient_audience: FollowupAudience | null;
   identity_version: number | null; recipient_requires_service: boolean; verified_at: string | null; recipient_version: number;
   pair_secret: string | null; pair_until: string | null; latest_context: string | null; daily_since: string | null; weekly_since: string | null;
   login_state: string | null; qr_secret: string | null; expires_at: string | null;
@@ -29,7 +31,7 @@ export type ChannelView = {
   qr: string | null; expiresAt: string | null; lastPollAt: string | null; lastReplyAt: string | null; error: string | null;
 };
 export type Scope = { enterpriseId: string } & ({ adminId: string; stage: StageId | 'main'; recipient?: never } |
-  { stage: 'main'; recipient: Recipient; adminId?: never });
+  { stage: 'main'; recipient: RequestedRecipient; adminId?: never });
 
 function qr(row: ChannelRow): WeixinLogin { return JSON.parse(decryptText(row.qr_secret)); }
 export const pairDigest = (value:string) => createHash('sha256').update(value).digest('hex');
@@ -46,10 +48,32 @@ function managed<T>(scope: Scope, work: (tx: PostgresTransaction) => Promise<T>)
   return withTenantTransaction(scope.enterpriseId, async tx => {
     if (scope.recipient) {
       if (scope.recipient.actor.enterpriseId !== scope.enterpriseId) fail('settings_enterprise_changed');
-      await checkRecipient(tx, scope.recipient);
     } else await authorizeKnowledgeManager(tx, scope.enterpriseId, scope.adminId);
+    // Publishing can close or pause channels. Keep its publication → channel lock order.
+    if (scope.stage === 'main') await mainRelease(tx, scope.enterpriseId);
     return work(tx);
   });
+}
+
+async function recipientOf(tx: PostgresTransaction, scope: Scope) {
+  return scope.recipient && (await resolveRecipient(tx, scope.recipient)).recipient;
+}
+
+async function matchesRecipient(tx: PostgresTransaction, row: ChannelRow, recipient: Recipient) {
+  if (row.recipient_key !== principalKey(recipient.actor) || row.identity_version !== recipient.actor.contextVersion) return false;
+  if (row.recipient_binding_id === recipient.bindingId && row.project_id === recipient.projectId
+    && row.recipient_audience === (recipient.audience ?? null)) return true;
+  if (!recipient.audience || row.recipient_audience || !row.project_id) return false;
+  // Let the role entry manage a still-authorized legacy subscription without widening it.
+  const legacy = savedRecipient({ ...row, verified_at: row.verified_at ?? new Date().toISOString() });
+  if (!legacy) return false;
+  try {
+    const binding = await checkRecipient(tx, legacy);
+    return binding?.audience === recipient.audience;
+  } catch (error) {
+    if (error instanceof AssistantError && [401, 403, 404, 409].includes(error.status)) return false;
+    throw error;
+  }
 }
 function current(tx: PostgresTransaction, scope: Scope) {
   return one<ChannelRow>(tx, sql`select * from app.assistant_wechat_channels where enterprise_id=${scope.enterpriseId}
@@ -82,7 +106,11 @@ export async function closeStageWechatChannel(tx: PostgresTransaction, enterpris
 }
 
 export function readChannel(scope: Scope) {
-  return managed(scope, async tx => view(await current(tx, scope)));
+  return managed(scope, async tx => {
+    const row = await current(tx, scope);
+    const recipient = await recipientOf(tx, scope);
+    return row && recipient && !await matchesRecipient(tx, row, recipient) ? null : view(row);
+  });
 }
 export async function startChannel(scope: Scope, client = weixinClient) {
   // Only serialize QR creation for this enterprise/stage. QR status long-polling happens outside transactions.
@@ -90,24 +118,30 @@ export async function startChannel(scope: Scope, client = weixinClient) {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'wechat:' + scope.enterpriseId + ':' + scope.stage},0))`);
     if (!await targetEnabled(tx, scope)) fail('wechat_stage_disabled');
     const previous = await current(tx, scope);
-    if (previous && view(previous)?.status !== 'closed') return view(previous);
+    const recipient = await recipientOf(tx, scope);
+    if (recipient?.audience && !(await mainRelease(tx, scope.enterpriseId))?.reports) fail('wechat_stage_disabled');
+    if (previous && view(previous)?.status !== 'closed') {
+      if (recipient && !await matchesRecipient(tx, previous, recipient)) fail('context_changed');
+      return view(previous);
+    }
     if (previous?.status === 'pending') await closeChannel(tx, previous, 'expired');
-    const recipient = scope.recipient;
     const code = recipient ? randomBytes(8).toString('hex').toUpperCase() : null;
     const login = await client.login();
     return view(await one<ChannelRow>(tx, sql`insert into app.assistant_wechat_channels
       (enterprise_id,stage_id,status,login_state,qr_secret,expires_at,api_origin,recipient_key,recipient_binding_id,project_id,mini_user_id,
-        identity_version,recipient_requires_service,pair_secret,pair_digest,pair_until)
+        identity_version,recipient_requires_service,pair_secret,pair_digest,pair_until,recipient_audience)
       values(${scope.enterpriseId},${scope.stage},'pending','wait',${encryptText(JSON.stringify(login))},now()+interval '5 minutes',${weixinOrigin},
         ${recipient ? principalKey(recipient.actor) : null},${recipient?.bindingId ?? null},${recipient?.projectId ?? null},
         ${recipient ? miniUser(recipient.actor) : null},${recipient?.actor.contextVersion ?? null},${!!recipient?.actor.customerServiceRequired},
-        ${code ? encryptText(code) : null},${code ? pairDigest(code) : null},now()+interval '15 minutes') returning *`));
+        ${code ? encryptText(code) : null},${code ? pairDigest(code) : null},now()+interval '15 minutes',${recipient?.audience ?? null}) returning *`));
   });
 }
 export async function pollChannel(scope: Scope, channelId: string, pin?: string, client = weixinClient) {
   const pending = await managed(scope, async tx => {
     const row = await current(tx, scope);
     if (!row || row.id !== channelId) fail('version_conflict');
+    const recipient = await recipientOf(tx, scope);
+    if (recipient && !await matchesRecipient(tx, row, recipient)) fail('context_changed');
     return row;
   });
   if (view(pending)?.status !== 'pending') return view(pending);
@@ -115,6 +149,8 @@ export async function pollChannel(scope: Scope, channelId: string, pin?: string,
   return managed(scope, async tx => {
     const row = await current(tx, scope);
     if (!row || row.id !== channelId) fail('version_conflict');
+    const recipient = await recipientOf(tx, scope);
+    if (recipient && !await matchesRecipient(tx, row, recipient)) fail('context_changed');
     if (row.status !== 'pending' || row.api_origin !== pending.api_origin || row.login_state !== pending.login_state) return view(row);
     if (Date.parse(row.expires_at!) <= Date.now() || result.state === 'expired') return view(await closeChannel(tx, row, 'expired'));
     if (result.state === 'already_bound') return view(await closeChannel(tx, row, 'already_bound'));
@@ -135,28 +171,36 @@ export function disconnectChannel(scope: Scope, channelId: string) {
   return managed(scope, async tx => {
     const row = await current(tx, scope);
     if (!row || row.id !== channelId) fail('version_conflict');
+    await recipientOf(tx, scope);
     return view(row.status === 'closed' ? row : await closeChannel(tx, row, 'disconnected'));
   });
 }
 
-type RecipientAction = {kind:'state'} | {kind:'renew'} | {kind:'preferences'; daily:boolean; weekly:boolean};
-export function recipientState(recipient: Recipient, action: RecipientAction = {kind:'state'}, expected?: {id:string;version:number}) {
-  const scope = {enterpriseId:recipient.actor.enterpriseId,stage:'main' as const,recipient};
+type RecipientAction = {kind:'state'} | {kind:'renew'} | {kind:'upgrade'} | {kind:'preferences'; daily:boolean; weekly:boolean};
+export function recipientState(requested: RequestedRecipient, action: RecipientAction = {kind:'state'}, expected?: {id:string;version:number}) {
+  const scope = {enterpriseId:requested.actor.enterpriseId,stage:'main' as const,recipient:requested};
   return managed(scope,async tx => {
-    const app = await mainRelease(tx,scope.enterpriseId);
     let row = await current(tx,scope);
-    const base = { published:!!app?.enabled, reports:!!app?.enabled && app.reports };
+    const { recipient, binding } = await resolveRecipient(tx, requested);
+    const app = await mainRelease(tx,scope.enterpriseId);
+    const base = { published:!!app?.enabled, reports:!!app?.enabled && app.reports, audience: binding.audience as FollowupAudience };
     if (!row || row.status === 'closed') return {...base,channel:null};
-    const same = () => row!.recipient_key === principalKey(recipient.actor) && row!.identity_version === recipient.actor.contextVersion
-      && row!.recipient_binding_id === recipient.bindingId && row!.project_id === recipient.projectId;
+    const match = await matchesRecipient(tx, row, recipient);
     if (action.kind !== 'state') {
       if (!expected || expected.id !== row.id || expected.version !== row.recipient_version) fail('version_conflict');
-      if (!same() || !base.published) fail('context_changed');
+      if (!match || !base.published) fail('context_changed');
       if (action.kind === 'renew') {
         if (row.verified_at) fail('context_changed');
         const code=randomBytes(8).toString('hex').toUpperCase();
         row = (await one<ChannelRow>(tx,sql`update app.assistant_wechat_channels set pair_secret=${encryptText(code)},pair_digest=${pairDigest(code)},
           pair_until=now()+interval '15 minutes',recipient_version=recipient_version+1 where id=${row.id} returning *`))!;
+      } else if (action.kind === 'upgrade') {
+        if (!recipient.audience || row.recipient_audience || !row.verified_at || !base.reports || row.status !== 'connected')
+          fail('context_changed');
+        row = (await one<ChannelRow>(tx, sql`update app.assistant_wechat_channels set
+          recipient_audience=${recipient.audience},recipient_binding_id=${recipient.bindingId},project_id=null,
+          recipient_requires_service=${!!recipient.actor.customerServiceRequired},daily_since=null,weekly_since=null,
+          recipient_version=recipient_version+1 where id=${row.id} returning *`))!;
       } else {
         if (!row.verified_at || !base.reports || row.status !== 'connected') fail('context_changed');
         row = (await one<ChannelRow>(tx,sql`update app.assistant_wechat_channels set
@@ -164,9 +208,9 @@ export function recipientState(recipient: Recipient, action: RecipientAction = {
           weekly_since=case when ${action.weekly} then coalesce(weekly_since,now()) end,recipient_version=recipient_version+1 where id=${row.id} returning *`))!;
       }
     }
-    const match = same();
     const publicState = view(row)!;
     return {...base,channel:{...publicState,qr:match ? publicState.qr : null,id:row.id,version:row.recipient_version,match,
+      scope: match ? row.recipient_audience ? 'role' as const : 'project' as const : 'unverified' as const,
       verified:match && !!row.verified_at,daily:match && !!row.daily_since,weekly:match && !!row.weekly_since,
       command:match && row.pair_secret && row.pair_until && new Date(row.pair_until).getTime()>Date.now() ? '绑定 '+decryptText(row.pair_secret) : null}};
   });

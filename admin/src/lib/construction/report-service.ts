@@ -7,10 +7,11 @@ import { constructionAccess } from './service';
 import { object, type ConstructionActor } from './contracts';
 import { readStageSettings } from './stages-store';
 import { correctedReportEnd, nextReportAt, reportTime } from './report-calendar';
-import { discoverFollowups, enqueueReportCorrection } from './report-store';
+import { discoverFollowups, enqueueReportCorrection, reportPlanProjects } from './report-store';
+import { reportAudiences } from './report-scope';
 
 const asDate = (v: unknown) => new Date(String(v));
-export const reportAudiences = ['customer', 'worker', 'designer', 'boss'] as const;
+export { reportAudiences };
 export function reportPlanDto(row: Row | undefined, enterpriseId: string) {
   return { enterpriseId, version: Number(row?.version || 0), enabled: !!row?.enabled, timezone: 'Asia/Shanghai',
     stageEnabled: row?.stage_enabled !== false, dailyTime: String(row?.daily_time || '20:00'), weeklyTime: String(row?.weekly_time || '08:00'),
@@ -44,14 +45,16 @@ export class ConstructionReportService {
         and ${JSON.stringify(settings.projectIds)}::jsonb ? p.id::text for share of p,l`);
       const projectDto = (p: Row) => ({ id: String(p.id), name: String(p.name), status: String(p.status), stageKey: p.current_stage_key });
       const enterprise = (await one(tx, sql`select name from app.enterprises where id=${eid}`))!;
+      const projectLimitExceeded = settings.enabled && (await reportPlanProjects(tx, eid, row!)).length > 20;
       return { settings, enterprise: { id: eid, name: String(enterprise.name) }, projects: projects.slice(0,30).map(projectDto),
-        selectedProjects: selected.map(projectDto), nextCursor: projects.length > 30 ? String(projects[29].id) : null };
+        selectedProjects: selected.map(projectDto), nextCursor: projects.length > 30 ? String(projects[29].id) : null, projectLimitExceeded };
     });
   }
   configure(input: Row, requestKey: string, now = new Date()) {
     object(input, ['expectedVersion','enabled','dailyTime','weeklyTime','projectIds','stageKeys','stageEnabled','weeklyDay','audiences','inactivePolicy']); key(requestKey);
     if (!Number.isSafeInteger(input.expectedVersion) || Number(input.expectedVersion) < 0 || typeof input.enabled !== 'boolean'
-      || !Array.isArray(input.projectIds) || input.projectIds.length > 20 || !Array.isArray(input.stageKeys) || input.stageKeys.length > 30) fail('invalid_construction', 422);
+      || !Array.isArray(input.projectIds) || !Array.isArray(input.stageKeys) || input.stageKeys.length > 30) fail('invalid_construction', 422);
+    if (input.projectIds.length > 20) fail('construction_report_scope_too_large', 409);
     const daily = reportTime(input.dailyTime), weekly = reportTime(input.weeklyTime), projects = input.projectIds.map(id), stages = input.stageKeys;
     if (new Set(projects).size !== projects.length || new Set(stages).size !== stages.length) fail('invalid_construction', 422);
     if ((input.stageEnabled !== undefined && typeof input.stageEnabled !== 'boolean')

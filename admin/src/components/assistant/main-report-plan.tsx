@@ -8,18 +8,20 @@ import {assistantError,assistantRequest} from './client';
 type Plan={version:number;enabled:boolean;stageEnabled:boolean;dailyTime:string;weeklyDay:number;weeklyTime:string;
   projectIds:string[];stageKeys:string[];audiences:string[];inactivePolicy:string};
 type Project={id:string;name:string};
-type Page={settings:Plan;projects:Project[];selectedProjects:Project[];nextCursor:string|null};
+type Page={settings:Plan;projects:Project[];selectedProjects:Project[];nextCursor:string|null;projectLimitExceeded:boolean};
 const roles=[['customer','业主'],['worker','施工人员'],['designer','设计师'],['boss','老板']].map(([value,label])=>({value,label}));
 export function MainReportPlan({enterprise}:{enterprise:string}) {
   const path='publications/main/plan?enterprise='+encodeURIComponent(enterprise);
   const [plan,setPlan]=useState<Plan>(),[projects,setProjects]=useState<Project[]>([]),[cursor,setCursor]=useState<string|null>(null);
   const [error,setError]=useState(''),[busy,setBusy]=useState(false),[epoch,reload]=useState(0);
+  const [projectLimitExceeded,setProjectLimitExceeded]=useState(false);
   const attempt=useRef<{key:string;body:string}|null>(null);
   useEffect(()=>{
     const ac=new AbortController();
     assistantRequest<Page>(path,{signal:ac.signal}).then(p=>{
       if(ac.signal.aborted)return;
       setPlan(p.settings);setProjects([...p.selectedProjects,...p.projects]);setCursor(p.nextCursor);setError('');
+      setProjectLimitExceeded(p.projectLimitExceeded);
     }).catch(e=>{if(!ac.signal.aborted)setError(assistantError(e));});
     return ()=>ac.abort();
   },[path,epoch]);
@@ -30,7 +32,7 @@ export function MainReportPlan({enterprise}:{enterprise:string}) {
     if(attempt.current?.body!==body)attempt.current={body,key:crypto.randomUUID()};
     setBusy(true);
     try { const saved=await assistantRequest<Plan>(path,{method:'PUT',headers:{'Content-Type':'application/json','Idempotency-Key':attempt.current.key},body});
-      setPlan(saved);attempt.current=null;setError('');notify.success('报告计划已保存');
+      setPlan(saved);attempt.current=null;setError('');reload(n=>n+1);notify.success('报告计划已保存');
     } catch(e){setError(assistantError(e));notify.error(assistantError(e));}finally{setBusy(false);}
   }
   async function more(){
@@ -40,7 +42,8 @@ export function MainReportPlan({enterprise}:{enterprise:string}) {
     catch(e){setError(assistantError(e));}finally{setBusy(false);}
   }
   const options=Array.from(new Map(projects.map(p=>[p.id,{value:p.id,label:p.name}])).values());
-  return <><h2>报告计划</h2>{error && <Alert type="error" message={error} action={<Button onClick={()=>reload(n=>n+1)}>重新读取</Button>}/>}
+  const statusMessage=error || (projectLimitExceeded ? '当前报告计划超过 20 个工地，请缩小工地或阶段范围。' : '');
+  return <><h2>报告计划</h2>{statusMessage && <Alert type="error" message={statusMessage} action={<Button onClick={()=>reload(n=>n+1)}>重新读取</Button>}/>}
     {plan && <Space direction="vertical" size="middle">
       <Space><Switch aria-label="启用报告计划" checked={plan.enabled} onChange={enabled=>setPlan({...plan,enabled})}/>启用报告计划</Space>
       <label>日报时间 <Input type="time" value={plan.dailyTime} onChange={e=>setPlan({...plan,dailyTime:e.target.value})}/></label>

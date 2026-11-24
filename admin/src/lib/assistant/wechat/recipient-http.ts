@@ -9,12 +9,14 @@ const action = z.discriminatedUnion('action',[
   z.strictObject({action:z.literal('poll'),id:z.uuid(),pin:z.string().regex(/^\d{1,12}$/).optional()}),
   z.strictObject({action:z.literal('disconnect'),id:z.uuid()}),
   z.strictObject({action:z.literal('renew'),id:z.uuid(),version}),
+  z.strictObject({action:z.literal('upgrade'),id:z.uuid(),version}),
   z.strictObject({action:z.literal('preferences'),id:z.uuid(),version,daily:z.boolean(),weekly:z.boolean()}),
 ]);
 export async function recipientHttp(request:Request,actor:ActorContext,bindingId:string) {
   const params = new URL(request.url).searchParams;
-  if (params.size !== 1 || !params.has('projectId')) fail('invalid_message',422);
-  const recipient = {actor,bindingId:id(bindingId),projectId:id(params.get('projectId'))};
+  const roleScope = params.get('scope') === 'role';
+  if (params.size !== 1 || (!roleScope && !params.has('projectId'))) fail('invalid_message',422);
+  const recipient = {actor,bindingId:id(bindingId),projectId:roleScope ? null : id(params.get('projectId'))};
   const scope = {enterpriseId:actor.enterpriseId,stage:'main' as const,recipient};
   let result;
   if (request.method === 'POST') {
@@ -27,6 +29,7 @@ export async function recipientHttp(request:Request,actor:ActorContext,bindingId
       case 'poll': await pollChannel(scope,input.id,input.pin); break;
       case 'disconnect': await disconnectChannel(scope,input.id); break;
       case 'renew': result=await recipientState(recipient,{kind:'renew'},input); break;
+      case 'upgrade': result=await recipientState(recipient,{kind:'upgrade'},input); break;
       case 'preferences': result=await recipientState(recipient,{kind:'preferences',daily:input.daily,weekly:input.weekly},input); break;
     }
   } else if (request.method !== 'GET') fail('assistant_resource_not_found',404);

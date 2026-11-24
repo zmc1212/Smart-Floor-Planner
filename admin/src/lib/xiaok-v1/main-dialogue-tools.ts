@@ -37,7 +37,7 @@ export async function mainDialogueTools(tx: PostgresTransaction, lease: Lease, q
   const definitions: ModelTool[] = [];
   if (stages.length) definitions.push({name:stageToolName,description:'根据当前问题选择装修阶段并读取该阶段已发布的指导。'+
     stages.map(a => a.stageId+'：'+a.name).join('，'),parameters:{type:'object',properties:{stage:{type:'string',enum:stages.map(a=>a.stageId)}},required:['stage'],additionalProperties:false}});
-  if (wechat && release.reports) definitions.push({name:reportToolName,description:'查本人已绑定工地的实际进度或已保存日报、周报，周度用 weekly，当天用 daily。结果由微信私下展示。',
+  if (wechat && release.reports) definitions.push({name:reportToolName,description:'查本人已关联的获权日报或周报，周度用 weekly，当天用 daily。结果由微信私下展示。',
     parameters:{type:'object',properties:{period:{type:'string',enum:['daily','weekly']}},required:['period'],additionalProperties:false}});
   const revalidate = async (db:PostgresTransaction) => {
     const current = await mainRelease(db, lease.enterpriseId);

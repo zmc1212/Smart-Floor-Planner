@@ -5,6 +5,7 @@ const messages: Record<string, string> = {
   wechat_already_connected: '此微信机器人已连接其他渠道，请先在原渠道断开。',
   wechat_provider_rejected: '微信未接受本次请求，请检查连接后重试。',
   wechat_login_invalid: '微信登录已失效，请重新扫码。',
+  construction_report_scope_too_large: '报告计划范围过大。每期最多覆盖 20 个工地，请缩小工地或阶段范围。',
   stage_preview_unavailable:'此企业尚未启用已验证的对话模型，请在 AI 配置中完成设置后重试。',
   stage_files_disabled:'此施工阶段已关闭文件上传。',
   knowledge_file_invalid:'请选择4MB以内、扩展名和实际格式一致的DOCX、文字PDF或XLSX，并填写出处与使用许可。',

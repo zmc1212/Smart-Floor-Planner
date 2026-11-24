@@ -24,6 +24,7 @@ function account(c: ChannelRow) {
 }
 function locked<T>(lease: ChannelRow, work: (tx: PostgresTransaction, c: ChannelRow) => Promise<T>) {
   return withTenantTransaction(lease.enterprise_id, async tx => {
+    if (lease.stage_id === 'main') await mainRelease(tx, lease.enterprise_id);
     const c = await one<ChannelRow>(tx, sql`select * from app.assistant_wechat_channels
       where enterprise_id=${lease.enterprise_id} and id=${lease.id} and lease_id=${lease.lease_id} and status='connected' for update`);
     if (c) return work(tx, c);
@@ -58,6 +59,8 @@ async function prepare(tx: PostgresTransaction, c: ChannelRow, event: Event): Pr
   if (event.text_value === null) return { event, notice: '这个微信入口支持文字提问，请把问题写成文字发给小K。' };
   if (/^绑定\s+[a-f0-9]{16}$/iu.test(event.text_value.trim())) {
     if (c.stage_id !== 'main') return {event,notice:'请把绑定口令发到主小K的微信会话。当前会话是阶段专属入口。'};
+    const publication = await mainRelease(tx, c.enterprise_id);
+    if (!publication?.enabled || !publication.reports) return {event,notice:'本企业的微信报告暂未开启。'};
     const provided = event.text_value.trim().split(/\s+/u)[1].toUpperCase();
     const candidate = await one<ChannelRow>(tx,sql`select * from app.assistant_wechat_channels where enterprise_id=${c.enterprise_id}
       and stage_id='main' and pair_digest=${pairDigest(provided)} and pair_until>now() and status<>'closed' and verified_at is null
@@ -69,6 +72,7 @@ async function prepare(tx: PostgresTransaction, c: ChannelRow, event: Event): Pr
       if (candidate.id !== c.id) await closeChannel(tx,candidate,'linked_existing');
       await tx.execute(sql`update app.assistant_wechat_channels set verified_at=now(),pair_secret=null,pair_digest=null,pair_until=null,
         recipient_key=${candidate.recipient_key},recipient_binding_id=${candidate.recipient_binding_id},project_id=${candidate.project_id},
+        recipient_audience=${candidate.recipient_audience},
         mini_user_id=${candidate.mini_user_id},identity_version=${candidate.identity_version},recipient_requires_service=${candidate.recipient_requires_service},
         latest_context=${event.context_secret},recipient_version=recipient_version+1 where id=${c.id}`);
       return {event,notice:'本人微信已关联。可以直接问小K工地的日报或周报，也可以在小程序报告页订阅日报、周报。'};

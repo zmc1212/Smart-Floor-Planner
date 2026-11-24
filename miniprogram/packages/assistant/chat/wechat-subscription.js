@@ -35,31 +35,44 @@ async function showCode(channel, active) {
   if (active()) await native('previewImage',{current:file,urls:[file]});
 }
 
+const roleAudiences = new Set(['customer', 'worker', 'designer', 'boss']);
+
+function roleScopeCopy(audience) {
+  if (audience === 'boss') return '本企业下你当前有权限的全部工地';
+  if (audience === 'customer') return '本企业中你仍有权限的各自家工地（每个工地分别发送原独立报告，不合并为每期汇总）';
+  return '本企业中你当前角色有权限的工地';
+}
+
 async function manageWechatSubscription() {
   if (this._wechatSubscriptionBusy || !this.followups || !this.data.followupContext) return;
   this._wechatSubscriptionBusy = true;
-  const followups = this.followups, scope = this._boardScope, ctx = this.data.followupContext, epoch = followups.epoch;
+  const followups = this.followups, scope = this._boardScope, ctx = this.data.followupContext,
+    epoch = followups.epoch, roleScope = roleAudiences.has(ctx.audience);
   const active = () => this._alive && this._shown && this._boardScope === scope &&
     this.data.followupContext?.bindingId === ctx.bindingId && followups.current(epoch);
   try {
     const headers = await followups.headers(), client = followups.client;
-    const projectId = await selectProject(ctx,scope,client,headers,active);
-    if (!projectId || !active()) return;
-    const path = '/followups/' + ctx.bindingId + '/wechat?projectId=' + encodeURIComponent(projectId);
+    const projectId = roleScope ? '' : await selectProject(ctx,scope,client,headers,active);
+    if (!roleScope && (!projectId || !active())) return;
+    if (!active()) return;
+    const query = roleScope ? 'scope=role' : 'projectId=' + encodeURIComponent(projectId);
+    const path = '/followups/' + ctx.bindingId + '/wechat?' + query;
     const read = () => client.read(path,{},headers);
     const post = body => client.read(path,body,headers,'POST');
     let state = await read();
     if (!active()) return;
     if (!state.published || !state.reports) {
       if (state.channel && state.channel.status !== 'closed') {
-        const answer=await native('showModal',{title:'微信报告已停用',content:'当前工地的微信推送已停止。需要断开本人微信关联吗？',confirmText:'断开关联'});
+        const answer=await native('showModal',{title:'微信报告已停用',content:(roleScope ? roleScopeCopy(ctx.audience) + '的微信推送已停止。' : '当前工地的微信推送已停止。') + '需要断开本人微信关联吗？',confirmText:'断开关联'});
         if (answer.confirm && active()) await post({action:'disconnect',id:state.channel.id});
       } else await notice('微信订阅','本企业尚未发布主小K的微信报告能力。');
       return;
     }
     let c = state.channel;
     if (!c || c.status === 'closed') {
-      const confirm = await native('showModal',{title:'关联本人微信',content:'连接后可以在微信里查本工地的报告。日报和周报可分别订阅。',confirmText:'开始关联'});
+      const confirm = await native('showModal',{title:roleScope ? '关联本人微信（角色范围）' : '关联本人微信',content:roleScope
+        ? '连接你本人微信的 ClawBot 私聊，接收' + roleScopeCopy(ctx.audience) + '的日报和周报。微信私聊与小程序相互独立，完整报告和权限仍以小程序为准。'
+        : '连接后可以在微信里查本工地的报告。微信 ClawBot 私聊与小程序相互独立，完整报告和权限仍以小程序为准。日报和周报可分别订阅。',confirmText:'开始关联'});
       if (!confirm.confirm || !active()) return;
       c = (await post({action:'start'})).channel;
       if (c && active()) {
@@ -74,7 +87,7 @@ async function manageWechatSubscription() {
       return;
     }
     if (!c.match) {
-      const result=await native('showModal',{title:'切换关联工地或身份',content:'先断开原微信关联和订阅，再为当前工地重新连接。',confirmText:'断开原关联'});
+      const result=await native('showModal',{title:'切换关联范围或身份',content:roleScope ? '先断开原微信关联和订阅，再按当前企业及本人范围重新连接。' : '先断开原微信关联和订阅，再为当前工地重新连接。',confirmText:'断开原关联'});
       if(result.confirm && active()) await post({action:'disconnect',id:c.id});
       return;
     }
@@ -106,14 +119,35 @@ async function manageWechatSubscription() {
       }
       return;
     }
-    const choice=await menu([(c.daily?'关闭':'接收')+'微信日报',(c.weekly?'关闭':'接收')+'微信周报','断开微信关联']);
-    if(!active())return;
-    if(choice===2) {
-      const confirm=await native('showModal',{title:'断开微信关联',content:'断开后停止本工地的微信报告推送。',confirmText:'断开'});
-      if(confirm.confirm && active())await post({action:'disconnect',id:c.id});
-    } else {
-      await post({action:'preferences',id:c.id,version:c.version,daily:choice===0?!c.daily:c.daily,weekly:choice===1?!c.weekly:c.weekly});
-      if(active())wx.showToast({title:'微信订阅已保存',icon:'success'});
+    while (active()) {
+      const upgradeAvailable = roleScope && c.scope !== 'role';
+      const choice = await menu([
+        ...(upgradeAvailable ? ['升级为本人角色范围'] : []),
+        (c.daily?'关闭':'接收')+'微信日报',
+        (c.weekly?'关闭':'接收')+'微信周报',
+        '断开微信关联',
+      ]);
+      if(!active())return;
+      if (upgradeAvailable && choice === 0) {
+        const confirm = await native('showModal',{title:'升级微信报告范围',content:'升级后将继续使用同一个微信 ClawBot，改为接收' + roleScopeCopy(ctx.audience) + '的报告；日报和周报需要重新选择。',confirmText:'确认升级'});
+        if (!confirm.confirm || !active()) return;
+        c = (await post({action:'upgrade',id:c.id,version:c.version})).channel;
+        if (!active()) return;
+        if (!c || c.scope !== 'role') {
+          await notice('微信订阅','暂时无法升级为本人角色范围，请稍后重试。');
+          return;
+        }
+        continue;
+      }
+      const selected = choice - (upgradeAvailable ? 1 : 0);
+      if(selected===2) {
+        const confirm=await native('showModal',{title:'断开微信关联',content:(roleScope ? '断开后停止按' + roleScopeCopy(ctx.audience) + '发送的微信报告推送。' : '断开后停止本工地的微信报告推送。'),confirmText:'断开'});
+        if(confirm.confirm && active())await post({action:'disconnect',id:c.id});
+      } else {
+        await post({action:'preferences',id:c.id,version:c.version,daily:selected===0?!c.daily:c.daily,weekly:selected===1?!c.weekly:c.weekly});
+        if(active())wx.showToast({title:'微信订阅已保存',icon:'success'});
+      }
+      return;
     }
   } catch(error) {
     if (active() && !/cancel/i.test(error?.errMsg || '')) await notice('微信订阅',errorCopy(error));

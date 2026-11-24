@@ -59,6 +59,7 @@ export const assistantWechatChannels = app.table('assistant_wechat_channels', {
   lastPollAt: timestamp('last_poll_at', { withTimezone: true }),
   lastReplyAt: timestamp('last_reply_at', { withTimezone: true }),
   lastError: text('last_error'),
+  recipientAudience: text('recipient_audience'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -70,6 +71,7 @@ export const assistantWechatEvents = app.table('assistant_wechat_events', {
   textValue: text('text_value'),
   contextSecret: text('context_secret'),
   runId: bigint('run_id', { mode: 'bigint' }),
+  roleDeliveryKey: text('role_delivery_key'),
   status: text('status').notNull().default('received'),
 });
 
