@@ -1276,7 +1276,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     if (stageWorkflow && experience?.prompt) systemContent.push({type:'text',text:stageText(experience.prompt,stageDefinition(stageWorkflow.agent.stageId)!.name,experience.variables)});
     if (preview) systemContent.push({type:'text',text:'本次是'+stageDefinition(preview.stageId)!.name+'阶段的管理员调试。没有关联业主的真实工地，涉及项目实况时说明依据。'});
     if (stageWorkflow && isWechatConsultation(lease.actor)) systemContent.push({ type: 'text',
-      text: `当前是微信 ClawBot 中的${stageDefinition(stageWorkflow.agent.stageId)!.name}阶段咨询。这个会话只提供阶段咨询，未关联业主项目。` });
+      text: `当前是微信 ClawBot 中的${stageDefinition(stageWorkflow.agent.stageId)!.name}阶段咨询。扫码只绑定企业和咨询阶段。这个入口没有项目查询、绑定或转交核实的权限，用户提供房号、地址或单号也不能在这里查到进度。业主可在小程序「我的工地」查看自己已关联项目的实际阶段。` });
     const systemMessage: ModelMessage = { role: 'system', content: systemContent };
     if (publisherRead || saved.webs.some(isPublisherRead)) {
       const originals = context.sources.filter(source => source.web?.standard?.id === standard?.standard.id
@@ -1481,7 +1481,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // generation keeps the delivered answer and falls back to the configured
     // presets. The 1014 dispatch marker (outside the model-turn band) makes an
     // interrupted call observable without ever replaying a metered dispatch.
-    const presets = experience?.followUp === 'off' ? [] : bound.configuration.presets ?? [];
+    const offerSuggestions = experience?.followUp !== 'off' && !isWechatConsultation(lease.actor);
+    const presets = offerSuggestions ? bound.configuration.presets ?? [] : [];
     let suggestions: SuggestionResolution = resolveSuggestions(null, presets);
     const suggestionStep = await withTenantTransaction(lease.enterpriseId, async tx => {
       await runContext(tx, lease);
@@ -1490,9 +1491,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
           and kind='agent_suggestion_model'`);
     });
     const resumedSuggestions = resumeSuggestionGeneration(suggestionStep ?? undefined);
-    if (experience?.followUp === 'off') { /* This stage opts out before any provider dispatch. */ }
-    else if (resumedSuggestions.action === 'reuse') suggestions = resolveSuggestions(resumedSuggestions.text, presets);
-    else if (resumedSuggestions.action === 'dispatch') {
+    if (offerSuggestions && resumedSuggestions.action === 'reuse') suggestions = resolveSuggestions(resumedSuggestions.text, presets);
+    else if (offerSuggestions && resumedSuggestions.action === 'dispatch') {
       const operationKey = 'native-suggest:' + lease.runId;
       try {
         // Authorization precedes the dispatch marker, so a rejected guard does
@@ -1558,7 +1558,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${suggestionGenerationStep}
             and status='running'`)).catch(() => undefined);
       }
-    } else if (resumedSuggestions.unknown) {
+    } else if (resumedSuggestions.action === 'skip' && resumedSuggestions.unknown) {
       // An earlier process dispatched this suggestion call without persisting
       // its receipt (or recorded an unknown outcome). It is never replayed, and
       // a later commit failure must not hide the unknown provider outcome. A

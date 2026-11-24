@@ -50,6 +50,8 @@ test('Weixin accepts direct messages from the bound scanner and preserves distin
     }
     assert.ok(url.endsWith('/sendmessage'));
     assert.equal(body.msg.to_user_id, 'me'); assert.equal(body.msg.context_token, 'ctx');
+    if (op === 5) return new Response('truncated');
+    if (op === 6) return Response.json({ errcode: 1001 });
     return Response.json(op === 2 ? { ret: 0 } : op === 3 ? { ret: -14 } : {});
   });
   const update = await weixinClient.updates(account, 'previous');
@@ -58,5 +60,7 @@ test('Weixin accepts direct messages from the bound scanner and preserves distin
   assert.notEqual(update.messages[0].key, update.messages[1].key);
   await weixinClient.reply(account, 'ctx', 'one', '答复');
   await assert.rejects(weixinClient.reply(account, 'ctx', 'two', '答复'), /wechat_login_invalid/);
-  await assert.rejects(weixinClient.reply(account, 'ctx', 'three', '答复'), /wechat_delivery_unknown/);
+  await weixinClient.reply(account, 'ctx', 'three', '答复');
+  await assert.rejects(weixinClient.reply(account, 'ctx', 'four', '答复'), SyntaxError);
+  await assert.rejects(weixinClient.reply(account, 'ctx', 'five', '答复'), /wechat_provider_rejected/);
 });

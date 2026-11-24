@@ -24,12 +24,17 @@ async function poll(read, matches) {
   assert.fail('expected Worker diagnostics were not observed');
 }
 
-async function workerFixture(t, respond) {
+async function workerFixture(t, respond, respondWechat) {
   const directory = await mkdtemp(path.join(tmpdir(), 'sfp-worker-test-'));
   const healthFile = path.join(directory, 'health.json');
   const requests = [];
   let refuseTick = false;
   const server = createServer((req, res) => {
+    if (req.url?.endsWith('/jobs/wechat')) {
+      if (respondWechat) respondWechat(res);
+      else res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ success: true, active: false }));
+      return;
+    }
     if (req.method === 'GET' && req.url?.endsWith('/preflight')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ success: true, data: { safetyGate: {
@@ -100,10 +105,26 @@ function finish(response, status, success) {
   response.end(JSON.stringify({ success, data: responseData, secret }));
 }
 
+test('committed WeChat work wakes the reply worker during its idle interval', async t => {
+  const ticks = [];
+  let channelRequest;
+  const fixture = await workerFixture(t, res => {
+    ticks.push(Date.now());
+    finish(res, 200, true);
+  }, res => { channelRequest = res; });
+  fixture.start();
+  await fixture.health(h => h.lastSuccessAt !== null);
+  await poll(() => channelRequest, Boolean);
+  channelRequest.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ success: true, active: true, queued: true }));
+  await poll(() => ticks.length, n => n >= 2);
+  assert.ok(ticks[1] - ticks[0] < 1900, 'an admitted message should wake the worker before its two-second interval');
+});
+
 test('Worker records an in-flight request and then a fresh, redacted success', async (t) => {
   let pendingResponse;
   const fixture = await workerFixture(t, res => { pendingResponse = res; });
   const startedAt = Date.now();
+  await writeFile(fixture.healthFile, JSON.stringify({ lastRequestAt: null, lastSuccessAt: startedAt - 10000 }));
   const pid = fixture.start();
   const pending = await fixture.health(h => h.lastRequestAt !== null);
   assert.equal(pending.workerPid, pid);

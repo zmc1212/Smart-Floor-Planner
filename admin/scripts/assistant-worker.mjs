@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { rename, unlink, writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { loadAssistantWorkerConfig } from './assistant-worker-health.mjs';
+import { loadAssistantWorkerConfig, readAssistantWorkerHealth } from './assistant-worker-health.mjs';
 
 const { endpoint, preflightEndpoint, secret, healthFile } = loadAssistantWorkerConfig();
+const previousSuccessAt = (await readAssistantWorkerHealth(healthFile)).health?.lastSuccessAt ?? null;
 
 let stopping = false;
+let wechatJobQueued = Promise.withResolvers();
 process.on('SIGTERM', () => { stopping = true; });
 process.on('SIGINT', () => { stopping = true; });
 
@@ -23,7 +25,9 @@ const temporaryHealthFile = `${healthFile}.${randomUUID()}.tmp`;
 
 async function saveHealth() {
   try {
-    await writeFile(temporaryHealthFile, JSON.stringify(health));
+    // Keep the last known success in failure diagnostics without marking a new process ready.
+    const lastSuccessAt = health.lastSuccessAt ?? (health.lastErrorCode ? previousSuccessAt : null);
+    await writeFile(temporaryHealthFile, JSON.stringify({ ...health, lastSuccessAt }));
     await rename(temporaryHealthFile, healthFile);
   } catch {
     await unlink(temporaryHealthFile).catch(() => {});
@@ -170,7 +174,10 @@ async function runLoop() {
       recordSuccess();
     }
     await saveHealth();
-    if (!stopping) await delay(2000);
+    if (!stopping) {
+      await Promise.race([delay(2000), wechatJobQueued.promise]);
+      wechatJobQueued = Promise.withResolvers();
+    }
   }
 }
 
@@ -185,7 +192,11 @@ async function runWechatLoop() {
       try {
         const response = await fetch(channelEndpoint, { method: 'POST', headers: { 'x-cron-secret': secret },
           signal: AbortSignal.timeout(120000) });
-        if (response.ok) active = (await response.json()).active === true;
+        if (response.ok) {
+          const payload = await response.json();
+          active = payload.active === true;
+          if (payload.queued === true) wechatJobQueued.resolve();
+        }
         else { await response.body?.cancel(); console.error('[assistant-worker] wechat_endpoint_unavailable', response.status); }
       } catch { console.error('[assistant-worker] wechat_endpoint_unreachable'); }
     }

@@ -99,6 +99,7 @@ export const weixinClient = {
       from_user_id: '', to_user_id: account.peer, client_id: clientId, message_type: 2, message_state: 2,
       context_token: context, item_list: [{ type: 1, text_item: { text } }],
     } }, account.token, 8500);
-    if (result.ret !== 0) fail('wechat_delivery_unknown', 502);
+    // iLink may omit a zero ret in its JSON acknowledgement.
+    if (result.ret !== undefined && result.ret !== 0) fail('wechat_delivery_unknown', 502);
   },
 };

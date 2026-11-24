@@ -274,7 +274,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(agentRuntime ? { agentRuntime } : {}),
       ...(agentRuntime && agent && ['dashscope', 'bailian', 'deepseek', 'siliconflow'].includes(agent.providerKey)
         && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
-        && purpose === 'reply' && !entry.activePublicSite && !reference.selection ? { replyStream: replyStreamProtocol } : {}),
+        && purpose === 'reply' && !entry.activePublicSite && !reference.selection && !isWechatConsultation(actor)
+        ? { replyStream: replyStreamProtocol } : {}),
       ...(nativeConfigurationIssue ? { agentRuntimeRouting: { executor: 'langgraph-v1', reason: nativeConfigurationIssue } } : {}),
       ...(staffPreview && agent ? { staffKnowledgePreview: fastGPTPreviewProtocol } : {}),
       ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && purpose === 'reply'

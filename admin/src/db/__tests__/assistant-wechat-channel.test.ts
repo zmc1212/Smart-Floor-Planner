@@ -76,9 +76,11 @@ test('ClawBot binding, native stage runs, replies, reset, isolation and disconne
   assert.ok(stored?.bot_secret && stored.bot_secret !== 'fixture-secret');
 
   page = [input('first','水电阶段进场看什么？'),input('first','水电阶段进场看什么？')];
-  await tick(); await tick();
+  assert.equal(await tick(), 'queued');
   const run = await claimJob({ enterpriseId });
   assert.ok(run); assert.equal(run.actor.principal.kind, 'user');
+  const savedRun = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select policy_snapshot->>'replyStream' as preview from app.assistant_runs where id=${run.runId}`));
+  assert.equal(savedRun?.preview, null);
   const conversation = await withTenantTransaction(enterpriseId, async tx => {
     const c = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=1454`))!;
     const binding = await currentConversationStageScope(tx, run.actor, c);
@@ -95,14 +97,14 @@ test('ClawBot binding, native stage runs, replies, reset, isolation and disconne
   await completeRun(run, { content: { version: 1, blocks: [{ type: 'text', text: '先对照点位图核对插座位置。' }] }, usage: null });
   await tick(); assert.equal(replies[0]?.text, '先对照点位图核对插座位置。'); assert.equal(replies[0]?.context, 'ctx-first');
   page = [input('first','水电阶段进场看什么？'),input('reset','/reset'),input('media',null)];
-  await tick(); await tick();
+  await tick();
   assert.equal(replies[1]?.text, '已开启新对话。');
   const channel = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select conversation_id from app.assistant_wechat_channels where id=${linked.id}`));
   assert.equal(channel?.conversation_id, null);
   replyUnknown = true; await tick(); replyUnknown = false;
   assert.equal((await readChannel(scope))?.error, 'wechat_delivery_unknown');
   page = [input('media',null),input('second','那油漆阶段怎么选颜色？')];
-  await tick(); await tick();
+  assert.equal(await tick(), 'queued');
   const next = await claimJob({ enterpriseId }); assert.ok(next);
   const changed = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select conversation_id from app.assistant_wechat_channels where id=${linked.id}`));
   assert.notEqual(String(changed?.conversation_id), conversation);
@@ -120,7 +122,7 @@ test('ClawBot binding, native stage runs, replies, reset, isolation and disconne
   await assert.rejects(disconnectChannel(scope, linked.id), /version_conflict/);
   await pollChannel(scope, reconnect!.id, undefined, client);
   cursor = 0; page = [input('after-reconnect','现场去之前还需要准备些什么？')];
-  await tick(); await tick();
+  assert.equal(await tick(), 'queued');
   const beforeDisable = await claimJob({ enterpriseId }); assert.ok(beforeDisable);
   const original = (await withTenantTransaction(enterpriseId, tx => readStageAgent(tx, enterpriseId, stage)))!;
   const draft = { expectedEnterpriseId: enterpriseId, stageId: stage, expectedVersion: 0, name: original.name,

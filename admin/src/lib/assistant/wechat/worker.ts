@@ -33,7 +33,7 @@ async function finish(tx: PostgresTransaction, c: ChannelRow, id: string, status
     last_reply_at=case when ${status}='sent' then now() else last_reply_at end where id=${c.id}`);
 }
 
-async function prepare(tx: PostgresTransaction, c: ChannelRow, event: Event): Promise<Reply | null> {
+async function prepare(tx: PostgresTransaction, c: ChannelRow, event: Event): Promise<Reply | 'queued' | null> {
   // An interrupted send has no trustworthy receipt. A second send could duplicate a real reply.
   if (event.status === 'sending') {
     await finish(tx, c, event.id, 'unknown', 'wechat_delivery_unknown');
@@ -65,7 +65,7 @@ async function prepare(tx: PostgresTransaction, c: ChannelRow, event: Event): Pr
   const sent = await service.send(conversation, 'wechat-msg:' + event.event_key, { version: 1, blocks: [{ type: 'text', text: event.text_value }] });
   if (!sent.runId) return { event, notice: unavailable };
   await tx.execute(sql`update app.assistant_wechat_events set status='running',run_id=${sent.runId},text_value=null where id=${event.id}`);
-  return null;
+  return 'queued';
 }
 
 async function send(lease: ChannelRow, reply: Reply, client: typeof weixinClient) {
@@ -117,13 +117,30 @@ async function take(enterpriseId: string) {
       and ch.poll_after<=now() order by ch.poll_after limit 1 for update of ch skip locked
     ) available where c.id=available.id returning c.*`));
 }
+function firstPending(tx: PostgresTransaction, c: ChannelRow) {
+  return one<Event>(tx, sql`select * from app.assistant_wechat_events
+    where enterprise_id=${c.enterprise_id} and channel_id=${c.id} and status in ('received','running','sending') order by id limit 1`);
+}
 export async function tickWechatChannel(enterpriseId: string, client = weixinClient) {
   const lease = await take(enterpriseId);
   if (!lease) return false;
   let backoff = 1;
   try {
-    const event = await locked(lease, (tx, c) => one<Event>(tx, sql`select * from app.assistant_wechat_events
-      where enterprise_id=${enterpriseId} and channel_id=${c.id} and status in ('received','running','sending') order by id limit 1`));
+    let event = await locked(lease, firstPending);
+    if (!event) {
+      const updates = await client.updates(account(lease), lease.cursor_value);
+      event = await locked(lease, async (tx, c) => {
+        for (const message of updates.messages) {
+          await tx.execute(sql`insert into app.assistant_wechat_events(enterprise_id,channel_id,event_key,text_value,context_secret)
+            values(${enterpriseId},${c.id},${message.key},${message.text},${encryptText(message.context)})
+            on conflict (channel_id,event_key) do nothing`);
+        }
+        // Commit the cursor and inbox together before admitting the first event.
+        await tx.execute(sql`update app.assistant_wechat_channels set cursor_value=${updates.cursor},last_poll_at=now(),
+          last_error=case when last_error='wechat_service_unavailable' then null else last_error end where id=${c.id}`);
+        if (updates.messages.length) return firstPending(tx, c);
+      });
+    }
     if (event) {
       let reply;
       try { reply = await locked(lease, (tx, c) => prepare(tx, c, event)); }
@@ -134,22 +151,11 @@ export async function tickWechatChannel(enterpriseId: string, client = weixinCli
           : err.code === 'invalid_message' ? '这条消息超出了小K可处理的文字长度，请分开发送。' : unavailable;
         reply = { event, notice: text };
       }
+      if (reply === 'queued') return 'queued';
       if (reply) {
         const { gate } = await resolveWorkerDeployment();
         if (gate.status === 'open' && gate.enterpriseId === enterpriseId) await send(lease, reply, client);
       }
-    } else {
-      const updates = await client.updates(account(lease), lease.cursor_value);
-      await locked(lease, async (tx, c) => {
-        for (const message of updates.messages) {
-          await tx.execute(sql`insert into app.assistant_wechat_events(enterprise_id,channel_id,event_key,text_value,context_secret)
-            values(${enterpriseId},${c.id},${message.key},${message.text},${encryptText(message.context)})
-            on conflict (channel_id,event_key) do nothing`);
-        }
-        // Advancing the cursor and recording the entire page are one commit.
-        await tx.execute(sql`update app.assistant_wechat_channels set cursor_value=${updates.cursor},last_poll_at=now(),
-          last_error=case when last_error='wechat_service_unavailable' then null else last_error end where id=${c.id}`);
-      });
     }
   } catch (error) {
     backoff = 8;

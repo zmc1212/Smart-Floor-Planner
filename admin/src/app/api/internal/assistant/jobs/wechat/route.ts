@@ -9,8 +9,8 @@ export async function POST(request: Request) {
   if (!authorized(request)) return NextResponse.json({ success: false }, { status: 401 });
   try {
     const { gate } = await resolveWorkerDeployment();
-    const active = gate.status === 'open' && !!gate.enterpriseId && await tickWechatChannel(gate.enterpriseId);
-    return NextResponse.json({ success: true, active });
+    const result = gate.status === 'open' && !!gate.enterpriseId && await tickWechatChannel(gate.enterpriseId);
+    return NextResponse.json({ success: true, active: !!result, queued: result === 'queued' });
   } catch {
     return NextResponse.json({ success: false }, { status: 503 });
   }
