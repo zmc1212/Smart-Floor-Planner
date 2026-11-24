@@ -166,6 +166,52 @@ test('hidden or switched sessions discard late project replies and confirmed fai
   assert.equal(p.current(),false); await p.onShow(); assert.equal(p.data.detail,null); assert.equal(p.data.sheet,'');
 });
 
+test('plan forms write the schedule version, preserve conflict input, and record only a checked offline agreement', async () => {
+  const f = fixture(), p = f.page();
+  await p.onShow();
+  const handover = { key: 'milestone_handover', kind: 'handover', name: '竣工交付', valid: true, agreedDate: '2026-12-26' };
+  const view = (version, node = handover) => ({ project: { id: '9', version: 99, status: 'active' }, manage: true,
+    progress: { version, management: { template: [], milestones: [node] } } });
+  p.setData({ projectId: '9', detail: decorateDetail(view(4)) });
+  p.openSchedule();
+  p.openScheduleForm({ currentTarget: { dataset: { key: 'milestone_handover' } } });
+  const field = (name, value) => p.editScheduleField({ currentTarget: { dataset: { field: name } }, detail: { value } });
+  p.confirmAgreement({ detail: { value: ['confirmed'] } });
+  field('date', '2026-12-30');
+  field('reason', '定制柜到货延期');
+  assert.equal(p.data.scheduleForm.confirmedOffline, false);
+  await p.submit();
+  assert.equal(f.calls.some(([, method]) => method === 'POST'), false);
+  p.confirmAgreement({ detail: { value: ['confirmed'] } });
+  f.intercept(async (url, method) => {
+    if (method === 'POST') throw { statusCode: 409, error: 'version_conflict' };
+    if (url.endsWith('/projects/9')) return { data: view(5, { ...handover, agreedDate: '2026-12-27', timeText: '已约定 12月27日' }) };
+    return { data: { items: [] } };
+  });
+  await p.submit();
+  assert.equal(f.calls.find(([, method]) => method === 'POST')[2].expectedVersion, 4);
+  assert.equal(p.data.scheduleForm.reason, '定制柜到货延期');
+  assert.equal(p.data.scheduleForm.latestTime, '已约定 12月27日');
+  p.acknowledgeScheduleVersion();
+  assert.equal(p.data.scheduleForm.version, 5);
+  assert.equal(p.data.scheduleForm.confirmedOffline, false);
+  p.confirmAgreement({ detail: { value: ['confirmed'] } });
+  f.intercept(async (url, method, body) => {
+    if (method === 'POST') {
+      assert.deepEqual(body, { expectedVersion: 5, change: { kind: 'agreement', key: 'milestone_handover',
+        date: '2026-12-30', reason: '定制柜到货延期', confirmedOffline: true } });
+      return { data: { id: '9', scope: 'schedule', version: 6, scheduleId: '50' } };
+    }
+    if (url.endsWith('/projects/9')) return { data: view(6, { ...handover, agreedDate: '2026-12-30' }) };
+    return { data: { items: [] } };
+  });
+  await p.submit();
+  assert.equal(p.data.detail.progress.management.milestones[0].agreedDate, '2026-12-30');
+  assert.equal(p.data.pending, null);
+  assert.ok(f.messages.includes('施工计划已保存'));
+  assert.equal(p.data.scheduleOpen, true);
+});
+
 test('stage sheets preselect assigned employees and never select an arbitrary primary when several staff are assigned', async () => {
   const f=fixture(),p=f.page();await p.onShow();
   p.setData({detail:decorateDetail({manage:true,owner:false,project:{id:'9'},stages:[{key:'utilities',name:'水电'}],

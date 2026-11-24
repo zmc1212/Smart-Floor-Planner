@@ -2,13 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { AdminUserRepository, AppointmentRepository, LeadRepository } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
-import { appointmentToDto, parseAppointmentAddress, parseAppointmentDateTime, parseAppointmentId, parseAppointmentLocation } from '@/lib/appointment-api';
+import { appointmentToDto, parseAppointmentAddress, parseAppointmentContactPhone, parseAppointmentDateTime, parseAppointmentId, parseAppointmentLocation } from '@/lib/appointment-api';
 import { httpErrorStatus } from '@/lib/http-error';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getTenantContext } from '@/lib/auth';
 import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { canStaffCreateLeadAppointment, canStaffCreateOnSiteVisit } from '@/lib/lead-staff-access';
 import { notifyAppointmentStaff, notifyCustomerOfAppointment } from '@/lib/wechat-notification';
+import { isEnterpriseManagementRole } from '@/lib/admin-user-roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,8 @@ export async function GET(request: Request) {
           const lead = await repository.findCustomerLeadForAccess(BigInt(context.user._id), leadId);
           return lead?.enterpriseId ? repository.listByLead(lead.enterpriseId, leadId) : null;
         }
-        if (!context.enterpriseId) return null;
+        if (!context.enterpriseId || context.mode !== 'staff' || !context.staff
+          || !['designer', 'measurer', 'enterprise_admin'].includes(context.staff.role)) return null;
         const enterpriseId = parsePostgresId(context.enterpriseId, 'enterprise id');
         if (context.mode === 'staff' && context.staff?.role === 'measurer' && appointmentIdText) {
           const appointmentId = parseAppointmentId(appointmentIdText, '预约');
@@ -76,10 +78,14 @@ export async function GET(request: Request) {
       if (!data) return NextResponse.json({ success: false, error: '无权查看该预约' }, { status: 403 });
       return NextResponse.json({
         success: true,
-        data: data.map((appointment) => appointmentToDto(
-          appointment,
-          measurerCustomerContacts.get(appointment.leadId.toString())
-        )),
+        data: data.map(appointment => {
+          const staffId = context.staff?._id;
+          const canViewContact = context.mode === 'customer' || context.staff?.role === 'enterprise_admin'
+            || staffId === appointment.designerId.toString() || staffId === appointment.measurerId.toString();
+          return appointmentToDto(appointment, canViewContact
+            ? measurerCustomerContacts.get(appointment.leadId.toString()) ?? (appointment.contactPhone ? {} : undefined)
+            : undefined);
+        }),
       });
     }
 
@@ -88,6 +94,9 @@ export async function GET(request: Request) {
     const admin = await getTenantContext(request);
     if (admin) {
       if (!admin.enterpriseId) return NextResponse.json({ success: false, error: '请先选择企业' }, { status: 400 });
+      if (!isEnterpriseManagementRole(admin.role) && !['designer', 'measurer'].includes(admin.role)) {
+        return NextResponse.json({ success: false, error: '无权查看该预约' }, { status: 403 });
+      }
       const leadId = parseAppointmentId(new URL(request.url).searchParams.get('leadId'), '线索');
       const data = await withAdminPostgresTransaction(admin, async (transaction) => {
         const repository = new AppointmentRepository(transaction);
@@ -98,7 +107,14 @@ export async function GET(request: Request) {
         return repository.listByLead(parsePostgresId(admin.enterpriseId!, 'enterprise id'), leadId);
       });
       if (!data) return NextResponse.json({ success: false, error: '无权查看该预约' }, { status: 403 });
-      return NextResponse.json({ success: true, data: data.map((appointment) => appointmentToDto(appointment)) });
+      return NextResponse.json({
+        success: true,
+        data: data.map(appointment => {
+          const canViewContact = isEnterpriseManagementRole(admin.role)
+            || admin.userId === appointment.designerId.toString() || admin.userId === appointment.measurerId.toString();
+          return appointmentToDto(appointment, canViewContact && appointment.contactPhone ? {} : undefined);
+        }),
+      });
     }
     return NextResponse.json({ success: false, error: '需要有效登录身份' }, { status: 401 });
   } catch (error) {
@@ -147,6 +163,7 @@ export async function POST(request: Request) {
           startAt: parseAppointmentDateTime(body.startAt, '开始时间'),
           endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
           address: parseAppointmentAddress(body.address),
+          contactPhone: parseAppointmentContactPhone(body.contactPhone),
           location: parseAppointmentLocation(body.location),
           actorUserId,
           eventKey: `admin-created:${randomUUID()}`,
@@ -157,8 +174,8 @@ export async function POST(request: Request) {
         const startAt = new Date(appointment.timeRange.match(/[[(]([^,]+),/)?.[1].replaceAll('"', '') || '');
         if (!Number.isNaN(startAt.getTime())) {
           await Promise.allSettled([
-            notifyAppointmentStaff({ enterpriseId: appointment.enterpriseId, leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, startsAt: startAt, eventKey: appointment.id.toString(), eventType: 'created' }),
-            notifyCustomerOfAppointment({ enterpriseId: appointment.enterpriseId, leadId, address: appointment.address, startsAt: startAt, eventType: 'created' }),
+            notifyAppointmentStaff({ enterpriseId: appointment.enterpriseId, leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, contactPhone: appointment.contactPhone, startsAt: startAt, eventKey: appointment.id.toString(), eventType: 'created' }),
+            notifyCustomerOfAppointment({ enterpriseId: appointment.enterpriseId, leadId, address: appointment.address, contactPhone: appointment.contactPhone, startsAt: startAt, eventType: 'created' }),
           ]);
         }
       }
@@ -207,6 +224,7 @@ export async function POST(request: Request) {
         startAt: parseAppointmentDateTime(body.startAt, '开始时间'),
         endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
         address: parseAppointmentAddress(body.address),
+        contactPhone: parseAppointmentContactPhone(body.contactPhone) ?? (isCustomer ? context.user.phone : undefined),
         location: parseAppointmentLocation(body.location),
         actorUserId: BigInt(context.user._id),
         eventKey: `created:${randomUUID()}`,
@@ -218,8 +236,8 @@ export async function POST(request: Request) {
       const startAt = new Date(appointment.timeRange.match(/[[(]([^,]+),/)?.[1].replaceAll('"', '') || '');
       if (!Number.isNaN(startAt.getTime())) {
         await Promise.allSettled([
-          notifyAppointmentStaff({ enterpriseId, leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, startsAt: startAt, eventKey: appointment.id.toString(), eventType: 'created' }),
-          notifyCustomerOfAppointment({ enterpriseId, leadId, address: appointment.address, startsAt: startAt, eventType: 'created' }),
+          notifyAppointmentStaff({ enterpriseId, leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, contactPhone: appointment.contactPhone, startsAt: startAt, eventKey: appointment.id.toString(), eventType: 'created' }),
+          notifyCustomerOfAppointment({ enterpriseId, leadId, address: appointment.address, contactPhone: appointment.contactPhone, startsAt: startAt, eventType: 'created' }),
         ]);
       }
     }

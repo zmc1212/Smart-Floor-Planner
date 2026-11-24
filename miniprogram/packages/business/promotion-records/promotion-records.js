@@ -163,7 +163,7 @@ Page({
   },
 
   onLoad(options) {
-    const systemInfo = wx.getSystemInfoSync();
+    const systemInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     const requestedView = VIEW_TABS.some((item) => item.key === options.view) ? options.view : 'my';
     this.setData({
       view: requestedView,

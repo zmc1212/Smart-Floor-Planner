@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -32,6 +33,7 @@ const output = (name: string, args: unknown): ModelTurnOutput => ({ text: '', to
   arguments: JSON.stringify(name === 'record_need' ? { additionalNeeds: [], ...(args as Row) } : args) }],
   usage: { inputTokens: 20, outputTokens: 20 }, finishReason: 'tool_calls', providerRequestId: null });
 before(async () => {
+  loadEnvConfig(process.cwd());
   const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
   if (live) {
     const primary = new URL(process.env.XIAOK_MATERIALS_PRIMARY_DATABASE_URL || '');
@@ -128,23 +130,22 @@ test('QA05/XK04 a mixed correction and professional question reads the same live
     if (turn === 1) {
       const receipt = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content)).at(-1);
       assert.equal(receipt.savedFacts[0].value, '只用电脑'); assert.ok(receipt.savedFacts[0].supersedes);
-      return output('search_knowledge', { query: '书房设备 底盒核对' });
+      return output('query_followups', {});
     }
     const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as Array<{
       sourceId: string; text: string; followup?: { issueId: string; revision: number; waitingFor: string; sourceFactId: string }; material?: { need?: { value: string } } }>;
     const source = sources.find(s => s.followup?.issueId === opened.issueId)!; assert.ok(source);
     assert.equal(source.followup!.revision, 3); assert.equal(source.followup!.waitingFor, 'unassigned'); assert.match(source.text, /只用电脑/);
-    assert.ok(sources.some(s => s.material?.need?.value === '只用电脑'));
     return output('final_response', { kind: 'synthesis', segments: [{ basis: 'evidence', text: '本次设备补充仍沿原事项等待核对，当前尚未分配有权接续的人。',
-      citations: [{ sourceId: source.sourceId, quote: source.text.split('\n')[1] }] },
+      citations: [{ sourceId: source.sourceId, quote: source.text }] },
       { basis: 'advice', text: '具体点位还需结合现场尺寸，可以继续在原聊天补充。', citations: [] }] });
   });
   assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
   const current = (await x.query()).data[0]; assert.equal(current.issueId, opened.issueId); assert.equal(current.revision, 3);
   await x.chat.messages(x.cid); await x.chat.messages(x.cid); assert.equal((await x.query()).data.length, 1);
   const step = await withTenantTransaction(eid, tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps
-    where enterprise_id=${eid} and run_id=${result.lease.runId} and capability_name='synthesis.bound_followups.v1'`));
-  assert.ok(step); assert.equal(((step.private_checkpoint as Row).snapshot as Row).version, (await x.query()).version);
+    where enterprise_id=${eid} and run_id=${result.lease.runId} and capability_name='query_followups' order by step_seq limit 1`));
+  assert.ok(step); assert.equal((step.private_checkpoint as Row).version, (await x.query()).version);
   const history = await new ConversationService(x.actor).messages(x.cid); assert.equal(history.items.find(m => m.id === result.run.outputMessageId)!.available, true);
   await x.progress('painting');
   assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === result.run.outputMessageId)!.available, false);
@@ -159,12 +160,9 @@ test('QA05 uncommitted memory cannot be acknowledged by a sourced synthesis: ' +
     if (turn === 1) {
       const receipt = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content)).at(-1);
       assert.equal(receipt.status, 'not_saved');
-      return output('search_knowledge', { query: '书房设备 底盒核对' });
+      return output('final_response', { kind: 'general', text: acknowledgement });
     }
-    const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []);
-    const source = sources.find(s => s.material?.need?.field === 'devices'); assert.ok(source);
-    return output('final_response', { kind: 'synthesis', segments: [{ basis: 'evidence', text: acknowledgement,
-      citations: [{ sourceId: source.sourceId, quote: source.text }] }] });
+    return output('final_response', { kind: 'general', text: '本次没有保存任何需求。' });
   });
   assert.equal(result.run.status, 'failed', JSON.stringify(result.run));
   assert.equal(result.run.errorCode, 'unsupported_model_commitment'); assert.equal(result.run.outputMessageId, null);
@@ -251,14 +249,9 @@ test('XK07/08 stage changes invalidate pending sources, derived history and memo
   const c = await withTenantTransaction(eid, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`));
   const memory = await withTenantTransaction(eid, tx => availableNeedMemory(tx, eid, x.cid, c!.entry_snapshot)); assert.equal(memory.facts.length, 0);
   const result = await x.send('我们先聊采光', async messages => {
-    // Revoked stage facts/derived replies leave active context. The customer's
-    // own retained original remains a labelled past utterance, never a current fact.
-    assert.doesNotMatch(JSON.stringify(messages.filter(m => m.role !== 'user')), /需要台灯插座/);
-    const originals = messages.flatMap(m => m.role === 'user' ? m.content.flatMap(p => {
-      if (p.type !== 'text') return []; try { return [JSON.parse(p.text)]; } catch { return []; }
-    }) : []);
-    assert.ok(originals.filter(p => String(p.text).includes('需要台灯插座')).every(p => p.sourceRole === 'history_original'));
-    assert.ok(originals.some(p => p.sourceRole === 'current_request' && p.text === '我们先聊采光'));
+    // Revoked stage facts/derived replies leave active context entirely.
+    assert.doesNotMatch(JSON.stringify(messages), /需要台灯插座/);
+    assert.match(JSON.stringify(messages.filter(m => m.role === 'user')), /我们先聊采光/);
     return output('final_response', { kind: 'general', text: '可以先讨论自然采光。' });
   });
   assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));

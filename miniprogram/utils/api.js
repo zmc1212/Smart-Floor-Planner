@@ -1,5 +1,7 @@
 const API_BASE_URLS = Object.freeze({
   local: 'http://192.168.10.32:3006/api',
+  // DevTools-only loopback when the LAN address is not assigned to this machine.
+  localLoopback: 'http://127.0.0.1:3006/api',
   // local: 'http://124.70.90.30:9966/api',
    production: 'https://smartfloor.zlyun168.com/api',
 });
@@ -17,7 +19,9 @@ function isApiEnvironment(value) {
 
 function resolveActiveEnvironment() {
   try {
-    if (typeof wx === 'undefined' || wx.getSystemInfoSync().platform !== 'devtools') return ACTIVE_API_ENVIRONMENT;
+    if (typeof wx === 'undefined') return ACTIVE_API_ENVIRONMENT;
+    const device = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync();
+    if (device.platform !== 'devtools') return ACTIVE_API_ENVIRONMENT;
     const override = wx.getStorageSync(API_ENV_OVERRIDE_KEY);
     return isApiEnvironment(override) ? override : ACTIVE_API_ENVIRONMENT;
   } catch {
@@ -117,6 +121,8 @@ function request(url, method = 'GET', data = {}, options = {}) {
             resolve(res.data);
           } else {
             const payload = res.data && typeof res.data === 'object' ? res.data : {};
+            console.error('[api.request] HTTP ' + res.statusCode + ' for ' + method + ' ' + url
+              + (payload.error ? ' error=' + payload.error : ''));
             reject({
               ...payload,
               error: payload.error || 'Request failed',
@@ -167,9 +173,21 @@ function downloadFile(url, options = {}) {
           resolve(res);
           return;
         }
+        console.error('[api.downloadFile] HTTP ' + res.statusCode + ' for ' + url);
+        if (res.tempFilePath) {
+          wx.getFileSystemManager().readFile({
+            filePath: res.tempFilePath,
+            encoding: 'utf8',
+            success: (fr) => console.error('[api.downloadFile] body: ' + String(fr.data).slice(0, 300)),
+            fail: () => {},
+          });
+        }
         reject({ error: '文件下载失败', statusCode: res.statusCode });
       },
-      fail: reject
+      fail: (err) => {
+        console.error('[api.downloadFile] fail for ' + url + ': ' + String((err && err.errMsg) || err));
+        reject(err);
+      }
     });
   });
 }

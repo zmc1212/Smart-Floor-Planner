@@ -42,8 +42,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const startAt = new Date(appointment.timeRange.match(/[[(]([^,]+),/)?.[1].replaceAll('"', '') || '');
       if (!Number.isNaN(startAt.getTime())) {
         await Promise.allSettled([
-          notifyAppointmentStaff({ enterpriseId, leadId: appointment.leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, startsAt: startAt, eventKey: `${appointment.id.toString()}:${appointment.version}`, eventType: 'cancelled' }),
-          notifyCustomerOfAppointment({ enterpriseId, leadId: appointment.leadId, address: appointment.address, startsAt: startAt, eventType: 'cancelled' }),
+          notifyAppointmentStaff({ enterpriseId, leadId: appointment.leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, contactPhone: appointment.contactPhone, startsAt: startAt, eventKey: `${appointment.id.toString()}:${appointment.version}`, eventType: 'cancelled' }),
+          notifyCustomerOfAppointment({ enterpriseId, leadId: appointment.leadId, address: appointment.address, contactPhone: appointment.contactPhone, startsAt: startAt, eventType: 'cancelled' }),
         ]);
       }
       return NextResponse.json({ success: true, data: appointmentToDto(appointment) });
@@ -70,8 +70,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const startAt = new Date(appointment.timeRange.match(/[[(]([^,]+),/)?.[1].replaceAll('"', '') || '');
     if (!Number.isNaN(startAt.getTime())) {
       await Promise.allSettled([
-        notifyAppointmentStaff({ enterpriseId, leadId: appointment.leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, startsAt: startAt, eventKey: `${appointment.id.toString()}:${appointment.version}`, eventType: 'cancelled' }),
-        notifyCustomerOfAppointment({ enterpriseId, leadId: appointment.leadId, address: appointment.address, startsAt: startAt, eventType: 'cancelled' }),
+        notifyAppointmentStaff({ enterpriseId, leadId: appointment.leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, contactPhone: appointment.contactPhone, startsAt: startAt, eventKey: `${appointment.id.toString()}:${appointment.version}`, eventType: 'cancelled' }),
+        notifyCustomerOfAppointment({ enterpriseId, leadId: appointment.leadId, address: appointment.address, contactPhone: appointment.contactPhone, startsAt: startAt, eventType: 'cancelled' }),
       ]);
     }
     return NextResponse.json({ success: true, data: appointmentToDto(appointment) });

@@ -3,15 +3,18 @@
   'use strict';
   const $ = id => document.getElementById(id), video = $('video'), mat = document.querySelector('.video-mat');
   let csrf = '', state = null, player = null, intent = 0, active = false, livePinned = false, immersiveMode = false, heartbeat = null, controlBusy = false, captureBusy = false, stopPending = Promise.resolve(), recordingTicker = null;
+  let liveStartup = null, stallTimer = null;
   let viewMode='live',recordings=[],recordingQuery=0,queryBusy=false,viewChange=0,earlier=null;
   let historyQuery = 0, unavailable = false;
+  let coverRequest = 0, coverUrl = '', coverLoaded = false, liveHasFrame = false;
   const preferences = new Map();
   const messages = { camera_entry_expired: '入口已过期，请返回工地重新进入。', camera_session_expired: '访问已失效，请返回工地重新进入。', camera_project_unavailable: '工地已停用或你的访问权限已变化。', camera_binding_unavailable: '摄像头已解绑，请返回工地重新进入。', camera_service_unavailable: '摄像头服务暂不可用，请稍后重试。', camera_operation_failed: '摄像头离线或操作未完成，请稍后重试。', camera_not_configured: '企业尚未配置视频服务。', camera_forbidden: '当前身份没有此操作权限。', camera_capture_busy: '正在抓拍，请稍后再试。', camera_control_busy: '云台正在使用或核对停止状态，请稍后再试。', camera_command_expired: '这次控制已失效，请重新轻点方向。', camera_ptz_unavailable: '这台摄像头暂未开放云台控制。' };
   const message = error => messages[error.code] || '操作暂未完成，请稍后重试。';
   Object.assign(messages,{camera_recording_unavailable:'录像已过期或暂不可用，请刷新片段列表。',camera_invalid_date:'请选择有效的录像日期。',camera_recording_not_configured:'工地尚未配置云端录像服务。',camera_recording_conflict:'摄像头已有其他录像设置，请联系负责人核对。',camera_sd_clock_unavailable:'暂时无法核对设备时间或SD卡，请联系管理员检查设备连接。',camera_playback_busy:'正在核对上一次回放停止状态，请稍后重试。',camera_recording_busy:'正在核对云端录制停止状态，请稍后重新查询。',camera_sd_query_too_large:'当前区间片段较多，暂时无法完整读取，请稍后重试。',camera_invalid_retention:'保留天数超出当前存储节点支持范围。'});
   function status(value, error = false) { $('status').textContent = value; $('status').dataset.error = String(error); }
-  async function api(path, data, headers = {}) {
+  async function api(path, data, headers = {}, rawResponse = false) {
     const response = await fetch('/api/construction-camera/' + path, { method: data === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-camera-csrf': csrf, ...headers }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
+    if (rawResponse && response.ok) return response;
     const json = await response.json();
     if (!response.ok || !json.success) {
       const e = new Error(); e.code = json.error; e.status = response.status;
@@ -21,6 +24,52 @@
     return json.data;
   }
   const selected = () => state?.items.find(c => String(c.binding_id) === $('camera').value);
+  function renderLiveCover() {
+    const image = $('live-cover'), time = $('live-cover-time'), overlay = $('live-overlay-play');
+    if (image && time) image.hidden = time.hidden = !coverLoaded || liveHasFrame || viewMode !== 'live' || document.hidden;
+    if (overlay) overlay.hidden = ownerPreview !== null || viewMode !== 'live' || liveHasFrame || active || Boolean(liveStartup && !liveStartup.blocked) || unavailable;
+  }
+  function settleLiveIdle() {
+    renderLiveCover();
+    if (viewMode === 'live' && !active && !liveStartup && selected()) status('点击画面中央的播放按钮观看直播。');
+  }
+  function clearLiveCover() {
+    coverRequest++; coverLoaded = false;
+    const image = $('live-cover'), time = $('live-cover-time');
+    if (!image || !time) return;
+    image.onload = image.onerror = null;
+    image.removeAttribute('src');
+    time.removeAttribute('datetime'); time.textContent = '';
+    if (coverUrl) URL.revokeObjectURL(coverUrl);
+    coverUrl = '';
+    renderLiveCover();
+  }
+  async function loadLiveCover() {
+    clearLiveCover();
+    const camera = selected(), image = $('live-cover'), time = $('live-cover-time');
+    if (!camera || state.liveOnly || viewMode !== 'live' || document.hidden || !image || !time) return;
+    const generation = coverRequest;
+    try {
+      const response = await api('cover/' + encodeURIComponent(camera.binding_id), undefined, {}, true);
+      if (generation !== coverRequest || response.status !== 200 || response.headers.get('Content-Type') !== 'image/jpeg') return;
+      const capturedAt = new Date(response.headers.get('X-Camera-Captured-At') || '');
+      if (!Number.isFinite(capturedAt.getTime())) return;
+      const jpeg = await response.blob();
+      if (generation !== coverRequest || document.hidden) return;
+      coverUrl = URL.createObjectURL(jpeg);
+      time.setAttribute('datetime', capturedAt.toISOString());
+      time.textContent = '抓拍于 ' + capturedAt.toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+      image.onload = () => {
+        if (generation !== coverRequest) return;
+        coverLoaded = true;
+        renderLiveCover();
+      };
+      image.onerror = () => { if (generation === coverRequest) clearLiveCover(); };
+      image.src = coverUrl;
+    } catch { /* Live playback remains available when a cover cannot be loaded. */ }
+  }
   function syncFullscreen() {
     const exit = $('exit-fullscreen');
     if (exit) exit.hidden = !(document.fullscreenElement || document.webkitFullscreenElement || immersiveMode);
@@ -53,17 +102,27 @@
       if (result?.catch) result.catch(enterImmersive);
     } catch { enterImmersive(); }
   }
-  function destroy() { active = false; livePinned = false; leaveFullscreen(); clearInterval(recordingTicker); recordingTicker = null; if (player) { player.destroy(); player = null; } video.pause(); video.removeAttribute('src'); video.load(); $('stop').disabled = true; $('live-fullscreen').disabled = true; }
+  function destroy() {
+    active = false; livePinned = false; liveStartup = null; liveHasFrame = false;
+    clearTimeout(stallTimer); stallTimer = null; leaveFullscreen();
+    clearInterval(recordingTicker); recordingTicker = null;
+    video.autoplay = false; video.preload = 'none';
+    if (player) { player.destroy(); player = null; }
+    video.pause(); video.removeAttribute('src'); video.load();
+    $('stop').disabled = true; $('live-fullscreen').disabled = true;
+    renderLiveCover();
+  }
   async function stop(quiet = false) {
-    intent++; destroy();
+    const generation = ++intent; destroy(); capabilities();
     // Drain earlier STOPs before allowing a newer play intent to start.
     if (csrf) { stopPending = stopPending.then(() => api('stop', {})).catch(() => {}); await stopPending; }
-    if (!quiet && !unavailable) status('播放已停止');
+    if (!quiet && generation === intent && !unavailable) status('播放已停止');
   }
   function invalidateAccess(error, release = true) {
     if (unavailable) return;
     // Clear private data before awaiting STOP; late reads/writes cannot restore it.
     unavailable = true; state = null; viewChange++; recordingQuery++; historyQuery++;
+    clearLiveCover();
     recordings = []; earlier = null; queryBusy = false; clearInterval(heartbeat);
     $('history').replaceChildren(); $('preview').close(); $('preview-image').removeAttribute('src');
     $('recording').replaceChildren(); $('recording').disabled = true;
@@ -73,11 +132,11 @@
   }
   const recordingKey=r=>(r.source||'cloud')+':'+r.id;
   const selectedRecording=()=>recordings.find(r=>recordingKey(r)===$('recording').value);
-  function capabilities() { const c = selected(); $('playback-tab').hidden = state?.liveOnly === true; $('play').disabled = !c; $('capture').hidden = viewMode!=='live'||!state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = viewMode!=='live'||!state?.canControl || !c?.ptz_enabled; $('snapshots-section').hidden=viewMode!=='live'||state?.canViewSnapshots===false; $('play-recording').disabled=queryBusy||!selectedRecording();$('query-recordings').disabled=queryBusy||!state;
+  function capabilities() { const c = selected(); $('playback-tab').hidden = state?.liveOnly === true; $('play').disabled = !c || queryBusy || Boolean(liveStartup && !liveStartup.blocked); $('capture').hidden = viewMode!=='live'||!state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = viewMode!=='live'||!state?.canControl || !c?.ptz_enabled; $('snapshots-section').hidden=viewMode!=='live'||state?.canViewSnapshots===false; $('play-recording').disabled=queryBusy||!selectedRecording();$('query-recordings').disabled=queryBusy||!state;
     if ($('history-jump')) $('history-jump').hidden = viewMode!=='live'||!state||state.canViewSnapshots===false;
     if ($('ptz-toggle')) $('ptz-toggle').hidden = $('ptz').hidden;
     if ($('camera-tools')) $('camera-tools').hidden = viewMode!=='live'||!state||(!state.canCapture&&state.canViewSnapshots===false&&$('ptz').hidden);
-    renderRecordings();
+    renderRecordings(); renderLiveCover();
   }
   function renderRecordings() {
     const list = $('recording-list'); if (!list) return; list.replaceChildren();
@@ -106,7 +165,7 @@
   }
   async function stopForSelection() {
     if (!state) return false;
-    const change = ++viewChange; recordingQuery++; queryBusy = true; capabilities();
+    const change = ++viewChange; recordingQuery++; queryBusy = true;
     await stop(true);
     return change === viewChange && !!state;
   }
@@ -132,12 +191,15 @@
   }
   async function setView(mode){
     if(mode===viewMode||(mode==='playback'&&state?.liveOnly))return;
+    if (mode === 'playback') clearLiveCover();
     if(!await stopForSelection())return;queryBusy=false;viewMode=mode;savePreference('view',mode);
     const playback=mode==='playback';video.controls=playback;mat?.classList.toggle('is-playback',playback);$('live-actions').hidden=playback;$('live-settings').hidden=playback;$('playback-panel').hidden=!playback;
     for(const name of ['live','playback']){$(name+'-tab').classList.toggle('secondary',name!==mode);$(name+'-tab').setAttribute('aria-pressed',String(name===mode));}
     document.querySelector('.eyebrow').textContent=playback?'云工地 · 录像回放':'云工地 · 实时画面';
-    capabilities();status(playback?'选择日期和录像片段后开始回放。':'请选择摄像头，点击开始播放。');
-    if(!playback)autoPlayLive();
+    capabilities();
+    if(playback)status('选择日期和录像片段后开始回放。');
+    else if(!selected())status('当前工地尚未绑定摄像头。');
+    if(!playback){void loadLiveCover();settleLiveIdle();}
     if(playback)await loadRecordings();
   }
   async function playRecording(){
@@ -149,7 +211,8 @@
     status('正在唤醒摄像头回放（4G 首次连接约 10–30 秒）…');recordingTicker=setInterval(paint,1000);
     video.addEventListener('playing',onPlaying,{once:true});
     try{await stopPending;if(generation!==intent)return;const result=await api('playback',{recordingId:String(record.id),source:record.source||'cloud'});if(generation!==intent)return;
-      savePreference('recording',recordingKey(record),$('camera').value);if(result.source==='sd')await attachStream(result,generation,false);else{video.src=result.url;await video.play();}if(generation!==intent)return;
+      savePreference('recording',recordingKey(record),$('camera').value);if(result.source==='sd')attachStream(result,generation,false);else video.src=result.url;
+      await video.play();if(generation!==intent)return;
       active=true;status('正在接收回放画面…');
     }catch(e){if(generation===intent){settle();await stop(true);if(!unavailable)status(message(e),true);}}
     finally{if(generation!==intent)settle();video.removeEventListener('playing',onPlaying);capabilities();}
@@ -173,13 +236,13 @@
       }
     } catch (e) { if (current === state && generation === historyQuery) $('history-status').textContent = message(e); }
   }
-  async function attachStream(stream,generation,live,onPreviewError) {
+  function attachStream(stream,generation,live,onPreviewError) {
       const ownerPreview = !!onPreviewError;
       const mode = ownerPreview ? 'hls' : $('mode').value, flv = window.mpegts?.getFeatureList().mseLivePlayback;
       if (mode !== 'hls' && flv) {
         player = window.mpegts.createPlayer({ type: 'flv', isLive: live, url: stream.flv }, { enableWorker: false, enableStashBuffer: false, liveBufferLatencyChasing: live });
         player.on(window.mpegts.Events.ERROR, () => { if (generation === intent) { void stop(true); status('播放中断，可重新播放或切换兼容播放。', true); } });
-        player.attachMediaElement(video); player.load(); await player.play();
+        player.attachMediaElement(video); player.load();
       } else if (mode !== 'flv' && window.Hls?.isSupported()) {
         // The owner relay has a short sliding playlist. Starting at its oldest
         // segment can leave a stalled viewer behind the next playlist update.
@@ -190,32 +253,67 @@
           if (onPreviewError) onPreviewError();
           else { void stop(true); status('播放中断，可重新播放或切换播放方式。', true); }
         });
-        hls.loadSource(stream.hls); hls.attachMedia(video); await video.play();
-      } else if (mode !== 'flv' && video.canPlayType('application/vnd.apple.mpegurl')) { video.src = stream.hls; await video.play(); }
+        hls.loadSource(stream.hls); hls.attachMedia(video);
+      } else if (mode !== 'flv' && video.canPlayType('application/vnd.apple.mpegurl')) video.src = stream.hls;
       else throw Object.assign(new Error(), { code: 'unsupported' });
   }
-  const autoplayBlocked = e => e?.name === 'NotAllowedError';
-  async function play(auto = false) {
-    const c = selected(); if (!c) return;
-    const generation = ++intent; destroy(); $('play').disabled = true; status(auto ? '正在自动播放现场画面…' : '正在连接摄像头…');
+  async function play() {
+    const c = selected();
+    if (!c || viewMode !== 'live' || queryBusy || document.hidden) return;
+    if (liveStartup) return retryBlockedLive();
+
+    const generation = ++intent; destroy();
+    const startup = liveStartup = { attached: false, blocked: false, retriedOnReady: false };
+    $('stop').disabled = false; capabilities();
+    status('正在连接摄像头…');
     try {
       await stopPending; if (generation !== intent) return;
       const live = await api('live', { bindingId: String(c.binding_id) }); if (generation !== intent) return;
-      await attachStream(live,generation,true);
-      if (generation !== intent) return;
-      active = true; livePinned = true; $('stop').disabled = false; $('live-fullscreen').disabled = false; status('正在接收现场画面…');
+      // Set the live element's properties before binding either an MSE or native source.
+      video.muted = true; video.autoplay = true; video.preload = 'auto';
+      attachStream(live,generation,true);
+      if (liveStartup !== startup) return;
+      startup.attached = true;
+      watchLiveStartup(startup, generation);
+      await playAttachedLive(startup);
     } catch (e) {
-      if (generation === intent) {
-        console.warn('Camera playback failed', e.name, e.message); await stop(true);
-        if (!unavailable) status(autoplayBlocked(e) ? '已静音待播，请点击「开始播放」观看现场画面。' : e.code === 'unsupported' ? '当前环境不支持所选方式，请切换播放设置。' : message(e), !autoplayBlocked(e));
-      }
+      if (liveStartup === startup) failLiveStartup(e);
     }
-    finally { if (generation === intent || !active) capabilities(); }
   }
-  // Live is muted, so browsers may start it without a tap; restore the camera.
-  function autoPlayLive() {
-    if (unavailable || !state || viewMode !== 'live' || document.hidden || active || !selected()) return;
-    void play(true);
+  function failLiveStartup(error) {
+    void stop(true);
+    status(error.code === 'unsupported' ? '当前环境不支持所选方式，请切换播放设置。' : message(error), true);
+  }
+  function finishLiveStartup() {
+    if (!liveStartup?.attached || document.hidden) return;
+    liveStartup = null;
+    active = true; livePinned = true;
+    $('live-fullscreen').disabled = false; capabilities();
+    status('正在接收现场画面…');
+  }
+  async function playAttachedLive(startup) {
+    startup.blocked = false;
+    capabilities();
+    try {
+      // A gesture retry must call play in the tap handler, with the existing source.
+      await video.play();
+      if (liveStartup === startup) finishLiveStartup();
+    } catch (error) {
+      if (liveStartup !== startup) return;
+      if (error.name !== 'NotAllowedError') return failLiveStartup(error);
+      startup.blocked = true; capabilities();
+      status('点击画面中央的播放按钮观看直播。');
+    }
+  }
+  function retryBlockedLive() {
+    if (liveStartup?.blocked && !document.hidden) return playAttachedLive(liveStartup);
+  }
+  function watchLiveStartup(startup, generation) {
+    stallTimer = setTimeout(() => {
+      stallTimer = null;
+      if (generation !== intent || startup.blocked || video.readyState >= 2 || video.currentTime > 0) return;
+      status('画面加载较慢；若长时间无画面，请在「播放设置」切换兼容播放。');
+    }, 3000);
   }
   async function capture() {
     const c = selected(); if (!c || captureBusy) return; captureBusy = true; capabilities();
@@ -251,11 +349,11 @@
       if (state.items.some(c => String(c.binding_id) === previousCamera)) $('camera').value = previousCamera;
       $('camera').disabled = !state.items.length; $('refresh').disabled = false; capabilities();
       restoreDate();
-      status(state.items.length ? '请选择摄像头，点击开始播放。' : '当前工地尚未绑定摄像头。'); await loadHistory();
-      if (!state) return;
+      if (!state.items.length) status('当前工地尚未绑定摄像头。');
       heartbeat = setInterval(async () => { if (document.hidden) return; try { await api('heartbeat', {}); } catch (e) { invalidateAccess(e); } }, 20000);
+      void loadHistory();
       if(readPreference('view')==='playback')await setView('playback');
-      if(viewMode==='live')autoPlayLive();
+      if(viewMode==='live'){void loadLiveCover();settleLiveIdle();}
     } catch (e) { status(message(e), true); $('history-status').textContent = '访问不可用'; }
   }
   function initOwnerPreview(ticket) {
@@ -299,7 +397,7 @@
       const generation=++intent;
       connecting=true;button.disabled=true;destroy();status('正在连接直播…');
       connectTimeout=setTimeout(()=>failPreview(generation),30000);
-      try{await attachStream({hls:base+'/hls.m3u8'},generation,true,()=>failPreview(generation));livePinned=true;$('live-fullscreen').disabled=false;}
+      try{attachStream({hls:base+'/hls.m3u8'},generation,true,()=>failPreview(generation));await video.play();if(generation===intent){livePinned=true;$('live-fullscreen').disabled=false;}}
       catch{failPreview(generation,'请点击开始播放，或返回咨询重新进入。');}
     }
     button.onclick=start;
@@ -314,13 +412,38 @@
   document.addEventListener('fullscreenchange',syncFullscreen);document.addEventListener('webkitfullscreenchange',syncFullscreen);
   syncFullscreen();
   if(ownerPreview!==null){initOwnerPreview(ownerPreview);return;}
-  $('play').onclick = () => play(false); $('stop').onclick = () => stop(); $('capture').onclick = capture; $('refresh').onclick = loadHistory;
+  $('play').onclick = () => play(); $('live-overlay-play').onclick = () => play(); $('stop').onclick = () => stop(); $('capture').onclick = capture; $('refresh').onclick = loadHistory;
+  mat?.addEventListener('click', event => {
+    if (!(event.target instanceof Element) || event.target.closest('button')) return;
+    if (liveStartup?.blocked) return retryBlockedLive();
+    if (!active && !liveStartup && !queryBusy && viewMode === 'live' && selected()) void play();
+  });
+  document.addEventListener('WeixinJSBridgeReady', retryBlockedLive, { once: true });
+  video.addEventListener('canplay', () => {
+    if (!liveStartup?.blocked || liveStartup.retriedOnReady) return;
+    liveStartup.retriedOnReady = true;
+    void retryBlockedLive();
+  });
+  video.addEventListener('playing', finishLiveStartup);
   if ($('history-jump')) $('history-jump').onclick=()=>$('snapshots-section').scrollIntoView({behavior:'smooth',block:'start'});
   if ($('ptz-toggle')) $('ptz-toggle').onclick=()=>{if($('ptz').hidden)return;$('ptz').open=!$('ptz').open;if($('ptz').open)$('ptz').scrollIntoView({behavior:'smooth',block:'center'});};
   $('ptz').addEventListener('toggle',()=>{if(!$('ptz').open&&state?.canControl)void control('stop');});
-  video.addEventListener('timeupdate',()=>{if(!active||video.paused||!(video.currentTime>0))return;const name=viewMode==='playback'?selectedRecording()?.name:selected()?.name;status((viewMode==='playback'?'正在回放':'正在播放')+(name?' · '+name:''));});
-  $('camera').onchange = async () => {savePreference('camera',$('camera').value);restoreDate();if(!await stopForSelection())return;if(viewMode==='playback')await loadRecordings();else{queryBusy=false;capabilities();autoPlayLive();} };
-  $('mode').onchange = () => stop(); $('close-preview').onclick = () => $('preview').close();
+  video.addEventListener('timeupdate', () => {
+    if (!active || video.paused || !(video.currentTime > 0)) return;
+    if (viewMode === 'live' && !liveHasFrame) {
+      if (!video.videoWidth || video.readyState < 2) return;
+      liveHasFrame = true; renderLiveCover();
+    }
+    const name = viewMode === 'playback' ? selectedRecording()?.name : selected()?.name;
+    status((viewMode === 'playback' ? '正在回放' : '正在播放') + (name ? ' · ' + name : ''));
+  });
+  $('camera').onchange = async () => {
+    savePreference('camera', $('camera').value); restoreDate(); void loadLiveCover();
+    if (!await stopForSelection()) return;
+    if (viewMode === 'playback') await loadRecordings();
+    else { queryBusy = false; capabilities(); settleLiveIdle(); }
+  };
+  $('mode').onchange = async () => { if(await stopForSelection()){queryBusy=false;capabilities();settleLiveIdle();} }; $('close-preview').onclick = () => $('preview').close();
   $('live-tab').onclick=()=>setView('live');$('playback-tab').onclick=()=>setView('playback');$('return-live').onclick=()=>setView('live');
   $('query-recordings').onclick=async()=>{if(await stopForSelection())await loadRecordings(!!earlier);};$('recording-date').onchange=async()=>{savePreference('date',$('recording-date').value,$('camera').value);if(await stopForSelection())await loadRecordings();};
   $('recording').onchange=async()=>{const record=selectedRecording();if(record)savePreference('recording',recordingKey(record),$('camera').value);if(await stopForSelection()){queryBusy=false;capabilities();}};$('play-recording').onclick=playRecording;
@@ -328,8 +451,16 @@
     if(record&&next&&Math.abs(new Date(next.started_at).getTime()-new Date(record.ended_at).getTime())<=1000){$('recording').value=recordingKey(next);void playRecording();}
     else{void stop(true);status(next?'当前片段已结束，后续片段时间不连续，请手动选择。':'当天录像片段已播放结束。');}});
   document.querySelectorAll('[data-direction]').forEach(b => { b.onclick = () => control(b.dataset.direction); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) void stop(true); });
-  window.addEventListener('pagehide', () => { intent++; destroy(); if (csrf) fetch('/api/construction-camera/stop', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'Content-Type': 'application/json', 'x-camera-csrf': csrf }, body: '{}' }).catch(() => {}); });
-  video.addEventListener('error', () => { if (active) { console.warn('Camera media error',video.error?.code,video.error?.message); void stop(true); status('画面已中断，请重新播放。', true); } });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      clearLiveCover();
+      void stop(true);
+    } else {
+      if (!coverUrl) void loadLiveCover();
+      settleLiveIdle();
+    }
+  });
+  window.addEventListener('pagehide', () => { intent++; clearLiveCover(); destroy(); if (csrf) fetch('/api/construction-camera/stop', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'Content-Type': 'application/json', 'x-camera-csrf': csrf }, body: '{}' }).catch(() => {}); });
+  video.addEventListener('error', () => { if (video.error && (active || liveStartup?.attached)) { console.warn('Camera media error',video.error.code,video.error.message); void stop(true); status('画面已中断，请重新播放。', true); } });
   void init();
 })();

@@ -289,6 +289,9 @@ export async function customerProjectToDto(
     customerRescheduleCutoffHours: options.customerRescheduleCutoffHours,
   });
   const identity = buildCustomerProjectIdentity(project);
+  const designerHandlesVisit = project.appointment
+    ? project.appointment.designerId === project.appointment.measurerId
+    : project.measurer?.id === project.designer?.id;
   const featuredSource = pickFeaturedPublishedScheme(publishedSchemes, project.lead.finalizedWorkflowId);
   const featuredScheme = featuredSource
     ? {
@@ -337,7 +340,7 @@ export async function customerProjectToDto(
             : null,
         }
       : null,
-    measurer: project.measurer
+    measurer: project.measurer && !designerHandlesVisit
       ? {
           id: project.measurer.id.toString(),
           displayName: project.measurer.displayName,
@@ -345,8 +348,8 @@ export async function customerProjectToDto(
           professionalProfile: options.measurerProfessionalProfile || null,
         }
       : null,
-    measurerName: project.measurerName,
-    measurerPhone: text(project.measurerPhone) || text(project.appointment?.measurerPhone) || null,
+    measurerName: designerHandlesVisit ? null : project.measurerName,
+    measurerPhone: designerHandlesVisit ? null : text(project.measurerPhone) || text(project.appointment?.measurerPhone) || null,
     appointment: project.appointment
       ? {
           id: project.appointment.id.toString(),
@@ -358,9 +361,9 @@ export async function customerProjectToDto(
           timeRange: project.appointment.timeRange,
           status: project.appointment.status,
           version: project.appointment.version,
-          measurerName: project.appointment.measurerName,
-          measurerPhone: text(project.appointment.measurerPhone) || null,
-          measurerProfessionalProfile: options.measurerProfessionalProfile || null,
+          measurerName: designerHandlesVisit ? null : project.appointment.measurerName,
+          measurerPhone: designerHandlesVisit ? null : text(project.appointment.measurerPhone) || null,
+          measurerProfessionalProfile: designerHandlesVisit ? null : options.measurerProfessionalProfile || null,
           updatedAt: project.appointment.updatedAt,
         }
       : null,

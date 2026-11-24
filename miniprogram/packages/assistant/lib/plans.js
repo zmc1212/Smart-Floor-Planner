@@ -39,23 +39,32 @@ class PlanChatController {
     await this.loadMedia();
   }
   loadMedia() { return this.media.load(Object.values(this.state.planCards).filter(p => p.full).map(p => ({ key: p.key, path: '/miniprogram/assistant/conversations/' + this.cid + '/plans/' + p.id + '/media' }))); }
+  async open(cid, id) {
+    if (!validId(cid) || !validId(id)) return false;
+    this.clear();
+    this.cid = cid;
+    this.session = this.identity();
+    return this.readDetails(id, false);
+  }
+  async readDetails(id, expand = true) {
+    const epoch = this.epoch; this.set({ planBusy: true, planError: '', planPending: this.pending() });
+    try {
+      const p = planView(await this.client.read('/conversations/' + this.cid + '/plans/' + id));
+      if (!this.valid(epoch)) return false;
+      if (p.id !== id) throw { code: 'invalid_response' };
+      this.set({ planCards: { ...this.state.planCards, [id]: { ...p, full: expand ? p : null } }, planExpanded: expand ? id : '' });
+      if (expand) await this.loadMedia();
+      return true;
+    } catch (error) {
+      if (this.valid(epoch)) { this.media.clear(); this.set({ planCards: {}, planExpanded: '', planError: errorCopy(error) }); }
+      return false;
+    } finally { if (this.valid(epoch)) this.set({ planBusy: false }); }
+  }
   async decide(id, action, reason) {
     const card = this.state.planCards[id];
     if (!card || this.state.planBusy || this.pending()) return false;
     if (action === 'request-changes' && reason) this.reasons[id] = reason;
-    if (action === 'details') {
-      const epoch = this.epoch; this.set({ planBusy: true, planError: '' });
-      try {
-        const p = planView(await this.client.read('/conversations/' + this.cid + '/plans/' + id));
-        if (!this.valid(epoch)) return false;
-        if (p.id !== id) throw { code: 'invalid_response' };
-        this.set({ planCards: { ...this.state.planCards, [id]: { ...p, full: p } }, planExpanded: id });
-        await this.loadMedia(); return true;
-      } catch (error) {
-        if (this.valid(epoch)) { this.media.clear(); this.set({ planCards: {}, planExpanded: '', planError: errorCopy(error) }); }
-        return false;
-      } finally { if (this.valid(epoch)) this.set({ planBusy: false }); }
-    }
+    if (action === 'details') return this.readDetails(id);
     if (action === 'approve' && (!card.full || this.state.planExpanded !== id || !this.state.planPaths[card.key])) return false;
     return this.write('plan-decision:' + this.cid + ':' + id, '/conversations/' + this.cid + '/plans/' + id + '/' + action,
       { expectedRevision: card.revision, ...(reason ? { reason } : {}) });

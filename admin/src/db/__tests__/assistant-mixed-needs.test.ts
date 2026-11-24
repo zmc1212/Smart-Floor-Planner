@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -20,20 +21,24 @@ import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 const prefix = 'synthetic-mixed-needs-' + randomUUID(), tenants: string[] = [], users: string[] = [];
 let actor: ActorContext, stranger: ActorContext;
 const text = '更正：书房书桌改为靠内墙；预算改为18万元。另外，如果仍靠窗会有哪些取舍？后面是假设，不要保存。';
-const desk = { room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '书房书桌改为靠内墙' };
+const desk = { room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '更正：书房书桌改为靠内墙' };
 const budget = { room: '', field: 'budget', value: '18万元', quote: '预算改为18万元' };
 const complete = { ...desk, additionalNeeds: [budget] };
 const answer = (): ModelTurnOutput => ({ text: JSON.stringify({ kind: 'general', text: '本次已记录书桌改为靠内墙和预算18万元。关于假设仍靠窗的取舍，一般建议考虑自然光与屏幕反光，具体布置仍需核对现场尺寸。' }),
   toolCalls: [], usage: { inputTokens: 100, outputTokens: 20 }, finishReason: 'stop', providerRequestId: null });
 const call = (args: unknown, id = 'need') => ({ ...answer(), text: '', toolCalls: [{ id, name: 'record_need', arguments: JSON.stringify(args) }] });
 before(async () => {
+  loadEnvConfig(process.cwd());
+  // The file drives dozens of runs against two synthetic enterprises in a few
+  // seconds; the production per-minute protection is covered elsewhere.
+  process.env.ASSISTANT_REQUESTS_PER_MINUTE = '1000';
   const url = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
   await withPlatformTransaction(async tx => {
     for (let i = 0; i < 2; i++) {
       const e = (await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!; tenants.push(String(e.id));
       await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
-        values(${tenants[i]},true,1000,12000000,1000000000,30,${JSON.stringify({ runtime: 'langgraph-v1', model: 'Qwen/Qwen3.5-4B', providerKey: 'siliconflow', imageInput: true, tools: true, probeVersion: 'p2m0-synthetic-v1' })}::jsonb)`);
+        values(${tenants[i]},true,1000,12000000,1000000000,30,${JSON.stringify({ runtime: 'langgraph-v1', model: 'Qwen/Qwen3.5-4B', providerKey: 'siliconflow', imageInput: true, tools: true, enterpriseKnowledgeEnabled: true, probeVersion: 'p2m0-synthetic-v1' })}::jsonb)`);
       const u = (await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix+i},1) returning id`))!; users.push(String(u.id));
       await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${users[i]},${prefix+i})`);
     }
@@ -84,7 +89,7 @@ test('current budget recall preserves real saves and revocation despite prior bu
     const save = await a.chat.send(a.c, randomUUID(), {version:1,blocks:[{type:'text',text:'更正：全屋预算改为18万元。'}]});
     const saveLease = await claimJob(); assert.ok(saveLease); assert.equal(saveLease.runId, save.runId);
     let saveCalls = 0;
-    await processAgentAnswer(saveLease, { model:async () => { saveCalls++; return call({...budget,quote:'更正：全屋预算改为18万元'}); } });
+    await processAgentAnswer(saveLease, { model:async () => { saveCalls++; return call({...budget,quote:'更正：全屋预算改为18万元',additionalNeeds:[]}); } });
     assert.equal(saveCalls, 1); assert.equal((await writes(String(save.runId))).length, 1);
     const saved = await memory(a.c); assert.equal(saved.version, 1);
     const question = '我当前预算记的是多少？';
@@ -114,7 +119,8 @@ test('current budget recall preserves real saves and revocation despite prior bu
         assert.deepEqual(tools.map(t=>t.name), ['recall_history']);
         const recalled=JSON.parse((messages.findLast(m=>m.role==='tool') as {content:string}).content);
         assert.equal(recalled.hasMore,false); assert.equal(recalled.oversized,false);
-        assert.deepEqual(recalled.sources.map((s:{text:string})=>s.text),[question]);
+        const recallSources=recalled.sources??recalled.synthesisSources;
+        assert.deepEqual(recallSources.map((s:{text:string})=>s.text),[question]);
         assert.ok(recalled.currentNeedView.facts.every((f:{field:string})=>f.field!=='budget'));
         return finalText(badText);
       }
@@ -122,12 +128,16 @@ test('current budget recall preserves real saves and revocation despite prior bu
       assert.equal(finalAnswerRepairBase(messages)?.responseScope,'current_budget_unavailable');
       const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages,tools:dispatch!,maxTokens:2048,requireTool:true});
       assert.deepEqual(wire.messages.at(-1),{role:'user',content:[{type:'text',text:finalAnswerRepairTask}]});
-      const schema=wire.tools!.find(t=>t.function.name==='final_response')!.function.parameters as {
-        required:string[];properties:{kind:{enum:string[]};segments:{maxItems:number;items:{properties:{basis:{enum:string[]};citations:{maxItems:number}}}}};
-      };
-      assert.deepEqual(schema.properties.kind.enum,['synthesis']);assert.deepEqual(schema.required,['kind','segments']);
-      assert.equal(schema.properties.segments.maxItems,1);assert.deepEqual(schema.properties.segments.items.properties.basis.enum,['uncertainty']);
-      assert.equal(schema.properties.segments.items.properties.citations.maxItems,0);
+      type FinalShape={required:string[];properties:{kind:{enum?:string[];const?:string};segments:{maxItems:number;items:{properties:{basis:{enum:string[]};citations:{maxItems:number}}}}}};
+      const rawSchema=wire.tools!.find(t=>t.function.name==='final_response')!.function.parameters as FinalShape & {anyOf?:FinalShape[]};
+      const schema=rawSchema.anyOf?.[0]??rawSchema;
+      assert.deepEqual(schema.properties.kind.const??schema.properties.kind.enum?.[0],'synthesis');assert.deepEqual(schema.required,['kind','segments']);
+      assert.equal(schema.properties.segments.maxItems,1);
+      type SegmentShape={properties:{basis:{enum:string[]};citations:{maxItems:number}}};
+      const rawSegment=schema.properties.segments.items as SegmentShape & {anyOf?:SegmentShape[]};
+      const segment=rawSegment.anyOf?.[0]??rawSegment;
+      assert.deepEqual(segment.properties.basis.enum,['uncertainty']);
+      assert.equal(segment.properties.citations.maxItems,0);
       assert.match(JSON.stringify(messages), /当前需求没有budget字段/);
       if (badText) assert.match(JSON.stringify(messages), /不能.*从未/);
       return repair ? {...answer(),text:JSON.stringify({kind:'synthesis',segments:[{basis:'uncertainty',text:'本次没有可用的当前预算记录，无法确认金额。',citations:[]}]})}
@@ -154,7 +164,7 @@ test('current budget recall repairs or rejects unsupported dates and internal ID
     '您之前记录的全屋预算为20万元，后已在10292消息中更正为18万元。当前系统保存的有效预算为18万元。',
   ]) for(const repair of [true,false]) {
     const a=await start('更正：全屋预算改为18万元。');
-    await processAgentAnswer(a.lease,{model:async()=>call({...budget,quote:'更正：全屋预算改为18万元'})});
+    await processAgentAnswer(a.lease,{model:async()=>call({...budget,quote:'更正：全屋预算改为18万元',additionalNeeds:[]})});
     const saved=await memory(a.c),question='我当前预算记的是多少？';
     const sent=await a.chat.send(a.c,randomUUID(),{version:1,blocks:[{type:'text',text:question}]});
     const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
@@ -166,8 +176,10 @@ test('current budget recall repairs or rejects unsupported dates and internal ID
         assert.equal(finalAnswerRepairBase(messages)?.responseScope,'current_budget_available');
         const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages,tools:dispatch!,maxTokens:2048,requireTool:true});
         assert.deepEqual(wire.messages.at(-1),{role:'user',content:[{type:'text',text:finalAnswerRepairTask}]});
-        const schema=wire.tools!.find(t=>t.function.name==='final_response')!.function.parameters as {required:string[];properties:{kind:{enum:string[]};segments?:unknown}};
-        assert.deepEqual(schema.properties.kind.enum,['general']);assert.deepEqual(schema.required,['kind','text']);assert.equal(schema.properties.segments,undefined);
+        type GeneralShape={required:string[];properties:{kind:{enum?:string[];const?:string};segments?:unknown}};
+        const rawSchema=wire.tools!.find(t=>t.function.name==='final_response')!.function.parameters as GeneralShape & {anyOf?:GeneralShape[]};
+        const schema=rawSchema.anyOf?.[0]??rawSchema;
+        assert.equal(schema.properties.kind.const??schema.properties.kind.enum?.[0],'general');assert.deepEqual(schema.required,['kind','text']);assert.equal(schema.properties.segments,undefined);
       }
       return finalText(calls===2&&repair?'沿用原记录，当前预算为18万元。':bad);
     }});
@@ -186,7 +198,7 @@ test('mixed correction incomplete proposals roll back then save one complete bat
   const a = await start(); let calls = 0;
   await processAgentAnswer(a.lease, { model: async (messages, tools) => {
     calls++;
-    if (calls === 1) return call(desk);
+    if (calls === 1) return call({ ...desk, additionalNeeds: [] });
     if (calls === 2) {
       const feedback = JSON.parse((messages.at(-1) as { content: string }).content);
       assert.equal(feedback.error, 'need_write_incomplete'); assert.equal(feedback.batchCommitted, false);
@@ -227,7 +239,7 @@ test('mixed correction atomic envelope retains paired errors and requires comple
       const serialized = wire.messages.find(m => m.role === 'tool' && 'tool_call_id' in m && m.tool_call_id === latest.callId)!;
       assert.equal(serialized.content, latest.content, 'Actual provider transport retains the paired error verbatim');
     }
-    return call(calls === 1 ? desk : calls === 2 ? budget : complete, 'batch-' + calls);
+    return call(calls === 1 ? { ...desk, additionalNeeds: [] } : calls === 2 ? { ...budget, additionalNeeds: [] } : complete, 'batch-' + calls);
   } });
   assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 4);
   assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(a.sent.runId))).length, 1);
@@ -236,14 +248,14 @@ test('mixed correction atomic envelope retains paired errors and requires comple
   assert.ok(steps.slice(0, 3).every(s => (s.input_summary as Row).needInputProtocol === agentNeedInputProtocol));
   assert.equal((steps[3].input_summary as Row).needInputProtocol, null);
   const firstRaw = (steps[0].private_checkpoint as { providerOutput: ModelTurnOutput }).providerOutput;
-  assert.deepEqual(JSON.parse(firstRaw.toolCalls[0].arguments), desk, 'The original omitted array is retained, never server-filled');
+  assert.deepEqual(JSON.parse(firstRaw.toolCalls[0].arguments), { ...desk, additionalNeeds: [] }, 'The submitted array is retained, never server-filled');
 });
 
 test('mixed correction parallel model-selected needs become one atomic batch and keep the complete raw provider packet', async () => {
   const a = await start(); let calls = 0;
   await processAgentAnswer(a.lease, { model: async () => {
     calls++;
-    return calls === 1 ? { ...answer(), text: '', toolCalls: [...call(desk, 'desk').toolCalls, ...call(budget, 'budget').toolCalls] } : answer();
+    return calls === 1 ? { ...answer(), text: '', toolCalls: [...call({ ...desk, additionalNeeds: [] }, 'desk').toolCalls, ...call({ ...budget, additionalNeeds: [] }, 'budget').toolCalls] } : answer();
   } });
   assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 2);
   assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(a.sent.runId))).length, 1);
@@ -365,8 +377,7 @@ test('mixed correction exact original and budget scope diagnostics recover the f
     if (calls === 1) return call({ ...desk, quote: '书房书桌改为靠内墙。预算改为18万元', additionalNeeds: [{ ...budget, room: '书房' }] });
     if (calls === 2) {
       const feedback = JSON.parse((messages.at(-1) as { content: string }).content);
-      assert.equal(feedback.batchCommitted, false); assert.equal(feedback.assertionText, '更正：书房书桌改为靠内墙；预算改为18万元');
-      assert.deepEqual(feedback.submittedWrites.map((w: Row) => [w.quoteIsOriginal,w.validationError]), [[false,'need_source_mismatch'],[true,'need_source_mismatch']]);
+      assert.equal(feedback.status, 'invalid_arguments'); assert.equal(feedback.dispatched, false);
       assert.deepEqual(await memory(a.c), { version: 0, facts: [] });
       return call(complete);
     }
@@ -395,7 +406,9 @@ test('mixed correction current source retry recovers a budget-only write without
         assert.equal(feedback.error,'need_source_mismatch');assert.equal(feedback.batchCommitted,false);
         assert.deepEqual(feedback.sourceIssues,[{index:0,property:'room',reason:'not_in_current_original'},{index:0,property:'value',reason:'not_in_selected_quote'}]);
         const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages,tools:dispatch!,maxTokens:100});
-        const p=wire.tools!.find(t=>t.function.name==='record_need')!.function.parameters.properties as Record<string,{not?:{enum:string[]}}>;
+        type Props=Record<string,{not?:{enum:string[]}}>;
+        const rawParams=wire.tools!.find(t=>t.function.name==='record_need')!.function.parameters as {properties?:Props;anyOf?:Array<{properties:Props}>};
+        const p=(rawParams.anyOf?.[0]??rawParams).properties as Props;
         assert.deepEqual(p.room.not,{enum:['书房']});assert.deepEqual(p.value.not,{enum:['靠内墙']});assert.equal(p.field.not,undefined);
         if(recover)return call({...budget,quote:'更正：全屋预算改为18万元',additionalNeeds:[]},'budget-only');
       }
@@ -437,8 +450,7 @@ test('mixed correction original quote catalog reaches dispatch and recovers reje
         const result = messages.find(m => m.role === 'tool' && m.callId === 'bad-original');
         assert.ok(result && result.role === 'tool');
         const feedback = JSON.parse(result.content);
-        assert.equal(feedback.batchCommitted, false); assert.deepEqual(feedback.quoteOptions, options);
-        assert.ok(feedback.submittedWrites.every((w: Row) => w.quoteIsOriginal === false && w.validationError === 'need_source_mismatch'));
+        assert.equal(feedback.status, 'invalid_arguments'); assert.equal(feedback.dispatched, false);
       }
       return call({ ...desk, quote: options[0], additionalNeeds: [{ ...budget, quote: options[1] }] }, 'selected-originals');
     } });
@@ -564,11 +576,11 @@ test('mixed correction exclusive current recap rejects a new acknowledgement and
 test('mixed correction current need numeric recovery binds prior saved budget originals without another write', async () => {
   for (const mode of ['cite', 'remove', 'still-invalid', 'withdrawn-source']) {
     const a = await start('请记住：全屋预算20万元。');
-    await processAgentAnswer(a.lease, { model: async () => call({ room: '', field: 'budget', value: '20万元', quote: '全屋预算20万元', additionalNeeds: [] }) });
+    await processAgentAnswer(a.lease, { model: async () => call({ room: '', field: 'budget', value: '20万元', quote: '请记住：全屋预算20万元', additionalNeeds: [] }) });
     assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
     const changed = await a.chat.send(a.c, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '更正：预算改为18万元。' }] });
     const changeLease = await claimJob(); assert.ok(changeLease); assert.equal(changeLease.runId, changed.runId);
-    await processAgentAnswer(changeLease, { model: async () => call({ ...budget, additionalNeeds: [] }) });
+    await processAgentAnswer(changeLease, { model: async () => call({ ...budget, quote: '更正：预算改为18万元', additionalNeeds: [] }) });
     assert.equal((await a.chat.run(String(changed.runId))).status, 'succeeded');
     const before = await memory(a.c); assert.equal(before.version, 2);
     const sent = await a.chat.send(a.c, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '我当前预算记的是多少？' }] });

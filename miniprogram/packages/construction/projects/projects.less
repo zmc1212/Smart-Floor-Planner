@@ -3,7 +3,9 @@
 .projects-header { position:relative; padding:5px 74px 20px 0; min-height:85px; }
 .projects-header .helper { margin-top:7px; font-size:15px; }
 .projects-art { position:absolute; width:71px; height:86px; right:0; top:3px; }
-.brief-link { position:absolute; right:76px; bottom:10px; min-height:44px; font-size:13px; }
+.projects-links { display:flex; align-items:center; justify-content:flex-end; gap:18px; min-height:44px; }
+.projects-header.brief-only .projects-links { position:absolute; right:76px; bottom:10px; }
+.projects-links .book-link { flex:none; min-height:44px; padding:4px 0; font-size:13px; white-space:nowrap; }
 .project-filters { display:flex; align-items:center; gap:12px; margin:0 0 23px; border-bottom:1px solid #9baf94; }
 .project-filters button { flex:none; width:auto !important; min-width:0 !important; min-height:44px; padding:7px 12px; font-size:15px; margin-bottom:-5px; background:#fbf7ed; box-shadow:0 2px 3px #69552b1a; }
 .project-filters button.fabric { font-size:18px; background:linear-gradient(110deg,#155641,#07503a 60%,#1f6c50); }
@@ -82,3 +84,39 @@
 .reminder-history .issue-head { margin-bottom:2px; }
 .workbench-paper { margin-bottom:20px; }
 .workbench-paper .issue-row { min-height:44px; }
+
+/* Approved stage-plan notebook and shared management sheet. */
+.schedule-title { margin: 10px 0 20px; }
+.schedule-title .page-title { font-size: 30px; }
+.schedule-title .helper { font-size: 15px; }
+.schedule-template { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.schedule-template .section-title { display: block; margin-top: 6px; }
+.construction-page button.schedule-template-button { flex: none; margin: 0; width: auto !important; padding: 8px 16px; min-height: 44px; font-size: 14px; border-radius: 24px; }
+.schedule-section-title { display: block; margin: 0 0 4px; }
+.schedule-list { padding: 6px 12px 10px; margin-bottom: 10px; }
+.schedule-list > .section-title { display: block; margin-top: 4px; }
+.schedule-row { display: grid; grid-template-columns: 18px minmax(0,1fr) 82px; align-items: center; gap: 10px; min-height: 58px; padding: 5px 0; border-bottom: 1px solid #cbd0be; }
+.schedule-row:last-child { border-bottom: 0; }
+.schedule-row.is-focused { background: #eef3e4; }
+.schedule-icon { flex: none; width: 18px; height: 18px; }
+.schedule-row-copy { min-width: 0; }
+.schedule-row-copy .label { font-weight: 700; }
+.schedule-row-copy .tone-label { display: inline-block; margin: 3px 0 2px; white-space: normal; }
+.schedule-row button.schedule-action { display: flex; align-items: center; justify-content: flex-end; width: 100% !important; min-width: 0 !important; min-height: 44px; margin: 0; padding: 0; }
+.schedule-action-label { box-sizing: border-box; min-width: 64px; padding: 6px 7px; border: 1px solid #a3b59d; border-radius: 12px; font-size: 13px; line-height: 16px; white-space: nowrap; }
+.schedule-editor .label { font-weight: 600; }
+.schedule-editor .schedule-editor-node { font-size: 17px; margin: 2px 0 8px; }
+.schedule-followup-summary { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 12px; }
+.schedule-outcomes, .schedule-agreement { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; margin: 6px 0; }
+.schedule-outcomes button.outline { width: 100% !important; min-width: 0 !important; max-width: 100% !important; }
+.schedule-outcomes .selected { background: #dce9db; border-color: #00513c; }
+.schedule-editor-label { margin-top: 12px; }
+.schedule-note { min-height: 74px; }
+.schedule-range.field { display: flex; align-items: center; gap: 8px; padding: 0 10px; margin-top: 4px; }
+.schedule-range picker { flex: 1; min-width: 0; }
+.schedule-range picker view { display: flex; align-items: center; min-height: 44px; font-size: 14px; }
+.schedule-date-original, .schedule-date-proposed { min-width: 0; padding: 10px; background: #eeeede; border-radius: 6px; }
+.schedule-date-original .label { margin-top: 10px; }
+.schedule-date-proposed { border: 1px solid #a3b59d; }
+.schedule-date-proposed .field { margin: 4px 0 0; padding: 10px 6px; }
+.schedule-offline-confirm { display: flex; align-items: center; gap: 6px; min-height: 44px; font-size: 14px; }

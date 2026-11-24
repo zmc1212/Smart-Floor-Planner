@@ -157,7 +157,11 @@ test('managers can allocate ordinary members, but cannot appoint or remove manag
 });
 
 test('stage assignments select one current employee, require explicit primary for multiple staff and never fall back to legacy phone data', async () => {
-  await employeeService().execute('progress', { projectId: project, expectedVersion: await version(), stageKey: 'utilities', note: '现场确认水电施工', sendReminder: false }, randomUUID());
+  const moved = await http(['projects', project, 'progress'], employeeToken, {
+    expectedVersion: await version(), stageKey: 'utilities', note: '现场确认水电施工', sendReminder: false,
+  });
+  assert.equal(moved.status, 200);
+  assert.equal(((await detail()).project as Row).current_stage_key, 'utilities');
   await withPlatformTransaction(tx => tx.execute(sql`update app.construction_projects set stage_contacts='{"utilities":{"name":"旧联系人","phone":"13980000999"}}'::jsonb where id=${project}`));
   await assert.rejects(phone(), /contact_unavailable/);
   await assign([employee]); assert.equal((await phone()).phone, '13980000002');

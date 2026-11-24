@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {before,after,test} from 'node:test';
 import {randomUUID} from 'node:crypto';
+import {loadEnvConfig} from '@next/env';
 import {sql} from 'drizzle-orm';
 import {withPlatformTransaction,withTenantTransaction} from '@/db/transaction';
 import {one,rows,type Row} from '@/db/repositories/assistant-repository';
@@ -28,6 +29,7 @@ async function index(d:Row){const q=await op('index',d),lease=await claimKnowled
 async function publish(audience:string){const d=await op('create',{title:'测试专用KB4 '+audience,sourceType:'manual_text',audience,body});const target={documentId:String((d.document as Row).id),versionId:String((d.draft as Row).id),expectedVersion:1,expectedEditVersion:1};await index(target);await op('publish',target);return target;}
 async function finish(evaluationId:string){const d=await ops.read(evaluationId);assert.equal(d.available,true);const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,d.run!.id);await processAnswer(lease,{model});return ops.read(evaluationId);}
 before(async()=>{
+  loadEnvConfig(process.cwd());
   useLocalKnowledgeTestDatabase();
   await withPlatformTransaction(async tx=>{
     for(let i=0;i<2;i++)tenants.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));eid=tenants[0];

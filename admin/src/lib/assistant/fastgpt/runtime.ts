@@ -5,20 +5,16 @@ import {FastGPTReportWorkflow} from '@/lib/construction/fastgpt-report-workflow'
 import {FastGPTKnowledgeWorkflow} from './knowledge-workflow';
 import {FastGPTNativeKnowledge} from './native-knowledge';
 import {FastGPTNativeRag} from './native-rag';
-import {FastGPTAgentV2} from './agent-v2/runtime';
-import {parseAgentV2Configurations, type AgentV2Configuration} from './agent-v2/config';
 import type {RagConfiguration} from './rag-config';
 
 type Configuration={baseUrl:string;apiKey:string;knowledgeAppId?:string;stageAppId?:string;auditFile?:string;
-  nativeKnowledgeAppId?:string; nativeModel?:string; nativeTransportModel?:string; nativeBridgeKey?:string; rag?:RagConfiguration;
-  agentV2?:AgentV2Configuration|AgentV2Configuration[]};
+  nativeKnowledgeAppId?:string; nativeModel?:string; nativeTransportModel?:string; nativeBridgeKey?:string; rag?:RagConfiguration};
 class FastGPTWorkflows {
   readonly knowledge?:FastGPTKnowledgeWorkflow;
   readonly stage?:FastGPTReportWorkflow;
   readonly nativeKnowledge?:FastGPTNativeKnowledge;
   readonly rag?:FastGPTNativeRag;
   readonly unified?:FastGPTNativeKnowledge;
-  readonly agentV2?:FastGPTAgentV2;
   private server?:http.Server;
   private starting?:Promise<void>;
   constructor(configuration:Configuration) {
@@ -35,13 +31,9 @@ class FastGPTWorkflows {
     if(configuration.nativeKnowledgeAppId) this.nativeKnowledge=new FastGPTNativeKnowledge({
       ...configuration,appId:configuration.nativeKnowledgeAppId,model:configuration.nativeTransportModel!,bridgeKey:configuration.nativeBridgeKey!,
       record:value=>record('nativeKnowledge',value)});
-    const agentV2=parseAgentV2Configurations(configuration.agentV2).filter((item): item is AgentV2Configuration => item.runtime!=='langgraph-v1');
-    if(agentV2.length) this.agentV2=new FastGPTAgentV2(agentV2.map(item=>({...item,baseUrl:configuration.baseUrl,
-      apiKey:configuration.apiKey,record:value=>record('agentV2',value)})));
   }
   async handle(request:Request) {
     const path=new URL(request.url).pathname;
-    if(path.startsWith('/agent-v2-')) return this.agentV2?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     if(path.startsWith('/unified-')) return this.unified?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     if(path.startsWith('/rag-')) return this.rag?.handle(request) ?? Response.json({error:'not_found'},{status:404});
     if(path.startsWith('/native-')) return this.nativeKnowledge?.handle(request) ?? Response.json({error:'not_found'},{status:404});
@@ -73,12 +65,15 @@ const cache=globalThis as typeof globalThis&{__xiaokFastGPTWorkflows?:{file:stri
 export function fastGPTWorkflows():FastGPTWorkflows|undefined {
   const file=process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
   if(!file)return;
-  const bytes=fs.readFileSync(file),hash=createHash('sha256').update(bytes).digest('hex');
+  // A removed machine-local binding disables the optional transport instead of
+  // failing every ordinary answer; present-but-invalid files still throw below.
+  let bytes:Buffer;
+  try{bytes=fs.readFileSync(file);}catch{return;}
+  const hash=createHash('sha256').update(bytes).digest('hex');
   const current=cache.__xiaokFastGPTWorkflows;
   if(current){if(current.file!==file||current.hash!==hash)throw Error('FastGPT workflow configuration changed during the Worker lifetime');return current.runtime;}
   const configuration=JSON.parse(bytes.toString('utf8')) as Configuration;
-  const agentV2=Array.isArray(configuration.agentV2)?configuration.agentV2.length>0:Boolean(configuration.agentV2);
-  const capable=agentV2||Boolean(configuration.rag)||[configuration.knowledgeAppId,configuration.stageAppId,configuration.nativeKnowledgeAppId]
+  const capable=Boolean(configuration.rag)||[configuration.knowledgeAppId,configuration.stageAppId,configuration.nativeKnowledgeAppId]
     .some(id=>/^[a-f0-9]{24}$/.test(id??''));
   if(!configuration.apiKey||!capable)throw Error('Invalid FastGPT workflow configuration');
   const runtime=new FastGPTWorkflows(configuration);cache.__xiaokFastGPTWorkflows={file,hash,runtime};return runtime;

@@ -52,11 +52,16 @@ export function runUsageReconciled() {
     and ${confirmedUsageReview()})`;
 }
 
-/** A known model response followed by retrieval failure may be explicitly
+/** A known model response followed by a bounded failure may be explicitly
  * retried with a new reservation. Keep the old cost hold and billing status;
- * cancellation, unknown responses and missing token observations still block. */
+ * cancellation, unknown responses and missing token observations still block.
+ * Bounded failures include retrieval outages and answer-validation rejections:
+ * the provider response is already settled and observable, so the retry cannot
+ * double-charge an unknown dispatch. */
 export function runRetryAwaitingReconciliation() {
-  const knownRetrievalFailure = sql`(r.status='failed' and r.error_code='retrieval_unavailable'
+  const knownBoundedFailure = sql`(r.status='failed' and r.error_code in ('retrieval_unavailable',
+      'invalid_model_citation','invalid_model_answer','ungrounded_response_scope',
+      'unsupported_model_commitment','standard_status_unverified')
     and not ${unresolvedProviderOutcome()}
     and exists(select 1 from app.ai_provider_attempts a where a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id)
     and not exists(select 1 from app.ai_provider_attempts a where a.enterprise_id=r.enterprise_id and a.assistant_run_id=r.id
@@ -68,5 +73,5 @@ export function runRetryAwaitingReconciliation() {
     and exists(select 1 from app.assistant_usage_records u where u.enterprise_id=r.enterprise_id and u.run_id=r.id
       and u.category='tokens' and u.measurement_kind='observed' and u.quantity is not null))`;
   return sql`exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=r.enterprise_id and q.run_id=r.id
-    and q.status='reconciling' and not ${knownRetrievalFailure})`;
+    and q.status='reconciling' and not ${knownBoundedFailure})`;
 }

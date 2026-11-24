@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -46,6 +47,7 @@ async function finishBatch(id:string) {
   assert.fail('Bounded synthetic batch did not complete');
 }
 before(async()=>{
+  loadEnvConfig(process.cwd());
   useLocalKnowledgeTestDatabase();
   await withPlatformTransaction(async tx=>{
     for(let i=0;i<2;i++)tenants.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));eid=tenants[0];

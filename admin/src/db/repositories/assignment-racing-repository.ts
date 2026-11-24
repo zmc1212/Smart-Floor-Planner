@@ -7,9 +7,11 @@ import {
   gte,
   isNotNull,
   isNull,
+  lte,
   notInArray,
   sql,
 } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import {
   adminUsers,
   assignmentDistributionCounters,
@@ -295,6 +297,7 @@ export class AssignmentRacingRepository {
     settingVersionId?: bigint | null;
     claimWindowId?: bigint | null;
     now?: Date;
+    availableForBooking?: (designerId: bigint) => Promise<boolean>;
   }) {
     const now = input.now ?? new Date();
     const leadRows = await this.transaction
@@ -323,13 +326,21 @@ export class AssignmentRacingRepository {
       return { kind: 'not_assignable' as const };
     }
     await this.lockEnterprise(lead.enterpriseId);
+    const { availableForBooking } = input;
+    const [bookingWindow] = availableForBooking && lead.assignmentStatus === 'claim_open'
+      ? await this.transaction.select().from(leadClaimWindows)
+        .where(and(eq(leadClaimWindows.leadId, lead.id), eq(leadClaimWindows.status, 'open')))
+        .limit(1)
+      : [];
+    const claimWindowId = input.claimWindowId ?? bookingWindow?.id;
+    const settingVersionId = input.settingVersionId ?? bookingWindow?.settingVersionId;
     let setting: SettingRow | null = null;
-    if (input.settingVersionId) {
+    if (settingVersionId) {
       const settings = await this.transaction
         .select()
         .from(enterpriseAssignmentSettingVersions)
         .where(and(
-          eq(enterpriseAssignmentSettingVersions.id, input.settingVersionId),
+          eq(enterpriseAssignmentSettingVersions.id, settingVersionId),
           eq(enterpriseAssignmentSettingVersions.enterpriseId, lead.enterpriseId)
         ))
         .limit(1);
@@ -339,7 +350,11 @@ export class AssignmentRacingRepository {
     if (!setting) throw assignmentError('assignment_settings_missing', '派单规则不可用', 500);
 
     const performance = await this.listDesignerPerformance(lead.enterpriseId, setting);
-    const eligible = performance.filter((item) => item.eligibleForAssignment);
+    let eligible = performance.filter((item) => item.eligibleForAssignment);
+    if (availableForBooking) {
+      const available = await Promise.all(eligible.map(item => availableForBooking(item.staff.id)));
+      eligible = eligible.filter((_, index) => available[index]);
+    }
     const high = eligible.filter((item) => item.group === 'high');
     const standard = eligible.filter((item) => item.group === 'standard');
     const counter = await this.getDistributionCounter(lead.enterpriseId, setting.id);
@@ -372,11 +387,11 @@ export class AssignmentRacingRepository {
         .update(leads)
         .set({ assignmentStatus: 'assignment_pending', assignmentErrorCode: 'designer_unavailable', updatedAt: now })
         .where(eq(leads.id, lead.id));
-      if (input.claimWindowId) {
+      if (claimWindowId) {
         await this.transaction
           .update(leadClaimWindows)
           .set({ status: 'assignment_pending', resolvedAt: now, resolutionReason: 'designer_unavailable', updatedAt: now })
-          .where(eq(leadClaimWindows.id, input.claimWindowId));
+          .where(eq(leadClaimWindows.id, claimWindowId));
       }
       await this.transaction.insert(leadAssignmentEvents).values({
         enterpriseId: lead.enterpriseId,
@@ -391,14 +406,13 @@ export class AssignmentRacingRepository {
       return { kind: 'pending' as const, lead: await new LeadRepository(this.transaction).findById(lead.id) };
     }
 
-    const assignmentErrorCode = lead.measurerId ? null : 'measurer_unavailable';
     await this.transaction
       .update(leads)
       .set({
         assignedTo: selected.staff.id,
         assignedAt: now,
-        assignmentStatus: assignmentErrorCode ? 'assignment_pending' : 'assigned',
-        assignmentErrorCode,
+        assignmentStatus: 'assigned',
+        assignmentErrorCode: null,
         updatedAt: now,
       })
       .where(eq(leads.id, lead.id));
@@ -414,28 +428,27 @@ export class AssignmentRacingRepository {
         updatedAt: now,
       })
       .where(eq(assignmentDistributionCounters.id, counter.id));
-    if (input.claimWindowId) {
+    if (claimWindowId) {
       await this.transaction
         .update(leadClaimWindows)
         .set({
-          status: assignmentErrorCode ? 'assignment_pending' : 'auto_assigned',
+          status: 'auto_assigned',
           resolvedAt: now,
           resolutionReason: input.reason,
           assignmentGroup: selectedGroup,
           updatedAt: now,
         })
-        .where(eq(leadClaimWindows.id, input.claimWindowId));
+        .where(eq(leadClaimWindows.id, claimWindowId));
     }
     const events = await this.transaction
       .insert(leadAssignmentEvents)
       .values({
         enterpriseId: lead.enterpriseId,
         leadId: lead.id,
-        eventType: assignmentErrorCode ? 'assignment_auto_pending' : 'assignment_auto',
+        eventType: 'assignment_auto',
         designerId: selected.staff.id,
         previousMeasurerId: lead.measurerId,
         measurerId: lead.measurerId,
-        errorCode: assignmentErrorCode,
         reason: input.reason,
         metadata: {
           group: selectedGroup,
@@ -450,7 +463,7 @@ export class AssignmentRacingRepository {
       })
       .returning({ id: leadAssignmentEvents.id });
     return {
-      kind: assignmentErrorCode ? 'pending' as const : 'assigned' as const,
+      kind: 'assigned' as const,
       lead: await new LeadRepository(this.transaction).findById(lead.id),
       eventId: events[0]?.id,
       group: selectedGroup,
@@ -466,6 +479,9 @@ export class AssignmentRacingRepository {
     now?: Date;
   }) {
     const now = input.now ?? new Date();
+    // Booking, manual assignment and claiming all serialize on the lead first.
+    await this.transaction.select({ id: leads.id }).from(leads)
+      .where(eq(leads.id, input.leadId)).for('update');
     const rows = await this.transaction
       .select({ window: leadClaimWindows, lead: leads })
       .from(leadClaimWindows)
@@ -523,7 +539,6 @@ export class AssignmentRacingRepository {
         409
       );
     }
-    const assignmentErrorCode = row.lead.measurerId ? null : 'measurer_unavailable';
     await this.transaction
       .update(leadClaimWindows)
       .set({
@@ -541,8 +556,8 @@ export class AssignmentRacingRepository {
       .set({
         assignedTo: input.designerId,
         assignedAt: now,
-        assignmentStatus: assignmentErrorCode ? 'assignment_pending' : 'assigned',
-        assignmentErrorCode,
+        assignmentStatus: 'assigned',
+        assignmentErrorCode: null,
         updatedAt: now,
       })
       .where(eq(leads.id, input.leadId));
@@ -559,7 +574,6 @@ export class AssignmentRacingRepository {
         designerId: input.designerId,
         measurerId: row.lead.measurerId,
         actorUserId: input.actorUserId,
-        errorCode: assignmentErrorCode,
         reason: 'designer_claimed',
         metadata: { claimWindowId: row.window.id.toString() },
       })
@@ -615,12 +629,15 @@ export class AssignmentRacingRepository {
 
   async listDueWindows(limit = 100) {
     const now = new Date();
-    return this.transaction
-      .select()
+    const dueLead = alias(leads, 'due_lead');
+    const rows = await this.transaction
+      .select({ window: leadClaimWindows })
       .from(leadClaimWindows)
-      .where(and(eq(leadClaimWindows.status, 'open'), sql`${leadClaimWindows.expiresAt} <= ${now}`))
+      .innerJoin(dueLead, eq(dueLead.id, leadClaimWindows.leadId))
+      .where(and(eq(leadClaimWindows.status, 'open'), lte(leadClaimWindows.expiresAt, now)))
       .orderBy(asc(leadClaimWindows.expiresAt), asc(leadClaimWindows.id))
       .limit(Math.min(Math.max(limit, 1), 500))
-      .for('update', { skipLocked: true });
+      .for('update', { of: dueLead, skipLocked: true });
+    return rows.map(row => row.window);
   }
 }

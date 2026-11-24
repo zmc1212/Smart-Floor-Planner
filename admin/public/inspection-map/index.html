@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>巡检地图</title>
+  <link rel="stylesheet" href="map.css">
+  <script defer src="https://res.wx.qq.com/open/js/jweixin-1.6.0.js"></script>
+  <script defer src="map.js"></script>
+</head>
+<body>
+  <main>
+    <div id="map" aria-label="天地图巡检路线" hidden></div>
+    <p id="map-message" role="status"></p>
+    <section class="paper" aria-label="巡检路线设置">
+      <div class="origin"><p id="origin">正在读取巡检工地…</p><button id="choose" type="button" hidden>地图选起点</button></div>
+      <p id="status" role="status"></p>
+      <div id="choices"></div>
+      <button id="plan" class="primary" type="button" disabled>规划驾车路线</button>
+    </section>
+    <section id="result" aria-live="polite" hidden>
+      <h1 id="estimate">巡检顺序</h1>
+      <ol id="ordered"></ol>
+    </section>
+  </main>
+</body>
+</html>

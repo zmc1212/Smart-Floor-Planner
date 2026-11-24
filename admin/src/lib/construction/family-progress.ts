@@ -36,6 +36,23 @@ async function withPlatformUserRead<T>(tx: PostgresTransaction, read: () => Prom
   }
 }
 
+/**
+ * Resolve the tenant and owner of an active, customer-visible project without
+ * requiring the scanning account to be a member yet. Used only to turn a
+ * signed Mini Program code scene into the same invitation payload a shared
+ * card carries; ownership and single use are re-checked by acceptInvite.
+ */
+export async function familyInviteTarget(projectId: string) {
+  id(projectId);
+  const row = await withPlatformTransaction(tx => one(tx, sql`select p.enterprise_id::text as enterprise_id,
+    l.customer_user_id::text as owner_id
+    from app.construction_projects p
+    join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
+    where p.id=${projectId} and p.customer_access and p.status='active' and l.archived_at is null`));
+  if (!row || !row.owner_id) return null;
+  return { enterpriseId: String(row.enterprise_id), ownerId: String(row.owner_id) };
+}
+
 /** Customer identity is tenant-independent. Resolve only an authorized project ID. */
 export async function customerProgressTenant(projectId: string, userId: string) {
   id(projectId); id(userId);

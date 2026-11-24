@@ -6,7 +6,7 @@
   .conversation-list-grip { position: absolute; top: 12px; left: calc(50% - 19.5px); width: 39px; height: 5px; border-radius: 3px; background: #bdbfb6; }
   .sheet-head { flex: none; min-height: 44px; line-height: 44px; padding-right: 40px; font-family: 'Chat Followup Serif','Chat Serif',SimSun,serif; font-size: 31px; font-weight: 900; }
   .sheet-head .icon-button { position: absolute; right: 9px; top: 22px; width: 44px; min-width: 44px; max-width: 44px; height: 44px; margin: 0; padding: 0; background: transparent; }
-  .sheet-head .icon-button image { width: 16px; height: 16px; }
+  .sheet-head .icon-button .chat-image { width: 16px; height: 16px; }
   .sheet-scroll { flex: 1; min-height: 0; height: 0; }
   .sheet-helper { margin: 0; color: #71858a; font-size: 13px; line-height: 21px; }
   .followup-new { display: flex; align-items: center; gap: 17px; height: 48px; min-height: 48px; margin: 10px 0 0; padding: 0 20px; border: 1px solid #729280; border-radius: 8px; font-size: 16px; line-height: 24px; }
@@ -16,7 +16,7 @@
   .followup-list-label { min-height: 44px; margin: 15px 0 0; gap: 12px; font-size: 15px; line-height: 24px; }
   .followup-list-label .fabric-label { box-sizing: border-box; min-width: 91px; text-align: center; padding: 3px 12px; font-size: 15px; line-height: 22px; }
   .followup-list-label .followup-text-action { min-width: 108px; height: 44px; font-size: 13px; text-align: right; }
-  .followup-list-label .followup-text-action[disabled] { background: transparent; color: #829184; }
+  .followup-list-label .followup-text-action.is-disabled { background: transparent; color: #829184; }
   .followup-list-entry { display: block; position: relative; width: 100%; min-height: 128px; margin: 0 0 23px; padding: 13px 14px 10px 17px; border-left: 6px solid #41664f; border-radius: 7px; background: linear-gradient(100deg,#e7ead8,#edf0df); line-height: 1.5; box-shadow: 0 6px 0 -2px #fffdf5, 0 8px 7px #6e60412b; }
   .followup-list-entry::before, .followup-list-entry::after { content: ''; position: absolute; left: -9px; width: 14px; height: 3px; border: 1px solid #8ba68b; border-radius: 3px; background: #416c55; transform: rotate(-5deg); pointer-events: none; }
   .followup-list-entry::before { top: 22px; }

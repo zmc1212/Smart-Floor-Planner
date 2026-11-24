@@ -3,8 +3,9 @@ import sharp from 'sharp';
 import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail } from '@/lib/assistant/contracts';
-import { cameraAccess, customerCameraActor, type CameraCustomerActor, type CameraCustomerIdentity } from './access';
-import { retainedSnapshot, snapshotRetentionJoins } from './snapshot-retention';
+import { cameraAccess, customerCameraPlayback, type CameraCustomerActor, type CameraCustomerIdentity } from './access';
+import { debugSignalStream } from './debug-source';
+import { privateSnapshot, retainedSnapshot, snapshotRetentionJoins } from './snapshot-retention';
 import { cameraWvp } from './wvp';
 
 type Cover = { capturedAt: string; jpeg: string };
@@ -12,6 +13,7 @@ type CoverEntry = { expires: number; frame: Promise<Cover | null> };
 const covers = new Map<string, CoverEntry>();
 const coverLifetimeMs = 60_000;
 const coverLimit = 64;
+const maxCoverBytes = 192_000;
 const ownerCoverKey = 'owner-cover';
 const storedCoverMaxAge = sql`interval '24 hours'`;
 
@@ -30,23 +32,27 @@ async function source(actor: CameraCustomerActor, projectId: string) {
   return withTenantTransaction(actor.enterpriseId, tx => locate(tx, actor, projectId));
 }
 
-/** Latest scheduled frame for the active binding, through the shared retention policy. */
-function storedCover(tx: PostgresTransaction, eid: string, bindingId: string) {
-  return one(tx, sql`select s.captured_at,s.data from app.construction_camera_snapshots s ${snapshotRetentionJoins}
-    where s.enterprise_id=${eid} and s.binding_id=${bindingId} and s.request_key=${ownerCoverKey}
-      and s.state='ready' and ${retainedSnapshot()} and s.captured_at>now()-${storedCoverMaxAge}
+/** Recent frames for an authorized active binding, through the shared retention policy. */
+export function storedCameraCover(tx: PostgresTransaction, eid: string, projectId: string, bindingId: string, includePrivate = false) {
+  const scheduled = sql`s.request_key=${ownerCoverKey} and s.scheduled_at is not null
+    and s.scheduled_live_version_id is null and not ${privateSnapshot()}`;
+  const audience = includePrivate ? sql`((${scheduled}) or ${privateSnapshot()})` : sql`(${scheduled})`;
+  return one(tx, sql`select s.captured_at,s.data,(${scheduled}) as scheduled
+    from app.construction_camera_snapshots s ${snapshotRetentionJoins}
+    where s.enterprise_id=${eid} and s.project_id=${projectId} and s.binding_id=${bindingId} and ${audience}
+      and s.state='ready' and s.data is not null and ${retainedSnapshot()} and s.captured_at>now()-${storedCoverMaxAge}
     order by s.captured_at desc,s.id desc limit 1`);
 }
 
 const sourceKey = (actor: CameraCustomerActor, projectId: string, camera: Row) =>
   [actor.enterpriseId, projectId, actor.userId, actor.grantVersion, camera.id, camera.version].join(':');
 
-/** Cover responses stay small because the owner home renders the frame inline as base64. */
-async function ownerCoverJpeg(image: Buffer) {
+/** Keep cover frames small enough for the owner home and mobile player. */
+export async function cameraCoverJpeg(image: Buffer) {
   const jpeg = await sharp(image, { limitInputPixels: 32_000_000 }).rotate()
     .resize({ width: 640, height: 480, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 75 })
     .toBuffer({ resolveWithObject: true });
-  if (jpeg.data.length > 192_000) fail('camera_snapshot_too_large', 502);
+  if (jpeg.data.length > maxCoverBytes) fail('camera_snapshot_too_large', 502);
   return jpeg;
 }
 
@@ -54,13 +60,27 @@ function capture(sourceId: string, camera: Row, snapshot: (device: string, chann
   const now = Date.now(), saved = covers.get(sourceId);
   if (saved && now < saved.expires) return saved.frame;
   const frame = (async () => {
-    const jpeg = await ownerCoverJpeg(await snapshot(String(camera.device_id), String(camera.channel_id)));
+    const jpeg = await cameraCoverJpeg(await snapshot(String(camera.device_id), String(camera.channel_id)));
     return { capturedAt: new Date().toISOString(), jpeg: jpeg.data.toString('base64') };
   })().catch(() => null);
   covers.delete(sourceId);
   if (covers.size >= coverLimit) covers.delete(covers.keys().next().value!);
   covers.set(sourceId, { expires: now + coverLifetimeMs, frame });
   return frame;
+}
+
+async function syntheticCover(origin: string): Promise<Cover | null> {
+  const url = new URL(`/${debugSignalStream.app}/${debugSignalStream.stream}/cover.jpg`, origin);
+  const response = await fetch(url, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(3000) });
+  const capturedAt = Date.parse(response.headers.get('X-Camera-Captured-At') ?? '');
+  const size = Number(response.headers.get('Content-Length'));
+  if (!response.ok || response.headers.get('Content-Type') !== 'image/jpeg' ||
+    !Number.isFinite(capturedAt) || !Number.isSafeInteger(size) || size < 1 || size > maxCoverBytes) {
+    await response.body?.cancel();
+    return null;
+  }
+  const { data } = await cameraCoverJpeg(Buffer.from(await response.arrayBuffer()));
+  return { capturedAt: new Date(capturedAt).toISOString(), jpeg: data.toString('base64') };
 }
 
 /**
@@ -70,10 +90,18 @@ function capture(sourceId: string, camera: Row, snapshot: (device: string, chann
  */
 export async function ownerSiteCover(identity: CameraCustomerIdentity, projectId: string,
   snapshot = (device: string, channel: string) => cameraWvp().snapshot(device, channel)) {
-  const actor = await customerCameraActor(identity, projectId);
+  const { actor, debugCamera } = await customerCameraPlayback(identity, projectId);
+  if (debugCamera) {
+    if (!debugCamera.syntheticOrigin) return { camera: { name: debugCamera.item.name, cover: null } };
+    const cover = await syntheticCover(debugCamera.syntheticOrigin).catch(() => null);
+    const current = await customerCameraPlayback(identity, projectId);
+    if (!current.debugCamera?.syntheticOrigin || current.actor.debug?.scope !== actor.debug?.scope ||
+      current.actor.grantVersion !== actor.grantVersion) fail('camera_project_unavailable', 404);
+    return { camera: { name: current.debugCamera.item.name, cover } };
+  }
   const camera = await source(actor, projectId);
   if (!camera) return { camera: null };
-  const stored = await withTenantTransaction(actor.enterpriseId, tx => storedCover(tx, actor.enterpriseId, String(camera.id)));
+  const stored = await withTenantTransaction(actor.enterpriseId, tx => storedCameraCover(tx, actor.enterpriseId, projectId, String(camera.id)));
   if (stored?.data) return { camera: { name: String(camera.name), cover: {
     capturedAt: new Date(String(stored.captured_at)).toISOString(), jpeg: Buffer.from(stored.data as Buffer).toString('base64'),
   } } };
@@ -127,7 +155,11 @@ export async function captureDueOwnerCovers(upstream = cameraWvp()) {
     if (!claim) continue;
     let saved = false;
     try {
-      const jpeg = await ownerCoverJpeg(await upstream.snapshot(String(item.device_id), String(item.channel_id)));
+      const device = String(item.device_id), channel = String(item.channel_id);
+      // WVP's snapshot controller can time out while a 4G stream is starting.
+      // Wait for the shared live stream through its normal start endpoint first.
+      await upstream.play(device, channel);
+      const jpeg = await cameraCoverJpeg(await upstream.snapshot(device, channel));
       saved = !!(await withTenantTransaction(eid, tx => one(tx, sql`update app.construction_camera_snapshots
         set state='ready',data=${jpeg.data},width=${jpeg.info.width},height=${jpeg.info.height},captured_at=now()
         where enterprise_id=${eid} and id=${String(claim.id)} and state='pending' returning id`)));

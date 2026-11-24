@@ -10,7 +10,20 @@ import { cameraCoverage } from '@/lib/construction/camera-coverage';
 
 const prefix = 'coverage-only-test-' + randomUUID(), enterprises: string[] = [], users: string[] = [], projects: string[] = [], bindings: string[] = [], cameras: string[] = [], actors: ConstructionActor[][] = [];
 let day = '', start = 0, oldBinding = '';
+// This suite owns a dedicated evaluation database. The general PostgreSQL
+// contract run points DATABASE_URL elsewhere, so it must skip instead of
+// demanding a second target; scripts/construction-camera-coverage-check.mjs
+// creates that database and runs this file against it.
+const databaseUrl = process.env.DATABASE_URL?.trim();
+const onCoverageDatabase = (() => {
+  if (!databaseUrl) return false;
+  try {
+    const database = new URL(databaseUrl);
+    return database.port === '55432' && database.pathname === '/cloud_camera_coverage_eval';
+  } catch { return false; }
+})();
 before(async () => {
+  if (!onCoverageDatabase) return;
   const database = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.equal(database.port, '55432'); assert.equal(database.pathname, '/cloud_camera_coverage_eval');
   await withPlatformTransaction(async tx => {
@@ -44,6 +57,7 @@ before(async () => {
   });
 });
 after(async () => {
+  if (!onCoverageDatabase) return;
   try { await withPlatformTransaction(async tx => {
     for (const eid of enterprises) {
       for (const table of ['construction_recordings', 'construction_camera_recording_policies', 'construction_camera_bindings', 'construction_cameras', 'construction_members', 'construction_projects', 'leads', 'admin_users']) await tx.execute(sql`delete from ${sql.identifier('app')}.${sql.identifier(table)} where enterprise_id=${eid}`);
@@ -53,7 +67,7 @@ after(async () => {
   }); } finally { await closePostgresPool(); }
 });
 
-test('all three owner roles read persisted union coverage and exact gaps without employment or membership', async () => {
+test('all three owner roles read persisted union coverage and exact gaps without employment or membership', { skip: !onCoverageDatabase }, async () => {
   for (const actor of actors[0].slice(0, 3)) {
     const result = await cameraCoverage(actor, projects[0], bindings[0], day);
     assert.equal(result.segments, 5); assert.equal(result.ranges.length, 4); assert.equal(result.coveredMilliseconds, 140 * 60000);
@@ -61,7 +75,7 @@ test('all three owner roles read persisted union coverage and exact gaps without
     assert.equal(result.truncated, false); assert.equal(JSON.stringify(result).includes('never-request'), false); assert.equal(JSON.stringify(result).includes('file_path'), false);
   }
 });
-test('readback/reentry is stable; populated tenant isolation and empty dates do not fabricate gaps', async () => {
+test('readback/reentry is stable; populated tenant isolation and empty dates do not fabricate gaps', { skip: !onCoverageDatabase }, async () => {
   const prior = await cameraCoverage(actors[0][0], projects[0], bindings[0], day);
   const current = await cameraCoverage(actors[0][0], projects[0], bindings[0], day);
   assert.deepEqual({ ...current, sampledAt: null }, { ...prior, sampledAt: null });
@@ -72,7 +86,7 @@ test('readback/reentry is stable; populated tenant isolation and empty dates do 
   assert.equal((await withPlatformTransaction(tx => one(tx, sql`select count(*)::integer count from app.construction_recordings where enterprise_id=${enterprises[1]}`)))!.count, 1);
   assert.equal((await withTenantTransaction(enterprises[0], tx => one(tx, sql`select count(*)::integer count from app.construction_recordings where enterprise_id=${enterprises[1]}`)))!.count, 0);
 });
-test('manager/member, foreign project/binding and retired binding are denied; disabled camera revokes reads', async () => {
+test('manager/member, foreign project/binding and retired binding are denied; disabled camera revokes reads', { skip: !onCoverageDatabase }, async () => {
   for (const actor of actors[0].slice(3)) await assert.rejects(cameraCoverage(actor, projects[0], bindings[0], day), { code: 'camera_forbidden' });
   await assert.rejects(cameraCoverage(actors[0][0], projects[1], bindings[1], day), { code: 'camera_project_unavailable' });
   await assert.rejects(cameraCoverage(actors[0][0], projects[0], bindings[1], day), { code: 'camera_binding_unavailable' });
@@ -82,11 +96,11 @@ test('manager/member, foreign project/binding and retired binding are denied; di
     await assert.rejects(cameraCoverage(actors[0][0], projects[0], bindings[0], day), { code: 'camera_binding_unavailable' });
   } finally { await withTenantTransaction(enterprises[0], tx => tx.execute(sql`update app.construction_cameras set enabled=true where id=${cameras[0]}`)); }
 });
-test('strict dates and IDs reject malformed inputs', async () => {
+test('strict dates and IDs reject malformed inputs', { skip: !onCoverageDatabase }, async () => {
   for (const value of ['', '2026-02-30', '2026-1-01', '2026-10-23T00:00:00Z', null]) await assert.rejects(cameraCoverage(actors[0][0], projects[0], bindings[0], value), { status: 422 });
   for (const value of ['0', '-1', '1.1', '9223372036854775808']) await assert.rejects(cameraCoverage(actors[0][0], projects[0], value, day), { status: 422 });
 });
-test('conservative clock/retention boundary excludes an otherwise ready expired file', async () => {
+test('conservative clock/retention boundary excludes an otherwise ready expired file', { skip: !onCoverageDatabase }, async () => {
   await withTenantTransaction(enterprises[0], async tx => {
     await tx.execute(sql`insert into app.construction_recordings(enterprise_id,project_id,binding_id,source_id,media_server_id,stream_app,stream_id,file_path,started_at,ended_at,bytes,clock_offset_min_ms,clock_offset_max_ms)
       values(${enterprises[0]},${projects[0]},${bindings[0]},90,${prefix},'rtp','synthetic','/opt/media/www/record/expired.mp4',now()-interval '3 days'+interval '30 seconds',now()-interval '3 days'+interval '90 seconds',1,-60000,0)`);
@@ -95,11 +109,11 @@ test('conservative clock/retention boundary excludes an otherwise ready expired 
   const expiredDay = new Date(new Date(String(r!.started_at)).getTime() + 8 * 3600000).toISOString().slice(0, 10);
   assert.equal((await cameraCoverage(actors[0][0], projects[0], bindings[0], expiredDay)).segments, 0);
 });
-test('read-only summary preserves complete recording and policy rows', async () => {
+test('read-only summary preserves complete recording and policy rows', { skip: !onCoverageDatabase }, async () => {
   const snapshot = () => withTenantTransaction(enterprises[0], async tx => ({ policy: await one(tx, sql`select to_jsonb(p)::text value from app.construction_camera_recording_policies p where binding_id=${bindings[0]}`), records: await one(tx, sql`select jsonb_agg(to_jsonb(r) order by r.id)::text value from app.construction_recordings r where binding_id=${bindings[0]}`) }));
   const prior = await snapshot(); await cameraCoverage(actors[0][0], projects[0], bindings[0], day); assert.deepEqual(await snapshot(), prior);
 });
-test('large days are bounded and explicitly partial, with one-row lookahead', async () => {
+test('large days are bounded and explicitly partial, with one-row lookahead', { skip: !onCoverageDatabase }, async () => {
   try {
     await withTenantTransaction(enterprises[0], tx => tx.execute(sql`insert into app.construction_recordings(enterprise_id,project_id,binding_id,source_id,media_server_id,stream_app,stream_id,file_path,started_at,ended_at,bytes)
       select ${enterprises[0]}::bigint,${projects[0]}::bigint,${bindings[0]}::bigint,1000+i,${prefix},'rtp','synthetic','/opt/media/www/record/partial.mp4',${new Date(start+13*3600000)}::timestamptz+i*interval '1 millisecond',${new Date(start+13*3600000)}::timestamptz+(i+1)*interval '1 millisecond',1 from generate_series(1,1001) i`));

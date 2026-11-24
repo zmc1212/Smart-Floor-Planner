@@ -8,8 +8,8 @@
 <text wx:if="{{audience !== 'customer'}}" class="followup-project-name">{{project.name}}</text>
 <text wx:if="{{project.stageNote}}" class="followup-line" style="overflow-wrap: anywhere; word-break: break-word;" user-select>{{project.stageNote}}</text>
 <text wx:else class="followup-muted">{{report.generationLabel || '这份提醒只整理了现场记录，工艺建议还在准备中。'}}</text>
-<button wx:if="{{project.knowledgeSources.length}}" class="followup-text-action followup-stage-source" data-report="{{report.reportId}}" data-revision="{{report.revision}}" data-project="{{project.id}}" bindtap="openReportSource">查看工艺依据 ↗</button>
+<button wx:if="{{project.knowledgeSources.length}}" class="followup-text-action followup-stage-source chat-button" data-report="{{report.reportId}}" data-revision="{{report.revision}}" data-project="{{project.id}}" bindtap="openReportSource">查看工艺依据 ↗</button>
 </view>
-<button wx:if="{{report.generationRetryable}}" class="followup-text-action" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="retryFollowupReport" disabled="{{busy || pending}}">重试正文生成</button>
+<button wx:if="{{report.generationRetryable}}" class="followup-text-action chat-button {{(busy || pending) ? 'is-disabled' : ''}}" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="retryFollowupReport" disabled="{{busy || pending}}">重试正文生成</button>
 </view>
 </template>

@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { delegationStaffResponse, staffDelegationPurpose, syncDelegationStaffNotices as syncReviewStaffNotices } from '@/lib/native-workflow/live/delegation-staff';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, assistantWritesEnabled, one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -24,6 +24,7 @@ import { citationProjection, webCitationProjection } from '@/lib/assistant/knowl
 import { parseWebCitationId } from '@/lib/assistant/agent/web-evidence';
 import { captureInput, capturedRecord, saveSiteCapture, scheduleCapturedRecord, siteQuickWorks } from './site-capture';
 import { syncDelegationStaffNotices } from '@/lib/native-workflow/live/delegation-chat';
+import { inspectionEvidenceAvailable, inspectionPoint, inspectionProjection, inspectionReceipt, mintInspectionProof, type InspectionPin } from './inspection-policy';
 
 export function siteActor(a: ConstructionActor): ActorContext {
   return { enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1,
@@ -39,10 +40,25 @@ export async function recordVersion(tx: PostgresTransaction, eid: string, record
     ${JSON.stringify(siteDto({ data: record.data, roomId: record.room_id, status: record.status, audience: record.audience,
       roomName: record.room_name_snapshot, publishedCustomerId: record.published_customer_id, reason: record.withdrawal_reason, sourceMessageId: record.source_message_id,
       recordId: record.id, originalRecordId: record.original_record_id || record.id, resubmissionOfId: record.resubmission_of_id,
-      stages: record.stage_snapshot || [], reviewRequirements: record.review_requirements, returnedBy: record.returned_by, returnedAt: record.returned_at }))}::jsonb)`);
+      stages: record.stage_snapshot || [], reviewRequirements: record.review_requirements, returnedBy: record.returned_by, returnedAt: record.returned_at,
+      inspectionCheckpoint: record.inspection_checkpoint, inspectionDecision: record.inspection_decision, inspectionReceipt: record.inspection_receipt }))}::jsonb)`);
 }
 type SitePermission = { manage: boolean; reviewRecords: boolean; canPublishCustomer: boolean;
   write: boolean; recordWrite: boolean; collaboration: boolean; executionOnly: boolean };
+const mayTriage = (record: Row) => record.status === 'draft' && !record.inspection_checkpoint
+  || record.status === 'organizing' && (!record.run_id || ['failed', 'cancelled'].includes(String(record.run_status)));
+
+function readRecordRow(tx: PostgresTransaction, enterpriseId: string, projectId: string, filter: SQL) {
+  return one(tx, sql`select r.*,coalesce(a.display_name,'项目管理人员') as approved_name,q.status as run_status,q.error_code,
+    (${inspectionEvidenceAvailable}) as inspection_evidence_available,
+    (select child.id from app.construction_site_records child where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id and child.resubmission_of_id=r.id) as resubmitted_record_id,
+    coalesce(q.policy_snapshot->'agent'->>'imageInput','false')='true' as image_input,
+    exists(select 1 from app.assistant_quota_reservations qr where qr.enterprise_id=r.enterprise_id and qr.run_id=r.run_id and qr.status in ('held','reconciling')) as pending_cost
+    from app.construction_site_records r left join app.admin_users a on a.id=r.approved_by
+    left join app.assistant_runs q on q.enterprise_id=r.enterprise_id and q.id=r.run_id
+    where r.enterprise_id=${enterpriseId} and r.project_id=${projectId} and (${filter})`);
+}
+
 export class SiteChatService {
   readonly actor: ActorContext;
   constructor(readonly staff: ConstructionActor, private transaction?: PostgresTransaction) { this.actor = siteActor(staff); }
@@ -54,7 +70,7 @@ export class SiteChatService {
   withReadScope<T>(projectId: string, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: SitePermission) => Promise<T>) {
     return this.scope(projectId, false, fn);
   }
-  private scope<T>(projectId: string, write: boolean, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: SitePermission) => Promise<T>) {
+  private scope<T>(projectId: string, write: boolean, fn: (tx: PostgresTransaction, c: Row, p: Row, permission: SitePermission) => Promise<T>, createChat = true) {
     id(projectId);
     const execute = async (tx: PostgresTransaction) => {
       const a = this.staff, eid = a.enterpriseId;
@@ -65,6 +81,7 @@ export class SiteChatService {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-chat:${eid}:${projectId}`},0))`);
       let link = await one(tx, sql`select conversation_id from app.construction_chats where enterprise_id=${eid} and project_id=${projectId}`);
       if (!link) {
+        if (!createChat) fail('construction_not_found', 404);
         const p = await one(tx, sql`select p.id from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
           where p.enterprise_id=${eid} and p.id=${projectId} and p.status<>'archived' and l.archived_at is null
           and (${owner} or exists(select 1 from app.construction_members m where m.enterprise_id=p.enterprise_id and m.project_id=p.id and m.admin_id=${a.adminId} and m.active)) for share of p,l`);
@@ -78,6 +95,7 @@ export class SiteChatService {
       const p = (await one(tx, sql`select p.*,l.customer_user_id,l.archived_at from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
         where p.enterprise_id=${eid} and p.id=${projectId} for share of p,l`))!;
       const member = await one(tx, sql`select role from app.construction_members where enterprise_id=${eid} and project_id=${projectId} and admin_id=${a.adminId} and active for share`);
+      if ((!owner && !member) || p.status === 'archived' || p.archived_at) fail('construction_not_found', 404);
       const collaboration = collaborationEnabled(eid);
       const manage = (!collaboration && owner) || member?.role === 'manager';
       const permission = { manage, collaboration,
@@ -93,6 +111,50 @@ export class SiteChatService {
     };
     return this.transaction ? execute(this.transaction) : withTenantTransaction(this.staff.enterpriseId, execute);
   }
+
+  private async projectRecord(tx: PostgresTransaction, c: Row, p: Row, record: Row, permission: SitePermission) {
+    const eid = this.staff.enterpriseId, pid = String(p.id), rid = String(record.id);
+    const media = await rows(tx, sql`select a.id,a.width,a.height,a.byte_size from app.construction_site_attachments x
+      join app.construction_site_media a on a.enterprise_id=x.enterprise_id and a.project_id=x.project_id and a.id=x.media_id
+      where x.enterprise_id=${eid} and x.project_id=${pid} and x.record_id=${rid} and a.deleted_at is null order by x.position`);
+    const author = String(record.author_id) === this.staff.adminId;
+    const canAct = permission.write && permission.recordWrite && (permission.manage || author);
+    const canReview = permission.write && permission.reviewRecords;
+    const captured = await capturedRecord(tx, eid, pid, rid);
+    const speech = await one(tx, sql`select id::text,duration_ms,transcript from app.assistant_speech_assets
+      where enterprise_id=${eid} and conversation_id=${String(c.id)} and message_id=${String(record.source_message_id)} and deleted_at is null`);
+    const visible = { ...record };
+    delete visible.inspection_suggestion;
+    delete visible.inspection_evidence_available;
+    return { ...visible, captured, speech, canReview,
+      canEdit: canAct && record.status !== 'changes_requested', canPublish: canReview && record.status === 'draft',
+      inspection: inspectionProjection(record), canTriageInspection: canReview && mayTriage(record),
+      hasInspectionPin: Boolean(p.inspection_pin),
+      ...(permission.collaboration ? { sync: record.status !== 'organizing' ? 'succeeded'
+        : ['failed', 'cancelled'].includes(String(record.run_status)) ? 'failed' : record.run_status ? 'processing' : 'pending' } : {}),
+      canRequestChanges: canReview && (['draft','published'].includes(String(record.status)) || (record.status === 'organizing' && mayTriage(record))),
+      canResubmit: permission.write && author && record.status === 'changes_requested' && !record.resubmitted_record_id,
+      resubmittedRecordId: record.resubmitted_record_id || null, canPublishCustomer: permission.canPublishCustomer, media };
+  }
+
+  reviewRecord(projectId: string, recordId: string) {
+    id(recordId);
+    return this.scope(projectId, false, async (tx, c, p, permission) => {
+      const eid = this.staff.enterpriseId;
+      const record = await readRecordRow(tx, eid, projectId, sql`r.id=${recordId} and r.conversation_id=${String(c.id)}
+        and (${permission.reviewRecords} or r.author_id=${this.staff.adminId})`);
+      if (!record || !record.source_message_id) fail('construction_not_found', 404);
+      const message = await one(tx, sql`select m.id,m.content,m.created_at,m.client_message_id,a.display_name
+        from app.assistant_messages m left join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id
+        where m.enterprise_id=${eid} and m.conversation_id=${String(c.id)} and m.id=${String(record.source_message_id)}`);
+      if (!message) fail('construction_not_found', 404);
+      const rooms = await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} order by id`);
+      const original = await this.projectRecord(tx, c, p, record, permission);
+      return siteDto({ project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access },
+        write: permission.write, collaboration: permission.collaboration, rooms, items: [{ message, record: original }] }) as Row;
+    }, false);
+  }
+
   read(projectId: string, beforeSeq = '9223372036854775807', limit = 30, issueId?: string, recordId?: string) {
     id(beforeSeq);
     if (issueId) id(issueId);
@@ -117,14 +179,14 @@ export class SiteChatService {
         and ((r.status='changes_requested' and not exists(select 1 from app.construction_site_records child
           where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id and child.resubmission_of_id=r.id))
           or (r.resubmission_of_id is not null and r.status in ('organizing','draft')))
-        and (${permission.manage} or r.author_id=${this.staff.adminId}) order by r.updated_at desc limit 100`);
+        and (${permission.reviewRecords} or r.author_id=${this.staff.adminId}) order by r.updated_at desc limit 100`);
       const selected = recordId && beforeSeq === '9223372036854775807' ? await one(tx, sql`
         select m.id,m.seq,m.client_message_id,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
         from app.construction_site_records r join app.assistant_messages m
           on m.enterprise_id=r.enterprise_id and m.id=r.source_message_id and m.conversation_id=r.conversation_id
         left join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id
         where r.enterprise_id=${eid} and r.project_id=${projectId} and r.conversation_id=${String(c.id)}
-          and r.id=${recordId} and (${permission.manage} or r.author_id=${this.staff.adminId})`) : null;
+          and r.id=${recordId} and (${permission.reviewRecords} or r.author_id=${this.staff.adminId})`) : null;
       const messages = [...new Map([...pageMessages, ...pendingMessages, ...delegationNotices, ...(selected ? [selected] : [])].map(m => [String(m.id), m])).values()]
         .sort((a, b) => BigInt(String(a.seq)) < BigInt(String(b.seq)) ? -1 : 1);
       const items: { message: Row; record: Row | null; response?: Row; issue?: unknown }[] = [];
@@ -137,13 +199,7 @@ export class SiteChatService {
             response: { text: safeText(nativeNotice.content as Parameters<typeof safeText>[0]) }, record: null });
           continue;
         }
-        const record = await one(tx, sql`select r.*,coalesce(a.display_name,'项目管理人员') as approved_name,q.status as run_status,q.error_code,
-          (select child.id from app.construction_site_records child where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id and child.resubmission_of_id=r.id) as resubmitted_record_id,
-          coalesce(q.policy_snapshot->'agent'->>'imageInput','false')='true' as image_input,
-          exists(select 1 from app.assistant_quota_reservations qr where qr.enterprise_id=r.enterprise_id and qr.run_id=r.run_id and qr.status in ('held','reconciling')) as pending_cost
-          from app.construction_site_records r left join app.admin_users a on a.id=r.approved_by
-          left join app.assistant_runs q on q.enterprise_id=r.enterprise_id and q.id=r.run_id
-          where r.enterprise_id=${eid} and r.project_id=${projectId} and r.source_message_id=${String(message.id)}`);
+        const record = await readRecordRow(tx, eid, projectId, sql`r.source_message_id=${String(message.id)}`);
         if (!record) {
           const response = await siteKnowledgeResponse(tx,this.actor,c,String(message.id))
             || await siteResponse(tx, eid, projectId, String(c.id), String(message.id), issues,
@@ -152,23 +208,8 @@ export class SiteChatService {
             ? { ...message, content: { version: 1, blocks: [] } } : message, response, record: null });
           continue;
         }
-        const media = await rows(tx, sql`select a.id,a.width,a.height,a.byte_size from app.construction_site_attachments x join app.construction_site_media a
-          on a.enterprise_id=x.enterprise_id and a.project_id=x.project_id and a.id=x.media_id
-          where x.enterprise_id=${eid} and x.project_id=${projectId} and x.record_id=${String(record.id)} and a.deleted_at is null order by x.position`);
-        const author = String(record.author_id) === this.staff.adminId;
-        const canAct = permission.write && permission.recordWrite && (permission.manage || author);
-        const canEdit = canAct && record.status !== 'changes_requested';
-        const canReview = permission.write && permission.reviewRecords;
-        const captured = await capturedRecord(tx, eid, projectId, String(record.id));
-        const speech = await one(tx, sql`select id::text,duration_ms,transcript from app.assistant_speech_assets
-          where enterprise_id=${eid} and conversation_id=${String(c.id)} and message_id=${String(message.id)} and deleted_at is null`);
         items.push({ message, issue: issues.find(i => i.recordId === String(record.id)) || null,
-          record: { ...record, captured, speech, canEdit, canPublish: canReview && record.status === 'draft',
-            ...(permission.collaboration ? { sync: record.status !== 'organizing' ? 'succeeded'
-              : ['failed', 'cancelled'].includes(String(record.run_status)) ? 'failed' : record.run_status ? 'processing' : 'pending' } : {}),
-            canRequestChanges: canReview && ['draft','published'].includes(String(record.status)),
-            canResubmit: permission.write && author && record.status === 'changes_requested' && !record.resubmitted_record_id,
-            resubmittedRecordId: record.resubmitted_record_id || null, canPublishCustomer: permission.canPublishCustomer, media } });
+          record: await this.projectRecord(tx, c, p, record, permission) });
       }
       if (focus && beforeSeq === '9223372036854775807') {
         const assets = new Map<string, Row>();
@@ -223,10 +264,11 @@ export class SiteChatService {
     });
   }
   send(projectId: string, body: Row, requestKey: string) {
-    object(body, ['text', 'mediaIds', 'versions', 'speech', 'capture', 'recording', 'stageKeys']); key(requestKey);
+    object(body, ['text', 'mediaIds', 'versions', 'speech', 'capture', 'recording', 'stageKeys', 'inspectionCheckpoint']); key(requestKey);
     const versions = parseSiteVersions(body.versions);
     const raw = text(body.text, 4000, false), mediaIds = body.mediaIds;
     const capture = body.capture === undefined ? null : captureInput(body.capture);
+    if (body.inspectionCheckpoint !== undefined && capture?.kind !== 'free') fail('invalid_construction', 422);
     if (capture && body.speech !== undefined) fail('invalid_construction', 422);
     if (body.stageKeys !== undefined && (!capture || !Array.isArray(body.stageKeys) || body.stageKeys.length > 10
       || new Set(body.stageKeys).size !== body.stageKeys.length || body.stageKeys.some(value => typeof value !== 'string'))) fail('invalid_construction', 422);
@@ -368,18 +410,37 @@ export class SiteChatService {
       return { id: mediaId };
     }));
   }
+  inspectionCheckIn(projectId: string, recordId: string, input: unknown) {
+    id(recordId);
+    const value = object(input, ['expectedVersion', 'point', 'accuracy']);
+    const expected = version(value.expectedVersion), fix = inspectionPoint(value.point);
+    return this.scope(projectId, true, async (tx, _c, p, permission) => {
+      if (!permission.reviewRecords || p.archived_at) fail('construction_forbidden', 403);
+      const record = await one(tx, sql`select r.*,(${inspectionEvidenceAvailable}) as inspection_evidence_available
+        from app.construction_site_records r where r.enterprise_id=${this.staff.enterpriseId}
+        and r.project_id=${projectId} and r.id=${recordId} for share of r`);
+      if (!record) fail('construction_not_found', 404);
+      if (record.status !== 'draft' || Number(record.version) !== expected || !inspectionProjection(record).requiresOnsite) fail('inspection_context_changed', 409);
+      const pin = p.inspection_pin as InspectionPin | null;
+      if (!pin) fail('inspection_pin_missing', 422);
+      return mintInspectionProof(this.staff, record, pin, fix, value.accuracy);
+    });
+  }
   mutate(projectId: string, recordId: string, action: string, body: Row, requestKey: string) {
     id(recordId); key(requestKey);
-    const allowed: Record<string, string[]> = { edit: ['expectedVersion', 'data'], publish: ['expectedVersion', 'audience', 'scheduleCompletion'], withdraw: ['expectedVersion', 'reason'], retry: ['expectedVersion'],
-      request_changes: ['expectedVersion', 'requirements'], resubmit: ['expectedVersion', 'text', 'mediaIds'] };
+    const allowed: Record<string, string[]> = { edit: ['expectedVersion', 'data'], publish: ['expectedVersion', 'audience', 'scheduleCompletion', 'inspection'], withdraw: ['expectedVersion', 'reason'], retry: ['expectedVersion'],
+      request_changes: ['expectedVersion', 'requirements'], resubmit: ['expectedVersion', 'text', 'mediaIds'],
+      inspection_triage: ['expectedVersion', 'mode', 'reason'] };
     if (!allowed[action]) fail('construction_not_found', 404);
     object(body, allowed[action]); version(body.expectedVersion);
     return this.scope(projectId, true, (tx, c, p, permission) => idempotent(tx, this.actor, `site:${projectId}:${recordId}:${action}`, requestKey, body, async () => {
       const eid = this.staff.enterpriseId;
-      const reviewAction = ['publish', 'request_changes'].includes(action);
+      const reviewAction = ['publish', 'request_changes', 'inspection_triage'].includes(action);
       if (!permission.recordWrite && !(reviewAction && permission.reviewRecords)) fail('construction_forbidden', 403);
       let scheduleCompletion;
-      const r = await one(tx, sql`select * from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId} and id=${recordId} for update`);
+      const r = await one(tx, sql`select r.*,(${inspectionEvidenceAvailable}) as inspection_evidence_available,q.status as run_status
+        from app.construction_site_records r left join app.assistant_runs q on q.enterprise_id=r.enterprise_id and q.id=r.run_id
+        where r.enterprise_id=${eid} and r.project_id=${projectId} and r.id=${recordId} for update of r`);
       if (!r || (!permission.manage && String(r.author_id) !== this.staff.adminId
         && !(reviewAction && permission.reviewRecords))) fail('construction_forbidden', 403);
       if (Number(r.version) !== body.expectedVersion) fail('version_conflict');
@@ -404,8 +465,9 @@ export class SiteChatService {
           content: { version: 1, blocks: [{ type: 'text', text: raw || '按要求补拍现场照片。' }] } });
         const run = await newRun(tx, this.actor, c, (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!, String(message.id), undefined,
           { kind: 'user_message', messageId: String(message.id) }, 'site.record');
-        const child = (await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,run_id,resubmission_of_id,original_record_id,review_requirements,returned_by,returned_at,room_id,room_name_snapshot,stage_snapshot)
-          values(${eid},${projectId},${String(c.id)},${String(message.id)},${this.staff.adminId},${String(run.runId)},${recordId},${originalId},${String(r.review_requirements)},${String(r.returned_by)},${r.returned_at},${r.room_id ?? null},${String(r.room_name_snapshot || '')},${JSON.stringify(r.stage_snapshot || [])}::jsonb) returning *`))!;
+        const child = (await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,run_id,resubmission_of_id,original_record_id,review_requirements,returned_by,returned_at,room_id,room_name_snapshot,stage_snapshot,inspection_checkpoint)
+          values(${eid},${projectId},${String(c.id)},${String(message.id)},${this.staff.adminId},${String(run.runId)},${recordId},${originalId},${String(r.review_requirements)},${String(r.returned_by)},${r.returned_at},${r.room_id ?? null},${String(r.room_name_snapshot || '')},${JSON.stringify(r.stage_snapshot || [])}::jsonb,
+            ${r.inspection_checkpoint ? JSON.stringify(r.inspection_checkpoint) : null}::jsonb) returning *`))!;
         for (const [i, mid] of mediaIds.entries()) await tx.execute(sql`insert into app.construction_site_attachments(enterprise_id,project_id,record_id,media_id,position) values(${eid},${projectId},${String(child.id)},${mid},${i})`);
         const parent = (await one(tx, sql`update app.construction_site_records set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${recordId} returning *`))!;
         await recordVersion(tx, eid, parent, this.staff.adminId, 'resubmit');
@@ -431,20 +493,36 @@ export class SiteChatService {
         return { id: recordId, version: Number(r.version) + 1, ...result };
       }
       if (r.run_id) await cancelRuns(tx, this.actor, String(c.id), String(r.run_id));
-      if (action === 'request_changes') {
+      if (action === 'inspection_triage') {
+        if (!permission.reviewRecords || p.archived_at) fail('construction_forbidden', 403);
+        if (!mayTriage(r) || (r.inspection_checkpoint && body.mode !== 'onsite')) fail('inspection_context_changed', 409);
+        if (!['onsite', 'remote'].includes(String(body.mode))) fail('invalid_construction', 422);
+        const note = text(body.reason, 500), data = r.data as Row;
+        const draft = r.status === 'organizing' ? siteDraft({ title: data.title || '现场上报', roomId: r.room_id ? String(r.room_id) : null,
+          completed: '', pending: '', coordination: '', note: typeof data.note === 'string' && data.note.length <= 2000 && data.note.trim() ? data.note : note }) : data;
+        const decision = { mode: body.mode, reason: note, reviewerId: this.staff.adminId };
+        await tx.execute(sql`update app.construction_site_records set status='draft',data=${JSON.stringify(draft)}::jsonb,
+          inspection_decision=${JSON.stringify(decision)}::jsonb where enterprise_id=${eid} and id=${recordId}`);
+      } else if (action === 'request_changes') {
         if (!permission.reviewRecords) fail('construction_forbidden', 403);
-        if (!['draft','published'].includes(String(r.status))) fail('site_rework_state_conflict');
+        if (!['draft','published'].includes(String(r.status)) && !(r.status === 'organizing' && mayTriage(r))) fail('site_rework_state_conflict');
         const requirements = text(body.requirements, 1000);
         await tx.execute(sql`update app.construction_site_records set status='changes_requested',review_requirements=${requirements},returned_by=${this.staff.adminId},returned_at=now(),
-          audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null where enterprise_id=${eid} and id=${recordId}`);
+          audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null,inspection_receipt=null where enterprise_id=${eid} and id=${recordId}`);
       } else if (action === 'edit') {
         const data = siteDraft(body.data);
         const room = data.roomId ? await one(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} and id=${data.roomId}`) : null;
         if (data.roomId && !room) fail('invalid_construction', 422);
         // A correction immediately revokes the previous publication; it requires a new explicit review.
-        await tx.execute(sql`update app.construction_site_records set data=${JSON.stringify(data)}::jsonb,room_id=${data.roomId},room_name_snapshot=${String(room?.name || '')},status='draft',audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null,withdrawal_reason='' where enterprise_id=${eid} and id=${recordId}`);
+        await tx.execute(sql`update app.construction_site_records set data=${JSON.stringify(data)}::jsonb,room_id=${data.roomId},room_name_snapshot=${String(room?.name || '')},status='draft',audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null,withdrawal_reason='',
+          inspection_receipt=null where enterprise_id=${eid} and id=${recordId}`);
       } else if (action === 'publish') {
-        if (!permission.reviewRecords) fail('construction_forbidden', 403);
+        // Reviewers publish any record; an author who may write records can still
+        // submit their own evidence to the internal audience. Customer-facing
+        // publication remains restricted by canPublishCustomer below.
+        const authorInternal = permission.write && permission.recordWrite
+          && String(r.author_id) === this.staff.adminId && body.audience === 'internal';
+        if (!permission.reviewRecords && !authorInternal) fail('construction_forbidden', 403);
         if (body.scheduleCompletion !== undefined) {
           if (!permission.collaboration || !permission.manage) fail('construction_forbidden', 403);
           scheduleCompletion = await confirmScheduleCompletion(tx, eid, p, r, body.scheduleCompletion);
@@ -455,8 +533,10 @@ export class SiteChatService {
         if (![data.completed, data.pending, data.coordination, data.note].some(Boolean)) fail('site_review_required', 422);
         if (data.roomId && !await one(tx, sql`select id from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} and id=${data.roomId} and name=${String(r.room_name_snapshot)}`)) fail('context_changed');
         if (await one(tx, sql`select x.media_id from app.construction_site_attachments x join app.construction_site_media m on m.enterprise_id=x.enterprise_id and m.project_id=x.project_id and m.id=x.media_id where x.enterprise_id=${eid} and x.project_id=${projectId} and x.record_id=${recordId} and m.deleted_at is not null`)) fail('construction_media_unavailable', 409);
+        const proof = await inspectionReceipt(this.staff, r, p.inspection_pin as InspectionPin | null, body.inspection);
         await tx.execute(sql`update app.construction_site_records set status='published',audience=${String(body.audience)},published_version=version+1,
-          published_customer_id=${body.audience === 'customer' ? String(p.customer_user_id) : null},approved_by=${this.staff.adminId},published_at=now() where enterprise_id=${eid} and id=${recordId}`);
+          published_customer_id=${body.audience === 'customer' ? String(p.customer_user_id) : null},approved_by=${this.staff.adminId},published_at=now(),
+          inspection_receipt=${proof ? JSON.stringify(proof) : null}::jsonb where enterprise_id=${eid} and id=${recordId}`);
       } else {
         const reason = text(body.reason, 500);
         if (r.status !== 'published') fail('context_changed');

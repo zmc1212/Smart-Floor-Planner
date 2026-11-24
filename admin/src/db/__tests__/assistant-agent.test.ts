@@ -30,6 +30,9 @@ before(async () => {
   // Knowledge reads stay on the local pgvector index so an empty corpus is a
   // deterministic not_ready read instead of a managed-provider outage.
   process.env.ASSISTANT_KNOWLEDGE_PROVIDER = 'local';
+  // The file drives dozens of runs against one synthetic enterprise in a few
+  // seconds; the production per-minute protection is covered elsewhere.
+  process.env.ASSISTANT_REQUESTS_PER_MINUTE = '1000';
   if (deepseekLive) {
     const primary = new URL(process.env.ASSISTANT_P2M_PRIMARY_DATABASE_URL || '');
     assert.ok(['localhost','127.0.0.1'].includes(primary.hostname)); assert.equal(primary.port, '5432'); assert.equal(primary.pathname, '/smart_floor_planner');

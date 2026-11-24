@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { loadEnvConfig } from '@next/env';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -22,6 +23,7 @@ const tenants:string[]=[],admins:string[]=[],users:string[]=[],services:Knowledg
 const prefix='knowledge-test-'+randomUUID();
 before(async()=>{
   loadEnvConfig(process.cwd());
+  useLocalKnowledgeTestDatabase();
   const url=new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['127.0.0.1','localhost'].includes(url.hostname));
   assert.equal(url.pathname,'/xiaok_embedding_eval','Knowledge acceptance must use the isolated vector clone');

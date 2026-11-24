@@ -23,6 +23,7 @@ Page({
     pending: null, busy: false, sheet: '', staffOptions: [], roleOptions: [], selectedStaff: 0, selectedRole: 0, selectedStage: 0,
     workLabel: '', note: '', sendReminder: false, selectedIds: [], primaryOptions: [], selectedPrimary: 0, assignmentOptions: [],
     sheetOpen: false, statusFilter: 'all', filteredItems: [], activeCount: 0, preview: null, previewPhotos: [], previewLoading: false, previewError: '',
+    scheduleOpen: false, scheduleForm: null,
     stageAnswer: null, stageAnswerBusy: false, stageAnswerError: '',
     reminders: [], reminderHistory: [], reminderPaused: false, remindersLoading: false, remindersError: '', reminderFocus: '', reminderCancelling: '',
     workbench: [], workbenchLoading: false, workbenchError: '' },
@@ -53,13 +54,14 @@ Page({
     if (!current.key || !current.token || !canAccessRoute(route, current.bootstrap)) {
       this.clearPreview();
       this._generation = (this._generation || 0) + 1; this._identityKey = null; this._token = null;
-      this.setData({ loading: false, error: '请使用有工地权限的员工身份登录。', items: [], detail: null, pending: null, sheet: '' }); return;
+      this.setData({ loading: false, error: '请使用有工地权限的员工身份登录。', items: [], detail: null, pending: null, sheet: '', scheduleOpen: false, scheduleForm: null }); return;
     }
     if (current.key !== this._identityKey || current.token !== this._token) {
       this.clearPreview();
       this._identityKey = current.key; this._token = current.token;
       this._storageKey = 'construction:pending:' + current.key;
-      this.setData({ projectId: '', detail: null, items: [], sheet: '', name: current.name, portalLabel: current.portalLabel, pending: wx.getStorageSync(this._storageKey) || null });
+      this.setData({ projectId: '', detail: null, items: [], sheet: '', scheduleOpen: false, scheduleForm: null,
+        name: current.name, portalLabel: current.portalLabel, pending: wx.getStorageSync(this._storageKey) || null });
     }
     // A reminder link resolves only after the signed identity is ready.
     if (this._deepLink && !this.data.projectId) this.setData({ projectId: this._deepLink.projectId, detail: null });
@@ -67,7 +69,8 @@ Page({
   },
   onHide(force) {
     if (!force && nativePreview.hiddenByPreview(this)) return;
-    this._visible = false; this._generation = (this._generation || 0) + 1; this.clearPreview(); clearTimeout(this._sheetTimer); this.setData({ sheet: '', sheetOpen: false });
+    this._visible = false; this._generation = (this._generation || 0) + 1; this.clearPreview(); clearTimeout(this._sheetTimer);
+    this.setData({ sheet: '', sheetOpen: false, scheduleForm: null });
   },
   onUnload() { this.onHide(true); },
   current(g) { const c = identity(); return this._visible && this._token === c.token && this._identityKey === c.key && canAccessRoute(route, c.bootstrap) && (g == null || g === this._generation); },
@@ -80,13 +83,20 @@ Page({
       const response = await api.request('/miniprogram/construction/projects' + (pid ? '/' + pid : ''), 'GET');
       if (!this.current(g)) return;
       const data = response.data;
-      if (pid) { this.setData({ detail: decorateDetail(data) }); void this.loadPreview(g); void this.loadReminders(g); void this.applyDeepLink(g); }
+      if (pid) {
+        const form = this.data.scheduleForm;
+        const latest = form?.node && data.progress?.management?.milestones.find(item => item.key === form.node.key);
+        this.setData({ detail: decorateDetail(data), ...(form ? { scheduleForm: { ...form, latestTime: latest?.timeText || '' } } : {}),
+          ...(!data.manage && this.data.scheduleOpen ? { scheduleOpen: false, scheduleForm: null, sheet: '', sheetOpen: false } : {}) });
+        void this.loadPreview(g); void this.loadReminders(g); void this.applyDeepLink(g);
+      }
       else { const items = data.items.map(p => decorateProject(p, data.stages || [])); this.clearPreview();
         this.setData({ items, owner: data.owner, detail: null, managementBrief: data.owner || (data.collaboration && items.some(p => p.my_role === 'manager')), activeCount: items.filter(p => p.status === 'active').length,
           filteredItems: items.filter(p => this.data.statusFilter !== 'active' || p.status === 'active'),
           canBrief: data.owner || data.items.some(p => p.status !== 'archived') });
         void this.loadWorkbench(g); }
-    } catch (error) { if (this.current(g)) { this.clearPreview(); this.setData({ error: errorText(error), detail: null, items: [], filteredItems: [] }); } }
+    } catch (error) { if (this.current(g)) { this.clearPreview(); this.setData({ error: errorText(error), detail: null, items: [], filteredItems: [],
+      scheduleOpen: false, scheduleForm: null, ...(this.data.sheet === 'schedule' ? { sheet: '', sheetOpen: false } : {}) }); } }
     finally { if (this.current(g)) this.setData({ loading: false }); }
   },
   chooseStatus(e) { const statusFilter = e.currentTarget.dataset.status; if (!['all','active'].includes(statusFilter)) return;
@@ -200,8 +210,10 @@ Page({
     const project = this.data.detail.project;
     if (link.scheduleNode) {
       this._deepLinkApplied = true;
-      if (this.data.detail.progress?.nodes.some(node => node.key === link.scheduleNode)) {
-        this.setData({ focusNode: link.scheduleNode }, () => {
+      const progress = this.data.detail.progress;
+      const editable = progress?.management?.milestones.some(node => node.key === link.scheduleNode);
+      if (editable || progress?.nodes.some(node => node.key === link.scheduleNode)) {
+        this.setData({ focusNode: link.scheduleNode, scheduleOpen: !!editable }, () => {
           if (this.current(g)) wx.pageScrollTo({ selector: '#schedule-' + link.scheduleNode, duration: 250 });
         });
       } else wx.showToast({ title: '这个计划节点已变化，请查看当前计划', icon: 'none' });
@@ -306,6 +318,11 @@ Page({
   openStageList() { if (this.data.detail && !this.data.busy) this.showSheet({ sheet: 'stages' }); },
   openMembers() { if (this.data.detail && !this.data.busy) this.showSheet({ sheet: 'members' }); },
   back() {
+    if (this.data.scheduleOpen) {
+      if (this.data.busy) return;
+      this.setData({ scheduleOpen: false, scheduleForm: null, sheet: '', sheetOpen: false });
+      return;
+    }
     if (this.data.projectId) { this.clearPreview(); this.setData({ projectId: '', detail: null, sheet: '' }); this.load(); }
     else wx.switchTab({ url: '/pages/mine/mine' });
   },
@@ -376,37 +393,41 @@ Page({
   },
   submit() {
     const s = this.data, d = s.detail; if (!d || s.busy || s.pending) return;
+    if (s.sheet === 'schedule') return this.submitSchedule();
     if (s.sheet === 'progress') return this.queue('progress', { stageKey: d.stages[s.selectedStage].key, note: s.note || '', sendReminder: s.sendReminder });
     if (s.sheet === 'contact') return this.queue('contact', { stageKey: s.stageKey, staffIds: s.selectedIds, primaryStaffId: (s.primaryOptions[s.selectedPrimary] || {}).id || null });
     if (s.sheet === 'member' && s.staffOptions[s.selectedStaff]) return this.queue('member', { adminId: s.staffOptions[s.selectedStaff].id, role: s.roleOptions[s.selectedRole].key, active: true, workLabel: s.workLabel });
     wx.showToast({ title: '请先选择员工', icon: 'none' });
   },
-  queue(action, body) {
+  queue(action, body, expectedVersion = this.data.detail?.project.version) {
     if (!this.current()) return;
     const pending = { path: '/miniprogram/construction/projects/' + this.data.detail.project.id + '/' + action,
-      body: { ...body, expectedVersion: this.data.detail.project.version }, key: operationKey(), identityKey: this._identityKey };
+      body: { ...body, expectedVersion }, key: operationKey(), identityKey: this._identityKey };
     try { wx.setStorageSync(this._storageKey, pending); } catch { wx.showToast({ title: '无法保留提交记录，请稍后重试', icon: 'none' }); return; }
-    this.setData({ pending }); this.sendPending();
+    this.setData({ pending }); return this.sendPending();
   },
   async sendPending() {
     const pending = this.data.pending;
     if (!pending || pending.identityKey !== this._identityKey || this.data.busy || !this.current()) return;
     const token = this._token, identityKey = this._identityKey;
     const accepts = () => this.current() && this._token === token && this._identityKey === identityKey;
+    const schedule = pending.path.endsWith('/schedule');
     this.setData({ busy: true });
     try {
       const result = await api.request(pending.path, 'POST', pending.body, { headers: { 'Idempotency-Key': pending.key } });
       if (!result.data || !result.data.id || !Number.isInteger(result.data.version)) throw new Error('incomplete receipt');
+      if (schedule && (result.data.scope !== 'schedule' || !result.data.scheduleId
+        || pending.path !== '/miniprogram/construction/projects/' + result.data.id + '/schedule')) throw new Error('incomplete schedule receipt');
       if (!accepts()) return;
-      wx.removeStorageSync(this._storageKey); this.setData({ pending: null, sheet: '' });
-      wx.showToast({ title: '工地资料已保存', icon: 'success' }); await this.load();
+      wx.removeStorageSync(this._storageKey); this.setData({ pending: null, sheet: '', sheetOpen: false, scheduleForm: null });
+      wx.showToast({ title: schedule ? '施工计划已保存' : '工地资料已保存', icon: 'success' }); await this.load();
     } catch (error) {
       if (!accepts()) return;
       const knownFailure = error.statusCode >= 400 && error.statusCode < 500;
       if (knownFailure) { wx.removeStorageSync(this._storageKey); this.setData({ pending: null }); }
       wx.showToast({ title: knownFailure ? errorText(error) : '提交结果待核对，请核对同一次操作', icon: 'none' });
       if (knownFailure && [401, 403, 404, 409].includes(error.statusCode)) {
-        if (error.statusCode !== 409) this.setData({ sheet: '', detail: null, items: [] });
+        if (error.statusCode !== 409) this.setData({ sheet: '', sheetOpen: false, detail: null, items: [], scheduleForm: null });
         await this.load();
         if (!accepts()) return;
         if (!this.data.detail) this.setData({ sheet: '' });
@@ -417,6 +438,71 @@ Page({
         }
       }
     } finally { if (accepts()) this.setData({ busy: false }); }
+  },
+  openSchedule() {
+    if (!this.current() || !this.data.detail?.manage || !this.data.detail.progress?.management) return;
+    this.setData({ scheduleOpen: true, sheet: '', sheetOpen: false }, () => wx.pageScrollTo?.({ scrollTop: 0, duration: 0 }));
+  },
+  openScheduleForm(e) {
+    const { detail, busy, pending } = this.data;
+    if (!this.current() || !detail?.manage || detail.project.status !== 'active' || busy || pending) return;
+    const management = detail.progress?.management;
+    if (!management) return;
+    const key = e.currentTarget.dataset.key;
+    const node = key ? management.milestones.find(item => item.key === key) : null;
+    if (key && (!node?.valid || node.completedAt)) return;
+    const kind = !key ? 'template' : node.kind === 'handover' ? 'agreement' : 'followup';
+    const title = kind === 'template' ? '套用阶段模板' : kind === 'followup' ? '跟进节点' : node.agreedDate ? '登记改期' : '登记约定日期';
+    this.showSheet({ sheet: 'schedule', scheduleForm: { kind, node, title, version: detail.progress.version,
+      outcome: 'ongoing', start: node?.estimate?.start || '', end: node?.estimate?.end || '', date: node?.agreedDate || '',
+      note: node?.note || '', reason: '', confirmedOffline: false } });
+  },
+  editScheduleField(e) {
+    const form = this.data.scheduleForm, field = e.currentTarget.dataset.field;
+    if (!form || this.data.busy || this.data.pending || !['start', 'end', 'date', 'note', 'reason'].includes(field)) return;
+    this.setData({ scheduleForm: { ...form, [field]: e.detail.value, ...(field === 'date' ? { confirmedOffline: false } : {}) } });
+  },
+  chooseScheduleOutcome(e) {
+    const form = this.data.scheduleForm, outcome = e.currentTarget.dataset.outcome;
+    if (!form || this.data.busy || this.data.pending
+      || !(outcome === 'ongoing' || (outcome === 'completed' && form.node?.canConfirmCompletion))) return;
+    this.setData({ scheduleForm: { ...form, outcome } });
+  },
+  clearScheduleEstimate() {
+    if (this.data.scheduleForm && !this.data.busy && !this.data.pending) {
+      this.setData({ scheduleForm: { ...this.data.scheduleForm, start: '', end: '' } });
+    }
+  },
+  confirmAgreement(e) {
+    if (this.data.scheduleForm && !this.data.busy && !this.data.pending) {
+      this.setData({ scheduleForm: { ...this.data.scheduleForm, confirmedOffline: e.detail.value.includes('confirmed') } });
+    }
+  },
+  acknowledgeScheduleVersion() {
+    const { detail, scheduleForm, busy, pending } = this.data;
+    if (!detail?.manage || !scheduleForm || busy || pending) return;
+    const node = detail.progress?.management?.milestones.find(item => item.key === scheduleForm.node?.key);
+    if (scheduleForm.kind !== 'template' && (!node?.valid || node.completedAt)) return this.closeSheet();
+    this.setData({ scheduleForm: { ...scheduleForm, version: detail.progress.version, node: node || null, confirmedOffline: false } });
+  },
+  submitSchedule() {
+    const { detail, scheduleForm: f, busy, pending } = this.data;
+    if (!detail?.manage || detail.project.status !== 'active' || !f || busy || pending || f.version !== detail.progress?.version) return;
+    let change;
+    if (f.kind === 'template') change = { kind: 'template' };
+    else if (f.kind === 'agreement') {
+      if (!f.date || !f.confirmedOffline || (f.node.agreedDate && !f.reason.trim())) {
+        wx.showToast({ title: '请填写日期并核对线下确认', icon: 'none' }); return;
+      }
+      change = { kind: 'agreement', key: f.node.key, date: f.date, reason: f.reason, confirmedOffline: true };
+    } else {
+      if (f.outcome === 'ongoing' && (!!f.start !== !!f.end || f.start > f.end)) {
+        wx.showToast({ title: '请填写完整有效的预计时间', icon: 'none' }); return;
+      }
+      change = { kind: 'followup', key: f.node.key, outcome: f.outcome, note: f.note,
+        estimate: f.outcome === 'ongoing' && f.start ? { start: f.start, end: f.end } : null };
+    }
+    return this.queue('schedule', { change }, f.version);
   },
   stop() {},
 });

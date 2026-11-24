@@ -9,6 +9,7 @@
       <text>分享给朋友</text>
     </button>
     <view class="paper live-scope"><text class="section-title">公开机位</text><text class="body-text">{{detail.alias || '当前不可用'}}</text><text class="helper">仅此机位的实时无声画面。</text><text class="helper">由业主授权，经企业审核公开。</text></view>
-    <button wx:if="{{canConsult}}" class="primary live-primary" bindtap="consult">围观中有疑问？问小K</button><button class="book-link live-link" bindtap="back">返回工地详情 ↗</button><button wx:if="{{canConsult}}" class="book-link" data-designer="1" bindtap="consult">找设计师聊 ↗</button>
+    <text wx:if="{{guideQuestion && canConsult && shareAvailable}}" class="helper live-guide">{{guideQuestion}}</text>
+    <button wx:if="{{canConsult && shareAvailable}}" class="primary live-primary {{guideQuestion ? 'with-guide' : ''}}" bindtap="consult">围观中有疑问？问小K</button><button class="book-link live-link" bindtap="back">返回工地详情 ↗</button><button wx:if="{{canConsult && shareAvailable}}" class="book-link" data-designer="1" bindtap="consult">找设计师聊 ↗</button>
   </view>
 </view>

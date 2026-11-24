@@ -1,0 +1,163 @@
+<template name="report-board-photo">
+  <button wx:if="{{path}}" class="report-board-photo chat-button" data-original="{{photo.projectId + ':' + photo.recordId}}" bindtap="openReportBoardDetail"
+    aria-label="{{photo.room ? '查看' + photo.room + '原记录' : '查看现场原记录'}}">
+    <image class="chat-image" src="{{path}}" mode="aspectFill" />
+    <text class="chat-text" wx:if="{{label && photo.room}}">{{photo.room}}</text>
+  </button>
+</template>
+
+<template name="report-board-progress">
+  <view class="report-board-paper">
+    <view class="report-board-paper-head">
+      <text class="fabric-label">{{view.kind === 'weekly' ? '本期进展' : '现场进展'}}</text>
+      <button wx:if="{{view.originals.length}}" class="report-board-link chat-button" data-original="{{view.originals.length === 1 ? view.originals[0].key : ''}}" bindtap="openReportBoardDetail">查看原记录 ↗</button>
+    </view>
+    <block wx:for="{{view.projects}}" wx:key="key" wx:for-item="project">
+      <text wx:if="{{project.title}}" class="report-board-item-title">{{project.title}}</text>
+      <text wx:for="{{project.progress}}" wx:key="key" class="report-board-line" user-select>{{item.text}}</text>
+      <text wx:if="{{!project.progress.length}}" class="report-board-meta">暂无已发布的进展记录。</text>
+    </block>
+    <view wx:if="{{view.photos.length}}" class="report-board-photos">
+      <block wx:for="{{view.photos}}" wx:key="key">
+        <template is="report-board-photo" data="{{photo: item, path: paths[item.key], label: true}}" />
+      </block>
+    </view>
+    <text wx:if="{{photoError}}" class="report-board-meta">{{photoError}}</text>
+  </view>
+</template>
+
+<scroll-view wx:if="{{reportBoard && followupActive}}" class="report-board" scroll-y enhanced scroll-top="{{reportBoardScroll}}"
+  bindscroll="scrollReportBoard" refresher-enabled refresher-triggered="{{reportBoardRefreshing}}" bindrefresherrefresh="refreshReportBoard">
+  <view class="report-board-inner {{reportBoardRole === 'customer' ? 'report-board-owner' : ''}}">
+    <text class="report-board-title">{{reportBoardTitle || '工地日报与周报'}}</text>
+    <view class="report-board-meta-row">
+      <text wx:if="{{reportBoardView.subtitle || followupContext.enterprise.name}}" class="report-board-meta">{{reportBoardView.subtitle || followupContext.enterprise.name}}</text>
+      <button wx:if="{{reportBoardRole === 'customer' && followupContext}}" class="report-board-history report-board-owner-history chat-button" bindtap="reportBoardHistory">
+        <view class="report-board-history-label">
+          <image class="report-board-history-icon" src="../assets/welcome-notebook/clock.png" mode="aspectFit" aria-hidden="true"/>
+          <text>历史</text>
+        </view>
+      </button>
+    </view>
+    <text wx:if="{{reportBoardView.scopeName}}" class="report-board-meta">{{reportBoardView.scopeName}}</text>
+    <view class="report-board-toolbar">
+      <view class="report-board-tabs" aria-label="报告周期">
+        <button class="{{reportBoardKind === 'daily' ? 'active' : ''}} chat-button" data-kind="daily" bindtap="switchReportBoard" aria-pressed="{{reportBoardKind === 'daily'}}"><text class="report-board-tab-label">日报</text></button>
+        <button class="{{reportBoardKind === 'weekly' ? 'active' : ''}} chat-button" data-kind="weekly" bindtap="switchReportBoard" aria-pressed="{{reportBoardKind === 'weekly'}}"><text class="report-board-tab-label">周报</text></button>
+      </view>
+      <text wx:if="{{reportBoardRole === 'customer' && reportBoardView.period}}" class="report-board-period">{{reportBoardView.period}}</text>
+      <button wx:if="{{reportBoardRole !== 'customer' && followupContext}}" class="report-board-history chat-button" bindtap="reportBoardHistory">历史 <text aria-hidden="true">›</text></button>
+    </view>
+    <text wx:if="{{reportBoardRole !== 'customer' && reportBoardView.period}}" class="report-board-period">{{reportBoardView.period}}</text>
+    <view wx:if="{{reportBoardError || followupError || followupPending}}" class="report-board-paper report-board-feedback" role="alert">
+      <text>{{followupPending ? '上次操作结果正在核对。' : reportBoardError || followupError}}</text>
+      <button class="report-board-link chat-button" bindtap="{{followupPending ? 'recoverFollowup' : 'refreshReportBoard'}}">{{followupPending ? '核对结果' : '重新读取'}}</button>
+    </view>
+    <view wx:elif="{{reportBoardLoading || followupLoading}}" class="report-board-paper report-board-feedback" role="status">正在读取简报…</view>
+    <view wx:elif="{{!reportBoardView || reportBoardView.status}}" class="report-board-paper report-board-feedback" role="status">{{reportBoardView.status || (reportBoardKind === 'weekly' ? '暂无已保存的周报。' : '暂无已保存的日报。')}}</view>
+    <block wx:if="{{followupContext && reportBoardView && !reportBoardView.status}}">
+      <block wx:if="{{reportBoardRole === 'customer'}}">
+        <view wx:for="{{reportBoardView.decisions}}" wx:key="id" class="report-board-paper">
+          <text class="report-board-tag pending">待你确认</text>
+          <text class="report-board-item-title">{{item.title}}</text>
+          <text class="report-board-meta">{{item.room ? item.room + ' · ' : ''}}方案 V{{item.number}} · 当前状态</text>
+          <button class="report-board-button primary chat-button" data-id="{{item.id}}" bindtap="openReportBoardDecision">查看并确认 <text aria-hidden="true">›</text></button>
+        </view>
+        <view wx:if="{{!reportBoardView.decisions.length}}" class="report-board-paper report-board-feedback">暂无需你确认的事项。</view>
+        <template is="report-board-progress" data="{{view: reportBoardView, paths: reportBoardPaths, photoError: reportBoardPhotoError}}" />
+        <view class="report-board-paper">
+          <text class="fabric-label">接下来</text>
+          <block wx:for="{{reportBoardView.projects}}" wx:key="key" wx:for-item="project">
+            <text wx:for="{{project.arrangements}}" wx:key="key" class="report-board-line">{{item.text}}</text>
+            <text wx:if="{{!project.arrangements.length}}" class="report-board-meta">暂无已确认安排。</text>
+            <block wx:if="{{project.notes.length}}">
+              <text class="report-board-meta report-board-note-label">现场待沟通记录</text>
+              <text wx:for="{{project.notes}}" wx:key="*this" class="report-board-line">{{item}}</text>
+            </block>
+          </block>
+          <button class="report-board-button compact chat-button" bindtap="askReportBoard">问小K</button>
+        </view>
+        <view wx:if="{{reportBoardView.decided.length}}" class="report-board-paper">
+          <text class="fabric-label">方案处理记录</text>
+          <button wx:for="{{reportBoardView.decided}}" wx:key="id" class="report-board-row chat-button" data-id="{{item.id}}" bindtap="openReportBoardDecision"><text class="chat-text">{{item.title}}</text><text class="report-board-tag done chat-text">{{item.label}}</text></button>
+        </view>
+      </block>
+      <block wx:elif="{{reportBoardRole === 'designer'}}">
+        <view class="report-board-paper">
+          <view class="report-board-paper-head"><text class="fabric-label">待我核对</text><text class="report-board-meta">当前 {{reportBoardView.review.length || 0}} 项</text></view>
+          <text wx:if="{{!reportBoardView.review.length}}" class="report-board-meta">暂无待你核对的事项。</text>
+          <block wx:for="{{reportBoardView.review}}" wx:key="key">
+            <view wx:if="{{index === 0}}" class="report-board-design-feature">
+              <view class="report-board-design-copy">
+                <text class="report-board-meta">{{item.projectName}}{{item.room ? ' · ' + item.room : ''}}</text>
+                <text class="report-board-item-title">{{item.title}}</text>
+                <text wx:if="{{item.planNumber || item.photoCount}}" class="report-board-meta">{{item.planNumber ? '方案 V' + item.planNumber : ''}}{{item.planNumber && item.photoCount ? ' · ' : ''}}{{item.photoCount ? '现场照片 ' + item.photoCount + ' 张' : ''}}</text>
+                <button class="report-board-button primary chat-button" data-key="{{item.key}}" bindtap="openReportBoardAction">查看并答复 <text aria-hidden="true">›</text></button>
+              </view>
+              <template is="report-board-photo" data="{{photo: item.photo, path: reportBoardPaths[item.photo.key]}}" />
+            </view>
+            <button wx:else class="report-board-row chat-button" data-key="{{item.key}}" bindtap="openReportBoardAction">
+              <view class="chat-group"><text class="report-board-meta">{{item.projectName}}{{item.room ? ' · ' + item.room : ''}}</text><text>{{item.title}}</text></view>
+              <text class="report-board-tag pending chat-text">待核对</text><text class="chat-text" aria-hidden="true">›</text>
+            </button>
+          </block>
+        </view>
+        <view class="report-board-paper">
+          <text class="fabric-label">已核对</text>
+          <text wx:if="{{!reportBoardView.replied.length}}" class="report-board-meta">暂无已回复事项。</text>
+          <button wx:for="{{reportBoardView.replied}}" wx:key="key" class="report-board-row chat-button" data-key="{{item.key}}" bindtap="openReportBoardAction">
+            <text class="chat-text">{{item.projectName}} · {{item.title}}</text><text class="report-board-tag done chat-text">已回复</text><text class="chat-text" aria-hidden="true">›</text>
+          </button>
+        </view>
+        <text wx:if="{{reportBoardPhotoError}}" class="report-board-meta">{{reportBoardPhotoError}}</text>
+      </block>
+      <block wx:elif="{{reportBoardRole === 'worker'}}">
+        <view wx:for="{{reportBoardView.returned}}" wx:key="key" class="report-board-paper">
+          <text class="report-board-tag late">需补充</text>
+          <text class="report-board-item-title">{{item.title}}</text>
+          <text wx:if="{{item.returnReason}}" class="report-board-line">{{item.returnReason}}</text>
+          <button class="report-board-button primary chat-button" data-key="{{item.key}}" bindtap="openReportBoardAction">去补充 <text aria-hidden="true">›</text></button>
+        </view>
+        <view class="report-board-paper">
+          <text class="fabric-label">{{reportBoardKind === 'weekly' ? '接下来要交接' : '下一步'}}</text>
+          <text wx:if="{{!reportBoardView.next.length}}" class="report-board-meta">暂无待你处理的下一步任务。</text>
+          <button wx:for="{{reportBoardView.next}}" wx:key="key" class="report-board-row chat-button" data-key="{{item.key}}" bindtap="openReportBoardAction">
+            <text class="chat-text">{{item.title}}</text><text class="report-board-tag pending chat-text">{{item.label}}</text><text class="chat-text" aria-hidden="true">›</text>
+          </button>
+        </view>
+        <view class="report-board-paper">
+          <view class="report-board-paper-head"><text class="fabric-label">我的上报</text><text class="report-board-meta">当前审核状态</text></view>
+          <text wx:if="{{!reportBoardView.receipts.length}}" class="report-board-meta">本期暂无上报回执。</text>
+          <button wx:for="{{reportBoardView.receipts}}" wx:key="key" class="report-board-row chat-button" data-key="{{item.key}}" bindtap="openReportBoardAction">
+            <text class="chat-text">{{item.title}}</text><text class="report-board-tag {{item.status === 'approved' || item.resubmittedRecordId ? 'done' : 'pending'}} chat-text">{{item.label}}</text><text class="chat-text" aria-hidden="true">›</text>
+          </button>
+        </view>
+        <button wx:if="{{reportBoardView.captureProject}}" class="report-board-button chat-button" bindtap="captureReportBoard">现场上报 <text aria-hidden="true">›</text></button>
+      </block>
+      <block wx:elif="{{reportBoardRole === 'boss'}}">
+        <view wx:if="{{reportBoardView.stats.length}}" class="report-board-paper report-board-stats">
+          <view class="chat-group" wx:for="{{reportBoardView.stats}}" wx:key="label"><text class="report-board-number {{index === 1 && item.value !== '0' ? 'late' : ''}}">{{item.value}}</text><text>{{item.label}}</text></view>
+        </view>
+        <view class="report-board-paper">
+          <view class="report-board-paper-head"><text class="fabric-label">优先处理</text><text class="report-board-meta">当前异常</text></view>
+          <text wx:if="{{!reportBoardView.actions.length}}" class="report-board-meta">暂无需优先处理的事项。</text>
+          <view wx:for="{{reportBoardView.actions}}" wx:key="key" class="report-board-exception">
+            <view class="report-board-paper-head"><text class="report-board-item-title">{{item.name}}</text><text class="report-board-tag {{item.late ? 'late' : 'pending'}}">{{item.tag}}</text></view>
+            <text class="report-board-line">{{item.title}}</text>
+            <text wx:if="{{item.waitingFor}}" class="report-board-meta">{{item.late ? '负责人 · ' : '等待 · '}}{{item.waitingFor}}</text>
+            <button class="report-board-link chat-button" data-key="{{item.key}}" bindtap="openReportBoardAction">{{item.late ? '查看节点' : '查看事项'}} ›</button>
+          </view>
+          <text wx:if="{{reportBoardView.unverified}}" class="report-board-meta">部分工地计划待核实。</text>
+        </view>
+        <view class="report-board-paper">
+          <text class="fabric-label">已确认安排</text>
+          <text wx:for="{{reportBoardView.plans}}" wx:key="key" class="report-board-line">{{item.projectName}} · {{item.text}}</text>
+          <text wx:if="{{!reportBoardView.plans.length}}" class="report-board-meta">暂无已确认安排。</text>
+        </view>
+        <button class="report-board-button chat-button" bindtap="reportBoardProjects">查看全部工地 <text aria-hidden="true">›</text></button>
+      </block>
+      <text wx:if="{{reportBoardView.truncated}}" class="report-board-meta report-board-note-label">本份简报未包含全部工地。</text>
+      <button class="report-board-link report-board-more chat-button {{(followupBusy || followupPending) ? 'is-disabled' : ''}}" bindtap="openReportBoardDetail" disabled="{{followupBusy || followupPending}}">{{reportBoardKind === 'weekly' ? '查看完整周报' : '查看完整日报'}} ↗</button>
+    </block>
+  </view>
+</scroll-view>

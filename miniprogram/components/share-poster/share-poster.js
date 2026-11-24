@@ -40,7 +40,8 @@ Component({
         .exec(async (res) => {
           const canvas = res[0].node;
           const ctx = canvas.getContext('2d');
-          const dpr = wx.getSystemInfoSync().pixelRatio;
+          const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+          const dpr = windowInfo.pixelRatio;
 
           // 设置内部宽高（固定逻辑像素，绘图时用逻辑像素）
           canvas.width = this.data.canvasWidth * dpr;

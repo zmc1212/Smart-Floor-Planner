@@ -135,6 +135,18 @@ const COPY = {
   requirements_proposal_required: '请返回对话说明要整理或修改的需求，核对提案后再保存。',
   requirements_customer_edit_conflict: '这份需求含有你正式确认时修改的内容，请先核对已确认摘要。',
   requirements_history_too_long: '这段对话较长，请开启新对话并集中补充装修需求后再整理。',
+  appointment_lead_required: '请先选择一份服务档案，再预约上门。',
+  appointment_slot_unavailable: '这个时段刚被占用，请换一个时段。',
+  appointment_already_exists: '这套服务档案已有预约，请查看已有预约。',
+  appointment_no_measurer_available: '暂时没有可上门的现场顾问，请换一个时段。',
+  appointment_designer_unavailable: '暂时没有可接待的设计师，请稍后再试。',
+  appointment_phone_required: '请先在“我的”里完善手机号后再预约。',
+  appointment_phone_invalid: '请输入有效的手机号。',
+  appointment_survey_complete: '这套房子已完成正式量房，无需再约上门。',
+  appointment_lead_not_ready: '设计师暂时无法接待，请稍后再试。',
+  appointment_date_out_of_range: '这个日期暂不可预约，请选择其他日期。',
+  appointment_time_past: '这个时段已经过去，请重新选择。',
+  lead_phone_conflict: '该手机号已绑定其他客户档案，请联系服务人员。',
 };
 
 function errorCopy(error) {

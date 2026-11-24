@@ -8,6 +8,7 @@ import { readStageSettings } from './stages-store';
 import { currentRecord, projectSiteIssues, siteIssueTitle, type IssueView } from './site-issues';
 import { latestPendingReport, parseReportRange, workerReportHistory, workerTodaySummary } from './workbench-reports';
 import type { ConstructionActor } from './contracts';
+import { inspectionSummary } from './inspection';
 
 type Project = { id: string; name: string; role: 'worker' | 'manager' | 'observer' | 'designer';
   status: string; stageKey: string | null; assigned: boolean };
@@ -58,12 +59,12 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
         where p.enterprise_id=${eid} and p.status<>'archived' and l.archived_at is null order by p.id desc limit 21 for share of p,l`);
       const enterprise = await one(tx, sql`select name from app.enterprises where id=${eid}`);
       return { view: 'boss', enterpriseName: String(enterprise?.name || ''), pendingReport: await latestPendingReport(tx, eid),
+        inspection: await inspectionSummary(tx, actor, true),
         ...(await constructionBrief(tx, eid, projects, stages, true)) };
     }
 
-    // The role shown to a construction employee is the live membership of
-    // the selected project. A design account only lists its design assignments.
-    const allowed = staffRole === 'designer' ? sql`m.role='designer'` : sql`m.role in ('worker','manager','observer')`;
+    // The reviewer scope follows assignments rather than the account label.
+    const allowed = staffRole === 'designer' ? sql`m.role in ('designer','manager')` : sql`m.role in ('worker','manager','observer','designer')`;
     const projects = await rows<Project>(tx, sql`select p.id::text,p.name,p.status,p.current_stage_key as "stageKey",m.role,
       exists(select 1 from app.construction_stage_assignments s where s.enterprise_id=p.enterprise_id and s.project_id=p.id
         and s.stage_key=p.current_stage_key and s.admin_id=m.admin_id) as assigned
@@ -75,7 +76,7 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
     if (requested && !project) fail('construction_not_found', 404);
     const defaultView = staffRole === 'designer' ? 'designer' : 'worker';
     const choices = projects.map(({ id, name }) => ({ id, name }));
-    const stageChoices = stages.map(({ key, name }) => ({ key, name }));
+    const stageChoices = stages.map(({ key, name, inspectionCheckpoints }) => ({ key, name, ...(inspectionCheckpoints?.length ? { inspectionCheckpoints } : {}) }));
     if (!project) return { view: defaultView, choices, project: null, stages: stageChoices };
     const stageName = stages.find(stage => stage.key === project.stageKey)?.name || '阶段待标记';
     const scope = { choices, stages: stageChoices, project: { id: project.id, name: project.name, status: project.status, stageName } };
@@ -85,12 +86,14 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
     const active = issues.filter(issue => issue.sourceAvailable && (awaitingOwner.has(issue.status) || awaitingReview.has(issue.status)));
     const mine = active.filter(issue => issue.ownerId === actor.adminId);
     if (project.role === 'designer') return { view: 'designer', ...scope,
+      inspection: await inspectionSummary(tx, actor, owner),
       reply: mine.filter(issue => awaitingOwner.has(issue.status)).slice(0, 3).map(issueCard),
       changes: mine.filter(issue => issue.designRelated && awaitingReview.has(issue.status)).slice(0, 3).map(issueCard),
       pendingReport: await latestPendingReport(tx, eid, project.id) };
     if (project.role === 'manager') {
       const issue = active.find(issue => issue.classification === 'awaiting_review');
       return { view: 'manager', ...scope, draft: await recordCard(tx, actor, project.id, 'draft'),
+        inspection: await inspectionSummary(tx, actor, owner),
         review: issue ? issueCard(issue) : await recordCard(tx, actor, project.id, 'rework'),
         pendingReport: await latestPendingReport(tx, eid, project.id) };
     }

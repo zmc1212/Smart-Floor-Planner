@@ -136,6 +136,7 @@ Page({
     bleAutoConnecting: false,
     roleWorkbenchRole: '',
     customerTab: 'xiaok',
+    requestedFamilyProjectId: '',
     siteWorkbenchTab: 'workbench',
     redirectingSalesperson: false,
   },
@@ -145,6 +146,12 @@ Page({
     if (tabBar && typeof tabBar.syncSelected === 'function') {
       tabBar.syncSelected();
     }
+  },
+
+  onSiteWorkbenchSheetChange(event) {
+    const app = getApp();
+    if (app && app.globalData) app.globalData.siteWorkbenchSheetOpen = Boolean(event.detail && event.detail.open);
+    this.syncTabBar();
   },
 
   showGuestServiceHome() {
@@ -183,11 +190,12 @@ Page({
   },
 
   onLoad: function (options) {
+    const requestedFamilyProjectId = /^[1-9]\d*$/.test(options?.familyProject || '') ? options.familyProject : '';
     const promotionCode = serviceEntryCode(options?.promotionCode);
     if (promotionCode) getApp().globalData.customerTab = 'xiaok';
-    else if (options?.customerTab === 'service') getApp().globalData.customerTab = 'service';
+    else if (options?.customerTab === 'service' || requestedFamilyProjectId) getApp().globalData.customerTab = 'service';
     const global = getApp().globalData;
-    this.setData({ customerTab: global.customerTab || 'xiaok', promotionCode, siteWorkbenchTab: global.siteWorkbenchTab || 'workbench' });
+    this.setData({ customerTab: global.customerTab || 'xiaok', promotionCode, requestedFamilyProjectId, siteWorkbenchTab: global.siteWorkbenchTab || 'workbench' });
     if (!this.isLoggedIn()) {
       this.showGuestServiceHome();
       return;
@@ -195,7 +203,7 @@ Page({
 
     if (this.redirectAwayFromHomeIfNeeded()) return;
 
-    var sysInfo = wx.getSystemInfoSync();
+    var sysInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     var menuButtonInfo = wx.getMenuButtonBoundingClientRect();
     var navBarContentHeight = (menuButtonInfo.top - sysInfo.statusBarHeight) * 2 + menuButtonInfo.height;
     var navBarHeightTotal = sysInfo.statusBarHeight + navBarContentHeight;
@@ -831,7 +839,16 @@ Page({
     getApp().globalData.bleConnected = true;
   },
 
-  onShareAppMessage: function () {
+  onFamilyEntryConsumed() {
+    this.setData({ requestedFamilyProjectId: '' });
+  },
+
+  onShareAppMessage: function (event) {
+    if (event?.from === 'button' && event.target?.dataset?.shareType === 'owner-family' &&
+        this.data.roleWorkbenchRole === 'customer' && this.data.customerTab === 'service') {
+      const invite = this.selectComponent('#owner-site-home')?.familyInviteShare();
+      if (invite) return invite;
+    }
     return {
       title: '智能量房大师 - 专业 AR 量房设计工具',
       path: '/pages/index/index',

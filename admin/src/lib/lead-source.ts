@@ -10,7 +10,7 @@ export function isLeadCommissionSource(source: string | null | undefined): sourc
   return Boolean(source && (LEAD_COMMISSION_SOURCES as readonly string[]).includes(source));
 }
 
-export function isTwoRoleCommissionSource(source: string | null | undefined) {
+export function isStaffCommissionSource(source: string | null | undefined) {
   return source === 'staff_activity' || source === 'manual_entry';
 }
 
@@ -20,7 +20,7 @@ export function shouldSnapshotLeadCommissions(lead: {
   measurerId?: bigint | null;
 }) {
   return Boolean(
-    isTwoRoleCommissionSource(lead.source) ||
+    isStaffCommissionSource(lead.source) ||
       lead.referrerMembershipId ||
       lead.measurerId
   );

@@ -15,9 +15,26 @@ Enterprise 1 and 3 use their existing models through the binding at `/app/tmp/na
 
 For application rollback, recover the previous runtime environment from the protected release baseline under `/datas/smartfloor/backups/pre-20261124-001.XWQRoOLN` as applicable, and restore the saved family-invite chunk if recreating `20261120-001`. The WeChat Mini Program store release remains pending.
 
+## 2026-11-19 measurement-booking release
+
+Production Admin, the lead claim worker and the XiaoK worker ran `20261119-004` with image config digest `sha256:69413a9e738cfc440f542443dddc81eaca9b12baca4c7c17b294245f7aa6a9a5`. The server assembled the verified image using three identical blobs from the previous upload. The deployed `sfp-admin-release-20261119-004.zip` has SHA-256 `b15b59f1f01e06e7f72ca033bcdd57cf78d6562ca574b3c93c9e32f53e1e5791`. The preceding application release was `20261119-002`. [Release receipt](../tmp/designer-booking-release-20261119/production-finish-004.log).
+
+The `20261119-003` attempt applied `0143_measurement_appointment_contact` before its worker encountered PostgreSQL's unqualified relation requirement for `FOR UPDATE OF`. The application rollback restored `002` and retained the additive migration. `004` uses an unqualified lead alias for the lock. The ledger stays at 140 entries, `measurement_appointments.contact_phone` is nullable `text`, and the PostgreSQL volume identity is preserved. The pre-deploy backup `smart_floor_planner-20261119T132408Z-pre-20261119-004.dump` is 38,093,357 bytes and passed checksum verification. Admin login, both worker health checks, and the unauthenticated booking endpoint's `401` response passed. The temporary SSH public key was removed and a new login attempt was denied. [Rollback record](../tmp/designer-booking-release-20261119/production-deploy.log), [server verification](../tmp/designer-booking-release-20261119/production-server-004.log), [public verification](../tmp/designer-booking-release-20261119/production-public-004.json).
+
+WeChat developer version `20261119.3` was uploaded, and the on-device preview uses the production API. Formal WeChat review and publication are pending. [Upload receipt](../tmp/designer-booking-release-20261119/wechat-upload.log).
+
+## 2026-11-20 construction family-flow hot fixes (20261120-001 writable layer)
+
+`20261120-001` shipped on 2026-11-20 (`git_commit bc834f43`, full dirty-workspace release, built 13:40:34, with migrations 0141–0143 and the pre-migration backup `smart_floor_planner-20261120T055935Z-pre-20261120-001.dump`). Two in-container hot fixes were later applied to the `20261120-001` writable layer (`.next/server/chunks/_0k7vy46cjrv0a._.js`); the equivalent repository fixes are recorded in the bilingual module docs and the next image release supersedes them:
+
+1. The family invite-code branch compared the path length against `4===I.length`; corrected to `3===I.length`. With `4`, `GET /api/miniprogram/construction/projects/:id/family-invite-code?env=` never matched and fell through to the staff gate returning 403 `construction_forbidden`, so owners could never mint the QR code.
+2. Removed six `actor.mode === 'customer'` branch guards across the construction customer flows (accept, customer-projects, family-invite-code, video, progress/family-viewers/family-invite, plus the De-Morgan-shaped owner-sites guard): these flows authorize by the underlying user id (owner gate and family-view bindings live inside the service), so the same user sees identical data under any identity mode; accounts whose login default is the staff context (employee or referrer identities) are no longer locked out of the family flow.
+
+Verified with a staff-token probe (accept moved from `construction_not_found` to `construction_invite_invalid`, i.e. the branch is reached, and customer-projects returns 200); a real phone accepted a family invite by scanning and viewed progress and live video read-only. Diagnostic scripts and evidence: `tmp/family-invite-code-repro-20261120/`.
+
 ## 2026-11-18 renovation profile release
 
-Production Admin, lead Worker and XiaoK Worker ran `20261118-003`, image config digest `sha256:996b7e77b8d70684c06dada4678c2717ab9514f08625e7eed4d95a424ce01887`. The release builds on `002` with the focused housing-extraction correction and retains its ordinary-consultation routing fix. It includes no new migration, and the ledger remains at 135 entries. Exact hashes are shipped in `SOURCE_BINDING.json`. Database HTTP health, both Workers, authenticated administrator smoke and the approved test-owner readback passed. All eleven runtime-source hashes and trial inputs matched before and after the four-turn `003` check. The earlier eleven-turn `002` batch remains separate, including its failed housing projection. [Release and verification](../tmp/staff-profile-housing-correction-20261118/production-verification.json).
+Production Admin, lead Worker and XiaoK Worker now run `20261118-003`, image config digest `sha256:996b7e77b8d70684c06dada4678c2717ab9514f08625e7eed4d95a424ce01887`. The release builds on `002` with the focused housing-extraction correction and retains its ordinary-consultation routing fix. It includes no new migration, and the ledger remains at 135 entries. Exact hashes are shipped in `SOURCE_BINDING.json`. Database HTTP health, both Workers, authenticated administrator smoke and the approved test-owner readback passed. All eleven runtime-source hashes and trial inputs matched before and after the four-turn `003` check. The earlier eleven-turn `002` batch remains separate, including its failed housing projection. [Release and verification](../tmp/staff-profile-housing-correction-20261118/production-verification.json).
 
 The standard deploy verified the pre-release custom backup `/datas/smartfloor/backups/postgresql/smart_floor_planner-20261117T185039Z-pre-20261118-003.dump` (37,015,839 bytes), its SHA-256 and archive catalog. PostgreSQL data-volume identity matched before and after release. Server receipts are in `deploy-state/first-reply-20261118-003/`. The earlier `001` migration failure, rolled-back transaction and alignment of the old profile table/lifecycle function to the existing `sfp_migrator` remain in `deploy-state/staff-profile-20261118-001/`. Forced RLS and `sfp_app` privileges were verified there. [Current deployment log](../tmp/staff-profile-housing-correction-20261118/production-deploy.log), [original migration receipt](../tmp/staff-profile-release-20261118/production-backup-and-health.txt).
 
@@ -25,7 +42,13 @@ The standard deploy verified the pre-release custom backup `/datas/smartfloor/ba
 
 **2026-11-18 worker report range release 20261118-004 (deployed).** With user authorization this release used `20261118-003` as the base and overlaid only the worker workbench report-range API (`from`/`to`), own report history and today summary, up to nine photos with construction-stage snapshots, and manager/designer/owner review permissions. Package `sfp-admin-release-20261118-004.zip` (SHA-256 `77a11c352bdbabbaa27149aafab74d101331e25726f9749538a532894b952e94`), image `zmc1212/sfp-admin:20261118-004` (`sha256:e9cb56e4f5dd070d0b9a66c0aab2a0b82e87d76b3ce699d3d9dadf5d5f70e500`). `auto_deploy.sh deploy` produced the pre-migration custom backup `smart_floor_planner-20261118T060611Z-pre-20261118-004.dump` (37,314,865 bytes). The migration ledger moved from 135 to 136 with `0140_construction_worker_reports` (`created_at=1797235200000`); the `stage_snapshot` column and `position <= 8` constraint were read back. `current-version`/`current-image` now select `004`, while `previous-version`/`previous-image` select `003`. Admin, lead worker and XiaoK worker all run `004` (the XiaoK worker was synced manually with the same `SFP_RUNTIME_ENV_FILE`); the PostgreSQL data volume identity is unchanged and health, login and core-path smoke checks passed. Online `GET /api/miniprogram/construction/workbench?projectId=5&from=2026-11-18&to=2026-11-18` returns 200 for staff 31, staff 32 and designer 10; a wider range returns two history records; reversed ranges, spans over 92 days and a missing `to` still return 422. Mini Program `20261118.1` needs no re-upload. [Verification evidence](../tmp/worker-reports-20261118/production-verification.json).
 
-**2026-11-18 camera H5 autoplay hotfix (bounded).** Per the user's choice, only the H5 files inside the running container were replaced; no image was rebuilt. The production Admin `smart-floor-planner-admin` now serves `/app/public/construction-camera/player.js` patched from the deployed baseline with live muted autoplay on entry/camera switch/return-to-live, first-touch and WeixinJSBridgeReady retry, a 3s no-picture hint and replay after a playback-mode change. SHA-256 `37e3c883d71de950ab2fa43b37c1746e7c25bc5f0d60e5be2c8f341f13a42dec`. The previous `player.js/index.html/style.css` are backed up in `/datas/smartfloor/backups/camera-h5-hotfix-20261118/` (previous player.js `f0899641f03f4beb2ce39199c1491713e5bb1b5e68564953cbb7208367dc32ae`); the latter two were not replaced. Public readback is 200 with `Cache-Control: no-store` and the new markers present. Rollback: `docker cp /datas/smartfloor/backups/camera-h5-hotfix-20261118/player.js smart-floor-planner-admin:/app/public/construction-camera/player.js`. The hotfix exists only in the running container; after the 004 release recreated Admin it was re-injected from the original file (`37e3c883d71de950ab2fa43b37c1746e7c25bc5f0d60e5be2c8f341f13a42dec`) and read back identical, with `player-hotfix-37e3.js` added to the backup directory; the repository version still needs a commit to carry it forward. Physical-WeChat autoplay policy remains unverified. [Hotfix evidence](../tmp/camera-h5-hotfix-20261118/assessment.json)
+**Current construction video cover (2026-11-20, deployed).** The scoped release installs `index.html`, `player.js`, and `style.css` in the writable layer of `smart-floor-planner-admin` on `20261119-004`. For enterprise 1 and 3 camera sessions, `sfp-construction-camera-current` at `127.0.0.1:33418` serves `GET /api/construction-camera/cover/:bindingId` using the shared session handler. The running gateway's host-bound bundle has SHA-256 `527928a7cee4c69f748d50cd46776761c735c8a0149176abf8eeef33a0665dfb`. Include the tracked H5 files and gateway code in subsequent image builds. External readback matched all three assets with `no-store`, and authenticated entry for the enterprise 3 test site returned its 12:00:15 China time JPEG. Anonymous access returned 401. The dedicated SSH key was revoked and a fresh login was refused. Android WeChat cover and tap-to-play acceptance remains pending. [H5 rollout](../tmp/camera-android-autoplay-20261120/production-release/publish-h5-2026-11-20T04-01-21-834Z.json) · [Public checks](../tmp/camera-android-autoplay-20261120/production-release/public-verification.json) · [Authorized cover](../tmp/camera-android-autoplay-20261120/production-release/private-after.json)
+
+The first two scheduled slots hit WVP's three-second snapshot timeout during 4G startup. WVP finished writing both images after the timeout. The original JPEGs were matched to their slots and recovered with their actual capture times. The deployed scheduler now waits for the shared live stream via WVP's start endpoint before asking for the snapshot. The updated provider sequence returned a new JPEG from the production test camera and the isolated scheduler checks passed. The next natural production slot remains pending. [WVP timeout](../tmp/camera-android-autoplay-20261120/production-release/capture-error-2026-11-20T04-02-35-922Z.json) · [Provider verification](../tmp/camera-android-autoplay-20261120/production-release/trace-warmed-camera-capture-2026-11-20T04-04-47-390Z.json) · [Gateway rollout](../tmp/camera-android-autoplay-20261120/production-release/promote-warmed-capture-2026-11-20T04-08-02-538Z.json)
+
+For rollback, compare the running digests with the release receipts, then atomically restore the three `previous-*` assets from `/datas/smartfloor/backups/camera-cover-hotfix-20261120.Cr8r8RoU`, preserving target owner and mode. Restore `gateway.previous.cjs` to the gateway bind path `/datas/smartfloor/camera-gateway/gateway.cjs` and restart `sfp-construction-camera-current`. The backup `gateway-route.cjs` supports rollback of only the scheduled capture change. Verify the gateway health, public hashes and anonymous denial. The preceding autoplay-only hotfix was exercised on Android and still required a gesture. [Autoplay-only receipt](../tmp/camera-autoplay-20261120/production/publish-2026-11-20T03-05-16-818Z.json)
+
+**2026-11-23 Project 5 synthetic debug feed (deployed).** The production 20261120-001 Admin stays in service. The camera gateway and the existing HTTPS camera include route the exact project 5 owner cover, camera list and entry paths through the scoped gateway. Only enterprise 3 project 5 owner user 2 is in the allowlist. The internal `sfp-camera-debug:8080` source uses the local `sfp-camera-debug:20261123-003` image and serves the generated H.264 pattern and a JPEG extracted from the same loop in the private video network. WVP and device records are outside the source path. Before and after SQL reads agree on zero target bindings and project 6 camera 1 binding 6. Restore the backed-up `nginx-before.conf`, validate and reload Nginx, stop the new gateway, restore the parked `sfp-construction-camera-before-project5-20261123` name/start it, then stop the scoped source container. The backed-up configuration and bundle are in `/datas/smartfloor/backups/project5-debug-20261123.HFQle7CD/`. [Deployment receipt](../tmp/project5-debug-camera-synthetic/release/deploy-output.txt) The 13:45 cover rollout can be rolled back on its own. Stop the current gateway and restore its mounted bundle from `gateway-before.cjs`. Stop and rename the current source, rename the parked `sfp-camera-debug-before-cover-20261123` container to `sfp-camera-debug` and start it, then start the gateway. The cover rollback files are in `/datas/smartfloor/backups/project5-cover-20261123.EL8cAlky/`. [Cover release receipt](../tmp/project5-debug-camera-cover/deploy-output.txt)
 
 <!-- cloud-camera-cloud-mini-integration -->
 **Private SD clock integration — bounded Implemented.** One additional sfp-wvp-sd-clock-20261106 container uses the original image/read-only WVP logs and protected allowlist/token config under /datas/sfp-wvp-sd-clock-20261106/; only127.0.0.1:28083,UID10001/cap_drop/read-only mounts/no Docker socket, restart unless-stopped. It observes fresh DeviceStatus time through the original WVP; original28 containers/binaries/site/configuration remain unchanged. Config is0400 and backed up privately. CAMERA_SD_CLOCK_ORIGIN/TOKEN select it explicitly, without server-time fallback. Only current registration/calibrated windows enter Mini; cached starts recheck identity/skew. Real Mini-host/H5 SD query/play/reentry/outage-retry/STOP passed; private media/duties0. Own3417/3418/four forwards/unit DB/key removed; clone/shared3017/D/SSH preserved. Fresh SQL/clock/site backup and new-login denial pass. [Evidence](../tmp/cloud-camera-mini-sd-20261106/assessment.json). No formal business/Mini release or full restore/physical WeChat/PTZ/reconnect claim.
@@ -230,27 +253,34 @@ deny public port `5432`.
 
 ## Build
 
-Run `release.bat` from `admin`. It executes ESLint, survey, AI, and PostgreSQL
-tests, a Next.js production build, and a no-cache Docker build. It generates the
-next daily `YYYYMMDD-NNN` version or accepts an explicit value such as:
+For routine local packaging, run `release.bat` from `admin`. It checks Docker,
+runs ESLint and the survey canvas and AI tests, then builds Next.js in Docker
+with layer caching. The default command needs no local PostgreSQL connection.
 
 ```powershell
-release.bat -Version 20260901-001
+.\release.bat
 ```
 
-Before the quality gate, the script checks the Docker engine and runs `npm run
-db:check`. Docker Desktop must be running, and the local database selected by
-`DATABASE_URL` must be reachable and migrated. `ECONNREFUSED` on local port
-`5432` means the database is not accepting connections; it is not an ESLint
-failure. Start the existing local PostgreSQL service/container, then apply any
-pending local migrations with `npm run db:migrate` and rerun `release.bat`.
-Do not point the contract tests at production. Failed prechecks stop the release;
-they do not skip tests or automatically migrate a database.
+For full release validation, run `.\release.bat -Full`. This adds `npm run
+db:check`, the isolated PostgreSQL contract tests, a host Next.js build, and a
+no-cache Docker build. The configured development database must be reachable.
+The contract tests use the migrated and idle `127.0.0.1:55432/xiaok_embedding_eval`
+clone with the application and owner connections from
+`tmp/xiaok-vector/connection.private.json` (an isolated `DATABASE_URL` in the
+shell can supply the application connection). The isolated preflight uses a
+five-second connection timeout and ten-second query timeout. A failed check or
+suite stops `-Full` before image packaging. Resolve database or tunnel issues on
+the development targets and run any needed migrations explicitly.
+
+The existing hotfix option `.\release.bat -Fast` skips local tests and lint and
+still runs the production build in Docker. The script chooses the next daily
+`YYYYMMDD-NNN` version or accepts `-Version 20260901-001` in any mode.
 
 The outputs are the versioned ZIP, its `.sha256` sidecar, and
 `auto_deploy.sh`. The ZIP contains the equally versioned Docker image, Compose,
-migrations, build metadata, and nested integrity manifests; it contains no
-runtime environment file.
+migrations, build metadata, and nested integrity manifests. `BUILD_INFO` records
+`release_mode` (`standard`, `full`, `fast`) and `postgresql_contract_tests`
+(`passed` or `not_run`). The archive contains no runtime environment file.
 
 ## Deploy
 
@@ -269,10 +299,23 @@ database, preserves the Compose project and PostgreSQL volume, creates
 and catalogs a non-empty custom dump with its SHA-256, runs Drizzle migrations,
 recreates Admin and the claim worker, and requires health, worker health,
 authenticated login, `/api/auth/me`, and configured core reads to pass.
+When a XiaoK worker is running in this Compose project or enabled through
+`COMPOSE_PROFILES=assistant`, it is recreated from the same image after Admin
+becomes healthy. Deployment waits for its health check. Each worker process
+reports its own preflight and tick. A disabled platform switch leaves it healthy
+and idle.
 Compose validation explicitly enables the `migration` profile so its
 profile-scoped `migrate` service is included in the preflight service check.
 The migration container uses the Drizzle files baked into the verified release
 image, avoiding a host bind mount whose path can differ after release promotion.
+
+The release baseline tracks the original bytes and order of the deployed
+`0141`–`0143` migrations. The stage Agent and answer controls upgrade follows them with `0144`–`0147`.
+Compose persists workflow definitions in the dedicated `native_workflow_store`
+volume at `/app/tmp/native-workflow-store` in Admin. The XiaoK worker executes
+through the internal Admin endpoint. An installation that overrides
+`NATIVE_WORKFLOW_STORE_DIR` retains its own persistent mount. Recover workflow
+definitions using the matching volume and PostgreSQL backups.
 
 Only a fully verified release becomes current. If verification fails after the
 new image starts, the script attempts to restore the image that was running
@@ -299,24 +342,11 @@ sudo tail -n 100 -F /var/log/nginx/access.log /var/log/nginx/error.log
 From another SSH terminal, send a non-mutating probe, then reproduce the scan:
 
 ```bash
-When a XiaoK worker is running in this Compose project or enabled through
-`COMPOSE_PROFILES=assistant`, it is recreated from the same image after Admin
-becomes healthy. Deployment waits for its health check. Each worker process
-reports its own preflight and tick. A disabled platform switch leaves it healthy
-and idle.
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://smartfloor.zlyun168.com/api/health
 ```
 
 Nginx records access when request processing finishes. If the probe is absent,
 check the matching virtual host and location: `access_log off`, a different file,
-The release baseline tracks the original bytes and order of the deployed
-`0141`–`0143` migrations. The stage Agent upgrade follows them with `0144`–`0146`.
-Compose persists workflow definitions in the dedicated `native_workflow_store`
-volume at `/app/tmp/native-workflow-store` in Admin. The XiaoK worker executes
-through the internal Admin endpoint. An installation that overrides
-`NATIVE_WORKFLOW_STORE_DIR` retains its own persistent mount. Recover workflow
-definitions using the matching volume and PostgreSQL backups.
-
 conditional logging or `buffer`/`flush` can suppress or delay a line. For all
 requests, enable an unconditional `access_log` on the site and remove overriding
 `off` directives from relevant locations. An unbuffered directive such as

@@ -45,10 +45,10 @@
     width: 43rpx;
     height: 43rpx;
   }
-  button.designer-entry {
+  .chat-button.designer-entry {
     background: transparent;
   }
-  button.designer-entry[disabled] {
+  .chat-button.designer-entry.is-disabled {
     color: #758477;
   }
   .guest-login-note {
@@ -75,7 +75,7 @@
     background: linear-gradient(145deg,#fffdf7,#f7f3ea);
     box-shadow: inset 0 0 0 4rpx #fffcf7,0 5rpx 10rpx #876f4541;
   }
-  button.send-button:not([disabled]) {
+  .chat-button.send-button:not(.is-disabled) {
     background: #003f2e;
     box-shadow: inset 0 2rpx 6rpx #1f654c;
   }
@@ -223,7 +223,7 @@
   .notebook-topics {
     gap: 13rpx;
   }
-  button.topic-note {
+  .chat-button.topic-note {
     isolation: isolate;
     height: 245rpx;
     padding: 15rpx 4rpx 20rpx;
@@ -232,11 +232,11 @@
     box-shadow: none;
     transform: rotate(-4deg);
   }
-  button.topic-1 {
+  .chat-button.topic-1 {
     margin-top: 2rpx;
     transform: rotate(2deg);
   }
-  button.topic-2 {
+  .chat-button.topic-2 {
     margin-top: 17rpx;
     transform: rotate(-3deg);
   }

@@ -134,11 +134,12 @@ export class AssistantMediaService {
   floorPlans(conversationId: string) {
     return this.withScope(conversationId, false, async repo => {
       if (this.actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
-      const plans = await rows(repo.tx, sql`select l.id lead_id,f.id,f.name,f.layout_data from app.leads l join app.floor_plans f
+      const plans = await rows(repo.tx, sql`select l.id lead_id,f.id,f.name,f.layout_data,f.updated_at from app.leads l join app.floor_plans f
         on f.enterprise_id=l.enterprise_id and f.id=l.primary_floor_plan_id where l.enterprise_id=${this.actor.enterpriseId}
         and l.customer_user_id=${this.actor.principal.userId} and l.archived_at is null and f.status='completed' order by l.id desc limit 100`);
       return { items: plans.filter(p => parseFormalSurveyLayout(p.layout_data)).map(p => ({
         leadId: String(p.lead_id), id: String(p.id), name: String(p.name), layoutHash: fingerprint(p.layout_data),
+        updatedAt: p.updated_at instanceof Date ? p.updated_at.toISOString() : p.updated_at,
         rooms: adaptSurveyGraphToRooms(p.layout_data).map(r => ({ id: r.id, name: r.name })),
       })) };
     });

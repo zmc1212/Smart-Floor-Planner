@@ -1941,6 +1941,7 @@ export const measurementAppointments = appSchema.table(
       .notNull()
       .references(() => adminUsers.id, { onDelete: 'restrict' }),
     address: text('address').notNull(),
+    contactPhone: text('contact_phone'),
     locationName: text('location_name'),
     latitude: numeric('latitude', { precision: 10, scale: 7 }),
     longitude: numeric('longitude', { precision: 10, scale: 7 }),

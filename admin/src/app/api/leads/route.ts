@@ -281,7 +281,7 @@ export async function POST(request: Request) {
     const role = miniContext?.staff?.role || adminContext?.role || 'user';
     if (role === 'designer' || role === 'measurer') {
       return NextResponse.json(
-        { success: false, error: '仅企业负责人可手动录入客户，录入后将自动派家装设计顾问和家装现场顾问' },
+        { success: false, error: '仅企业负责人可手动录入客户，录入后将安排设计师' },
         { status: 403 }
       );
     }

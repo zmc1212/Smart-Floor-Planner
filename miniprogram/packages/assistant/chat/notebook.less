@@ -11,12 +11,12 @@
   .nav-lane { gap: 12rpx; }
   .notebook-history { width: 44px; height: 44px; flex: none; display: flex; align-items: center; justify-content: center; }
   .history-paper { width: 66rpx; height: 58rpx; display: flex; align-items: center; justify-content: center; background: #f5ecdc; border: 1rpx solid #fffaf1; box-shadow: 0 3rpx 5rpx #b9aa8e55; transform: rotate(-3deg); }
-  .history-paper image { display: block; width: 42rpx; height: 42rpx; }
+  .history-paper .chat-image { display: block; width: 42rpx; height: 42rpx; }
   .notebook-brand { flex: 1; font-family: 'Chat Serif','Songti SC',SimSun,serif; font-size: 43rpx; font-weight: 900; line-height: 1.3; white-space: nowrap; }
   .designer-entry { display: flex; align-items: center; justify-content: center; gap: 2rpx; flex: none; width: auto; min-height: 44px; padding: 0 4rpx; margin: 0; border-radius: 0; background: none; font-size: 24rpx; }
   .designer-entry::before { content: ''; position: absolute; inset: 15rpx 0; border: 1rpx solid #78917a; border-radius: 50rpx; pointer-events: none; }
-  .designer-entry text { margin-left: 18rpx; }
-  .designer-entry image { width: 26rpx; height: 26rpx; margin-right: 12rpx; }
+  .designer-entry .chat-text { margin-left: 18rpx; }
+  .designer-entry .chat-image { width: 26rpx; height: 26rpx; margin-right: 12rpx; }
   .conversation-content { padding: 30rpx 28rpx 0 50rpx; }
   .new-conversation-content { padding: 154rpx 27rpx 0 51rpx; }
   .notebook-welcome { position: relative; padding-top: 204rpx; }
@@ -38,7 +38,7 @@
   .site-project-arrow { flex: none; font-size: 30rpx; line-height: 1.4; }
   .site-subtitle { margin: 0 4rpx; text-align: left; white-space: normal; word-break: break-all; overflow-wrap: anywhere; }
   .topic-intro { display: flex; align-items: center; gap: 14rpx; margin: 42rpx 28rpx 38rpx; color: #8a9484; font-size: 25rpx; letter-spacing: 1rpx; line-height: 1.5; white-space: nowrap; }
-  .topic-intro > view { flex: 1; height: 1px; background: #97a28d; transform: scaleY(.5); }
+  .topic-intro > .chat-group { flex: 1; height: 1px; background: #97a28d; transform: scaleY(.5); }
   .notebook-topics { display: flex; align-items: flex-start; justify-content: space-between; gap: 14rpx; }
   .topic-note { position: relative; flex: 1; min-width: 0; height: 248rpx; padding: 18rpx 4rpx 20rpx; display: flex; flex-direction: column; align-items: center; overflow: visible; background: #e7ead7; box-shadow: 0 6rpx 10rpx #7d6b4238; border: 1rpx solid #fffdf3; border-radius: 2rpx; transform: rotate(-3deg); }
   .topic-1 { margin-top: 4rpx; background: #fff2db; transform: rotate(2deg); }
@@ -52,31 +52,15 @@
   .topic-helper { margin-top: 4rpx; font-size: 24rpx; line-height: 1.5; color: #818779; white-space: nowrap; }
   .note-fold { position: absolute; bottom: 0; right: 0; width: 30rpx; height: 40rpx; background: linear-gradient(130deg,#fffbee 48%,#dfd5be 50%,#f8f4ea 64%); clip-path: polygon(100% 0,100% 100%,0 100%); }
   .welcome-handnote { display: flex; justify-content: center; align-items: center; gap: 14rpx; margin: 20rpx 2rpx 0; min-height: 67rpx; }
-  .welcome-handnote image { width: 68rpx; height: 80rpx; opacity: .62; transform: rotate(14deg); }
-  .welcome-handnote text { margin-top: -10rpx; color: #26483b; font-family: KaiTi,'Kaiti SC',STKaiti,serif; font-size: 25rpx; line-height: 1.8; letter-spacing: 3rpx; transform: rotate(-5deg); border-bottom: 2rpx solid #a3ad87; }
+  .welcome-handnote .chat-image { width: 68rpx; height: 80rpx; opacity: .62; transform: rotate(14deg); }
+  .welcome-handnote .chat-text { margin-top: -10rpx; color: #26483b; font-family: KaiTi,'Kaiti SC',STKaiti,serif; font-size: 25rpx; line-height: 1.8; letter-spacing: 3rpx; transform: rotate(-5deg); border-bottom: 2rpx solid #a3ad87; }
 
-  .measure-card { padding: 0 24rpx 12rpx 50rpx; }
-  .measure-card-paper { position: relative; padding: 22rpx 24rpx 20rpx; background: #fbf7ed; border: 1rpx solid #fffdf6; border-radius: 18rpx; box-shadow: 0 8rpx 18rpx #8d78452b; }
-  .measure-card-tape { position: absolute; top: -12rpx; right: 36rpx; width: 82rpx; height: 30rpx; background: repeating-linear-gradient(45deg,#a9b28c80 0,#a9b28c80 3rpx,#c1c8a16b 3rpx,#c1c8a16b 7rpx); transform: rotate(8deg); }
-  .measure-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
-  .measure-card-title { font-family: 'Chat Serif','Songti SC',SimSun,serif; font-size: 38rpx; font-weight: 900; color: #123d31; }
-  .measure-card-close { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0; margin: 0; background: none; }
-  .measure-card-close image { width: 30rpx; height: 30rpx; opacity: .65; }
-  .measure-card-row { display: flex; align-items: center; gap: 16rpx; padding: 12rpx 0; border-bottom: 1rpx solid #d9d2c0; }
-  .measure-card-row:last-of-type { border-bottom: 0; }
-  .measure-card-icon { width: 44rpx; height: 44rpx; flex: none; }
-  .measure-card-copy { display: flex; flex-direction: column; min-width: 0; gap: 2rpx; }
-  .measure-card-row-title { font-size: 27rpx; font-weight: 600; color: #17382e; }
-  .measure-card-row-helper { font-size: 22rpx; color: #6f7d6e; }
-  .measure-card-primary { width: 100%; height: 84rpx; line-height: 84rpx; margin-top: 14rpx; border-radius: 42rpx; background: #0b5a42; color: #fffdf0; font-size: 28rpx; font-weight: 700; }
-  .measure-card-primary[disabled] { background: #a9c9b8; color: #fff; }
-  .measure-card-secondary { width: 100%; min-height: 44px; padding: 0; margin-top: 4rpx; background: none; color: #5f7164; font-size: 24rpx; }
   .message { gap: 16rpx; margin-bottom: 36rpx; }
   .user-message { padding-left: 120rpx; margin-top: 8rpx; }
   .user-message .bubble { padding: 23rpx 28rpx; background: linear-gradient(110deg,#dce0cc,#d3d8c2); color: #082f28; border: 1rpx solid #bec5aa; box-shadow: 0 5rpx 8rpx #94805b29; border-radius: 16rpx; }
   .bubble { font-size: 30rpx; line-height: 1.65; padding: 21rpx 27rpx; color: #151c26; background: #fcf9f1; border: 1rpx solid #fffdf7; border-radius: 17rpx; box-shadow: 0 5rpx 8rpx #927c4a24; }
   .avatar { width: 80rpx; height: 80rpx; background: #e6e9d9; border-color: #bdc7ac; }
-  .avatar image { width: 74rpx; height: 74rpx; }
+  .avatar .chat-image { width: 74rpx; height: 74rpx; }
   .message-main { max-width: calc(100% - 96rpx); }
   .unavailable-bubble { color: #7e8176; background: #eae9df; }
   .featured-message > .avatar { display: none; }
@@ -99,9 +83,9 @@
   .notebook-reference-message .work-title-atomic { display: inline-block; white-space: nowrap; }
   .work-layout { display: block; margin-top: 10rpx; color: #828477; font-size: 24rpx; line-height: 1.6; }
   .designer-card-actions { display: flex; align-items: center; padding-top: 10rpx; border-top: 1rpx solid #a9b69e; }
-  .notebook-reference-message .designer-card-actions button { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; min-height: 44px; padding: 0; color: #164d3c; white-space: nowrap; font-size: 26rpx; }
+  .notebook-reference-message .designer-card-actions .chat-button { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; min-height: 44px; padding: 0; color: #164d3c; white-space: nowrap; font-size: 26rpx; }
   .designer-card-actions .work-open { border-left: 1rpx solid #a9b69e; }
-  .designer-card-actions button text { padding: 3rpx 4rpx; border-bottom: 2rpx solid #8a9d81; }
+  .designer-card-actions .chat-button .chat-text { padding: 3rpx 4rpx; border-bottom: 2rpx solid #8a9d81; }
   .answer-label { position: absolute; top: -11rpx; left: 10rpx; display: flex; align-items: center; gap: 22rpx; font-size: 24rpx; color: #68806d; }
   .answer-label .fabric-label { transform: rotate(-6deg); font-size: 32rpx; line-height: 1.4; }
   .composer-dock { padding: 12rpx 28rpx 22rpx 50rpx; background: transparent; }
@@ -109,56 +93,18 @@
   &:not(.embedded-chat) .composer-dock:not(.keyboard-open) { padding-bottom: calc(22rpx + env(safe-area-inset-bottom)); }
   .composer { align-items: center; gap: 8rpx; padding: 8rpx 10rpx 8rpx 14rpx; border: 1rpx solid #e5dac7; border-radius: 32rpx; background: #fcf9f3; box-shadow: inset 0 0 0 4rpx #fffdf8,0 4rpx 9rpx #8d78452b; }
   .media-button { width: 62rpx; height: 76rpx; }
-  .media-button image { width: 58rpx; height: 58rpx; }
+  .media-button .chat-image { width: 58rpx; height: 58rpx; }
   .composer-divider { width: 1px; height: 34rpx; margin: 0 4rpx; background: #84938b; transform: scaleX(.5); }
   .composer-input { min-height: 46rpx; max-height: 180rpx; padding: 12rpx 6rpx; font-size: 27rpx; line-height: 1.6; color: #162b28; }
   .input-placeholder { color: #8f99a1; font-size: 25rpx; font-weight: 500; }
   .send-button { flex: 0 0 76rpx; width: 76rpx; min-width: 76rpx; max-width: 76rpx; height: 76rpx; background: #004d39; border: 1rpx solid #007a55; }
-  .send-button image { width: 46rpx; height: 46rpx; }
-  .send-button[disabled] { background: #174f3d !important; opacity: .75; }
+  .send-button .chat-image { width: 46rpx; height: 46rpx; }
+  .send-button.is-disabled { background: #174f3d !important; opacity: .75; }
   .composer-focused { margin-left: 24rpx; margin-right: 12rpx; padding: 8rpx 16rpx 10rpx; border: 1rpx solid #dfd3bc; border-radius: 32rpx; background: #fbf8f0; box-shadow: inset 0 0 0 4rpx #fffdf7,0 -1rpx 7rpx #9c88643b; }
   .composer-focused .composer { padding: 8rpx 6rpx; border: 0; border-radius: 24rpx; box-shadow: none; background: none; }
   .composer-focused .composer-input { padding-left: 18rpx; background: #fffdfa; border: 1rpx solid #eee4d5; border-radius: 24rpx; }
-  .floorplan-context-row {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    padding: 6rpx 0 0;
-    margin: 4rpx 8rpx 0 3rpx;
-    border-top: 1rpx solid #aeb49c;
-  }
-  .floorplan-scope {
-    display: flex;
-    align-items: center;
-    flex: 0 1 322rpx;
-    min-width: 0;
-    min-height: 86rpx;
-    margin-right: auto;
-    padding: 0;
-  }
-  .floorplan-scope-pill {
-    display: flex;
-    align-items: center;
-    gap: 9rpx;
-    width: 100%;
-    min-width: 0;
-    min-height: 65rpx;
-    padding: 0 34rpx 0 36rpx;
-    box-sizing: border-box;
-    border-radius: 48rpx;
-    background: linear-gradient(106deg, #e5e7d8, #dadeca);
-    color: #123e30;
-    font-size: 24rpx;
-    line-height: 1.35;
-  }
-  .floorplan-scope-pill > image { width: 41rpx; height: 41rpx; margin-right: 2rpx; flex: none; }
-  .floorplan-scope-pill > text { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .context-chevron { width: 13rpx; height: 13rpx; flex: none; border-right: 3rpx solid #123e30; border-bottom: 3rpx solid #123e30; transform: rotate(45deg); margin: -6rpx 2rpx 0 2rpx; }
-  .floorplan-context-divider { width: 1rpx; height: 46rpx; flex: none; margin-right: 11rpx; background: #aaa78c; }
-  .floorplan-browse { display: flex; align-items: center; justify-content: center; gap: 4rpx; flex: none; width: 148rpx; min-height: 86rpx; font-size: 24rpx; color: #123e30; white-space: nowrap; }
-  .floorplan-browse image { width: 32rpx; height: 32rpx; }
   .context-error { display: flex; align-items: center; gap: 10rpx; font-size: 22rpx; color: #886a40; line-height: 1.5; padding: 6rpx 0; }
-  .context-error button { min-height: 60rpx; padding: 0 14rpx; flex: none; }
+  .context-error .chat-button { min-height: 60rpx; padding: 0 14rpx; flex: none; }
   .notice, .archive-note { font-size: 24rpx; line-height: 1.6; }
   .notice, .archive-note, .status-message { padding: 20rpx 24rpx; border: 1rpx solid #ebe2d0; border-radius: 10rpx; background: #fcf8ed; color: #5e7567; }
   .notice .notice-action { color: #174d3b; font-weight: 500; }
@@ -168,11 +114,11 @@
   .run-label { display: block; color: #17272b; font-size: 32rpx; font-weight: 400; line-height: 1.6; }
   .run-action { position: relative; display: inline-flex; align-items: center; gap: 4rpx; width: auto; min-height: 84rpx; margin-top: 2rpx; padding: 0; color: #174c3b; font-size: 26rpx; font-weight: 500; }
   .run-action::after { content: ''; position: absolute; left: 0; right: 0; bottom: 12rpx; border-bottom: 2rpx solid #9daa89; transform: rotate(-3deg); }
-  .run-action image { width: 28rpx; height: 28rpx; }
+  .run-action .chat-image { width: 28rpx; height: 28rpx; }
   .processing-dots { display: flex; gap: 10rpx; margin: 16rpx 0 2rpx; }
-  .processing-dots > view { width: 15rpx; height: 15rpx; border-radius: 50%; background: #0e9164; animation: breathe 1.4s ease-in-out infinite; }
-  .processing-dots > view:nth-child(2) { background: #bdc5ad; animation-delay: .2s; }
-  .processing-dots > view:nth-child(3) { background: #dce0d0; animation-delay: .4s; }
+  .processing-dots > .chat-group { width: 15rpx; height: 15rpx; border-radius: 50%; background: #0e9164; animation: breathe 1.4s ease-in-out infinite; }
+  .processing-dots > .chat-group:nth-child(2) { background: #bdc5ad; animation-delay: .2s; }
+  .processing-dots > .chat-group:nth-child(3) { background: #dce0d0; animation-delay: .4s; }
   .handoff-state { position: relative; margin: 30rpx 0 36rpx; padding: 72rpx 30rpx 20rpx; background: #fbf7ed; border: 1rpx solid #fffdf6; box-shadow: 0 5rpx 10rpx #8c784a29; }
   .handoff-state .fabric-label { position: absolute; top: -8rpx; left: 10rpx; transform: rotate(-5deg); font-size: 30rpx; }
   .handoff-heading { display: block; font-family: 'Chat Serif','Songti SC',SimSun,serif; font-weight: 900; font-size: 42rpx; line-height: 1.4; }
@@ -194,7 +140,7 @@
   .discovery-disclosure { display: block; color: #878f85; font-size: 23rpx; line-height: 1.6; }
   .public-photo-mat, .portfolio-card-cover { position: relative; padding: 9rpx; border: 1rpx solid #fffdf7; border-radius: 0; background: #fffaf0; box-shadow: 0 5rpx 8rpx #8b78492b; overflow: visible; box-sizing: border-box; }
   .public-photo-mat { width: 100%; height: 350rpx; margin: 0 0 22rpx; }
-  .public-photo-mat > image, .portfolio-card-cover > image { display: block; width: 100%; height: 100%; }
+  .public-photo-mat > .chat-image, .portfolio-card-cover > .chat-image { display: block; width: 100%; height: 100%; }
   .photo-tape { position: absolute; top: -24rpx; left: 55%; width: 70rpx; height: 36rpx; transform: rotate(17deg); background: repeating-linear-gradient(45deg,#a9b28c80 0,#a9b28c80 3rpx,#c1c8a16b 3rpx,#c1c8a16b 7rpx); }
   .discovery-photo-empty { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #eeeadf; color: #84917f; font-size: 24rpx; }
   .public-recommendation-name { display: block; font-family: 'Chat Serif','Songti SC',SimSun,serif; font-size: 44rpx; font-weight: 900; line-height: 1.4; }
@@ -202,7 +148,7 @@
   .public-district { display: block; margin-top: 10rpx; font-size: 27rpx; color: #7d847a; line-height: 1.5; }
   .discovery-card-actions { display: flex; align-items: center; gap: 22rpx; margin-top: 22rpx; border-top: 1rpx solid #90a58f; }
   .discovery-text-action { display: inline-flex; position: relative; align-items: center; gap: 4rpx; min-height: 84rpx; padding: 0; font-size: 28rpx; font-weight: 500; color: #153f32; }
-  .discovery-text-action image { width: 30rpx; height: 30rpx; }
+  .discovery-text-action .chat-image { width: 30rpx; height: 30rpx; }
   .discovery-text-action::after { content: ''; position: absolute; left: 0; right: 0; bottom: 10rpx; border-bottom: 2rpx solid #88a07a; transform: rotate(-3deg); }
   .discovery-more { display: flex; width: max-content; margin: 0 auto; color: #678672; font-size: 26rpx; }
   .portfolio-designer-name { display: block; font-family: 'Chat Serif','Songti SC',SimSun,serif; font-size: 36rpx; font-weight: 900; line-height: 1.4; }

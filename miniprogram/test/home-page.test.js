@@ -55,6 +55,29 @@ test('未登录访问首页会停留在三项免费权益服务页，而不是�
   }
 });
 
+test('Customer Site tab reuses the 我的 selected tab treatment', () => {
+  const navigationDir = path.join(__dirname, '..', 'packages', 'assistant', 'navigation');
+  const navWxml = fs.readFileSync(path.join(navigationDir, 'customer-navigation.wxml'), 'utf8');
+  const navLess = fs.readFileSync(path.join(navigationDir, 'customer-navigation.less'), 'utf8');
+  const sharedNav = fs.readFileSync(path.join(__dirname, '..', 'styles', 'notebook-tab-bar.less'), 'utf8');
+  const homeLess = fs.readFileSync(path.join(__dirname, '..', 'pages', 'index', 'index.less'), 'utf8');
+
+  // No per-tab pill or taller rounded bar for 工地; selected state matches 我的.
+  assert.doesNotMatch(navWxml, /site-navigation/);
+  assert.doesNotMatch(navLess, /\.site-navigation/);
+  assert.match(navLess, /\.customer-navigation\s*\{\s*\.notebook-tab-bar\(\)/);
+  assert.match(sharedNav, /\.active\s*\{[^}]*color:\s*#034b36;[^}]*font-weight:\s*600;/);
+  assert.doesNotMatch(sharedNav, /\.active\s*\{[^}]*background/);
+
+  // The Site page runs full height under the floating navigation.
+  assert.match(homeLess, /\.owner-site-tab\s*\{[\s\S]*?height:\s*100vh;/);
+
+  // Selected 工地 uses a filled active artwork like 小K and 我的.
+  assert.match(navWxml, /notebook-tab-home\{\{selected === index \? '-active' : ''\}\}\.png/);
+  const activeIcon = path.join(__dirname, '..', 'packages', 'assistant', 'assets', 'notebook-tab-home-active.png');
+  assert.ok(fs.statSync(activeIcon).size > 0);
+});
+
 test('Home uses the shared community-first identity for every recent-plan title', () => {
   const page = createPage(loadHomePageDefinition(), {
     homeDashboard: {

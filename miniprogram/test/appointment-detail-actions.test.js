@@ -15,7 +15,7 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
 
   assert.ok(enterprise.pages.includes('appointment-detail/appointment-detail'));
   assert.match(script, /\['designer', 'enterprise_admin'\]\.includes\(role\)/);
-  assert.match(script, /\['measurer', 'enterprise_admin'\]\.includes\(role\)/);
+  assert.match(script, /role === 'designer' && appointment\.designerId === staffId && appointment\.measurerId === staffId/);
   assert.doesNotMatch(script, /appointment-reschedule\/appointment-reschedule/);
   assert.match(script, /appointments\/availability/);
   assert.match(script, /customer-reschedule/);

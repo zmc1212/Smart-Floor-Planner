@@ -32,6 +32,12 @@ function decorateStages(stages, selected) {
   const chosen = new Set(selected || []);
   return (stages || []).map(stage => ({ ...stage, selected: chosen.has(stage.key) }));
 }
+function checkpointChoices(stages, selected, checkpoint) {
+  return stages.filter(stage => selected.includes(stage.key)).flatMap(stage => (stage.inspectionCheckpoints || []).map(item => ({
+    ...item, stageKey: stage.key, choiceId: stage.key + ':' + item.key,
+    selected: checkpoint?.stageKey === stage.key && checkpoint.key === item.key,
+  })));
+}
 
 Page({
   data: {
@@ -43,6 +49,8 @@ Page({
     stages: [],
     stageChips: [],
     selectedStages: [],
+    checkpoints: [],
+    checkpointChanged: false,
     photos: [],
     voice: null,
     text: '',
@@ -61,7 +69,7 @@ Page({
 
   onLoad(options) {
     this.projectId = /^[1-9]\d*$/.test(String(options.projectId || '')) ? String(options.projectId) : '';
-    this.data.mode = options.mode === 'voice' ? 'voice' : 'photo';
+    this.data.mode = options.mode === 'voice' ? 'voice' : options.mode === 'photo' ? 'photo' : 'manual';
     this._visible = true;
     this._voicePaths = new Set();
     loadSiteFont();
@@ -146,7 +154,7 @@ Page({
       current: () => this._visible,
       load: async () => {
         const result = await api.request('/miniprogram/construction/workbench?projectId=' + this.projectId, 'GET', {}, { suppressUnauthorized: true });
-        const items = result.data?.reports?.items || [];
+      const items = result.data?.reports?.items || [];
         site.state.items = items.map(item => ({ message: { client_message_id: item.clientMessageId } }));
       },
     };
@@ -167,7 +175,15 @@ Page({
     }
     if ('capturePhotos' in patch) next.photos = patch.capturePhotos || [];
     if ('captureVoice' in patch) next.voice = patch.captureVoice || null;
-    if ('captureQueue' in patch) next.queue = patch.captureQueue || [];
+    if ('captureStages' in patch) {
+      next.selectedStages = patch.captureStages;
+      next.stageChips = decorateStages(this.data.stages, next.selectedStages);
+      next.checkpoints = checkpointChoices(this.data.stages, next.selectedStages, patch.captureCheckpoint);
+    }
+    if ('captureQueue' in patch) {
+      next.queue = patch.captureQueue || [];
+      next.checkpointChanged = next.queue.some(item => item.checkpointChanged);
+    }
     if ('captureSaving' in patch) next.saving = Boolean(patch.captureSaving);
     if ('captureSending' in patch) next.sending = Boolean(patch.captureSending);
     if ('captureError' in patch) next.captureError = patch.captureError || '';
@@ -205,6 +221,26 @@ Page({
     const next = current.includes(key) ? current.filter(item => item !== key) : [...current, key];
     if (this.capture) this.capture.stages(next);
     this.setData({ selectedStages: next, stageChips: decorateStages(this.data.stages, next) });
+  },
+  toggleCheckpoint(event) {
+    if (this.data.submitting || this.data.saving || !this.capture) return;
+    const item = this.data.checkpoints.find(candidate => candidate.choiceId === event.currentTarget.dataset.id);
+    if (item) this.capture.checkpoint(item.selected ? null : { stageKey: item.stageKey, key: item.key });
+  },
+  async replaceCheckpoint() {
+    if (!this.capture?.restoreCheckpointDraft()) return;
+    this._submitting = false;
+    this._sawQueue = false;
+    this.setData({ submitting: false });
+    try {
+      const result = await api.request('/miniprogram/construction/workbench?projectId=' + this.projectId, 'GET', {}, { suppressUnauthorized: true });
+      if (this._visible && result.data?.stages) {
+        this.setData({ stages: result.data.stages }, () => this.capture.render());
+      }
+      if (this._visible) this.setData({ captureError: '原材料已恢复，请按当前工序提交。' });
+    } catch {
+      if (this._visible) this.setData({ captureError: '原材料已恢复，请重进上报页读取最新工序。' });
+    }
   },
 
   choosePhotos(cameraOnly = false) {

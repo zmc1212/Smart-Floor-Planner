@@ -29,8 +29,8 @@
 
   <block wx:else>
     <view class="library-header library-header-row">
-      <text>已建量房项目</text>
-      <view>
+      <text class="library-header-title">已建量房项目</text>
+      <view class="library-header-actions">
         <text class="add-btn" bindtap="onAddRoom">+ 增加房间</text>
         <text class="reset-btn" bindtap="onResetLayout">重新选择</text>
       </view>

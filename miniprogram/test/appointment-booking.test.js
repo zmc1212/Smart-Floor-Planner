@@ -49,7 +49,7 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageWxml, /量房地点/);
   assert.match(pageWxml, /地图选择/);
   assert.match(pageWxml, /location-picker-action sfp-icon-action[\s\S]*\/images\/leads-v4\/map-pin\.png[\s\S]*选择地点/);
-  assert.match(pageWxml, /系统将安排合适的量房伙伴上门/);
+  assert.match(pageWxml, /预约时会为你安排负责的设计师/);
   assert.match(pageWxss, /env\(safe-area-inset-bottom\)/);
   assert.match(pageWxss, /\.back-chevron/);
   assert.match(pageWxss, /\.confirm-bar/);

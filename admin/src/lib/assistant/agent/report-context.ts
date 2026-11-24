@@ -50,7 +50,10 @@ export function reportSelectionHistory(version: number | undefined) {
   return sql`((m.author_kind in ('user','admin') and m.content->'reportContextVersion' = ${JSON.stringify(version)}::jsonb)
     or (m.author_kind='assistant' and exists (
       select 1 from app.assistant_runs r where r.enterprise_id=m.enterprise_id and r.conversation_id=m.conversation_id
-        and r.id=m.run_id and r.policy_snapshot->'reportContextVersion' = ${JSON.stringify(version)}::jsonb)))`;
+        and r.id=m.run_id and r.policy_snapshot->'reportContextVersion' = ${JSON.stringify(version)}::jsonb))
+    -- The application-authored stage question the customer is answering is not
+    -- report content; the reply stays bound to the version it was sent under.
+    or (m.author_kind='system' and m.purpose='construction.followup'))`;
 }
 
 export function reportFactText(selection: ReportReference, project: ReportProject, scheduledCoverage = false) {

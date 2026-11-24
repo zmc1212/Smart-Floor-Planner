@@ -30,7 +30,7 @@ const fields: Record<string, string[]> = {
   member: ['projectId', 'expectedVersion', 'adminId', 'role', 'active', 'workLabel'], room: ['projectId', 'expectedVersion', 'roomId', 'name'],
   contact: ['projectId', 'expectedVersion', 'stageKey', 'staffIds', 'primaryStaffId'],
   progress: ['projectId', 'expectedVersion', 'stageKey', 'note', 'sendReminder'],
-  schedule: ['projectId'], saveSchedule: ['projectId', 'expectedVersion', 'title', 'note', 'nodes'],
+  schedule: ['projectId'], saveSchedule: ['projectId', 'expectedVersion', 'title', 'note', 'nodes', 'change'],
 };
 const actorContext = (a: ConstructionActor): ActorContext => ({ enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1, capabilities: [] });
 const dto = (value: unknown): unknown => typeof value === 'bigint' ? String(value) : value instanceof Date ? value.toISOString()
@@ -134,11 +134,11 @@ export class ConstructionService {
       }
       const manage = canManageConstructionProject(owner, typeof member?.role === 'string' ? member.role : null);
       if ((read || action === 'saveSchedule') && !await one(tx, sql`select id from app.leads where enterprise_id=${eid} and id=${String(p.lead_id)} and archived_at is null for share`)) fail('construction_not_found', 404);
-      if (action === 'schedule') return dto(await readSchedule(tx, eid, p, stages)) as Row;
+      if (action === 'schedule') return dto(await readSchedule(tx, eid, p, stages, { management: manage })) as Row;
       if (action === 'saveSchedule') {
         if (!manage) fail('construction_forbidden', 403);
         return idempotent(tx, actorContext(a), 'construction:schedule:' + pid, requestKey!, input,
-          () => publishSchedule(tx, actorContext(a), p, stages, input, collaboration));
+          () => publishSchedule(tx, actorContext(a), p, stages, input, collaboration, owner));
       }
       if (action === 'detail') {
         const executionOnly = member?.role === 'worker' || member?.role === 'observer';
@@ -155,7 +155,7 @@ export class ConstructionService {
           sync: await issueDelivery(tx, eid, issue),
         }))),
         issueGroups: groupProjectIssues(issues, a.adminId, manage),
-        progress: await readSchedule(tx, eid, p, stages),
+        progress: await readSchedule(tx, eid, p, stages, { management: manage }),
         plans: plans.slice(0, 20),
         assignments: await rows(tx, sql`select s.stage_key,s.admin_id,s.is_primary,a.display_name,a.status as staff_status from app.construction_stage_assignments s join app.construction_members m on m.enterprise_id=s.enterprise_id and m.project_id=s.project_id and m.admin_id=s.admin_id and m.active join app.admin_users a on a.enterprise_id=s.enterprise_id and a.id=s.admin_id where s.enterprise_id=${eid} and s.project_id=${pid} order by s.stage_key,s.admin_id`),
         members: await rows(tx, sql`select m.admin_id,m.role,m.active,m.work_label,a.display_name,a.role as staff_role,a.status as staff_status,a.construction_trades from app.construction_members m join app.admin_users a on a.enterprise_id=m.enterprise_id and a.id=m.admin_id where m.enterprise_id=${eid} and m.project_id=${pid} order by m.admin_id`),

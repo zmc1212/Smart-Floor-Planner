@@ -9,11 +9,15 @@
   "subPackages": [
     {
       "root": "packages/construction",
-      "pages": ["projects/projects", "brief/brief", "chat/chat", "report/report", "public-sites/public-sites", "public-site/public-site", "public-live/public-live", "camera/camera", "family/family", "live-authorization/live-authorization"]
+      "pages": ["projects/projects", "brief/brief", "chat/chat", "report/report", "inspection/inspection", "inspection-record/inspection-record", "inspection-map/inspection-map", "public-sites/public-sites", "public-site/public-site", "public-live/public-live", "camera/camera", "family/family", "live-authorization/live-authorization"]
     },
     {
       "root": "packages/assistant",
       "pages": ["chat/chat", "requirements/requirements", "handoff/handoff", "designer/designer", "work/work", "tour-view/tour-view"]
+    },
+    {
+      "root": "packages/portfolio-font",
+      "pages": []
     },
     {
       "root": "packages/surveying",
@@ -156,10 +160,7 @@
   "sitemapLocation": "sitemap.json",
   "permission": {
     "scope.userLocation": {
-      "desc": "用于查找附近公开工地、推荐当地设计师及选择业务地址"
-    },
-    "scope.bluetooth": {
-      "desc": "\u7528\u4e8e\u641c\u7d22\u5e76\u8fde\u63a5\u6fc0\u5149\u6d4b\u8ddd\u4eea"
+      "desc": "用于查找附近公开工地、推荐当地设计师、选址及巡检定位"
     }
   },
   "requiredPrivateInfos": [

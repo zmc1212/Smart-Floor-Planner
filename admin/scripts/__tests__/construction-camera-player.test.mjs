@@ -10,6 +10,12 @@ const flush = async () => { for (let i = 0; i < 6; i++) await new Promise(setImm
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const ok = data => ({ ok: true, status: 200, json: async () => ({ success: true, data }) });
 const denied = () => ({ ok: false, status: 404, json: async () => ({ success: false, error: 'camera_project_unavailable' }) });
+const autoplayDenied = () => Object.assign(new Error('blocked'), { name: 'NotAllowedError' });
+const capturedAt = '2026-11-20T03:08:00.000Z';
+const cover = binding => ({
+  ok: true, status: 200, headers: new Headers({ 'Content-Type': 'image/jpeg', 'X-Camera-Captured-At': capturedAt }),
+  blob: async () => binding,
+});
 
 // Execute the shipped browser controller against its real element IDs. Requests,
 // timers and completion order are controlled; no camera/provider writes occur.
@@ -36,7 +42,8 @@ function recording(id, binding) {
 }
 function snapshot(id) { return { id, state: 'ready', name: '测试抓拍' + id, captured_at: '2026-11-05T01:00:00Z' }; }
 async function fixture(options = {}) {
-  const elements = Object.fromEntries([...html.matchAll(/<([a-z-]+)[^>]*\bid="([^"]+)"/g)].map(([, tag, id]) => [id, new Element(tag)]));
+  const elements = Object.fromEntries([...html.matchAll(/<([a-z-]+)[^>]*\bid="([^"]+)"[^>]*>/g)].map(([markup, tag, id]) =>
+    [id, Object.assign(new Element(tag), { hidden: /\bhidden\b/.test(markup) })]));
   const buttons = ['up', 'left', 'stop', 'right', 'down'].map(direction => Object.assign(new Element('button'), { dataset: { direction } }));
   const local = options.local ?? storage(), session = options.session ?? storage(), calls = [], timers = new Map(), timeouts = new Map();
   const state = { project: { id: '12', name: '测试工地' }, canCapture: true, canControl: true, canViewSnapshots: true,
@@ -44,32 +51,43 @@ async function fixture(options = {}) {
   let handler = options.handler;
   const defaults = (route, body) => {
     if (route === 'exchange') return { csrf: 'test-csrf' };
-    if (route === 'state') return options.state ?? state;
+    if (route === 'state') return options.state ?? { ...state, liveOnly: Boolean(options.liveOnly) };
     if (route === 'snapshots') return { items: [snapshot('1')] };
     if (route === 'recordings/query') return { items: [recording(body.bindingId + '1', body.bindingId), recording(body.bindingId + '2', body.bindingId)], source: 'cloud' };
+    if (route === 'live') return { hls: '/camera-media/test/hls.m3u8' };
     return {};
   };
-  const document = { hidden: false, getElementById: id => elements[id], createElement: tag => new Element(tag), querySelector: () => new Element(), querySelectorAll: () => buttons, addEventListener() {} };
+  const documentListeners = {}, mat = new Element(), coverAssets = new Map();
+  let assetCount = 0;
+  const objectUrls = {
+    createObjectURL(blob) { const url = 'blob:cover-' + ++assetCount; coverAssets.set(url, blob); return url; },
+    revokeObjectURL(url) { coverAssets.delete(url); },
+  };
+  const document = { hidden: Boolean(options.hidden), getElementById: id => elements[id], createElement: tag => new Element(tag), querySelector: selector => selector === '.video-mat' ? mat : new Element(), querySelectorAll: () => buttons, addEventListener(name, callback) { documentListeners[name] = callback; } };
   // A supported MSE browser: live auto-play then reaches real play() rather than the unsupported branch.
   class Hls {
     static Events = { ERROR: 'error' };
     static isSupported() { return true; }
     constructor() {}
     on() {}
-    loadSource() {}
-    attachMedia() {}
+    loadSource(url) { this.url = url; }
+    attachMedia(video) { video.src = this.url; }
     destroy() {}
   }
-  if (options.playError) elements.video.play = async () => { const e = new Error('blocked'); e.name = 'NotAllowedError'; throw e; };
+  if (options.mediaPlay) elements.video.play = options.mediaPlay;
   const window = { addEventListener() {}, Hls: options.Hls ?? Hls };
   vm.runInNewContext(source, { document, window, location: { hash: options.hash ?? '#entry=test-entry', pathname: '/construction-camera' }, history: { replaceState() {} },
-    localStorage: local, sessionStorage: session, crypto: { randomUUID }, URLSearchParams, console,
+    localStorage: local, sessionStorage: session, crypto: { randomUUID }, URL: objectUrls, URLSearchParams, console,
     setInterval(fn) { const id = timers.size + 1; timers.set(id, fn); return id; }, clearInterval: id => timers.delete(id),
     setTimeout(fn) { const id = Symbol(); timeouts.set(id, fn); return id; }, clearTimeout: id => timeouts.delete(id),
-    fetch: async (url, init) => { const route = url.replace('/api/construction-camera/', ''), body = init.body ? JSON.parse(init.body) : undefined; calls.push({ route, body, headers: init.headers }); return await handler?.(route, body, init) ?? ok(defaults(route, body)); },
+    fetch: async (url, init) => {
+      const route = url.replace('/api/construction-camera/', ''), body = init.body ? JSON.parse(init.body) : undefined;
+      calls.push({ route, body, headers: init.headers });
+      return await handler?.(route, body, init) ?? (route.startsWith('cover/') ? { ok: true, status: 204 } : ok(defaults(route, body)));
+    },
   });
   await flush();
-  return { elements, calls, local, session, buttons, state, timeouts, setHandler: next => { handler = next; }, heartbeat: async () => { await [...timers.values()][0]?.(); await flush(); } };
+  return { elements, calls, local, session, buttons, state, timeouts, mat, document, documentListeners, coverAssets, setHandler: next => { handler = next; }, heartbeat: async () => { await [...timers.values()][0]?.(); await flush(); } };
 }
 
 async function ownerPreview(options = {}) {
@@ -211,6 +229,8 @@ test('blocked preference storage leaves authorized live and playback controls us
 test('live auto-plays muted on entry, camera switch and return from playback without taps', async () => {
   const f = await fixture(), e = f.elements;
   assert.equal(f.calls.filter(c => c.route === 'live').length, 1);
+  assert.equal(e.video.muted, true);
+  assert.equal(e.video.autoplay, true);
   assert.match(e.status.textContent, /正在接收现场画面/);
   assert.equal(e.stop.disabled, false);
 
@@ -219,17 +239,184 @@ test('live auto-plays muted on entry, camera switch and return from playback wit
   e.camera.value = '10'; await e.camera.onchange();
   assert.equal(f.calls.filter(c => c.route === 'live').length, 2);
   await e['playback-tab'].onclick();
+  assert.equal(e.video.autoplay, false);
   await e['return-live'].onclick();
   await flush();
   assert.equal(f.calls.filter(c => c.route === 'live').length, 3);
   assert.match(e.status.textContent, /正在接收现场画面/);
 });
 
-test('a blocked muted autoplay leaves the manual start enabled with a hint', async () => {
-  const f = await fixture({ playError: true });
-  assert.match(f.elements.status.textContent, /点击「开始播放」/);
-  assert.equal(f.elements.play.disabled, false);
-  assert.equal(f.elements.stop.disabled, true);
+test('slow capture history and cover do not delay private live autoplay', async () => {
+  const pendingHistory = deferred(), pendingCover = deferred();
+  const f = await fixture({ handler: route => route === 'snapshots' ? pendingHistory.promise : route === 'cover/9' ? pendingCover.promise : undefined });
+  assert.deepEqual(f.calls.map(c => c.route), ['exchange', 'state', 'snapshots', 'cover/9', 'live']);
+  assert.match(f.elements.status.textContent, /正在接收现场画面/);
+  pendingHistory.resolve(ok({ items: [] }));
+  pendingCover.resolve(cover('9'));
+  await flush();
+});
+
+test('live waits for a foreground WebView and a manual stop stays stopped', async () => {
+  const f = await fixture({ hidden: true });
+  f.documentListeners.visibilitychange();
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 0);
+  f.document.hidden = false;
+  f.documentListeners.visibilitychange();
+  await flush();
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 1);
+  await f.elements.stop.onclick();
+  f.documentListeners.visibilitychange();
+  f.elements.video.listeners.canplay();
+  f.documentListeners.WeixinJSBridgeReady({});
+  await flush();
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 1);
+  assert.equal(f.elements.video.paused, true);
+  assert.equal(f.elements.status.textContent, '播放已停止');
+});
+
+for (const retry of ['画面', '开始播放']) {
+  test(`a trusted ${retry} tap plays the attached source within the gesture`, async () => {
+    let inGesture = false;
+    const f = await fixture({ mediaPlay() {
+      if (!inGesture) return Promise.reject(autoplayDenied());
+      return Element.prototype.play.call(this);
+    } });
+    const { play, stop, video, status } = f.elements;
+    assert.match(status.textContent, /点击「开始播放」/);
+    assert.equal(play.disabled, false);
+    assert.equal(stop.disabled, false);
+    const src = video.src;
+    inGesture = true;
+    const attempt = retry === '画面' ? f.mat.listeners.click() : play.onclick();
+    inGesture = false;
+    await attempt;
+    assert.equal(video.src, src);
+    assert.equal(video.paused, false);
+    assert.deepEqual(f.calls.filter(c => c.route === 'stop' || c.route === 'live').map(c => c.route), ['live']);
+    assert.match(status.textContent, /正在接收现场画面/);
+  });
+}
+
+for (const ready of ['canplay', 'WeixinJSBridgeReady']) {
+  test(`a muted start blocked before ${ready} retries on the existing source`, async () => {
+    let playable = false;
+    const f = await fixture({ mediaPlay() {
+      if (!playable) return Promise.reject(autoplayDenied());
+      return Element.prototype.play.call(this);
+    } });
+    playable = true;
+    if (ready === 'canplay') f.elements.video.listeners.canplay();
+    else f.documentListeners.WeixinJSBridgeReady({});
+    await flush();
+    assert.deepEqual(f.calls.filter(c => c.route === 'stop' || c.route === 'live').map(c => c.route), ['live']);
+    assert.match(f.elements.status.textContent, /正在接收现场画面/);
+  });
+}
+
+test('native autoplay can complete a prepared live stream after the initial play call was blocked', async () => {
+  const f = await fixture({ mediaPlay: () => Promise.reject(autoplayDenied()) });
+  const { video, status } = f.elements;
+  Object.assign(video, { paused: false, currentTime: 1, videoWidth: 640, readyState: 2 });
+  video.listeners.playing();
+  video.listeners.timeupdate();
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 1);
+  assert.equal(f.elements['live-fullscreen'].disabled, false);
+  assert.match(status.textContent, /正在播放 · 测试摄像头A/);
+});
+
+test('a blocked live view shows the capture time and keeps the cover through the start tap until video advances', async () => {
+  let inGesture = false;
+  const f = await fixture({
+    handler: route => route === 'cover/9' ? cover('9') : undefined,
+    mediaPlay() { return inGesture ? Element.prototype.play.call(this) : Promise.reject(autoplayDenied()); },
+  });
+  const { video, play, stop, status } = f.elements;
+  const image = f.elements['live-cover'], time = f.elements['live-cover-time'];
+  assert.equal(image.hidden, true);
+  image.onload();
+  assert.equal(image.hidden, false);
+  assert.equal(time.datetime, capturedAt);
+  assert.match(time.textContent, /抓拍于.*11:08/);
+  assert.match(status.textContent, /点击「开始播放」/);
+
+  inGesture = true;
+  const starting = play.onclick();
+  inGesture = false;
+  await starting;
+  assert.equal(image.hidden, false);
+  Object.assign(video, { currentTime: 1, videoWidth: 640, readyState: 2 });
+  video.listeners.timeupdate();
+  assert.equal(image.hidden, true);
+  assert.equal(time.hidden, true);
+  assert.match(status.textContent, /正在播放/);
+  await stop.onclick();
+  assert.equal(image.hidden, false);
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 1);
+});
+
+test('switching cameras and losing access discard old and late cover data', async () => {
+  const pending = deferred();
+  const f = await fixture({ handler: route => route === 'cover/9' ? pending.promise : route === 'cover/10' ? cover('10') : undefined });
+  const image = f.elements['live-cover'];
+  f.elements.camera.value = '10';
+  await f.elements.camera.onchange();
+  await flush();
+  image.onload();
+  const currentUrl = image.src;
+  assert.equal(f.coverAssets.get(currentUrl), '10');
+  pending.resolve(cover('9'));
+  await flush();
+  assert.equal(image.src, currentUrl);
+  f.setHandler(route => route === 'heartbeat' ? denied() : undefined);
+  await f.heartbeat();
+  assert.equal(image.hidden, true);
+  assert.equal(image.src, undefined);
+  assert.equal(f.coverAssets.size, 0);
+});
+
+test('live-only family sessions and playback do not fetch or show a retained cover', async () => {
+  const family = await fixture({ liveOnly: true });
+  assert.equal(family.calls.some(c => c.route.startsWith('cover/')), false);
+  assert.equal(family.elements['live-cover'].hidden, true);
+  const f = await fixture({ handler: route => route === 'cover/9' ? cover('9') : undefined });
+  f.elements['live-cover'].onload();
+  await f.elements['playback-tab'].onclick();
+  assert.equal(f.elements['live-cover'].hidden, true);
+  assert.equal(f.coverAssets.size, 0);
+  assert.equal(f.calls.filter(c => c.route.startsWith('cover/')).length, 1);
+});
+
+test('a late native autoplay event cannot restart the stream after access is revoked', async () => {
+  const f = await fixture({ mediaPlay: () => Promise.reject(autoplayDenied()) });
+  f.setHandler(route => route === 'heartbeat' ? denied() : undefined);
+  await f.heartbeat();
+  f.elements.video.listeners.playing();
+  f.mat.listeners.click();
+  f.documentListeners.WeixinJSBridgeReady({});
+  await flush();
+  assert.equal(f.calls.filter(c => c.route === 'live').length, 1);
+  assert.equal(f.elements.video.autoplay, false);
+  assert.equal(f.elements['live-fullscreen'].disabled, true);
+  assert.match(f.elements.status.textContent, /权限已变化/);
+});
+
+test('a live stream with no picture progress after 3s suggests compatible playback', async () => {
+  const pendingPlay = deferred();
+  const f = await fixture({ mediaPlay: () => pendingPlay.promise }), e = f.elements;
+  assert.equal(e.status.textContent, '正在自动播放现场画面…');
+  const timers = [...f.timeouts.values()];
+  assert.equal(timers.length, 1);
+  timers[0]();
+  assert.match(e.status.textContent, /切换兼容播放/);
+  await e.stop.onclick();
+  pendingPlay.resolve();
+  await flush();
+  assert.equal(e.status.textContent, '播放已停止');
+
+  const g = await fixture();
+  g.elements.video.currentTime = 1;
+  [...g.timeouts.values()][0]();
+  assert.equal(g.elements.status.textContent, '正在接收现场画面…');
 });
 
 test('revocation immediately clears history/preview and rejects a late successful history response', async () => {

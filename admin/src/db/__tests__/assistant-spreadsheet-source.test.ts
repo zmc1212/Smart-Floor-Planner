@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, withPlatformTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -43,6 +44,7 @@ function formulaFile() {
   const entries = syntheticXlsxEntries(); entries['xl/worksheets/sheet1.xml'] = entries['xl/worksheets/sheet1.xml'].replace('<v>2</v>', '<f>1+1</f><v>999</v>'); return syntheticZip(entries);
 }
 before(async () => {
+  loadEnvConfig(process.cwd());
   useLocalKnowledgeTestDatabase();
   await withPlatformTransaction(async tx => {
     for (let i = 0; i < 2; i++) tenants.push(String((await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));

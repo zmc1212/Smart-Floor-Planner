@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formalFloorplanText } from '../agent/formal-floorplan-context';
+import { formalFloorplanRecords, formalFloorplanText } from '../agent/formal-floorplan-context';
 import type { FormalSurveyLayout } from '@/lib/survey-graph';
 
 function plan(): FormalSurveyLayout {
@@ -13,6 +13,24 @@ function plan(): FormalSurveyLayout {
     openings: [{ id: 'w', wallId: 'ab', type: 'window', widthMm: 1200, sillHeightMm: 900 }],
   }] } };
 }
+
+test('structured room records keep the same readable dimensions and omissions', () => {
+  const layout = plan();
+  const records = formalFloorplanRecords('测试正式户型', layout)!;
+  assert.equal(records.totalRooms, 1);
+  assert.equal(records.omittedRooms, 0);
+  assert.equal(records.rooms[0].name, '厨房');
+  assert.equal(records.rooms[0].floorName, '一层');
+  assert.equal(records.rooms[0].ceilingHeightMm, 2800);
+  assert.deepEqual(records.rooms[0].walls.map(wall => wall.lengthMm), [4000, 3000, 4000, 3000]);
+  assert.deepEqual(records.rooms[0].openings, [{
+    id: 'w', type: 'window', widthMm: 1200, heightMm: null, sillHeightMm: 900,
+  }]);
+  assert.equal(records.rooms[0].wallCount, 4);
+  assert.equal(records.rooms[0].readableWallCount, 4);
+  assert.equal(records.rooms[0].openingCount, 1);
+  assert.equal(formalFloorplanRecords('x', { version: 3 }), null);
+});
 
 test('formal source includes stored wall and opening records without treating them as net dimensions or writing the graph', () => {
   const layout = plan(), before = structuredClone(layout), text = formalFloorplanText('测试正式户型', layout, { roomId: 'k', floorId: 'f' })!;

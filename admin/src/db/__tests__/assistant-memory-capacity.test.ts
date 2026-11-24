@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -26,6 +27,7 @@ const response = (text = '已按你的更正记录工作需求，正式方案仍
   text: JSON.stringify({ kind: 'general', text }), toolCalls: [], usage: { inputTokens: 50, outputTokens: 10 }, finishReason: 'stop', providerRequestId: null });
 
 before(async () => {
+  loadEnvConfig(process.cwd());
   const target = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['127.0.0.1', 'localhost'].includes(target.hostname)); assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
   await withPlatformTransaction(async tx => {
@@ -77,7 +79,7 @@ async function write(id: string, text: string, input: unknown, reply?: string) {
     ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify(input) }] } });
   return { sent, run: await chat().run(String(sent.runId)) };
 }
-const input = { room: '书房', field: 'desk', value: '靠门', quote: '书房书桌改为靠门',
+const input = { room: '书房', field: 'desk', value: '靠门', quote: '请记录：书房书桌改为靠门',
   additionalNeeds: [{ room: '书房', field: 'devices', value: '电脑和台灯', quote: '书房设备保留电脑和台灯' }] };
 const text = '请记录：书房书桌改为靠门；书房设备保留电脑和台灯。';
 
@@ -88,7 +90,7 @@ const mixedInput = { room: '书房', field: 'use', value: '单人办公', quote:
 test('AG02: duplicate room-field diagnostics preserve atomic rollback, one recovered write, replay and source withdrawal', async () => {
   const id = String((await chat().create(randomUUID())).id), key = randomUUID();
   const original = '请记下：先不确定装修日期，不要替我定日期。';
-  const valid = { room: '', field: 'timeline', value: '先不确定装修日期', quote: '请记下：先不确定装修日期' };
+  const valid = { room: '', field: 'timeline', value: '先不确定装修日期', quote: '请记下：先不确定装修日期', additionalNeeds: [] };
   const duplicate = { ...valid, additionalNeeds: [{ room: '', field: 'timeline', value: '不要替我定日期', quote: '不要替我定日期' }] };
   const body = { version: 1 as const, blocks: [{ type: 'text' as const, text: original }] };
   const sent = await chat().send(id, key, body), lease = await claimJob();
@@ -272,7 +274,7 @@ test('AG07: memory-derived plain replies hide after withdrawal and legacy assist
     const run = await chat().run(String(sent.runId)); assert.equal(run.status, 'succeeded'); return run;
   };
   const plain = await ask('书房目前情况怎样？先聊，不重新记录。', '当前书房书桌靠门，设备为电脑和台灯。');
-  const daylight = await write(a.id, '请记录：书房采光好。', { room: '书房', field: 'daylight', value: '采光好', quote: '书房采光好' }, '已记录书房采光好，原书桌靠门的需求继续沿用。');
+  const daylight = await write(a.id, '请记录：书房采光好。', { room: '书房', field: 'daylight', value: '采光好', quote: '请记录：书房采光好', additionalNeeds: [] }, '已记录书房采光好，原书桌靠门的需求继续沿用。');
   assert.equal(daylight.run.status, 'succeeded');
   await withTenantTransaction(actor.enterpriseId, async tx => {
     await tx.execute(sql`update app.assistant_messages set content='{"version":1,"blocks":[{"type":"text","text":"合成撤回"}]}'::jsonb

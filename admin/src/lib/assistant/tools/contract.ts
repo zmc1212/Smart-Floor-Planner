@@ -11,12 +11,8 @@ import type { ModelTool } from '../contracts/model';
  */
 export const toolDefinitionProtocol = 'assistant-tool-definition-v1';
 export const toolExecutionProtocol = 'assistant-tool-execution-v1';
-export const toolLoopProtocol = 'assistant-tool-loop-v1';
 
 export const toolEngineLimits = {
-  /** Model calls per loop, including the reserved final-answer call. */
-  maxTurns: 4,
-  maxToolCallsPerTurn: 4,
   maxDefinitions: 32,
   maxNameChars: 64,
   maxDescriptionChars: 2000,
@@ -133,10 +129,6 @@ export type ToolCallResult = {
   content: string;
   record: ToolExecutionRecord;
 };
-
-export const toolLoopFinalInstruction =
-  '本轮为收尾轮，仅提交最终回答，不再调用任何工具。只使用已经取得的工具结果和仍有效的信息；'
-  + '工具失败、被拒绝或未执行的部分必须如实说明，不得声称操作成功，不得编造结果或来源。';
 
 /** Structural checks only. Actual argument validation runs against the JSON
  * Schema in the executor via the existing LangChain validator. */

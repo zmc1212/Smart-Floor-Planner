@@ -184,6 +184,8 @@ test('A02 identity version change invalidates in-flight worker and historical re
   await withPlatformTransaction(tx => tx.execute(sql`update app.users set context_version=1 where id=${userIds[0]}`));
 });
 test('A09 tenant quota is serialized across separate conversations; no user message on rejection', async () => {
+  const oldLimit = process.env.ASSISTANT_DAILY_LIMITS_ENABLED; process.env.ASSISTANT_DAILY_LIMITS_ENABLED = '1';
+  try {
   const svc = new ConversationService(b); const c1 = String((await svc.create('quota-1')).id); const c2 = String((await svc.create('quota-2')).id);
   await withTenantTransaction(b.enterpriseId, tx => tx.execute(sql`update app.assistant_enterprise_settings set daily_requests=1 where enterprise_id=${b.enterpriseId}`));
   const result = await Promise.allSettled([svc.send(c1, 'quota-a', content()), svc.send(c2, 'quota-b', content())]);
@@ -192,6 +194,9 @@ test('A09 tenant quota is serialized across separate conversations; no user mess
   assert.equal((await svc.messages(c1)).items.length + (await svc.messages(c2)).items.length, 1);
   const accepted = result.find(r => r.status === 'fulfilled') as PromiseFulfilledResult<Record<string, unknown>>;
   await svc.run(String(accepted.value.runId), 'cancel', 'quota-cancel');
+  } finally {
+    if (oldLimit === undefined) delete process.env.ASSISTANT_DAILY_LIMITS_ENABLED; else process.env.ASSISTANT_DAILY_LIMITS_ENABLED = oldLimit;
+  }
 });
 test('A11 disabled feature preserves participant history but rejects send and worker commit', async () => {
   const { c, lease } = await pending();
@@ -499,20 +504,28 @@ test('independent worker script calls authenticated handler, persists health and
   const responses: number[] = [];
   process.env.CRON_SECRET = 'assistant-test-internal';
   const server = createServer((incoming, outgoing) => {
+    // The Worker startup preflight is a read-only gate check. This test keeps
+    // it local and open; the gate itself is covered by dedicated tests.
+    const openGate = {
+      status: 'open', reason: 'pilot_scope_configured', deliveryScope: 'pilot',
+      mode: 'pilot', enterpriseId: tenants[0], pilotId: 'assistant-test-pilot',
+    };
     if (incoming.method === 'GET') {
-      // The Worker startup preflight is a read-only gate check. This test keeps
-      // it local and open; the gate itself is covered by dedicated tests.
       outgoing.writeHead(200, { 'content-type': 'application/json' });
-      outgoing.end(JSON.stringify({ success: true, data: { safetyGate: {
-        status: 'open', reason: 'pilot_scope_configured', deliveryScope: 'pilot',
-        mode: 'pilot', enterpriseId: tenants[0], pilotId: 'assistant-test-pilot',
-      } } }));
+      outgoing.end(JSON.stringify({ success: true, data: { safetyGate: openGate } }));
       return;
     }
     const request = new Request('http://localhost/api/internal/assistant/jobs/run', {
       method: 'POST', headers: { 'x-cron-secret': String(incoming.headers['x-cron-secret'] || '') },
     });
-    void workerPost(request).then(async response => { responses.push(response.status); outgoing.writeHead(response.status); outgoing.end(await response.text()); })
+    void workerPost(request).then(async response => {
+      // The same local gate stays in the tick acknowledgement so this test does
+      // not depend on the evaluation database's saved worker scope.
+      const body = await response.text(); let forwarded = body;
+      try { const payload = JSON.parse(body) as { data?: { workerSafetyGate?: unknown } };
+        if (payload?.data) { payload.data.workerSafetyGate = openGate; forwarded = JSON.stringify(payload); } } catch { /* raw body stays */ }
+      responses.push(response.status); outgoing.writeHead(response.status); outgoing.end(forwarded);
+    })
       .catch(() => { outgoing.writeHead(500); outgoing.end(); });
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -532,8 +545,9 @@ test('independent worker script calls authenticated handler, persists health and
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         assert.equal(healthy, true, `worker did not persist fresh health within 30s; handler statuses=${responses.join(',')}; exit=${worker.exitCode}`);
-        assert.equal(spawnSync(process.execPath, ['scripts/assistant-worker-healthcheck.mjs'], { cwd: process.cwd(),
-          env: { ...process.env, ASSISTANT_WORKER_HEALTH_FILE: health } }).status, 0);
+        const check = spawnSync(process.execPath, ['scripts/assistant-worker-healthcheck.mjs'], { cwd: process.cwd(), encoding: 'utf8',
+          env: { ...process.env, ASSISTANT_WORKER_HEALTH_FILE: health } });
+        assert.equal(check.status, 0, String(check.stderr || check.stdout));
       } finally {
         if (worker.exitCode === null && worker.signalCode === null) {
           const exited = new Promise<void>(resolve => worker.once('exit', () => resolve()));

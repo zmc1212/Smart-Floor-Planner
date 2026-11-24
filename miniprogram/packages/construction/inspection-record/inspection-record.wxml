@@ -1,0 +1,110 @@
+<view class="construction-page inspection-review">
+  <view class="book-spine" aria-hidden="true">
+    <view class="book-stitch" style="top:84px" /><view class="book-stitch" style="top:37%" />
+    <view class="book-stitch" style="top:65%" /><view class="book-stitch" style="bottom:28px" />
+  </view>
+  <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px">
+    <button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png" mode="aspectFit" /></button>
+    <text class="book-nav-title">{{item.record.canReview ? '上报审核' : '上报详情'}}</text>
+  </view>
+  <view class="content">
+    <view wx:if="{{loading}}" class="state" role="status">正在读取上报…</view>
+    <view wx:if="{{!sheet && (error || pending)}}" class="feedback" role="alert">
+      <text>{{pending ? '提交结果待核对，原内容已保留。' : error}}</text>
+      <button wx:if="{{pending}}" class="outline" bindtap="reconcile" loading="{{busy}}" disabled="{{busy}}">核对同一次操作</button>
+      <button wx:elif="{{!fatal}}" class="outline" bindtap="reload">重新读取</button>
+    </view>
+    <block wx:if="{{item}}">
+      <view class="paper review-header">
+        <text class="review-project">{{project.name}}</text>
+        <view class="review-title-row"><text class="review-title">{{item.record.data.title || '现场上报'}}</text><text class="review-state {{item.record.status}}">{{item.statusLabel}}</text></view>
+        <text class="review-meta">{{item.message.display_name || '施工人员'}} · {{item.time}}{{item.stages ? ' · ' + item.stages : ''}}</text>
+        <text wx:if="{{item.record.status === 'published'}}" class="review-meta">审核人 {{item.record.approved_name}} · {{item.approvedAt}}</text>
+        <text wx:if="{{item.record.status === 'published' && item.record.inspection_receipt}}" class="review-reason">到场核查 · {{item.record.inspection_receipt.note}}</text>
+        <text wx:if="{{item.record.review_requirements && item.record.status === 'changes_requested'}}" class="review-reason">补充要求 · {{item.record.review_requirements}}</text>
+      </view>
+      <view wx:if="{{success && !sheet}}" class="review-success" role="status">{{success}}</view>
+      <view class="paper review-section">
+        <text class="review-heading">上报原件</text>
+        <text wx:if="{{item.text}}" class="review-copy" user-select>{{item.text}}</text>
+        <view wx:if="{{item.record.media.length}}" class="review-photos">
+          <button wx:for="{{item.record.media}}" wx:for-item="photo" wx:key="id" class="photo-slot" data-id="{{photo.id}}" bindtap="preview">
+            <image wx:if="{{mediaPaths[photo.id]}}" src="{{mediaPaths[photo.id]}}" mode="aspectFill" /><text wx:else>照片读取中</text>
+          </button>
+        </view>
+        <button wx:if="{{item.record.speech}}" class="text-action" bindtap="playVoice">{{playing ? '停止语音' : '播放原语音'}}</button>
+        <text wx:if="{{item.record.speech.transcript}}" class="review-copy" user-select>{{item.record.speech.transcript}}</text>
+      </view>
+      <view wx:if="{{item.record.canReview && (item.record.status === 'draft' || item.record.status === 'organizing')}}" class="paper review-section">
+        <view class="review-title-row"><text class="review-heading">审核方式</text><text class="review-state">{{item.record.inspectionLabel}}</text></view>
+        <text wx:if="{{item.record.inspection.reason}}" class="review-copy">{{item.record.inspection.reason}}</text>
+        <text wx:if="{{item.record.generating}}" class="review-meta">小K正在整理，原件已可查看。</text>
+        <text wx:elif="{{item.record.failed}}" class="review-meta">整理未完成，可依据原件确认审核方式或退回补充。</text>
+        <button wx:if="{{item.record.canTriageInspection}}" class="text-action" data-action="inspection_triage" bindtap="openAction">确认审核方式</button>
+      </view>
+      <view wx:if="{{item.record.data.title && !item.record.generating}}" class="paper review-section">
+        <text class="review-heading">整理内容</text>
+        <text wx:for="{{item.record.rows}}" wx:for-item="row" wx:key="label" class="review-copy" user-select>{{row.label}} · {{row.value}}</text>
+        <text wx:if="{{item.record.data.note}}" class="review-copy" user-select>{{item.record.data.note}}</text>
+        <button wx:if="{{item.record.canEdit && item.record.canReview}}" class="text-action" data-action="edit" bindtap="openAction">修改整理内容</button>
+      </view>
+      <view wx:if="{{resubmit}}" class="paper review-section">
+        <text class="review-heading">补充上报</text>
+        <view wx:for="{{attachments}}" wx:key="*this" class="stage-row">
+          <text>已添加照片</text><button class="text-action" bindtap="removePhoto" data-id="{{item}}" disabled="{{busy || pending}}">移除</button>
+        </view>
+        <button wx:if="{{attachments.length < 4}}" class="outline" bindtap="pickPhoto" disabled="{{busy || pending}}">添加新照片</button>
+        <textarea class="field textarea" value="{{draft}}" maxlength="4000" placeholder="补充说明（选填）" bindinput="reworkInput" />
+        <button class="primary" bindtap="sendRework" loading="{{busy}}" disabled="{{busy || pending || !attachments.length}}">提交复审</button>
+      </view>
+      <button wx:elif="{{item.record.canResubmit}}" class="primary" bindtap="beginRework">按要求补充</button>
+      <button wx:if="{{item.record.resubmittedRecordId}}" class="outline" bindtap="openRework">查看补交记录</button>
+      <view wx:if="{{item.record.canPublish || item.record.canRequestChanges}}" class="review-actions">
+        <button wx:if="{{item.record.canRequestChanges}}" class="outline" data-action="request_changes" bindtap="openAction" disabled="{{busy || pending}}">退回补充</button>
+        <button wx:if="{{item.record.canPublish}}" class="primary" data-action="publish" bindtap="openAction" disabled="{{busy || pending}}">{{item.record.inspection.requiresOnsite ? '到场审核' : '核对通过'}}</button>
+      </view>
+      <button wx:if="{{item.record.canReview && item.record.canEdit && item.record.status === 'published'}}" class="text-action" data-action="withdraw" bindtap="openAction">撤回发布</button>
+    </block>
+  </view>
+  <view wx:if="{{sheet && item}}" class="sheet-mask" bindtap="closeSheet">
+    <view class="sheet" catchtap="stop">
+      <view class="sheet-heading"><text>{{sheetTitle}}</text><button class="text-action" bindtap="closeSheet" disabled="{{busy || pending || checking}}">关闭</button></view>
+      <scroll-view class="sheet-body review-sheet-body" scroll-y>
+        <view wx:if="{{error || pending}}" class="feedback" role="alert">
+          <text>{{pending ? '提交结果待核对，原内容已保留。' : error}}</text>
+          <button wx:if="{{pending}}" class="outline" bindtap="reconcile" disabled="{{busy}}">核对同一次操作</button>
+        </view>
+        <block wx:if="{{sheet === 'publish'}}">
+          <text class="review-copy">审核结果由本项目成员查看</text>
+          <view wx:if="{{item.record.canPublishCustomer && project.customerAccess}}" class="stage-row"><text>同时向本项目业主公开</text><switch checked="{{publishCustomer}}" bindchange="pickAudience" disabled="{{busy || pending || checking}}" color="#00513c" /></view>
+          <block wx:if="{{mustVisit}}">
+            <text wx:if="{{!pinned}}" class="review-reason">工地入口尚未确认，请在巡检地图补位置。</text>
+            <text class="label">现场核查备注</text>
+            <textarea class="field textarea" value="{{note}}" maxlength="500" placeholder="记录现场查验的部位和结果" bindinput="inputNote" />
+          </block>
+        </block>
+        <block wx:elif="{{sheet === 'inspection_triage'}}">
+          <view class="review-actions">
+            <button class="{{inspectionMode === 'onsite' ? 'primary' : 'outline'}}" data-mode="onsite" bindtap="pickMode">需到场</button>
+            <button wx:if="{{item.record.inspection.mode !== 'required'}}" class="{{inspectionMode === 'remote' ? 'primary' : 'outline'}}" data-mode="remote" bindtap="pickMode">线上审核</button>
+          </view>
+          <text class="label">核对依据</text><textarea class="field textarea" value="{{note}}" maxlength="500" placeholder="说明为什么采用这个审核方式" bindinput="inputNote" />
+        </block>
+        <block wx:elif="{{sheet === 'edit'}}">
+          <picker range="{{roomChoices}}" range-key="name" value="{{roomIndex}}" bindchange="pickRoom"><view class="field">{{roomChoices[roomIndex].name}}</view></picker>
+          <block wx:for="{{editFields}}" wx:for-item="field" wx:key="key">
+            <text class="label">{{field.label}}</text><textarea class="field textarea" value="{{edit[field.key]}}" maxlength="{{field.limit}}" data-field="{{field.key}}" bindinput="editInput" />
+          </block>
+        </block>
+        <block wx:else>
+          <text class="label">{{sheet === 'withdraw' ? '撤回原因' : '补充要求'}}</text>
+          <textarea class="field textarea" value="{{note}}" maxlength="{{sheet === 'withdraw' ? 500 : 1000}}" placeholder="{{sheet === 'withdraw' ? '说明为什么撤回' : '写清需要补充的部位和细节'}}" bindinput="inputNote" />
+        </block>
+      </scroll-view>
+      <button class="primary review-confirm" bindtap="confirm" loading="{{busy || checking}}"
+        disabled="{{busy || checking || pending || (sheet === 'publish' ? mustVisit && (!note || !pinned) : sheet === 'edit' ? !edit.title : !note || (sheet === 'inspection_triage' && !inspectionMode))}}">
+        {{sheet === 'publish' ? (mustVisit ? '定位并审核通过' : '确认通过') : sheet === 'request_changes' ? '确认退回' : '确认保存'}}
+      </button>
+    </view>
+  </view>
+</view>

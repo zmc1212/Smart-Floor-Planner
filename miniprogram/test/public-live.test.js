@@ -1,23 +1,79 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {LiveConsentController}=require('../packages/assistant/lib/public-live');
+const {publicConsultationId}=require('../utils/public-site-client');
 const card={id:'7',versionId:'8',messageId:'20',revision:3,key:'a'.repeat(48),status:'pending_owner',statusLabel:'待你决定',available:true,canDecide:true,canWithdraw:true,alias:'客厅机位',name:'测试工地'};
 const path='/api/public/construction-live/1454/'+card.key+'/media/'+'b'.repeat(43)+'/hls.m3u8';
 function env(){const storage=new Map();global.wx={getStorageSync:k=>storage.get(k),setStorageSync:(k,v)=>storage.set(k,v),removeStorageSync:k=>storage.delete(k)};return storage;}
-function publicLivePage(){
+function publicLivePage(request){
   const source=fs.readFileSync(require.resolve('../packages/construction/public-live/public-live'),'utf8'),calls=[];let page;
-  new Function('Page','require','wx',source)(definition=>{page=definition;},module=>module.includes('site-font')?{loadSiteFont(){}}:{},{navigateTo:({url})=>calls.push(url)});
+  new Function('Page','require','wx',source)(definition=>{page=definition;},module=>{
+    if(module.includes('site-font'))return {loadSiteFont(){}};
+    if(module.includes('public-site-client'))return {publicConsultationId:options=>publicConsultationId(options,request)};
+    return {request};
+  },{navigateTo:({url})=>calls.push(url)});
   page.setData=patch=>Object.assign(page.data,patch);return {page,calls};
 }
 
-test('the live page carries the exact public site into the consultation',()=>{
-  const {page,calls}=publicLivePage();
-  page.options={conversationId:'9',enterpriseId:'1454',siteId:'23',versionId:'24'};page.consult();
-  assert.equal(calls[0],'/packages/assistant/chat/chat?conversationId=9&publicSiteId=23&publicVersionId=24');
-  page.options={enterpriseId:'1454'};page.consult();
-  assert.equal(calls[1],'/packages/assistant/chat/chat?publicEnterpriseId=1454');
-  page.options={enterpriseId:'1454',siteId:'23',versionId:'24'};page.consult();
-  assert.equal(calls[2],'/packages/assistant/chat/chat?publicEnterpriseId=1454&publicSiteId=23&publicVersionId=24');
+test('the live page carries the exact public site into the verified original consultation', async () => {
+  const checks = [];
+  const {page,calls} = publicLivePage(async (url, method, body) => {
+    checks.push({url, method, body});
+    return {success:true,data:{enterprise:{id:'1454'}}};
+  });
+  page.alive = true;
+  page.connect = () => page.setShareAvailable(true);
+  const show = async options => {
+    page.options = options;
+    page.onShow();
+    await new Promise(setImmediate);
+    page.consult();
+  };
+
+  await show({conversationId:'9',enterpriseId:'1454',siteId:'23',versionId:'24'});
+  assert.equal(page.data.canConsult, true);
+  assert.deepEqual(calls, ['/packages/assistant/chat/chat?conversationId=9&publicSiteId=23&publicVersionId=24']);
+  page.onHide();
+  await show({enterpriseId:'1454',siteId:'23',versionId:'24'});
+  assert.equal(page.data.canConsult, false);
+  page.onHide();
+  await show({conversationId:'9',enterpriseId:'1455',siteId:'23',versionId:'24'});
+  assert.equal(page.data.canConsult, false);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(checks, Array(2).fill({url:'/miniprogram/assistant/entry-context',method:'POST',body:{conversationId:'9'}}));
+});
+
+test('the guide preview uses the confirmed live version and discards a response after withdrawal', async () => {
+  let deliver;
+  const request = new Promise(resolve => { deliver = resolve; });
+  const calls = [];
+  const {page} = publicLivePage((url, method, params) => {
+    calls.push({ url, method, params });
+    return request;
+  });
+  page.alive = page.visible = true;
+  page.epoch = 1;
+  page.consultationId = '9';
+  page.options = {siteId:'23',versionId:'24',key:card.key};
+  page.setData({detail:{key:'b'.repeat(48),versionId:'25'}});
+  page.setShareAvailable(true);
+  await page.loadGuide();
+  assert.equal(calls.length, 0);
+
+  page.setData({detail:{key:card.key,versionId:'25'}});
+  const preview = page.loadGuide();
+  assert.deepEqual(calls, [{url:'/miniprogram/assistant/conversations/9/public-sites/23/guide',method:'GET',
+    params:{versionId:'24',liveKey:card.key,liveVersionId:'25'}}]);
+  page.setShareAvailable(false);
+  deliver({success:true,data:{question:'想先看看水电进展吗？'}});
+  await preview;
+  assert.equal(page.data.guideQuestion, '');
+
+  page.setShareAvailable(true);
+  await page.loadGuide();
+  assert.equal(page.data.guideQuestion, '想先看看水电进展吗？');
+  page.onHide();
+  assert.equal(page.data.guideQuestion, '');
 });
 
 test('opening WebView uses the preview receipt and approval only follows server playback readback',async()=>{

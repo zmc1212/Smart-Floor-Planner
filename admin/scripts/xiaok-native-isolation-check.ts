@@ -17,8 +17,8 @@ import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import { retrieveKnowledge } from '@/lib/assistant/knowledge/retrieval';
 import { nativeAgentRuntimeBinding } from '@/lib/assistant/fastgpt/agent-v2/config';
-import { auditKindCounts, auditNonStageKinds, auditPrefixHash, auditWindowEntries,
-  readableAuditError } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
+import { auditKindCounts, auditPrefixHash, auditWindowEntries, readableAuditError } from '@/lib/assistant/fastgpt/agent-v2/audit-window';
+import { nativeAuditKindViolations } from '@/lib/assistant/fastgpt/agent-v2/native-acceptance';
 
 loadEnvConfig(process.cwd(), true);
 assert.ok(process.argv.includes('--development'));
@@ -254,8 +254,8 @@ async function main() {
     try { entries = auditWindowEntries(auditLines(), { windowStart: auditBefore, windowPrefixHash: auditWindowPrefix }); }
     catch (error) { assert.fail(readableAuditError(error)); }
     const kinds = auditKindCounts(entries);
-    const nonStage = auditNonStageKinds(kinds);
-    assert.equal(nonStage.length, 0, 'Chat path must not call FastGPT, saw: ' + nonStage.join(','));
+    const violations = nativeAuditKindViolations(kinds);
+    assert.equal(violations.length, 0, 'Chat path must not call FastGPT, saw: ' + violations.join(','));
     report.fastgptAudit = { configured: true, auditFile, roundWindow: { start: auditBefore, end: auditLines().length, kinds },
       mode: 'xiaok-native-executor-v1' };
     return report.fastgptAudit;

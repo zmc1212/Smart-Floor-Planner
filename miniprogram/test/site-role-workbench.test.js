@@ -45,8 +45,9 @@ test('worker site workbench loads own reports, opens the report page and reads a
   const componentPath = require.resolve('../packages/construction/workbench/workbench');
   delete require.cache[componentPath];
   require(componentPath);
-  const c = { data: { ...definition.data, role: 'construction_staff' }, _visible: true,
-    setData(patch, callback) { Object.assign(this.data, patch); if (typeof callback === 'function') callback(); }, ...definition.methods };
+  const c = { data: { ...definition.data, role: 'construction_staff' }, _visible: true, sheetEvents: [],
+    setData(patch, callback) { Object.assign(this.data, patch); if (typeof callback === 'function') callback(); },
+    triggerEvent(name, detail) { this.sheetEvents.push({ name, detail }); }, ...definition.methods };
   const event = (dataset, detail) => ({ currentTarget: { dataset }, detail });
   const settle = async (check, attempts = 40) => {
     for (let index = 0; index < attempts && !check(); index += 1) await new Promise(resolve => setTimeout(resolve, 0));
@@ -58,8 +59,8 @@ test('worker site workbench loads own reports, opens the report page and reads a
     assert.equal(c.data.reports[0].statusLabel, '待审核');
     assert.equal(c.data.todaySummary.pending, 1);
 
-    c.capture(event({ action: 'photo' }));
-    assert.match(visited.at(-1), /\/packages\/construction\/report\/report\?projectId=10&mode=photo$/);
+    c.capture();
+    assert.match(visited.at(-1), /\/packages\/construction\/report\/report\?projectId=10$/);
     assert.equal(visited.some(url => url.includes('/construction/chat/chat')), false);
 
     await c.selectRange(event({ key: 'week' }));
@@ -72,6 +73,7 @@ test('worker site workbench loads own reports, opens the report page and reads a
     assert.equal(c.data.detail.title, '客厅线管');
     assert.equal(c.data.detail.stageText, '水电');
     assert.deepEqual(c.data.detailPhotos, [{ id: '40', path: 'detail-photo' }]);
+    assert.equal(c.sheetEvents.some(entry => entry.name === 'sheetchange' && entry.detail.open === true), true);
 
     c.changeProject(event({}, { value: 1 }));
     await settle(() => c.data.model?.project?.id === '20');
@@ -82,6 +84,7 @@ test('worker site workbench loads own reports, opens the report page and reads a
     c.hide();
     assert.equal(c.data.model, null);
     assert.equal(c.data.showDetail, false);
+    assert.equal(c.sheetEvents.at(-1).detail.open, false);
 
     await c.show();
     storage.set('site-workbench:project:1:2:construction_staff', '10');

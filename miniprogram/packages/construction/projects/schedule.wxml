@@ -1,0 +1,93 @@
+<template name="schedule-row">
+  <view id="schedule-{{node.key}}" class="schedule-row {{focusNode === node.key ? 'is-focused' : ''}}">
+    <image class="schedule-icon" src="../assets/notebook/{{node.completedAt ? 'capture-check' : node.kind === 'handover' ? 'file' : 'review-clock'}}.png" mode="aspectFit" />
+    <view class="schedule-row-copy">
+      <text class="label">{{node.name}}</text>
+      <text class="helper">{{node.completedText || node.timeText}}</text>
+      <text wx:if="{{node.overdueText}}" class="tone-label tone-yellow">{{node.overdueText}}</text>
+      <text wx:if="{{!node.valid}}" class="helper">{{node.label}}</text>
+    </view>
+    <button wx:if="{{node.valid && !node.completedAt}}" size="mini" class="schedule-action" data-key="{{node.key}}" bindtap="openScheduleForm" disabled="{{disabled}}"><view class="schedule-action-label">{{node.actionText}}</view></button>
+  </view>
+</template>
+
+<template name="schedule-plan">
+  <view class="schedule-title">
+    <text class="page-title">{{detail.project.name}}</text>
+    <text class="helper">当前阶段 · {{detail.project.stageName}}</text>
+  </view>
+  <view class="paper schedule-template">
+    <view><text class="fabric">阶段模板</text><text class="section-title">标准整装</text></view>
+    <button class="primary schedule-template-button" bindtap="openScheduleForm" disabled="{{busy || pending || detail.project.status !== 'active'}}">套用模板</button>
+  </view>
+  <text class="section-title schedule-section-title">节点跟进</text>
+  <view class="paper schedule-list">
+    <text wx:if="{{!detail.progress.management.milestones.length}}" class="helper">套用阶段模板后即可填写预计时间。</text>
+    <block wx:for="{{detail.progress.management.milestones}}" wx:key="key">
+      <template wx:if="{{item.kind !== 'handover'}}" is="schedule-row" data="{{node: item, focusNode, disabled: busy || pending || detail.project.status !== 'active'}}" />
+    </block>
+  </view>
+  <view wx:if="{{detail.progress.management.milestones.length}}" class="paper schedule-list">
+    <text class="section-title">约定事项</text>
+    <block wx:for="{{detail.progress.management.milestones}}" wx:key="key">
+      <template wx:if="{{item.kind === 'handover'}}" is="schedule-row" data="{{node: item, focusNode, disabled: busy || pending || detail.project.status !== 'active'}}" />
+    </block>
+  </view>
+</template>
+
+<template name="schedule-editor">
+  <scroll-view scroll-y class="sheet-body schedule-editor">
+    <view wx:if="{{pending}}" class="feedback">
+      <text>上次提交结果待核对。</text><button class="outline" bindtap="sendPending" disabled="{{busy}}">核对上次提交</button>
+    </view>
+    <view wx:elif="{{scheduleForm.version !== detail.progress.version}}" class="feedback">
+      <text>{{scheduleForm.latestTime ? '当前计划 · ' + scheduleForm.latestTime : '施工计划已有更新'}}</text>
+      <button class="outline" bindtap="acknowledgeScheduleVersion" disabled="{{busy}}">已核对最新计划</button>
+    </view>
+    <block wx:if="{{scheduleForm.kind === 'template'}}">
+      <text class="label">标准整装</text>
+      <view wx:for="{{detail.progress.management.template}}" wx:key="key" class="stage-row"><text class="label">{{item.name}}</text></view>
+    </block>
+    <block wx:elif="{{scheduleForm.kind === 'followup'}}">
+      <text class="label schedule-editor-node">{{detail.project.name}} · {{scheduleForm.node.name}}</text>
+      <view class="schedule-followup-summary">
+        <text class="helper">{{scheduleForm.node.estimate ? '原' + scheduleForm.node.timeText : scheduleForm.node.timeText}}</text>
+        <text wx:if="{{scheduleForm.node.overdueText}}" class="tone-label tone-yellow">{{scheduleForm.node.overdueText}}</text>
+      </view>
+      <text class="label">现场情况</text>
+      <view class="schedule-outcomes">
+        <button size="mini" class="outline {{scheduleForm.outcome === 'completed' ? 'selected' : ''}}" data-outcome="completed" bindtap="chooseScheduleOutcome" disabled="{{busy || pending || !scheduleForm.node.canConfirmCompletion}}">已完成</button>
+        <button size="mini" class="outline {{scheduleForm.outcome === 'ongoing' ? 'selected' : ''}}" data-outcome="ongoing" bindtap="chooseScheduleOutcome" disabled="{{busy || pending}}">仍在施工</button>
+      </view>
+      <text wx:if="{{!scheduleForm.node.canConfirmCompletion}}" class="helper">已完成需核对工地的实际阶段记录。</text>
+      <block wx:if="{{scheduleForm.outcome !== 'completed'}}">
+        <view class="section-heading schedule-editor-label"><text class="label">新的预计完成时间</text><button wx:if="{{scheduleForm.start || scheduleForm.end}}" class="text-action" bindtap="clearScheduleEstimate">清空预计</button></view>
+        <view class="schedule-range field">
+          <picker mode="date" value="{{scheduleForm.start}}" end="{{scheduleForm.end}}" data-field="start" bindchange="editScheduleField" disabled="{{busy || pending}}"><view>{{scheduleForm.start || '开始日期'}}</view></picker>
+          <text>至</text>
+          <picker mode="date" value="{{scheduleForm.end}}" start="{{scheduleForm.start}}" data-field="end" bindchange="editScheduleField" disabled="{{busy || pending}}"><view>{{scheduleForm.end || '结束日期'}}</view></picker>
+        </view>
+      </block>
+      <text class="label schedule-editor-label">说明（选填）</text>
+      <textarea class="field schedule-note" value="{{scheduleForm.note}}" maxlength="500" data-field="note" bindinput="editScheduleField" disabled="{{busy || pending}}" />
+    </block>
+    <block wx:elif="{{scheduleForm.kind === 'agreement'}}">
+      <text class="label schedule-editor-node">{{detail.project.name}} · {{scheduleForm.node.name}}</text>
+      <view class="schedule-agreement">
+        <view class="schedule-date-original"><text class="helper">原约定</text><text class="label">{{scheduleForm.node.agreedDate || '尚未登记'}}</text></view>
+        <view class="schedule-date-proposed">
+          <text class="helper">双方确认的日期</text>
+          <picker mode="date" value="{{scheduleForm.date}}" data-field="date" bindchange="editScheduleField" disabled="{{busy || pending}}"><view class="field">{{scheduleForm.date || '选择日期'}}</view></picker>
+        </view>
+      </view>
+      <text class="label schedule-editor-label">{{scheduleForm.node.agreedDate ? '改期原因' : '说明（选填）'}}</text>
+      <textarea class="field schedule-note" value="{{scheduleForm.reason}}" maxlength="500" data-field="reason" bindinput="editScheduleField" disabled="{{busy || pending}}" />
+      <checkbox-group bindchange="confirmAgreement">
+        <label class="schedule-offline-confirm"><checkbox value="confirmed" checked="{{scheduleForm.confirmedOffline}}" color="#00513c" disabled="{{busy || pending}}" />已与业主线下确认该日期</label>
+      </checkbox-group>
+    </block>
+  </scroll-view>
+  <button class="primary" bindtap="submit" loading="{{busy}}" disabled="{{busy || pending || scheduleForm.version !== detail.progress.version || detail.project.status !== 'active'}}">
+    {{scheduleForm.kind === 'template' ? '套用模板' : scheduleForm.kind === 'agreement' ? '登记已确认日期' : '保存跟进'}}
+  </button>
+</template>

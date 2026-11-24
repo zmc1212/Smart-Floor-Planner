@@ -8,7 +8,7 @@ export type FormalSource = { leadId: string; floorPlanId: string; layoutHash: st
 
 /** Shared by attachment, private reads and Agent checkpoint rehydration. */
 export async function ownedFormalPlan(tx: PostgresTransaction, enterpriseId: string, userId: string, leadId: string) {
-  const plan = await one(tx, sql`select f.id,f.name,f.layout_data from app.leads l join app.floor_plans f
+  const plan = await one(tx, sql`select f.id,f.name,f.layout_data,f.updated_at from app.leads l join app.floor_plans f
     on f.enterprise_id=l.enterprise_id and f.id=l.primary_floor_plan_id
     where l.enterprise_id=${enterpriseId} and l.id=${id(leadId)} and l.customer_user_id=${userId}
       and l.archived_at is null and f.status='completed' for share of l,f`);

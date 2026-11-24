@@ -42,6 +42,7 @@ async function deliverManualAssignNotifications(
         designerId: appointment.designerId,
         measurerId: appointment.measurerId,
         address: appointment.address,
+        contactPhone: appointment.contactPhone,
         startsAt: appointmentBounds.startAt,
         eventKey: `${appointment.id.toString()}:${appointment.version}`,
         eventType: 'staff_reassigned',

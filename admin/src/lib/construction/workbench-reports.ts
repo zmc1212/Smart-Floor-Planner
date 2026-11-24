@@ -22,6 +22,7 @@ export type WorkerReportItem = {
   returnedByName: string;
   returnedAt: string | null;
   returnReason: string;
+  resubmittedRecordId: string | null;
 };
 
 const day = 86400000;
@@ -68,7 +69,7 @@ export async function workerReportHistory(tx: PostgresTransaction, actor: Constr
     recordId: string; clientMessageId: string; status: string; title: string | null; sourceAt: Date;
     stages: unknown; photoCount: string | number; photoId: string | null; hasVoice: boolean;
     approvedByName: string | null; publishedAt: Date | null; returnedByName: string | null; returnedAt: Date | null;
-    returnReason: string | null;
+    returnReason: string | null; resubmittedRecordId: string | null;
   }>(tx, sql`select r.id::text as "recordId",m.client_message_id as "clientMessageId",r.status,r.data->>'title' as title,
     m.created_at as "sourceAt",r.stage_snapshot as stages,
     (select count(*) from app.construction_site_attachments x join app.construction_site_media mm
@@ -81,7 +82,9 @@ export async function workerReportHistory(tx: PostgresTransaction, actor: Constr
     exists(select 1 from app.assistant_speech_assets s where s.enterprise_id=r.enterprise_id and s.conversation_id=r.conversation_id
       and s.message_id=r.source_message_id and s.deleted_at is null) as "hasVoice",
     ap.display_name as "approvedByName",r.published_at as "publishedAt",
-    rb.display_name as "returnedByName",r.returned_at as "returnedAt",r.review_requirements as "returnReason"
+    rb.display_name as "returnedByName",r.returned_at as "returnedAt",r.review_requirements as "returnReason",
+    (select child.id::text from app.construction_site_records child where child.enterprise_id=r.enterprise_id
+      and child.project_id=r.project_id and child.author_id=r.author_id and child.resubmission_of_id=r.id limit 1) as "resubmittedRecordId"
     from app.construction_site_records r join app.assistant_messages m
       on m.enterprise_id=r.enterprise_id and m.conversation_id=r.conversation_id and m.id=r.source_message_id
     left join app.admin_users ap on ap.enterprise_id=r.enterprise_id and ap.id=r.approved_by
@@ -108,6 +111,7 @@ export async function workerReportHistory(tx: PostgresTransaction, actor: Constr
       returnedByName: String(row.returnedByName || ''),
       returnedAt: row.returnedAt ? new Date(row.returnedAt).toISOString() : null,
       returnReason: String(row.returnReason || ''),
+      resubmittedRecordId: row.resubmittedRecordId,
     };
   });
 }

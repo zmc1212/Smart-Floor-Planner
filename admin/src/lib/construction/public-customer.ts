@@ -11,6 +11,8 @@ import { readMemory } from '@/lib/assistant/agent/memory';
 import { recommendationRegion } from '@/lib/assistant/location/region';
 import { CITY_OPTIONS } from '@/lib/portfolio/regions';
 import { discoveryRequest } from '@/lib/assistant/core/discovery';
+import { configuredPublicSiteGuide, publicGuideQuestion } from './public-guide';
+import { publicLivePublication } from './public-live/media';
 
 type PublicIntroMarker = { siteId: string; versionId: string; attempts: number; runId?: string };
 export type PublicIntroEntryDecision = 'existing' | 'new' | 'unavailable';
@@ -21,34 +23,32 @@ export function publicIntroEntryDecision(marker: { attempts?: number } | undefin
   // One failed generation may be retried on a later entry; never loop on it.
   return Number(marker?.attempts) >= 2 ? 'unavailable' : 'new';
 }
-/** One model opening per visited site version and consultation. It is an ordinary
- * customer reply run, so existing admission, quota, retry and failure semantics
- * apply unchanged; the client already follows the conversation's latest run. */
-async function schedulePublicIntro(tx: PostgresTransaction, actor: ActorContext, cid: string, siteId: string, versionId: string) {
+/** Reuse the conversation queue and retry path for the configured opening. */
+async function schedulePublicIntro(tx: PostgresTransaction, actor: ActorContext, cid: string,
+  siteId: string, versionId: string, settings: Row) {
   const c = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${cid} for update`);
-  if (!c || c.status !== 'open' || c.mode !== 'ai') return 'unavailable' as const;
+  if (!c || c.status !== 'open' || c.mode !== 'ai' || !configuredPublicSiteGuide(settings.guidance_config).enabled)
+    return 'unavailable' as const;
   const markers = ((c.entry_snapshot as Row).publicIntros || []) as PublicIntroMarker[];
   // Leaving one site for another retires its pending opening; the visited site
   // keeps its own queued/answered opening instead of generating another.
   for (const other of markers) if (other.runId && (String(other.siteId) !== siteId || String(other.versionId) !== versionId))
     await cancelQueuedRun(tx, actor.enterpriseId, String(other.runId));
   const current = markers.find(m => String(m.siteId) === siteId && String(m.versionId) === versionId);
+  let retryOf: string | undefined;
   if (current?.runId) {
     const previous = await one(tx, sql`select status from app.assistant_runs where enterprise_id=${actor.enterpriseId} and id=${String(current.runId)}`);
     const decision = publicIntroEntryDecision(current, previous ? String(previous.status) : undefined);
     if (decision !== 'new') return decision;
+    retryOf = String(current.runId);
   }
   const notice = await one(tx, sql`select id from app.assistant_messages where enterprise_id=${actor.enterpriseId} and conversation_id=${cid}
     and purpose='construction.public.context' order by seq desc limit 1`);
   if (!notice) return 'unavailable' as const;
-  // Someone who already spoke in this consultation does not need an opening.
-  if (await one(tx, sql`select id from app.assistant_messages where enterprise_id=${actor.enterpriseId} and conversation_id=${cid}
-    and author_kind in ('user','admin') limit 1`)) return 'unavailable' as const;
-  const settings = (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${actor.enterpriseId}`))!;
   await tx.execute(sql`savepoint public_intro_admission`);
   let runId: string;
   try {
-    const run = await newRun(tx, actor, c, settings, String(notice.id), undefined, { kind: 'user_message', messageId: String(notice.id) }, 'public.site.intro');
+    const run = await newRun(tx, actor, c, settings, String(notice.id), retryOf, { kind: 'user_message', messageId: String(notice.id) }, 'public.site.intro');
     runId = run.runId;
     await tx.execute(sql`release savepoint public_intro_admission`);
   } catch (error) {
@@ -69,10 +69,11 @@ export class PublicCustomerService {
     requireCapability(actor, 'assistant.chat.self'); id(conversationId);
     if (actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
   }
-  private scope<T>(fn: (tx: PostgresTransaction, c: Row) => Promise<T>, write = false) {
+  private scope<T>(fn: (tx: PostgresTransaction, c: Row, settings: Row | undefined) => Promise<T>, write = false) {
     return withTenantTransaction(this.actor.enterpriseId, async tx => {
-      const repo = new AssistantRepository(tx, this.actor); await repo.settings(write);
-      return fn(tx, await repo.conversation(this.conversationId));
+      const repo = new AssistantRepository(tx, this.actor);
+      const settings = await repo.settings(write);
+      return fn(tx, await repo.conversation(this.conversationId), settings);
     });
   }
   private async ownerSite(tx: PostgresTransaction, c: Row, siteId: string, versionId: string) {
@@ -169,9 +170,24 @@ export class PublicCustomerService {
       return { items: matching.slice(0, 3), enterpriseId: this.actor.enterpriseId, needRegion: !matching.length };
     });
   }
+  guide(siteId: string, versionId: string, liveKey: string, liveVersionId: string) {
+    id(siteId); id(versionId); id(liveVersionId);
+    return this.scope(async (tx, c, settings) => {
+      const material = await publishedPublicMaterial(tx, this.actor.enterpriseId, siteId, versionId);
+      if (!material) fail('public_site_unavailable', 404);
+      const publication = await publicLivePublication(tx, this.actor.enterpriseId, liveKey);
+      if (String(publication.live.project_id) !== String(material.site.project_id)
+        || String(publication.version.id) !== liveVersionId) fail('public_live_unavailable', 404);
+      const guide = configuredPublicSiteGuide(settings?.guidance_config);
+      const markers = ((c.entry_snapshot as Row).publicIntros || []) as PublicIntroMarker[];
+      const offer = c.status === 'open' && c.mode === 'ai' && guide.enabled
+        && !markers.some(marker => samePublicRef(marker, { siteId, versionId }));
+      return { question: offer ? publicGuideQuestion(guide, material.version.content as PublicContent) : null };
+    });
+  }
   context(siteId: string, input: Row, requestKey: string) {
     id(siteId); id(input.versionId); key(requestKey); object(input, ['versionId']);
-    return this.scope(async (tx, c) => {
+    return this.scope(async (tx, c, settings) => {
       if (c.status !== 'open') fail('conversation_read_only');
       const ref = { siteId, versionId: String(input.versionId) };
       const material = await publishedPublicMaterial(tx, this.actor.enterpriseId, siteId, ref.versionId);
@@ -193,7 +209,7 @@ export class PublicCustomerService {
             content: { version: 1, blocks: [{ type: 'text', text: `正在围观：${content.name}。这是你的咨询，不会加入业主原会话。` }] } });
           selected = true;
         }
-        const intro = await schedulePublicIntro(tx, this.actor, this.conversationId, siteId, ref.versionId);
+        const intro = await schedulePublicIntro(tx, this.actor, this.conversationId, siteId, ref.versionId, settings!);
         return { id: siteId, versionId: ref.versionId, conversationId: this.conversationId, intro };
       });
       // An old receipt may acknowledge a write, but cannot select that site

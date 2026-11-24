@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import { AssistantError, fail, id } from '@/lib/assistant/contracts';
 import type { ConstructionActor } from '../contracts';
 import { object } from '../contracts';
-import { CameraService, cameraCookie, cameraPublicOrigin, cameraSnapshots, captureCamera, createCameraEntry, listCameraProject, exchangeCameraEntry, sessionHeartbeat, sessionState, startCameraView } from './service';
+import { CameraService, cameraCookie, cameraPublicOrigin, cameraSnapshots, captureCamera, createCameraEntry, listCameraProject, exchangeCameraEntry, sessionCameraCover, sessionHeartbeat, sessionState, startCameraView } from './service';
 import { cameraPtz } from './ptz';
 import {saveRecordingPolicy,saveRetentionDefault,listCameraRecordings,startRecordingView} from './recordings';
 import {startSdRecordingView} from './sd';
-import { customerCameraActor, customerCameraProjects, type CameraCustomerIdentity } from './access';
+import { customerCameraPlayback, customerCameraProjects, type CameraCustomerIdentity } from './access';
+import { debugSignalBinding } from './debug-source';
 import { saveCameraCustomerGrant } from './customer-grants';
 import { saveCoverInterval } from './cover-defaults';
 
@@ -46,7 +47,7 @@ export async function customerCameraHttp(request: Request, identity: CameraCusto
     return cameraJson(await customerCameraProjects(identity, id(path[1])));
   if (path[0] !== 'projects' || path.length !== 3 ||
     !(request.method === 'GET' && path[2] === 'cameras' || request.method === 'POST' && path[2] === 'entry')) fail('camera_not_found', 404);
-  const pid = id(path[1]), actor = await customerCameraActor(identity, pid);
+  const { actor, projectId: pid } = await customerCameraPlayback(identity, id(path[1]));
   if (request.method === 'GET') return cameraJson(await listCameraProject(actor, pid));
   object(await body(request), []);
   return cameraJson(await createCameraEntry(actor, pid));
@@ -69,6 +70,14 @@ export async function sessionCameraHttp(request: Request, path: string[]) {
     }
     const token = cookieToken(request.headers.get('cookie'));
     if (read && route === 'state') return cameraJson(await sessionState(token));
+    if (read && path[0] === 'cover' && path.length === 2) {
+      const cover = await sessionCameraCover(token, id(path[1]));
+      const headers = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
+      if (!cover) return new Response(null, { status: 204, headers });
+      return new Response(new Uint8Array(cover.jpeg), { headers: {
+        ...headers, 'Content-Type': 'image/jpeg', 'X-Content-Type-Options': 'nosniff', 'X-Camera-Captured-At': cover.capturedAt,
+      } });
+    }
     if (read && route === 'snapshots') return cameraJson(await cameraSnapshots(token));
     if (read && path[0] === 'snapshots' && path.length === 2) {
       const image = await cameraSnapshots(token, path[1]);
@@ -78,7 +87,11 @@ export async function sessionCameraHttp(request: Request, path: string[]) {
     const csrf = request.headers.get('x-camera-csrf'); if (!csrf) fail('camera_session_expired', 401);
     const b = await body(request);
     if (['heartbeat','stop'].includes(route)) { object(b, []); return cameraJson(await sessionHeartbeat(token, csrf, route === 'stop')); }
-    if (route === 'live') { object(b, ['bindingId']); return cameraJson(await startCameraView(token, csrf, id(b.bindingId))); }
+    if (route === 'live') {
+      object(b, ['bindingId']);
+      const bindingId = b.bindingId === debugSignalBinding ? b.bindingId : id(b.bindingId);
+      return cameraJson(await startCameraView(token, csrf, bindingId));
+    }
     if (route === 'recordings/query') { object(b,['date','bindingId','before']); return cameraJson(await listCameraRecordings(token,b.date,csrf,b.bindingId===undefined?undefined:id(b.bindingId),b.before)); }
     if (route === 'playback') { object(b,['recordingId','source']); if(b.source!==undefined&&!['cloud','sd'].includes(String(b.source)))fail('camera_invalid_request',422);return cameraJson(await (b.source==='sd'?startSdRecordingView(token,csrf,id(b.recordingId)):startRecordingView(token,csrf,id(b.recordingId)))); }
     if (route === 'snapshots') { object(b, ['bindingId']); return cameraJson(await captureCamera(token, csrf, id(b.bindingId), request.headers.get('idempotency-key') || '')); }

@@ -177,6 +177,11 @@ export async function getCommunityRuntimeConfig(transaction?: PostgresTransactio
   if (!config.enabled) fail('community_provider_disabled', 503);
   return toRuntime(config);
 }
+
+/** Driving is a separate capability from the currently selected community search. */
+export async function getTiandituInspectionKey() {
+  return toRuntime(await read(), 'tianditu').key;
+}
 export async function testPlatformMapConnection(actorId: string, expectedVersion: number, city: string, query: string, transport: typeof fetch = fetch, selectedProvider?: MapProviderKey) {
   const config = await withPlatformTransaction(async tx => {
     await assertPlatform(tx, actorId);

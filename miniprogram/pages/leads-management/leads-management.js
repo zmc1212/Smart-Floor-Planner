@@ -12,7 +12,7 @@ Page({
 
   onLoad(options) {
     const app = getApp();
-    const systemInfo = wx.getSystemInfoSync();
+    const systemInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     const menuButton = wx.getMenuButtonBoundingClientRect();
     const navBarHeightTotal = menuButton.bottom + (menuButton.top - systemInfo.statusBarHeight);
     const capsuleRightInset = Math.max(180, systemInfo.windowWidth - menuButton.left + 16);

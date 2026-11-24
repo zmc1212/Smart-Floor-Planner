@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
 import { one, type Row } from '@/db/repositories/assistant-repository';
@@ -41,6 +42,7 @@ const command = async (service: SiteChatService, text: string, key = randomUUID(
 const issue = async () => (await withTenantTransaction(eids[0], tx => projectSiteIssues(tx, eids[0], pid)))[0];
 
 before(async () => {
+  loadEnvConfig(process.cwd());
   const target = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
   await withPlatformTransaction(async tx => {
@@ -151,7 +153,7 @@ test('same-issue drawing check, transfer and reply enforce current material and 
   await assert.rejects(command(designer, '回复事项' + iid + '：不能沿旧修订处理', randomUUID(), stale), /version_conflict/);
   await command(designer, '回复事项' + iid + '：依据共享V2与靠窗双人办公需求，底盒先不固定，现场尺寸仍须核对。');
   const view = await issue(); assert.equal(view.status, 'awaiting_review'); assert.equal(view.drawingGrantId, drawingId);
-  assert.match(view.text, /图纸资料.*已核对关联/); assert.match(view.text, /不等于已解决或正式批准/);
+  assert.match(view.text, /图纸资料.*已核对关联/); assert.match(view.text, /待有权人员核实是否属于施工问题|不等于已解决或正式批准/);
   await assert.rejects(command(designer, '回传事项' + iid + '：员工不能自行扩大受众'), /construction_forbidden/);
   assert.equal((await customerResults()).length, 0, 'a team reply is not automatically delivered');
 });
@@ -169,7 +171,10 @@ test('explicit manager result waits through human mode then Worker delivers once
   assert.match(bodyText(returned[0]), /仍待现场核对/); assert.doesNotMatch(bodyText(returned[0]), /PRIVATE_NEED_DO_NOT_SHARE/);
   const second = await privateChat.messages(String(other.id)); assert.ok(second.items.every(m => !bodyText(m).includes('项目团队回传')));
   const followups = await withTenantTransaction(eids[0], tx => queryNeedIssues(tx, privateChat.actor, cid));
-  assert.equal(followups.data.length, 1); assert.equal(followups.data[0].kind, 'team_result'); assert.equal(followups.data[0].issueId, iid);
+  // An invalidated placeholder still reminds the customer that the original
+  // stage note must be re-checked; only the team result is authorized evidence.
+  const results = followups.data.filter(i => i.status !== 'invalidated');
+  assert.equal(results.length, 1, JSON.stringify(followups.data)); assert.equal(results[0].kind, 'team_result'); assert.equal(results[0].issueId, iid);
   assert.match(followups.displayText, /仍待现场核对/); assert.doesNotMatch(followups.displayText, /PRIVATE_NEED_DO_NOT_SHARE/);
   assert.equal((await withTenantTransaction(eids[0], tx => queryNeedIssues(tx, privateChat.actor, String(other.id)))).data.length, 0);
   assert.equal((await new ConversationService(privateChat.actor).messages(cid, undefined, 100)).items.filter(m => bodyText(m).includes('项目团队回传')).length, 1);
@@ -190,10 +195,11 @@ test('Agent continuation inherits the exact returned result as revocable constru
     else {
       const current = JSON.parse(messages.filter(m => m.role === 'tool').at(-1)!.content as string);
       assert.equal(current.query.domain, 'followups');
-      assert.equal(current.synthesisSources[0].resultKey, current.resultKey);
-      assert.match(current.synthesisSources[0].text, /底盒位置仍待现场核对/);
+      const result = current.synthesisSources.find((s: Row) => s.followup?.kind === 'team_result');
+      assert.ok(result); assert.equal(result.resultKey, current.resultKey);
+      assert.match(result.text, /底盒位置仍待现场核对/);
     }
-    const resultKey = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content as string).resultKey).at(-1);
+    const resultKey = messages.filter(m => m.role === 'tool').map(m => { try { return JSON.parse(String(m.content)).resultKey } catch { return undefined } }).filter(Boolean).at(-1);
     return { text: '', toolCalls: [{ id: 'test-' + turn, name: turn === 0 ? 'query_followups' : 'final_response',
       arguments: JSON.stringify(turn === 0 ? {} : { kind: 'business', resultKey }) }],
       finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 50, outputTokens: 30 } };
@@ -218,9 +224,12 @@ test('query_followups finds only the authorized team result after it leaves the 
   });
   const sent = await say('请查团队回传的底盒处理结论。'), lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
   await processAgentAnswer(lease!, { model: async (messages, _tools, turn) => {
-    assert.doesNotMatch(JSON.stringify(messages), /此前项目团队向本咨询明确回传的处理回复/);
-    const resultKey = messages.filter(m=>m.role==='tool').map(m=>JSON.parse(m.content as string).resultKey).at(-1);
-    if (turn > 0) assert.match(JSON.stringify(messages), /团队明确回传.*V2/);
+    if (turn === 0) assert.doesNotMatch(JSON.stringify(messages), /此前项目团队向本咨询明确回传的处理回复/);
+    const resultKey = messages.filter(m=>m.role==='tool').map(m=>{ try { return JSON.parse(String(m.content)).resultKey } catch { return undefined } }).filter(Boolean).at(-1);
+    if (turn > 0) {
+      const packet = JSON.parse(String(messages.filter(m => m.role === 'tool').at(-1)!.content));
+      assert.ok(packet.synthesisSources.some((s: Row) => s.followup?.kind === 'team_result' && /V2/.test(s.text)));
+    }
     return { text: '', toolCalls: [{ id: 'history-' + turn, name: turn === 0 ? 'query_followups' : 'final_response',
       arguments: JSON.stringify(turn === 0 ? {} : { kind: 'business', resultKey }) }],
       finishReason: 'tool_calls', providerRequestId: null, usage: { inputTokens: 50, outputTokens: 30 } };

@@ -68,7 +68,7 @@ async function pending(actor=actors[0],query='根据企业资料，卫生间防�
   assert.ok(lease);assert.equal(lease.runId,run.runId);
   return {service,cid,runId:String(run.runId),lease};
 }
-const model=(fn:(input:Parameters<TextModelGateway['generate']>[0])=>Promise<string>|string):TextModelGateway=>({capabilities:{streaming:false,toolCalling:false,usage:false},generate:async input=>({text:await fn(input),attemptId:'',usage:null,finishReason:null,providerRequestId:null})});
+const model=(fn:(input:Parameters<TextModelGateway['generate']>[0])=>Promise<string>|string,usage:{inputTokens:number;outputTokens:number}|null=null):TextModelGateway=>({capabilities:{streaming:false,toolCalling:false,usage:!!usage},generate:async input=>({text:await fn(input),attemptId:'',usage,finishReason:null,providerRequestId:null})});
 function grounded(input:Parameters<TextModelGateway['generate']>[0]) {
   const data=JSON.parse(input.messages[1].content);const e=data.evidence[0];
   return JSON.stringify({selections:[e.selectionId]});
@@ -127,14 +127,18 @@ test('explicit payment rejection is a known failure without fabricating zero usa
   const quota=await withTenantTransaction(tenants[0],tx=>one(tx,sql`select status from app.assistant_quota_reservations where run_id=${p.runId}`));assert.equal(quota!.status,'reconciling');
 });
 test('withdrawal during generation fences output and hides dependent historical answers and excerpts',async()=>{
-  if(!liveConversation){const p=await pending();await processAnswer(p.lease,{model:model(grounded)});liveConversation=p.cid;liveCitation=(await p.service.messages(p.cid)).items[0].citations[0].id;}
-  const p=await pending();await processAnswer(p.lease,{model:model(async input=>{await op('retire',{documentId:doc.documentId,expectedVersion:2});return grounded(input);})});
+  const withdrawn=await createDocument('本企业防水施工说明：闭水试验一般持续48小时，检查楼下有无渗漏；具体项目验收必须由工作人员现场确认。');await index(withdrawn);await op('publish',withdrawn);
+  const seeded=await pending(actors[0],'根据企业防水施工说明，闭水试验一般持续多久？');
+  const sources=await evidence(seeded.cid);const source=sources.find(e=>e.ref.version===withdrawn.versionId);assert.ok(source);
+  await processAnswer(seeded.lease,{retriever:{retrieve:async()=>[{...source,similarity:1}]},model:model(grounded,{inputTokens:40,outputTokens:20})});
+  liveConversation=seeded.cid;liveCitation=(await seeded.service.messages(seeded.cid)).items[0].citations[0].id;
+  const p=await pending(actors[0],'现在一般持续多久？',liveConversation);
+  await processAnswer(p.lease,{model:model(async input=>{await op('retire',{documentId:withdrawn.documentId,expectedVersion:2});return grounded(input);})});
   const run=await p.service.run(p.runId);assert.equal(run.status,'failed');assert.equal(run.errorCode,'context_changed');
   const service=new ConversationService(actors[0]);const hidden=(await service.messages(liveConversation)).items.find(m=>m.authorKind==='assistant')!;
   assert.equal(hidden.available,false);assert.ok(!JSON.stringify(hidden.content).includes('48'));
   assert.deepEqual(await service.citation(liveCitation),{id:liveCitation,available:false,reason:'source_unavailable'});
   await assert.rejects(new ConversationService({...actors[1],enterpriseId:tenants[0]}).citation(liveCitation),/assistant_resource_not_found/);
-  await op('publish',{...doc,expectedVersion:3});
 });
 test('private draft preview is owner-only, immutable in scope, and invalidated by edits/reindexing',async()=>{
   const draft=await createDocument('内部防水施工成本为88元，禁止向客户展示。','staff_internal');await index(draft);
@@ -170,13 +174,18 @@ test('preview HTTP rejects staff/customer credentials and scope escalation on se
   const cited=await assistantHttp(new Request('http://localhost/api/miniprogram/assistant/citations/'+liveCitation,{headers:{authorization:'Bearer '+mini}}),['citations',liveCitation]);assert.equal(cited.status,200);
 });
 test('publication replacement marks old citations historical and excludes old generated conclusions from model history',async()=>{
-  const next=await op('newVersion',{documentId:doc.documentId,fromVersionId:doc.versionId,expectedVersion:4});
-  const v={documentId:doc.documentId,versionId:String(next.id),expectedVersion:5,expectedEditVersion:1};
+  const service=new ConversationService(actors[0]);
+  const seeded=await pending(actors[0],'根据企业防水施工说明，闭水试验一般持续多久？');
+  const sources=await evidence(seeded.cid);const source=sources.find(e=>e.ref.version===doc.versionId);assert.ok(source);
+  await processAnswer(seeded.lease,{retriever:{retrieve:async()=>[{...source,similarity:1}]},model:model(grounded,{inputTokens:40,outputTokens:20})});
+  const citation=(await service.messages(seeded.cid)).items[0].citations[0].id;
+  const next=await op('newVersion',{documentId:doc.documentId,fromVersionId:doc.versionId,expectedVersion:2});
+  const v={documentId:doc.documentId,versionId:String(next.id),expectedVersion:3,expectedEditVersion:1};
   await op('edit',{...v,body:'本企业卫生间防水闭水试验一般持续72小时。具体项目仍需工作人员确认。'});v.expectedEditVersion=2;await index(v);await op('publish',v);
-  const service=new ConversationService(actors[0]);const old=await service.citation(liveCitation);assert.ok('historical' in old && old.historical);assert.equal(old.available,true);
-  const p=await pending(actors[0],'现在一般持续多久？',liveConversation);
+  const old=await service.citation(citation);assert.ok('historical' in old && old.historical);assert.equal(old.available,true);
+  const p=await pending(actors[0],'现在一般持续多久？',seeded.cid);
   await processAnswer(p.lease,{model:model(input=>{const data=JSON.parse(input.messages[1].content);assert.ok(data.evidence.every((e:{text:string})=>!e.text.includes('48小时')));assert.ok(data.history.every((h:string)=>!h.includes('48小时')));return grounded(input);})});
-  const answer=(await service.messages(liveConversation)).items[0];assert.equal(answer.available,true);assert.ok(JSON.stringify(answer.content).includes('72'));
+  const answer=(await service.messages(seeded.cid)).items[0];assert.equal(answer.available,true);assert.ok(JSON.stringify(answer.content).includes('72'));
 });
 test('provider insufficient-evidence result discards arbitrary explanations and persists only the fixed notice',async()=>{
   assert.equal(parseAnswer('```json\n{"answerKind":"insufficient_evidence","segments":[]}\n```',[]).answerKind,'insufficient_evidence');

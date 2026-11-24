@@ -6,7 +6,7 @@ import { idempotent } from '../core/conversation';
 import { runUsageReconciled } from '../core/usage-review';
 import { AssistantMediaService } from './service';
 import { floorplanContext, floorplanContextProtocol, selectedFormalPlan, type FloorplanSelection } from './floorplan-selection';
-import { formalFloorplanText } from '../agent/formal-floorplan-context';
+import { formalFloorplanRecords, formalFloorplanText } from '../agent/formal-floorplan-context';
 
 export function parseFloorplanChoice(input: unknown) {
   const body = input as Row;
@@ -55,7 +55,12 @@ export class FloorplanContextService {
       const current = await this.projection(repo, c);
       const list = await new AssistantMediaService(this.actor, repo.tx).floorPlans(this.conversationId);
       const entry = c.entry_snapshot as Row;
-      return { ...current, items: list.items.filter(item => entry.kind !== 'lead' || item.leadId === String(entry.id)) };
+      return { ...current, items: list.items.filter(item => entry.kind !== 'lead' || item.leadId === String(entry.id))
+        .map(item => ({
+          ...item,
+          roomCount: item.rooms.length,
+          previewEndpoint: `/miniprogram/customer-projects/${item.leadId}/formal-floor-plan/preview`,
+        })) };
     });
   }
   detail(leadId: string, floorPlanId: string, layoutHash: string) {
@@ -65,7 +70,19 @@ export class FloorplanContextService {
       const entry = { ...(c.entry_snapshot as Row), floorplanContext: { protocol: floorplanContextProtocol, revision: 0, selection: { leadId, floorPlanId, layoutHash } } };
       const plan = await selectedFormalPlan(repo.tx, this.actor, entry);
       if (!plan) fail('assistant_resource_not_found', 404);
-      return { ...plan.selection, name: String(plan.name), text: formalFloorplanText(String(plan.name), plan.layout_data) };
+      const name = String(plan.name);
+      const records = formalFloorplanRecords(name, plan.layout_data);
+      if (!records) fail('assistant_resource_not_found', 404);
+      return {
+        ...plan.selection,
+        name,
+        text: formalFloorplanText(name, plan.layout_data),
+        rooms: records.rooms,
+        totalRooms: records.totalRooms,
+        omittedRooms: records.omittedRooms,
+        updatedAt: plan.updated_at instanceof Date ? plan.updated_at.toISOString() : plan.updated_at,
+        previewEndpoint: `/miniprogram/customer-projects/${leadId}/formal-floor-plan/preview`,
+      };
     });
   }
   select(requestKey: string, input: unknown) {

@@ -178,7 +178,7 @@ Page({
     if (this.data.captureVoice) return this.speechController.playLocal(this.data.captureVoice.path);
     return this.speechController.microphone(); },
   voiceMessage(event) { return this.speechController?.messageMenu(event.currentTarget.dataset.message); },
-  record(e) { return this.data.items.find(i => i.record.id === String(e.currentTarget.dataset.id))?.record; },
+  record(e) { return this.data.items.find(i => i.record?.id === String(e.currentTarget.dataset.id))?.record; },
   openEdit(e) {
     const r = this.record(e); if (!r || !r.canEdit || this.data.busy || this.data.pending) return;
     const roomOptions = [{ id: '', name: '部位待核对 / 多房间' }, ...(this.data.rooms || [])];
@@ -192,24 +192,19 @@ Page({
   adoptLatest() {
     const latest = this.data.conflict;
     if (!latest || latest.id !== this._record?.id || !latest.canEdit || this.data.pending || this.data.busy) return;
-    if ((this.data.sheet === 'publish' && (latest.status !== 'draft' || !latest.canPublish)) || (this.data.sheet === 'withdraw' && latest.status !== 'published')
-      || this.data.sheet === 'request_changes' && !latest.canRequestChanges) { this.closeSheet(true); this.client.set({ conflict: null, error: '记录状态已变化，请从最新版重新选择操作。' }); return; }
+    if (this.data.sheet === 'withdraw' && latest.status !== 'published') { this.closeSheet(true); this.client.set({ conflict: null, error: '记录状态已变化，请从最新版重新选择操作。' }); return; }
     this._record = latest;
-    if (this.data.sheet === 'publish') this.setData({ publishCustomer: false, publishCanCustomer: latest.canPublishCustomer && this.data.project.customerAccess });
     this.client.set({ conflict: null, error: '' });
   },
-  openPublish(e) { const r = this.record(e); if (!r || !r.canPublish || r.status !== 'draft' || this.data.pending || this.data.busy) return;
-    this._record = r; this.openSheet('publish', { publishCustomer: false, publishCanCustomer: r.canPublishCustomer && this.data.project.customerAccess }); },
-  publishScope(e) { this.setData({ publishCustomer: e.detail.value }); },
-  publish() { return this.client.mutate(this._record, 'publish', { audience: this.data.publishCustomer ? 'customer' : 'internal' }); },
+  openRecordReview(e) {
+    const record = this.record(e);
+    if (!record || !this._visible || this.data.pending || this.data.busy) return;
+    wx.navigateTo({ url: '/packages/construction/inspection-record/inspection-record?projectId=' + this.projectId + '&recordId=' + record.id });
+  },
   openWithdraw(e) { const r = this.record(e); if (!r || !r.canEdit || this.data.pending || this.data.busy) return; this._record = r; this.openSheet('withdraw', { withdrawalReason: '' }); },
   reason(e) { this.setData({ withdrawalReason: e.detail.value }); },
   withdraw() { if (this.data.withdrawalReason.trim()) return this.client.mutate(this._record, 'withdraw', { reason: this.data.withdrawalReason.trim() }); },
   retry(e) { const r = this.record(e); if (r && r.canRetry) return this.client.mutate(r, 'retry'); },
-  openRequestChanges(e) { const r = this.record(e); if (!r?.canRequestChanges || this.data.pending || this.data.busy) return;
-    this._record = r; this.openSheet('request_changes', { reworkRequirements: '' }); },
-  requirementsInput(e) { this.setData({ reworkRequirements: e.detail.value }); },
-  requestChanges() { if (this.data.reworkRequirements.trim()) return this.client.mutate(this._record, 'request_changes', { requirements: this.data.reworkRequirements.trim() }); },
   beginResubmit(e) { this.client.beginResubmit(this.record(e)); },
   cancelResubmit() { this.client.cancelResubmit(); },
   showRetake() { const id = this.data.pendingRetakeTarget; if (!id) return; this._retakeMessageId = id;

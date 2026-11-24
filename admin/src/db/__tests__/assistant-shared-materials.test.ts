@@ -75,7 +75,7 @@ async function fixture() {
     const sent = await chat.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '结合当前书房需求和点位图说明，底盒能直接固定吗？' }] });
     const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
     await processAgentAnswer(lease, { model: async (messages, _tools, turn) => {
-      if (!turn) return call(tool, tool === 'query_materials' ? { leadId: '', room: '书房' } : { query: '书房办公与点位核对' });
+      if (!turn) return call(tool, tool === 'query_materials' ? { room: '书房' } : { query: '书房办公与点位核对' });
       const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as SynthesisSource[];
       const s = sources.find(s => s.material?.ref.type === 'shared_need'); assert.ok(s, 'actual tool must carry original grant');
       if (change) await change();
@@ -147,8 +147,11 @@ for (const mutation of ['hash','deleted','source','message','purpose','participa
     assert.equal(await available(snapshot), false);
   });
 }
+// Enterprise knowledge is disabled in this fixture (no indexed corpus), so the
+// knowledge read is not offered. Knowledge citation parity is covered by the
+// knowledge suites that index an enterprise corpus.
 test('explicit and knowledge-bound tools expose matching per-original citation IDs and persisted source metadata', async () => {
-  for (const tool of ['query_materials','search_knowledge']) {
+  for (const tool of ['query_materials']) {
     const x = await fixture(); await x.share(); await x.drawing(); const run = await x.answer(undefined, tool);
     assert.equal(run.status, 'succeeded', JSON.stringify(run));
     const saved = await withTenantTransaction(eid, tx => one(tx, sql`select source_refs,private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${run.id} and kind='agent_synthesis_context'`));

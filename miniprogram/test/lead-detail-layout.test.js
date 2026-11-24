@@ -267,19 +267,20 @@ test('formal-survey address row stays full-width below the next-action head', ()
   assert.doesNotMatch(styles, /\.appointment-entry\s*\{/);
 });
 
-test('lead detail shows assigned designer and measurer name and phone between the hero and stage rail', () => {
+test('lead detail shows the designer and a distinct historical measurer between the hero and stage rail', () => {
   const script = fs.readFileSync(
     path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   const heroIndex = template.indexOf('class="detail-hero"');
-  const staffIndex = template.indexOf('class="staff-assignment-grid"');
+  const staffIndex = template.indexOf('class="staff-assignment-grid ');
   const railIndex = template.indexOf('class="lead-stage-rail"');
   assert.ok(heroIndex > -1);
   assert.ok(staffIndex > heroIndex);
   assert.ok(railIndex > staffIndex);
   assert.match(template, /class="staff-assignment-role">家装设计顾问/);
   assert.match(template, /class="staff-assignment-role">家装现场顾问/);
+  assert.match(template, /class="staff-assignment-card" wx:if="\{\{showMeasurerContact\}\}"/);
   assert.match(template, /\{\{designerContact\.assignLabel\}\}/);
   assert.match(template, /\{\{measurerContact\.assignLabel\}\}/);
   assert.match(styles, /\.staff-assignment-head\s*\{[^}]*justify-content:\s*space-between;/s);

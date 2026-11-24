@@ -25,13 +25,13 @@
   }
   .answer-action::after, .answer-history-clear::after,
   .answer-reason::after, .answer-feedback-submit::after { border: 0; }
-  .answer-action image { flex: none; width: 16px; height: 16px; }
+  .answer-action .chat-image { flex: none; width: 16px; height: 16px; }
   .copy-answer { min-width: 66px; color: #174d3c; font-weight: 600; }
   .helpful-answer { min-width: 74px; }
   .report-answer { min-width: 66px; }
   .more-answer { justify-content: center; padding: 0; }
   .answer-action.is-marked { color: #174d3c; font-weight: 600; }
-  .answer-action[disabled] { opacity: .62; background: transparent; }
+  .answer-action.is-disabled { opacity: .62; background: transparent; }
   .answer-version-control { display: flex; align-items: center; color: #50695b; font-size: 13px; }
   .answer-version-step {
     width: 44px;
@@ -43,7 +43,7 @@
     font-size: 23px;
     line-height: 44px;
   }
-  .answer-version-step[disabled] { color: #8a9a8e; background: transparent; }
+  .answer-version-step.is-disabled { color: #8a9a8e; background: transparent; }
   .answer-version-step::after, .answer-more-row::after { border: 0; }
 
   .sheet-panel.answer-action-sheet {
@@ -85,7 +85,7 @@
     height: 44px;
     background: transparent;
   }
-  .answer-action-sheet .sheet-head .icon-button image { width: 16px; height: 16px; }
+  .answer-action-sheet .sheet-head .icon-button .chat-image { width: 16px; height: 16px; }
   .answer-action-sheet .sheet-scroll { flex: 1; height: 0; min-height: 0; }
   .sheet-panel.answer-more-sheet { height: 269px; }
   .answer-more-row {
@@ -103,8 +103,8 @@
     text-align: left;
   }
   .answer-more-row + .answer-more-row { border-top: 1px solid #dadfd0; }
-  .answer-more-row image { flex: none; width: 22px; height: 22px; }
-  .answer-more-row[disabled] { opacity: .65; background: transparent; }
+  .answer-more-row .chat-image { flex: none; width: 22px; height: 22px; }
+  .answer-more-row.is-disabled { opacity: .65; background: transparent; }
   .answer-more-detail { display: block; color: #576a68; font-size: 13px; font-weight: 400; line-height: 21px; }
   .answer-more-chevron {
     width: 7px;
@@ -135,7 +135,7 @@
     text-align: left;
   }
   .answer-reason.is-picked { background: #e7ecdd; border-color: #628473; font-weight: 600; }
-  .answer-reason image { flex: none; width: 15px; height: 15px; }
+  .answer-reason .chat-image { flex: none; width: 15px; height: 15px; }
   .answer-feedback-note {
     box-sizing: border-box;
     width: 100%;
@@ -170,7 +170,7 @@
     font-weight: 600;
     line-height: 48px;
   }
-  .answer-feedback-submit[disabled] { background: #dce4d6; color: #52695d; }
+  .answer-feedback-submit.is-disabled { background: #dce4d6; color: #52695d; }
 
   .sheet-panel.conversation-list-sheet {
     bottom: var(--interaction-keyboard, 0px);
@@ -188,8 +188,8 @@
     background: #f4f5eb;
     color: #073c30;
   }
-  .answer-history-field > image { flex: none; width: 19px; height: 19px; margin-right: 9px; }
-  .answer-history-field input { flex: 1; min-width: 0; min-height: 45px; font-size: 15px; }
+  .answer-history-field > .chat-image { flex: none; width: 19px; height: 19px; margin-right: 9px; }
+  .answer-history-field .chat-input { flex: 1; min-width: 0; min-height: 45px; font-size: 15px; }
   .answer-history-clear {
     display: flex;
     align-items: center;
@@ -199,9 +199,9 @@
     padding: 0;
     background: transparent;
   }
-  .answer-history-clear image { width: 13px; height: 13px; }
+  .answer-history-clear .chat-image { width: 13px; height: 13px; }
   .answer-search-heading { display: flex; align-items: center; gap: 15px; margin: 21px 0 0; font-size: 14px; font-weight: 600; line-height: 24px; }
-  .answer-search-heading view { flex: 1; height: 1px; background: #a9bea9; }
+  .answer-search-heading .chat-group { flex: 1; height: 1px; background: #a9bea9; }
   .answer-search-result .history-title, .answer-search-snippet {
     min-width: 0;
     overflow: hidden;

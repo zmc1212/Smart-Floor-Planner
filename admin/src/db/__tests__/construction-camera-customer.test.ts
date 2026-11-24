@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
@@ -9,8 +10,10 @@ import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresq
 import type { ConstructionActor } from '@/lib/construction/contracts';
 import { customerCameraActor, customerCameraProjects, type CameraCustomerIdentity } from '@/lib/construction/camera/access';
 import { saveCameraCustomerGrant } from '@/lib/construction/camera/customer-grants';
-import { CameraService, createCameraEntry, exchangeCameraEntry, listCameraProject, sessionState, startCameraView, authorizeCameraMedia, captureCamera, cameraSnapshots, sessionHeartbeat } from '@/lib/construction/camera/service';
+import { CameraService, createCameraEntry, exchangeCameraEntry, listCameraProject, sessionState, startCameraView, authorizeCameraMedia, captureCamera, cameraSnapshots, sessionCameraCover, sessionHeartbeat } from '@/lib/construction/camera/service';
 import { customerCameraHttp, sessionCameraHttp } from '@/lib/construction/camera/http';
+import { ownerSiteCover } from '@/lib/construction/camera/owner-cover';
+import { debugSignalBinding, debugSignalStream } from '@/lib/construction/camera/debug-source';
 import { cameraPtz } from '@/lib/construction/camera/ptz';
 import { saveRecordingPolicy, startRecordingView, authorizeRecordingMedia } from '@/lib/construction/camera/recordings';
 import { listSdRecordings, startSdRecordingView, reconcileSdPlaybacks } from '@/lib/construction/camera/sd';
@@ -201,4 +204,168 @@ test('SD revocation preserves another authorized viewer, then stops the final ow
   await grant(true); const only = await enter(); await startSdRecordingView(only.session, only.csrf, rid, upstream, sdClock);
   streams.add('foreign-stream'); await grant(false); await reconcileSdPlaybacks(upstream);
   assert.deepEqual([...streams], ['foreign-stream']); assert.equal(stops, 2); streams.clear(); await grant(true);
+});
+
+test('dedicated cameras and synthetic signals stay limited to allowed owners and live-only after reentry', async () => {
+  const frameTime = '2026-11-06T08:30:00.000Z';
+  let coverRequests = 0;
+  let hasFrame = true;
+  let revokeDuringCover = false;
+  const coverServer = createServer((request, response) => {
+    if (request.url !== '/sfp_debug/test_pattern/cover.jpg') return response.writeHead(404).end();
+    coverRequests++;
+    if (!hasFrame) return response.writeHead(404).end();
+    if (revokeDuringCover) delete process.env.CAMERA_DEBUG_SOURCE;
+    return response.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': jpeg.length,
+      'X-Camera-Captured-At': frameTime }).end(jpeg);
+  });
+  const originalConfig = process.env.CAMERA_DEBUG_SOURCE;
+  const debugChannel = '92020000001320000007', otherChannel = '92020000001320000008';
+  const played: string[] = [];
+  class DebugUpstream extends Upstream {
+    async channels() {
+      return [debugChannel, otherChannel].map(channelId => ({ deviceId: device, channelId, name: '调试验收信号', online: true, ptzType: 1 }));
+    }
+    async play(_deviceId?: string, channelId?: string) {
+      played.push(channelId ?? '');
+      return { app: 'rtp', stream: 'shared-debug-fixture' };
+    }
+  }
+  const provider = new DebugUpstream();
+  const registrar = new CameraService({ enterpriseId: eid, adminId: aids[1] }, provider);
+  async function project(name: string, userId: string | null) {
+    const projectId = await withTenantTransaction(eid, async tx => {
+      const lead = await one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+        values(${eid},${userId},${name},'13800000000','natural') returning id`);
+      return String((await one(tx, sql`insert into app.construction_projects(enterprise_id,lead_id,name,customer_access)
+        values(${eid},${String(lead!.id)},${name},${userId !== null}) returning id`))!.id);
+    });
+    if (userId) await saveCameraCustomerGrant(owner, projectId, { userId, expectedVersion: 0,
+      enabled: true, captureEnabled: true, ptzEnabled: true });
+    return projectId;
+  }
+  async function bind(projectId: string, channelId: string) {
+    const camera = await registrar.register({ deviceId: device, channelId, name: '专用调试源' });
+    return String((await registrar.bind(projectId, { cameraId: String(camera.id), expectedVersion: 1, bind: true })).bindingId);
+  }
+  async function entry(customer: CameraCustomerIdentity, projectId: string) {
+    const response = await customerCameraHttp(new Request('http://localhost/video', { method: 'POST', body: '{}' }), customer, ['projects', projectId, 'entry']);
+    return (await response.json()).data.url.split('#entry=')[1] as string;
+  }
+  async function cameras(customer: CameraCustomerIdentity, projectId: string) {
+    const response = await customerCameraHttp(new Request('http://localhost/video'), customer, ['projects', projectId, 'cameras']);
+    return (await response.json()).data;
+  }
+  try {
+    delete process.env.CAMERA_DEBUG_SOURCE;
+    const sourceProjectId = await project('专用调试源工地', null);
+    const secondOwner = { userId: uids[1], contextVersion: 1 };
+    const target = await project('首户调试工地', identity.userId);
+    const second = await project('第二户调试工地', secondOwner.userId);
+    const unlisted = await project('未列入白名单工地', identity.userId);
+    const sourceBindingId = await bind(sourceProjectId, debugChannel), otherBinding = await bind(sourceProjectId, otherChannel);
+    const config = { revision: 1, enterpriseId: eid, sourceProjectId, sourceBindingId, allow: [
+      { projectId: target, userId: identity.userId }, { projectId: second, userId: secondOwner.userId },
+      { projectId: pid, userId: identity.userId },
+    ] };
+
+    assert.deepEqual((await cameras(identity, target)).items, []);
+    // Even a whitelisted pair must not turn an owner's existing site into a debug source.
+    process.env.CAMERA_DEBUG_SOURCE = JSON.stringify({ ...config, sourceProjectId: pid, sourceBindingId: bid, allow: config.allow.slice(0, 2) });
+    assert.deepEqual((await cameras(identity, target)).items, []);
+    process.env.CAMERA_DEBUG_SOURCE = JSON.stringify(config);
+    assert.deepEqual((await cameras(identity, unlisted)).items, []);
+    await assert.rejects(cameras(secondOwner, target), /unavailable/);
+    await assert.rejects(entry(identity, foreignPid), /unavailable/);
+    assert.equal((await cameras(identity, pid)).items[0].binding_id, bid);
+    assert.deepEqual((await service().list(target)).items, []);
+    assert.deepEqual(await ownerSiteCover(identity, target, async () => assert.fail('debug cover must not capture')),
+      { camera: { name: '调试机位', cover: null } });
+
+    const first = await exchangeCameraEntry(await entry(identity, target));
+    const state = await sessionState(first.session);
+    assert.equal(state.project.name, '首户调试工地');
+    assert.deepEqual(state.items.map(item => item.binding_id), [sourceBindingId]);
+    assert.deepEqual([state.liveOnly, state.canManage, state.canCapture, state.canControl, state.canViewSnapshots], [true, false, false, false, false]);
+    await assert.rejects(startCameraView(first.session, first.csrf, otherBinding, provider), /binding_unavailable/);
+    await assert.rejects(sessionCameraCover(first.session, sourceBindingId), /forbidden/);
+    await assert.rejects(captureCamera(first.session, first.csrf, sourceBindingId, randomUUID(), provider), /forbidden/);
+    await assert.rejects(cameraPtz(first.session, first.csrf, sourceBindingId, 'right', 1, provider), /forbidden/);
+    await assert.rejects(startRecordingView(first.session, first.csrf, '1'), /forbidden/);
+
+    const live = await startCameraView(first.session, first.csrf, sourceBindingId, provider);
+    const secondSession = await exchangeCameraEntry(await entry(secondOwner, second));
+    const reopened = await exchangeCameraEntry(await entry(identity, target));
+    assert.equal((await sessionState(secondSession.session)).project.name, '第二户调试工地');
+    for (const entered of [secondSession, reopened]) {
+      const view = await startCameraView(entered.session, entered.csrf, sourceBindingId, provider);
+      assert.equal((await authorizeCameraMedia(entered.session, view.generation)).stream, 'shared-debug-fixture');
+    }
+    assert.deepEqual(played, [debugChannel, debugChannel, debugChannel]);
+
+    const pending = await entry(identity, target);
+    await saveCameraCustomerGrant(owner, target, { userId: identity.userId, expectedVersion: 1,
+      enabled: false, captureEnabled: false, ptzEnabled: false });
+    await assert.rejects(exchangeCameraEntry(pending), /unavailable/);
+    await assert.rejects(authorizeCameraMedia(first.session, live.generation), /unavailable/);
+    assert.equal((await sessionState(secondSession.session)).project.name, '第二户调试工地');
+
+    const secondPending = await entry(secondOwner, second);
+    process.env.CAMERA_DEBUG_SOURCE = JSON.stringify({ ...config, revision: 2, allow: config.allow.filter(x => x.projectId !== second) });
+    await assert.rejects(exchangeCameraEntry(secondPending), /unavailable/);
+    await assert.rejects(sessionState(secondSession.session), /unavailable/);
+    assert.deepEqual((await cameras(secondOwner, second)).items, []);
+    assert.equal((await service().list(pid)).items[0].binding_id, bid);
+
+    await new Promise<void>(resolve => coverServer.listen(0, '127.0.0.1', resolve));
+    const address = coverServer.address();
+    assert.ok(address && typeof address !== 'string');
+    const syntheticConfig = { revision: 3, enterpriseId: eid, syntheticOrigin: `http://127.0.0.1:${address.port}`, allow: [
+      { projectId: second, userId: secondOwner.userId }, { projectId: pid, userId: identity.userId },
+    ] };
+    process.env.CAMERA_DEBUG_SOURCE = JSON.stringify({ ...syntheticConfig, syntheticOrigin: 'https://outside.example' });
+    assert.deepEqual((await cameras(secondOwner, second)).items, []);
+    process.env.CAMERA_DEBUG_SOURCE = JSON.stringify(syntheticConfig);
+    assert.deepEqual(await ownerSiteCover(identity, unlisted), { camera: null });
+    await assert.rejects(ownerSiteCover(identity, second), /unavailable/);
+    assert.equal(coverRequests, 0);
+    const { camera: thumbnail } = await ownerSiteCover(secondOwner, second, async () => assert.fail('synthetic cover used WVP'));
+    assert.equal(thumbnail?.name, '调试机位');
+    assert.ok(thumbnail?.cover);
+    assert.equal(thumbnail.cover.capturedAt, frameTime);
+    const thumbnailImage = await sharp(Buffer.from(thumbnail.cover.jpeg, 'base64')).metadata();
+    assert.deepEqual([thumbnailImage.format, thumbnailImage.width, thumbnailImage.height], ['jpeg', 80, 60]);
+    hasFrame = false;
+    assert.deepEqual(await ownerSiteCover(secondOwner, second), { camera: { name: '调试机位', cover: null } });
+    hasFrame = true;
+    const opening = await exchangeCameraEntry(await entry(secondOwner, second));
+    const reopenedSignal = await exchangeCameraEntry(await entry(secondOwner, second));
+    for (const entered of [opening, reopenedSignal]) {
+      const state = await sessionState(entered.session);
+      assert.equal(String(state.project.id), second);
+      assert.equal(state.liveOnly, true);
+      assert.deepEqual(state.items, [{ id: debugSignalBinding, binding_id: debugSignalBinding, name: '调试机位', ptz_enabled: false }]);
+      const live = await sessionCameraHttp(new Request('http://localhost:3017/api/construction-camera/live', {
+        method: 'POST', headers: { origin: 'http://localhost:3017', cookie: 'construction_camera_session=' + entered.session, 'x-camera-csrf': entered.csrf },
+        body: JSON.stringify({ bindingId: debugSignalBinding }),
+      }), ['live']);
+      assert.equal(live.status, 200);
+      assert.deepEqual(await authorizeCameraMedia(entered.session, (await live.json()).data.generation), {
+        ...debugSignalStream, syntheticOrigin: syntheticConfig.syntheticOrigin,
+      });
+    }
+    assert.deepEqual(played, [debugChannel, debugChannel, debugChannel]);
+    assert.deepEqual((await service().list(second)).items, []);
+    assert.equal((await cameras(identity, pid)).items[0].binding_id, bid);
+    const ordinary = await enter();
+    await assert.rejects(startCameraView(ordinary.session, ordinary.csrf, debugSignalBinding, provider), /binding_unavailable/);
+    revokeDuringCover = true;
+    await assert.rejects(ownerSiteCover(secondOwner, second), /unavailable/);
+    await assert.rejects(sessionState(opening.session), /unavailable/);
+    await assert.rejects(sessionState(reopenedSignal.session), /unavailable/);
+  } finally {
+    if (coverServer.listening) await new Promise<void>(resolve => coverServer.close(() => resolve()));
+    if (originalConfig === undefined) delete process.env.CAMERA_DEBUG_SOURCE;
+    else process.env.CAMERA_DEBUG_SOURCE = originalConfig;
+  }
 });

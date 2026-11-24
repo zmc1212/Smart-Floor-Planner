@@ -20,10 +20,10 @@
     </view>
 
     <view class="ble-modal-footer">
-      <button class="ble-btn primary" bindtap="onAutoConnect" loading="{{connecting}}" disabled="{{connecting}}">
+      <button class="ble-btn primary {{connecting ? 'is-disabled' : ''}}" bindtap="onAutoConnect" loading="{{connecting}}" disabled="{{connecting}}">
         一键连接记忆设备
       </button>
-      <button class="ble-btn outline" bindtap="onSearchNew" disabled="{{connecting}}">
+      <button class="ble-btn outline {{connecting ? 'is-disabled' : ''}}" bindtap="onSearchNew" disabled="{{connecting}}">
         搜索新设备
       </button>
     </view>

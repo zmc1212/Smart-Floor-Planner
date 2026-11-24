@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "scripts/wechatide-native-client.ts",
+    "scripts/xiaok-v101-native-journey.ts",
+    "scripts/xiaok-1454-full-flow-check.ts",
+    "scripts/xiaok-native-recovery-check.ts",
+    "scripts/xiaok-native-four-questions-check.ts",
+    "scripts/xiaok-native-isolation-check.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next*"
+  ]
+}

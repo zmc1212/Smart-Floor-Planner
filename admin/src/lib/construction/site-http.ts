@@ -54,6 +54,9 @@ export async function siteChatHttp(request: Request, actor: ConstructionActor, p
     return json(await service.removeMedia(projectId, id(path[1]), requestKey));
   }
   if (path.join('/') === 'messages') return json(await service.send(projectId, body, requestKey));
-  if (path[0] === 'records' && path.length === 3) return json(await service.mutate(projectId, id(path[1]), path[2], body, requestKey));
+  if (path[0] === 'records' && path.length === 3) {
+    if (path[2] === 'inspection_checkin') return json(await service.inspectionCheckIn(projectId, id(path[1]), body));
+    return json(await service.mutate(projectId, id(path[1]), path[2], body, requestKey));
+  }
   fail('construction_not_found', 404);
 }

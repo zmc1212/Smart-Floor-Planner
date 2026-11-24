@@ -324,7 +324,7 @@ export async function notifyEnterpriseAdminOfAssignmentPending(
               projectName: lead.communityName || lead.name,
               owner: admin.displayName || admin.username,
               currentStatus: '派单待处理',
-              todo: '补充家装设计顾问或家装现场顾问',
+              todo: '补充可用设计师',
               note: input.reasonCode,
             }),
         });
@@ -486,6 +486,7 @@ export async function notifyAppointmentStaff(input: {
   designerId: bigint;
   measurerId: bigint;
   address: string;
+  contactPhone?: string | null;
   startsAt: Date;
   eventKey: string;
   eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled' | 'expired' | 'staff_reassigned';
@@ -495,10 +496,10 @@ export async function notifyAppointmentStaff(input: {
       new LeadRepository(transaction).findById(input.leadId)
     );
     if (!lead) return { success: false, error: 'lead unavailable' };
-    const recipients = await Promise.all([
-      findNotificationRecipient(input.designerId.toString(), 'designer id'),
-      findNotificationRecipient(input.measurerId.toString(), 'measurer id'),
-    ]);
+    const staffIds = new Set([input.designerId, input.measurerId]);
+    const recipients = await Promise.all(Array.from(staffIds, staffId =>
+      findNotificationRecipient(staffId.toString(), 'staff id')
+    ));
     const action = input.eventType === 'cancelled'
       ? '预约已取消'
       : input.eventType === 'expired'
@@ -508,16 +509,7 @@ export async function notifyAppointmentStaff(input: {
           : input.eventType === 'staff_reassigned'
             ? '预约人员已更新'
             : '预约时间已更新';
-    const recipientIds = new Set<string>();
-    const uniqueRecipients: LeadNotificationRecipient[] = [];
-    for (const recipient of recipients) {
-      if (!recipient) continue;
-      const key = recipient.id.toString();
-      if (recipientIds.has(key)) continue;
-      recipientIds.add(key);
-      uniqueRecipients.push(recipient);
-    }
-    const results = await Promise.all(uniqueRecipients.map((recipient) =>
+    const results = await Promise.all(recipients.filter(recipient => recipient !== null).map((recipient) =>
       deliverLeadNotification({
         lead: { ...lead, id: lead.id, enterpriseId: lead.enterpriseId?.toString() },
         recipient, templateKind: 'measurement_appointment', notificationType: `measurement_appointment_${input.eventType}`,
@@ -526,7 +518,7 @@ export async function notifyAppointmentStaff(input: {
         page: staffLeadDetailPage(input.leadId),
         metadata: { appointmentEvent: input.eventType },
         buildData: (template) => buildMeasurementAppointmentPayload(template, {
-          customerName: lead.name, phone: lead.phone, community: input.address,
+          customerName: lead.name, phone: input.contactPhone || lead.phone, community: input.address,
           measurementAt: input.startsAt, reminder: input.eventType === 'cancelled' ? '预约已取消' : input.eventType === 'expired' ? '请重新预约上门' : '请按时到场',
         }),
       })
@@ -542,6 +534,7 @@ export async function notifyCustomerOfAppointment(input: {
   enterpriseId: bigint;
   leadId: bigint;
   address: string;
+  contactPhone?: string | null;
   startsAt: Date;
   eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled' | 'expired';
 }) {
@@ -572,7 +565,7 @@ export async function notifyCustomerOfAppointment(input: {
       page: customerProjectPage(input.leadId),
       data: buildMeasurementAppointmentPayload(template, {
         customerName: lead.name,
-        phone: lead.phone,
+        phone: input.contactPhone || lead.phone,
         community: input.address,
         measurementAt: input.startsAt,
         reminder: action,

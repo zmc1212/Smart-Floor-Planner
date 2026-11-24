@@ -226,8 +226,8 @@ test('atomic attribution uses stable lowest-load assignment and tenant isolation
   const source = await createSource(enterpriseId, 'balanced');
   const designerA = await createAssignmentStaff(enterpriseId, 'designer', 'designer-a');
   const designerB = await createAssignmentStaff(enterpriseId, 'designer', 'designer-b');
-  const measurerA = await createAssignmentStaff(enterpriseId, 'measurer', 'measurer-a');
-  const measurerB = await createAssignmentStaff(enterpriseId, 'measurer', 'measurer-b');
+  await createAssignmentStaff(enterpriseId, 'measurer', 'measurer-a');
+  await createAssignmentStaff(enterpriseId, 'measurer', 'measurer-b');
   const customerA = await createCustomer('customer-a');
   const customerB = await createCustomer('customer-b');
 
@@ -240,7 +240,7 @@ test('atomic attribution uses stable lowest-load assignment and tenant isolation
   );
   assert.equal(first.kind, 'created');
   assert.equal(first.lead.assignedTo, designerA.id);
-  assert.equal(first.lead.measurerId, measurerA.id);
+  assert.equal(first.lead.measurerId, null);
   assert.equal(first.lead.assignmentStatus, 'assigned');
 
   const second = await withPlatformTransaction((transaction) =>
@@ -251,7 +251,7 @@ test('atomic attribution uses stable lowest-load assignment and tenant isolation
     })
   );
   assert.equal(second.lead.assignedTo, designerB.id);
-  assert.equal(second.lead.measurerId, measurerB.id);
+  assert.equal(second.lead.measurerId, null);
 
   const tenantBRows = await withTenantTransaction(enterpriseIds[1], (transaction) =>
     Promise.all([
@@ -394,7 +394,7 @@ test('an archived lead does not block a later claim', async () => {
   );
 });
 
-test('no candidates preserve the lead and a later retry fills both roles', async () => {
+test('no candidates preserve the lead and a later retry assigns the designer', async () => {
   const enterpriseId = enterpriseIds[1];
   const source = await createSource(enterpriseId, 'pending');
   const customer = await createCustomer('pending-customer');
@@ -413,7 +413,6 @@ test('no candidates preserve the lead and a later retry fills both roles', async
   );
 
   const designer = await createAssignmentStaff(enterpriseId, 'designer', 'retry-designer');
-  const measurer = await createAssignmentStaff(enterpriseId, 'measurer', 'retry-measurer');
   const retried = await withTenantTransaction(enterpriseId, (transaction) =>
     new ReferralLeadRepository(transaction).retryLeadAssignment({
       leadId: pending.lead.id,
@@ -423,7 +422,7 @@ test('no candidates preserve the lead and a later retry fills both roles', async
   assert.ok(retried);
   assert.equal(retried?.kind, 'assigned');
   assert.equal(retried?.lead.assignedTo, designer.id);
-  assert.equal(retried?.lead.measurerId, measurer.id);
+  assert.equal(retried?.lead.measurerId, null);
   assert.equal(retried?.lead.assignmentErrorCode, null);
 
   const retryAgain = await withTenantTransaction(enterpriseId, (transaction) =>
@@ -455,7 +454,7 @@ test('no candidates preserve the lead and a later retry fills both roles', async
   assert.equal(pendingRows.some((lead) => lead.id === pending.lead.id), true);
 });
 
-test('manual assign fills missing roles and can overwrite bound staff', async () => {
+test('managers assign and replace one designer and cannot add a second assignee', async () => {
   const enterprise = await withPlatformTransaction(async (transaction) =>
     new EnterpriseRepository(transaction).create({
       name: `${runKey}-manual-assign`,
@@ -480,102 +479,37 @@ test('manual assign fills missing roles and can overwrite bound staff', async ()
   const designer = await createAssignmentStaff(enterpriseId, 'designer', 'overwrite-designer');
   const replacementDesigner = await createAssignmentStaff(enterpriseId, 'designer', 'overwrite-designer-b');
   const measurer = await createAssignmentStaff(enterpriseId, 'measurer', 'overwrite-measurer');
-  const replacementMeasurer = await createAssignmentStaff(enterpriseId, 'measurer', 'overwrite-measurer-b');
 
-  const partial = await withTenantTransaction(enterpriseId, (transaction) =>
-    new ReferralLeadRepository(transaction).assignStaff({
+  const assignAsManager = (designerId?: bigint, measurerId?: bigint) =>
+    withTenantTransaction(enterpriseId, transaction => new ReferralLeadRepository(transaction).assignStaff({
       leadId: pending.lead.id,
       actorStaffId: designer.id,
       actorRole: 'enterprise_admin',
-      designerId: designer.id,
-    })
-  );
-  assert.ok(partial);
-  assert.equal(partial?.kind, 'pending');
-  assert.equal(partial?.lead.assignedTo, designer.id);
-  assert.equal(partial?.lead.measurerId, null);
-  assert.equal(partial?.lead.assignmentErrorCode, 'measurer_unavailable');
-
-  const assigned = await withTenantTransaction(enterpriseId, (transaction) =>
-    new ReferralLeadRepository(transaction).assignStaff({
-      leadId: pending.lead.id,
-      actorStaffId: designer.id,
-      actorRole: 'enterprise_admin',
-      measurerId: measurer.id,
-    })
-  );
-  assert.ok(assigned);
+      designerId,
+      measurerId,
+    }));
+  const assigned = await assignAsManager(designer.id);
   assert.equal(assigned?.kind, 'assigned');
   assert.equal(assigned?.lead.assignedTo, designer.id);
-  assert.equal(assigned?.lead.measurerId, measurer.id);
+  assert.equal(assigned?.lead.measurerId, null);
   assert.equal(assigned?.lead.assignmentErrorCode, null);
 
-  await assert.rejects(
-    () =>
-      withTenantTransaction(enterpriseId, (transaction) =>
-        new ReferralLeadRepository(transaction).assignStaff({
-          leadId: pending.lead.id,
-          actorStaffId: designer.id,
-          actorRole: 'enterprise_admin',
-          designerId: designer.id,
-        })
-      ),
-    /已是当前绑定人员/
-  );
+  await assert.rejects(() => assignAsManager(designer.id), /已是当前绑定人员/);
+  await assert.rejects(() => assignAsManager(undefined, measurer.id), /线索统一分配给设计师/);
+  const overwritten = await assignAsManager(replacementDesigner.id);
+  assert.equal(overwritten?.lead.assignedTo, replacementDesigner.id);
+  assert.equal(overwritten?.lead.measurerId, null);
 
-  const overwritten = await withTenantTransaction(enterpriseId, (transaction) =>
+  await assert.rejects(() => withTenantTransaction(enterpriseId, transaction =>
     new ReferralLeadRepository(transaction).assignStaff({
       leadId: pending.lead.id,
-      actorStaffId: designer.id,
-      actorRole: 'enterprise_admin',
-      designerId: replacementDesigner.id,
-      measurerId: replacementMeasurer.id,
-    })
-  );
-  assert.ok(overwritten);
-  assert.equal(overwritten?.kind, 'assigned');
-  assert.equal(overwritten?.lead.assignedTo, replacementDesigner.id);
-  assert.equal(overwritten?.lead.measurerId, replacementMeasurer.id);
-
-  await assert.rejects(
-    () =>
-      withTenantTransaction(enterpriseId, (transaction) =>
-        new ReferralLeadRepository(transaction).assignStaff({
-          leadId: overwritten!.lead.id,
-          actorStaffId: replacementDesigner.id,
-          actorRole: 'designer',
-          designerId: designer.id,
-        })
-      ),
-    /无权更换家装设计顾问/
-  );
-
-  const designerChangesMeasurer = await withTenantTransaction(enterpriseId, (transaction) =>
-    new ReferralLeadRepository(transaction).assignStaff({
-      leadId: overwritten!.lead.id,
       actorStaffId: replacementDesigner.id,
       actorRole: 'designer',
-      measurerId: measurer.id,
-    })
-  );
-  assert.equal(designerChangesMeasurer?.lead.assignedTo, replacementDesigner.id);
-  assert.equal(designerChangesMeasurer?.lead.measurerId, measurer.id);
-
-  await assert.rejects(
-    () =>
-      withTenantTransaction(enterpriseId, (transaction) =>
-        new ReferralLeadRepository(transaction).assignStaff({
-          leadId: overwritten!.lead.id,
-          actorStaffId: measurer.id,
-          actorRole: 'measurer',
-          measurerId: replacementMeasurer.id,
-        })
-      ),
-    /无权分配或更换家装现场顾问/
-  );
+      designerId: designer.id,
+    })), /无权更换家装设计顾问/);
 });
 
-test('staff activity claims lock the presenter as measurer and skip referrer commission source', async () => {
+test('staff activity attributes the presenter and assigns only the designer', async () => {
   const enterprise = await withPlatformTransaction(async (transaction) =>
     new EnterpriseRepository(transaction).create({
       name: `${runKey}-activity`,
@@ -616,7 +550,7 @@ test('staff activity claims lock the presenter as measurer and skip referrer com
   assert.equal(dual.kind, 'created');
   assert.equal(dual.lead.source, 'staff_activity');
   assert.equal(dual.lead.referrerMembershipId, null);
-  assert.equal(dual.lead.measurerId, designer.id);
+  assert.equal(dual.lead.measurerId, null);
   assert.equal(dual.lead.assignedTo, designer.id);
   assert.equal(dual.lead.promoterId, designer.id);
 
@@ -646,7 +580,8 @@ test('staff activity claims lock the presenter as measurer and skip referrer com
   );
   assert.equal(presented.kind, 'created');
   assert.equal(presented.lead.source, 'staff_activity');
-  assert.equal(presented.lead.measurerId, measurer.id);
+  assert.equal(presented.lead.measurerId, null);
+  assert.equal(presented.lead.promoterId, measurer.id);
   assert.equal(presented.lead.assignedTo, designer.id);
 
   const reused = await withPlatformTransaction((transaction) =>
@@ -665,7 +600,8 @@ test('staff activity claims lock the presenter as measurer and skip referrer com
       reason: 'staff_pool_changed',
     })
   );
-  assert.equal(lockedRetry?.lead.measurerId, measurer.id);
+  assert.equal(lockedRetry?.kind, 'already_assigned');
+  assert.equal(lockedRetry?.lead.measurerId, null);
 });
 
 test('enterprise admin activity claims enter store assignment and do not bind the owner', async () => {
@@ -693,7 +629,7 @@ test('enterprise admin activity claims enter store assignment and do not bind th
     'activity-owner-designer',
     designerUser.id
   );
-  const measurer = await createAssignmentStaff(
+  await createAssignmentStaff(
     enterpriseId,
     'measurer',
     'activity-owner-measurer',
@@ -731,12 +667,12 @@ test('enterprise admin activity claims enter store assignment and do not bind th
   assert.equal(claimed.lead.referrerMembershipId, null);
   assert.equal(claimed.lead.promoterId, owner.id);
   assert.equal(claimed.lead.assignedTo, designer.id);
-  assert.equal(claimed.lead.measurerId, measurer.id);
+  assert.equal(claimed.lead.measurerId, null);
   assert.notEqual(claimed.lead.assignedTo, owner.id);
   assert.notEqual(claimed.lead.measurerId, owner.id);
 });
 
-test('staff activity retry assigns a presenter who was paused at claim time', async () => {
+test('a paused activity-code promoter does not block designer assignment', async () => {
   const enterprise = await withPlatformTransaction(async (transaction) =>
     new EnterpriseRepository(transaction).create({
       name: `${runKey}-paused-activity`,
@@ -793,7 +729,8 @@ test('staff activity retry assigns a presenter who was paused at claim time', as
   assert.equal(pending.lead.assignedTo, designer.id);
   assert.equal(pending.lead.measurerId, null);
   assert.equal(pending.lead.promoterId, measurer.id);
-  assert.equal(pending.lead.assignmentErrorCode, 'measurer_unavailable');
+  assert.equal(pending.lead.assignmentStatus, 'assigned');
+  assert.equal(pending.lead.assignmentErrorCode, null);
 
   await withTenantTransaction(enterpriseId, (transaction) =>
     new AdminUserRepository(transaction).update(measurer.id, {
@@ -806,9 +743,9 @@ test('staff activity retry assigns a presenter who was paused at claim time', as
       reason: 'presenter_unpaused',
     })
   );
-  assert.equal(retried?.kind, 'assigned');
+  assert.equal(retried?.kind, 'already_assigned');
   assert.equal(retried?.lead.assignedTo, designer.id);
-  assert.equal(retried?.lead.measurerId, measurer.id);
+  assert.equal(retried?.lead.measurerId, null);
   assert.equal(retried?.lead.assignmentErrorCode, null);
 });
 
@@ -835,7 +772,6 @@ test('manual entry assigns the staff pool and never binds a customer WeChat user
     })
   );
   const designer = await createAssignmentStaff(enterprise.id, 'designer', 'manual-designer');
-  const measurer = await createAssignmentStaff(enterprise.id, 'measurer', 'manual-measurer');
   const created = await withTenantTransaction(enterprise.id, (transaction) =>
     new ReferralLeadRepository(transaction).createManualEntryLead({
       enterpriseId: enterprise.id,
@@ -851,7 +787,7 @@ test('manual entry assigns the staff pool and never binds a customer WeChat user
   assert.equal(created.lead.referrerMembershipId, null);
   assert.equal(created.lead.promoterId, owner.id);
   assert.equal(created.lead.assignedTo, designer.id);
-  assert.equal(created.lead.measurerId, measurer.id);
+  assert.equal(created.lead.measurerId, null);
   assert.equal(created.lead.assignmentStatus, 'assigned');
   assert.notEqual(created.lead.assignedTo, owner.id);
 });
@@ -1015,7 +951,7 @@ test('manual entry matches a WeChat 86-prefixed phone already stored on the scan
   assert.equal(merged.lead.phone, localPhone);
 });
 
-test('manual entry stays pending without a pool and retry fills both roles', async () => {
+test('manual entry stays pending without a designer and retry assigns one', async () => {
   const enterprise = await withPlatformTransaction(async (transaction) =>
     new EnterpriseRepository(transaction).create({
       name: `${runKey}-manual-pending`,
@@ -1040,7 +976,6 @@ test('manual entry stays pending without a pool and retry fills both roles', asy
   assert.equal(pending.lead.measurerId, null);
 
   const designer = await createAssignmentStaff(enterprise.id, 'designer', 'manual-retry-designer');
-  const measurer = await createAssignmentStaff(enterprise.id, 'measurer', 'manual-retry-measurer');
   const retried = await withTenantTransaction(enterprise.id, (transaction) =>
     new ReferralLeadRepository(transaction).retryLeadAssignment({
       leadId: pending.lead.id,
@@ -1049,7 +984,7 @@ test('manual entry stays pending without a pool and retry fills both roles', asy
   );
   assert.equal(retried?.kind, 'assigned');
   assert.equal(retried?.lead.assignedTo, designer.id);
-  assert.equal(retried?.lead.measurerId, measurer.id);
+  assert.equal(retried?.lead.measurerId, null);
   assert.equal(retried?.lead.source, 'manual_entry');
 });
 
@@ -1062,7 +997,7 @@ function nextBookableSlot(hour: string) {
   return { startAt, endAt: new Date(startAt.getTime() + 120 * 60_000) };
 }
 
-test('manual reassign rewrites the active appointment and rejects a busy measurer', async () => {
+test('manual reassign updates both appointment IDs and rejects a busy designer', async () => {
   const enterprise = await withPlatformTransaction(async (transaction) =>
     new EnterpriseRepository(transaction).create({
       name: `${runKey}-reassign-appt`,
@@ -1074,16 +1009,13 @@ test('manual reassign rewrites the active appointment and rejects a busy measure
   const actor = await createCustomer('reassign-appt-actor');
   const designer = await createAssignmentStaff(enterprise.id, 'designer', 'reassign-designer-a');
   const designerB = await createAssignmentStaff(enterprise.id, 'designer', 'reassign-designer-b');
-  const measurerA = await createAssignmentStaff(enterprise.id, 'measurer', 'reassign-measurer-a');
-  const measurerB = await createAssignmentStaff(enterprise.id, 'measurer', 'reassign-measurer-b');
-  const measurerC = await createAssignmentStaff(enterprise.id, 'measurer', 'reassign-measurer-c');
+  const designerC = await createAssignmentStaff(enterprise.id, 'designer', 'reassign-designer-c');
 
   const [leadA, leadB] = await withTenantTransaction(enterprise.id, async (transaction) => {
     const leadsRepo = new LeadRepository(transaction);
     const first = await leadsRepo.create({
       enterpriseId: enterprise.id,
       assignedTo: designer.id,
-      measurerId: measurerA.id,
       customerUserId: actor.id,
       name: '改派预约客户甲',
       phone: `17${String(Date.now()).slice(-9)}`,
@@ -1092,8 +1024,7 @@ test('manual reassign rewrites the active appointment and rejects a busy measure
     });
     const second = await leadsRepo.create({
       enterpriseId: enterprise.id,
-      assignedTo: designer.id,
-      measurerId: measurerB.id,
+      assignedTo: designerB.id,
       customerUserId: actor.id,
       name: '改派预约客户乙',
       phone: `18${String(Date.now()).slice(-9)}`,
@@ -1127,51 +1058,29 @@ test('manual reassign rewrites the active appointment and rejects a busy measure
     })
   );
 
-  const designerRewrite = await withTenantTransaction(enterprise.id, (transaction) =>
-    new ReferralLeadRepository(transaction).assignStaff({
-      leadId: leadA.id,
-      actorStaffId: designer.id,
-      actorRole: 'enterprise_admin',
-      designerId: designerB.id,
-    })
+  const reassign = (designerId: bigint) =>
+    withTenantTransaction(enterprise.id, transaction => new ReferralLeadRepository(transaction).assignStaff({
+      leadId: leadA.id, actorStaffId: designer.id, actorRole: 'enterprise_admin', designerId,
+    }));
+  await assert.rejects(() => reassign(designerB.id), /新设计师该时段不可用/);
+  const unchanged = await withTenantTransaction(enterprise.id, transaction =>
+    new LeadRepository(transaction).findById(leadA.id)
   );
-  assert.equal(designerRewrite?.lead.assignedTo, designerB.id);
-  assert.equal(designerRewrite?.rewrittenAppointment?.designerId, designerB.id);
-  assert.equal(designerRewrite?.rewrittenAppointment?.measurerId, original.measurerId);
-  assert.equal(designerRewrite?.rewrittenAppointment?.version, original.version + 1);
+  assert.equal(unchanged?.assignedTo, designer.id);
+  assert.equal(unchanged?.appointment?.version, original.version);
 
-  await assert.rejects(
-    () =>
-      withTenantTransaction(enterprise.id, (transaction) =>
-        new ReferralLeadRepository(transaction).assignStaff({
-          leadId: leadA.id,
-          actorStaffId: designerB.id,
-          actorRole: 'enterprise_admin',
-          measurerId: measurerB.id,
-        })
-      ),
-    /新家装现场顾问该时段不可用/
-  );
+  const rewritten = await reassign(designerC.id);
+  assert.equal(rewritten?.lead.assignedTo, designerC.id);
+  assert.equal(rewritten?.lead.measurerId, null);
+  assert.equal(rewritten?.rewrittenAppointment?.designerId, designerC.id);
+  assert.equal(rewritten?.rewrittenAppointment?.measurerId, designerC.id);
+  assert.equal(rewritten?.rewrittenAppointment?.version, original.version + 1);
 
-  const measurerRewrite = await withTenantTransaction(enterprise.id, (transaction) =>
-    new ReferralLeadRepository(transaction).assignStaff({
-      leadId: leadA.id,
-      actorStaffId: designerB.id,
-      actorRole: 'enterprise_admin',
-      measurerId: measurerC.id,
-    })
-  );
-  assert.equal(measurerRewrite?.lead.measurerId, measurerC.id);
-  assert.equal(measurerRewrite?.rewrittenAppointment?.measurerId, measurerC.id);
-  assert.equal(measurerRewrite?.rewrittenAppointment?.designerId, designerB.id);
-
-  const events = await withTenantTransaction(enterprise.id, (transaction) =>
-    transaction
-      .select()
-      .from(measurementAppointmentEvents)
+  const events = await withTenantTransaction(enterprise.id, transaction =>
+    transaction.select().from(measurementAppointmentEvents)
       .where(eq(measurementAppointmentEvents.appointmentId, original.id))
   );
-  assert.ok(events.some((event) => event.eventType === 'staff_reassigned'));
+  assert.ok(events.some(event => event.eventType === 'staff_reassigned'));
 });
 
 test('claim window concurrency, deadline fallback, capacity and outcome snapshots stay transactional', async () => {

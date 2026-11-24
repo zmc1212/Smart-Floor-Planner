@@ -1,9 +1,10 @@
-import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseAppointmentSettings,
   enterprises,
   leads,
+  leadAssignmentEvents,
   floorPlans,
   leadFloorPlans,
   measurementAppointmentEvents,
@@ -22,6 +23,7 @@ import {
 import { communityNameFromAppointment, type AppointmentLocationInput } from '@/lib/appointment-api';
 import { resolveLeadStatusAfterAppointmentComplete } from '@/lib/lead-status';
 import { parseFormalSurveyLayout } from '@/lib/survey-graph';
+import { AssignmentRacingRepository } from './assignment-racing-repository';
 
 export type AppointmentSettingsInput = {
   timezone?: string;
@@ -303,16 +305,87 @@ export class AppointmentRepository {
     return rows.map((row) => row.staff);
   }
 
-  private async confirmedAppointmentIdForLead(leadId: bigint) {
+  private async confirmedAppointmentForLead(leadId: bigint, now: Date) {
     const rows = await this.transaction
-      .select({ id: measurementAppointments.id })
+      .select()
       .from(measurementAppointments)
       .where(and(
         eq(measurementAppointments.leadId, leadId),
-        eq(measurementAppointments.status, 'confirmed')
+        eq(measurementAppointments.status, 'confirmed'),
+        sql`upper(${measurementAppointments.timeRange}) > ${now}`
       ))
       .limit(1);
-    return rows[0]?.id ?? null;
+    return rows[0] ?? null;
+  }
+
+  private async activeDesigner(enterpriseId: bigint, designerId: bigint, lock = false) {
+    const query = this.transaction.select({ id: adminUsers.id }).from(adminUsers)
+      .where(and(
+        eq(adminUsers.enterpriseId, enterpriseId),
+        eq(adminUsers.id, designerId),
+        eq(adminUsers.role, 'designer'),
+        eq(adminUsers.status, 'active')
+      )).limit(1);
+    const [designer] = lock ? await query.for('share') : await query;
+    return designer ?? null;
+  }
+
+  private async bookableDesigners(enterpriseId: bigint, designerId: bigint | null) {
+    if (designerId) {
+      const designer = await this.activeDesigner(enterpriseId, designerId);
+      return designer ? [designer] : [];
+    }
+    const performance = await new AssignmentRacingRepository(this.transaction).listDesignerPerformance(enterpriseId);
+    return performance.filter(item => item.eligibleForAssignment).map(item => item.staff);
+  }
+
+  private async assignBookingDesigner(
+    lead: typeof leads.$inferSelect,
+    enterpriseId: bigint,
+    timeRange: string,
+    actorUserId: bigint | null
+  ) {
+    if (lead.assignedTo) {
+      if (!(await this.activeDesigner(enterpriseId, lead.assignedTo, true))) {
+        throw appointmentError('appointment_designer_unavailable', '负责设计师暂不可预约');
+      }
+      if (!(await this.isMeasurerAvailable(lead.assignedTo, timeRange))) {
+        throw appointmentError('appointment_slot_unavailable', '设计师该时段不可用，请选择其他时段');
+      }
+      if (lead.assignmentStatus !== 'assigned') {
+        const now = new Date();
+        await this.transaction.update(leads).set({
+          assignmentStatus: 'assigned',
+          assignmentErrorCode: null,
+          assignedAt: lead.assignedAt ?? now,
+          updatedAt: now,
+        }).where(eq(leads.id, lead.id));
+        await this.transaction.insert(leadAssignmentEvents).values({
+          enterpriseId,
+          leadId: lead.id,
+          previousDesignerId: lead.assignedTo,
+          designerId: lead.assignedTo,
+          actorUserId,
+          eventType: 'assignment_confirmed',
+          reason: 'measurement_booking',
+        });
+      }
+      return lead.assignedTo;
+    }
+
+    let hadCandidate = false;
+    const result = await new AssignmentRacingRepository(this.transaction).autoAssignLead({
+      leadId: lead.id,
+      reason: 'measurement_booking',
+      availableForBooking: (designerId) => {
+        hadCandidate = true;
+        return this.isMeasurerAvailable(designerId, timeRange);
+      },
+    });
+    if (result.kind === 'assigned' && result.lead?.assignedTo
+      && await this.isMeasurerAvailable(result.lead.assignedTo, timeRange)) return result.lead.assignedTo;
+    if (hadCandidate) throw appointmentError('appointment_slot_unavailable', '该时段暂无可上门的设计师，请选择其他时段');
+    throw appointmentError('appointment_designer_unavailable', '暂时没有可接待的设计师，请稍后再试');
   }
 
   private async resolveMeasurer(
@@ -331,15 +404,15 @@ export class AppointmentRepository {
 
   async listAvailability(input: {
     enterpriseId: bigint;
-    leadId: bigint;
+    leadId?: bigint | null;
     date: string;
     now?: Date;
   }) {
     const [settings, lead] = await Promise.all([
       this.getSettings(input.enterpriseId),
-      this.findLead(input.enterpriseId, input.leadId),
+      input.leadId ? this.findLead(input.enterpriseId, input.leadId) : Promise.resolve(null),
     ]);
-    if (!lead || lead.archivedAt || lead.status === 'closed') {
+    if (input.leadId && (!lead || lead.archivedAt || ['closed', 'converted'].includes(lead.status))) {
       throw appointmentError('appointment_lead_not_found', '线索不存在或已关闭', 404);
     }
     const now = input.now || new Date();
@@ -357,12 +430,15 @@ export class AppointmentRepository {
       durationMinutes: settings.defaultDurationMinutes,
       stepMinutes: settings.slotStepMinutes,
     });
-    const candidates = await this.measurerCandidates(
-      input.enterpriseId,
-      lead.measurerId,
-      { lockPreferred: lead.source === 'staff_activity' }
-    );
-    const excludeAppointmentId = await this.confirmedAppointmentIdForLead(input.leadId);
+    const current = input.leadId ? await this.confirmedAppointmentForLead(input.leadId, now) : null;
+    const legacyBooking = current && current.designerId !== current.measurerId;
+    const candidates = legacyBooking
+      ? await this.measurerCandidates(input.enterpriseId, current.measurerId, { lockPreferred: lead?.source === 'staff_activity' })
+      : await this.bookableDesigners(input.enterpriseId, current?.designerId ?? lead?.assignedTo ?? null);
+    if (!legacyBooking && !candidates.length) {
+      throw appointmentError('appointment_designer_unavailable', '暂时没有可接待的设计师，请稍后再试');
+    }
+    const excludeAppointmentId = current?.id;
     const available = [] as Array<{ startAt: Date; endAt: Date; measurerId: bigint }>;
     for (const slot of slots) {
       if (slot.startAt <= now) continue;
@@ -413,17 +489,15 @@ export class AppointmentRepository {
     startAt: Date;
     endAt: Date;
     address: string;
+    contactPhone?: string | null;
     location?: AppointmentLocationInput | null;
     actorUserId: bigint | null;
     eventKey: string;
     now?: Date;
   }) {
     const lead = await this.findLead(input.enterpriseId, input.leadId, true);
-    if (!lead || lead.archivedAt || lead.status === 'closed' || lead.status === 'converted' || !lead.assignedTo) {
-      throw appointmentError('appointment_lead_not_ready', '线索尚未完成家装设计顾问派单', 409);
-    }
-    if (lead.assignmentStatus === 'assignment_pending') {
-      throw appointmentError('appointment_lead_not_ready', '线索尚未完成家装设计顾问派单', 409);
+    if (!lead || lead.archivedAt || lead.status === 'closed' || lead.status === 'converted') {
+      throw appointmentError('appointment_lead_not_found', '线索不存在或已结束', 404);
     }
     if (await this.hasCompletedFormalSurveyForLead(input.enterpriseId, input.leadId)) {
       throw appointmentError('appointment_survey_complete', '该线索已完成正式量房，无需再约上门', 409);
@@ -434,21 +508,17 @@ export class AppointmentRepository {
     }
     await this.assertBookableSlot(input.enterpriseId, input.startAt, input.endAt, input.now);
     const timeRange = range(input.startAt, input.endAt);
-    const measurer = await this.resolveMeasurer(
-      input.enterpriseId,
-      lead.measurerId,
-      timeRange,
-      { lockPreferred: lead.source === 'staff_activity' }
-    );
-    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用家装现场顾问', 409);
+    const designerId = await this.assignBookingDesigner(lead, input.enterpriseId, timeRange, input.actorUserId);
     const [appointment] = await this.transaction
       .insert(measurementAppointments)
       .values({
         enterpriseId: input.enterpriseId,
         leadId: input.leadId,
-        designerId: lead.assignedTo,
-        measurerId: measurer.id,
+        designerId,
+        // The legacy measurer column still owns the database's overlap constraint.
+        measurerId: designerId,
         address: input.address.trim().slice(0, 300),
+        contactPhone: input.contactPhone || lead.phone || null,
         locationName: input.location?.locationName || null,
         latitude: input.location?.latitude || null,
         longitude: input.location?.longitude || null,
@@ -456,14 +526,20 @@ export class AppointmentRepository {
         timeRange,
         updatedByUserId: input.actorUserId,
       })
-      .returning();
+      .returning().catch((error: unknown) => {
+        const details = error as { code?: string; cause?: { code?: string } };
+        if ((details.code ?? details.cause?.code) === '23P01') {
+          throw appointmentError('appointment_slot_unavailable', '该时段刚被占用，请选择其他时段');
+        }
+        throw error;
+      });
     if (!appointment) throw appointmentError('appointment_create_failed', '预约创建失败', 500);
     await this.transaction.insert(measurementAppointmentEvents).values({
       enterpriseId: input.enterpriseId,
       appointmentId: appointment.id,
-      eventType: measurer.id === lead.measurerId ? 'created' : 'created_with_measurer_replacement',
+      eventType: 'created',
       timeRange,
-      measurerId: measurer.id,
+      measurerId: designerId,
       actorUserId: input.actorUserId,
       eventKey: input.eventKey,
       metadata: {},
@@ -493,13 +569,11 @@ export class AppointmentRepository {
     const startAt = new Date();
     const endAt = new Date(startAt.getTime() + settings.defaultDurationMinutes * 60_000);
     const timeRange = range(startAt, endAt);
-    const measurer = await this.resolveMeasurer(
-      input.enterpriseId,
-      lead.measurerId,
-      timeRange,
-      { lockPreferred: lead.source === 'staff_activity' }
-    );
-    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用家装现场顾问', 409);
+    const legacyMeasurer = lead.measurerId && lead.measurerId !== lead.assignedTo;
+    const measurerId = legacyMeasurer
+      ? (await this.resolveMeasurer(input.enterpriseId, lead.measurerId, timeRange, { lockPreferred: lead.source === 'staff_activity' }))?.id
+      : await this.assignBookingDesigner(lead, input.enterpriseId, timeRange, input.actorUserId);
+    if (!measurerId) throw appointmentError('appointment_no_measurer_available', '暂无可用家装现场顾问', 409);
 
     const previous = await this.transaction
       .select({ address: measurementAppointments.address })
@@ -515,7 +589,7 @@ export class AppointmentRepository {
         enterpriseId: input.enterpriseId,
         leadId: input.leadId,
         designerId: lead.assignedTo,
-        measurerId: measurer.id,
+        measurerId,
         address,
         timeRange,
         updatedByUserId: input.actorUserId,
@@ -525,9 +599,9 @@ export class AppointmentRepository {
     await this.transaction.insert(measurementAppointmentEvents).values({
       enterpriseId: input.enterpriseId,
       appointmentId: appointment.id,
-      eventType: measurer.id === lead.measurerId ? 'created' : 'created_with_measurer_replacement',
+      eventType: legacyMeasurer && measurerId !== lead.measurerId ? 'created_with_measurer_replacement' : 'created',
       timeRange,
-      measurerId: measurer.id,
+      measurerId,
       actorUserId: input.actorUserId,
       eventKey: input.eventKey,
       metadata: { source: 'on_site' },
@@ -549,6 +623,8 @@ export class AppointmentRepository {
       if (
         code === 'appointment_lead_not_ready'
         || code === 'appointment_no_measurer_available'
+        || code === 'appointment_designer_unavailable'
+        || code === 'appointment_slot_unavailable'
       ) {
         return null;
       }
@@ -591,6 +667,27 @@ export class AppointmentRepository {
       ))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  /** The customer-facing card reads one current appointment across their own
+   * active service files; superseded/cancelled rows never become the card. */
+  async findCurrentForCustomer(enterpriseId: bigint, customerUserId: bigint) {
+    const rows = await this.transaction
+      .select({ appointment: measurementAppointments })
+      .from(measurementAppointments)
+      .innerJoin(leads, and(
+        eq(leads.enterpriseId, measurementAppointments.enterpriseId),
+        eq(leads.id, measurementAppointments.leadId)
+      ))
+      .where(and(
+        eq(leads.enterpriseId, enterpriseId),
+        eq(leads.customerUserId, customerUserId),
+        eq(measurementAppointments.status, 'confirmed'),
+        sql`upper(${measurementAppointments.timeRange}) > now()`
+      ))
+      .orderBy(desc(measurementAppointments.id))
+      .limit(1);
+    return rows[0]?.appointment ?? null;
   }
 
   async listByLead(enterpriseId: bigint, leadId: bigint) {
@@ -728,20 +825,25 @@ export class AppointmentRepository {
     }
     await this.assertBookableSlot(input.enterpriseId, input.startAt, input.endAt, input.now);
     const timeRange = range(input.startAt, input.endAt);
-    const measurer = await this.resolveMeasurer(
-      input.enterpriseId,
-      current.appointment.measurerId,
-      timeRange,
-      {
-        lockPreferred: current.lead.source === 'staff_activity',
-        excludeAppointmentId: current.appointment.id,
+    let measurerId = current.appointment.measurerId;
+    const excludeAppointmentId = current.appointment.id;
+    if (current.appointment.designerId === measurerId) {
+      if (!(await this.activeDesigner(input.enterpriseId, measurerId, true))
+        || !(await this.isMeasurerAvailable(measurerId, timeRange, { excludeAppointmentId }))) {
+        throw appointmentError('appointment_slot_unavailable', '负责设计师该时段不可用，请选择其他时段');
       }
-    );
-    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用家装现场顾问', 409);
+    } else {
+      const measurer = await this.resolveMeasurer(input.enterpriseId, measurerId, timeRange, {
+        lockPreferred: current.lead.source === 'staff_activity',
+        excludeAppointmentId,
+      });
+      if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用家装现场顾问', 409);
+      measurerId = measurer.id;
+    }
     const rows = await this.transaction
       .update(measurementAppointments)
       .set({
-        measurerId: measurer.id,
+        measurerId,
         timeRange,
         version: current.appointment.version + 1,
         updatedByUserId: input.actorUserId,
@@ -761,7 +863,7 @@ export class AppointmentRepository {
       previousTimeRange: current.appointment.timeRange,
       timeRange,
       previousMeasurerId: current.appointment.measurerId,
-      measurerId: measurer.id,
+      measurerId,
       actorUserId: input.actorUserId,
       reason: input.reason?.trim().slice(0, 200) || null,
       eventKey: input.eventKey,
@@ -861,7 +963,8 @@ export class AppointmentRepository {
     const appointment = await this.activeAppointmentForLead(input.leadId);
     if (!appointment) return null;
     const nextDesignerId = input.designerId ?? appointment.designerId;
-    const nextMeasurerId = input.measurerId ?? appointment.measurerId;
+    const singleDesigner = appointment.designerId === appointment.measurerId;
+    const nextMeasurerId = singleDesigner ? nextDesignerId : input.measurerId ?? appointment.measurerId;
     if (
       nextDesignerId === appointment.designerId
       && nextMeasurerId === appointment.measurerId
@@ -875,7 +978,7 @@ export class AppointmentRepository {
       if (!available) {
         throw appointmentError(
           'appointment_measurer_unavailable',
-          '新家装现场顾问该时段不可用，请先改期或取消预约',
+          singleDesigner ? '新设计师该时段不可用，请先改期或取消预约' : '新家装现场顾问该时段不可用，请先改期或取消预约',
           409
         );
       }
@@ -1080,9 +1183,9 @@ export class AppointmentRepository {
   }) {
     const staff = await this.transaction.select().from(adminUsers).where(and(
       eq(adminUsers.id, input.staffId), eq(adminUsers.enterpriseId, input.enterpriseId),
-      eq(adminUsers.role, 'measurer'), eq(adminUsers.status, 'active')
+      inArray(adminUsers.role, ['designer', 'measurer']), eq(adminUsers.status, 'active')
     )).limit(1).for('update');
-    if (!staff[0]) throw appointmentError('appointment_measurer_not_found', '家装现场顾问不存在或不可用', 404);
+    if (!staff[0]) throw appointmentError('appointment_measurer_not_found', '该上门人员不存在或不可用', 404);
     const timeRange = range(input.startAt, input.endAt);
     const rows = await this.transaction.insert(staffUnavailabilityPeriods).values({
       enterpriseId: input.enterpriseId, staffId: input.staffId, timeRange,

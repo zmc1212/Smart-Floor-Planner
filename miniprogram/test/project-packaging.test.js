@@ -6,6 +6,20 @@ const { packageSourceFiles } = require('./helpers/package-source');
 
 const projectConfigPath = path.join(__dirname, '..', 'project.config.json');
 
+test('packaged WXML starts without a UTF-8 BOM', () => {
+  const offenders = packageSourceFiles('')
+    .filter(({ relative }) => relative.endsWith('.wxml'))
+    .filter(({ absolute }) => {
+      const head = fs.readFileSync(absolute).subarray(0, 3);
+      return head.length === 3 && head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf;
+    })
+    .map(({ relative }) => relative);
+
+  // WXML turns the byte-order mark into a text node, which renders a blank
+  // line above the page root and offsets fixed bottom UI such as the composer.
+  assert.deepEqual(offenders, []);
+});
+
 test('source package excludes development-only directories', () => {
   const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
   const ignoredDirectories = new Set(
@@ -225,8 +239,9 @@ test('main package contains only primary tabs and low-frequency flows are split 
     'pages/leads-management/leads-management',
   ]);
   assert.deepEqual(appConfig.subPackages, [
-    { root: 'packages/construction', pages: ['projects/projects', 'brief/brief', 'chat/chat', 'report/report', 'public-sites/public-sites', 'public-site/public-site', 'public-live/public-live', 'camera/camera', 'family/family', 'live-authorization/live-authorization'] },
+    { root: 'packages/construction', pages: ['projects/projects', 'brief/brief', 'chat/chat', 'report/report', 'inspection/inspection', 'inspection-record/inspection-record', 'inspection-map/inspection-map', 'public-sites/public-sites', 'public-site/public-site', 'public-live/public-live', 'camera/camera', 'family/family', 'live-authorization/live-authorization'] },
     { root: 'packages/assistant', pages: ['chat/chat', 'requirements/requirements', 'handoff/handoff', 'designer/designer', 'work/work', 'tour-view/tour-view'] },
+    { root: 'packages/portfolio-font', pages: [] },
     { root: 'packages/surveying', pages: ['editor/surveying-editor'] },
     {
       root: 'packages/ai-workflow',

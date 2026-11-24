@@ -13,6 +13,7 @@ const StageAgentManager = lazy(() => import('@/components/assistant/stage-agent-
 const KnowledgeEditor = lazy(() => import('@/components/assistant/knowledge-editor').then(module => ({ default: module.KnowledgeEditor })));
 const PreviewPanel = lazy(() => import('@/components/assistant/preview-panel').then(module => ({ default: module.PreviewPanel })));
 const GuidanceEditor = lazy(() => import('@/components/assistant/guidance-editor').then(module => ({ default: module.GuidanceEditor })));
+const PublicSiteGuideEditor = lazy(() => import('@/components/assistant/public-site-guide-editor').then(module => ({ default: module.PublicSiteGuideEditor })));
 const AcquisitionEditor = lazy(() => import('@/components/assistant/acquisition-editor').then(module => ({ default: module.AcquisitionEditor })));
 const KnowledgeSettings = lazy(() => import('@/components/assistant/knowledge-settings').then(module => ({ default: module.KnowledgeSettings })));
 const HandoffPanel = lazy(() => import('@/components/assistant/handoff-panel').then(module => ({ default: module.HandoffPanel })));
@@ -64,6 +65,7 @@ function KnowledgeWorkbench({ canHandoff, canUsage, canPublish }: { canHandoff: 
       { key: 'preview', label: '管理员试问', children: <Suspense fallback={<Skeleton active />}><PreviewPanel key={previewKey} seed={seed} /></Suspense> },
       { key: 'operations', label: '问题集与健康', children: <Suspense fallback={<Skeleton active />}><KnowledgeOperationsPanel canUsage={canUsage}/></Suspense> },
       { key: 'guidance', label: '需求引导话术', children: <Suspense fallback={<Skeleton active />}><GuidanceEditor /></Suspense> },
+      { key: 'public-site-guide', label: '围观引导', children: <Suspense fallback={<Skeleton active />}><PublicSiteGuideEditor /></Suspense> },
       { key: 'acquisition', label: '扫码获客', children: <Suspense fallback={<Skeleton active />}><AcquisitionEditor /></Suspense> },
       ...(canHandoff ? [{ key: 'handoffs', label: '真人接续', children: <Suspense fallback={<Skeleton active />}><HandoffPanel /></Suspense> }] : []),
     ]} />

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
 import { one, type Row } from '@/db/repositories/assistant-repository';
@@ -33,6 +34,7 @@ let eid = '';
 const call = (name: string, args: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: randomUUID(), name, arguments: JSON.stringify(args) }],
   usage: { inputTokens: 30, outputTokens: 30 }, finishReason: 'tool_calls', providerRequestId: null });
 before(async () => {
+  loadEnvConfig(process.cwd());
   const target = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
   await withPlatformTransaction(async tx => {
@@ -93,7 +95,7 @@ async function fixture() {
     const sent = await chat.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '结合书房核对关联和正式版本解释，现在能直接固定底盒吗？' }] });
     const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
     await processAgentAnswer(lease!, { model: async (messages, _tools, turn) => {
-      if (!turn) return call(tool, tool === 'query_materials' ? { leadId: '', room: '书房' } : { query: '书房点位核对' });
+      if (!turn) return call(tool, tool === 'query_materials' ? { room: '书房' } : { query: '书房点位核对' });
       const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as SynthesisSource[];
       const plan = sources.find(s => s.material?.ref.type === 'formal_plan'); assert.ok(plan);
       const review = sources.find(s => s.material?.ref.type === 'team_review'); assert.ok(review);
@@ -117,7 +119,7 @@ test('QA05/06 PPT15/23 a private field correction preserves independent needs an
       if (turn) return call('final_response', { kind: 'general', text: '需求工作记录已更新，具体方案仍按对应版本核对。' });
       assert.ok(tools.some(t => t.name === 'record_need'));
       const [first, ...rest] = facts.map(f => ({ ...f, quote: text }));
-      return call('record_need', { ...first, ...(rest.length ? { additionalNeeds: rest } : {}) });
+      return call('record_need', { ...first, additionalNeeds: rest });
     } });
     assert.equal((await x.chat.run(lease!.runId)).status, 'succeeded');
   }
@@ -180,7 +182,7 @@ test('QA05 legacy mixed desk memory retains its original and devices while the l
   await x.chat.messages(x.cid);
   async function remember(text: string, input: Row) {
     const sent = await x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] }); const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
-    await processAgentAnswer(lease!, { model: async (_messages, _tools, turn) => !turn ? call('record_need', input)
+    await processAgentAnswer(lease!, { model: async (messages, _tools, turn) => !turn ? call('record_need', input)
       : call('final_response', { kind: 'general', text: '需求工作记录已更新，具体方案另行核对。' }) });
     assert.equal((await x.chat.run(lease!.runId)).status, 'succeeded');
   }
@@ -191,7 +193,7 @@ test('QA05 legacy mixed desk memory retains its original and devices while the l
   const devices = before.data.sources.find(s => s.need?.field === 'devices')!; assert.equal(legacy.need!.qualifiedBy, undefined);
   await x.check(); await x.forward();
   const correction = '更正一下，书房改为单人办公，电脑和台灯不变。底盒怎样核对？';
-  await remember(correction, { room: '书房', field: 'use', value: '单人办公', quote: correction });
+  await remember(correction, { room: '书房', field: 'use', value: '单人办公', quote: correction, additionalNeeds: [] });
   const after = await x.query(), use = after.data.sources.find(s => s.need?.field === 'use')!, preserved = after.data.sources.find(s => s.ref.id === legacy.ref.id)!;
   const liveFollowups = await withTenantTransaction(eid, tx => queryNeedIssues(tx, x.actor, x.cid));
   assert.ok(liveFollowups.data.some(i => !i.kind && i.field === 'use' && i.value === '单人办公'));
@@ -217,7 +219,7 @@ test('QA05 legacy mixed desk memory retains its original and devices while the l
     const lease = await claimJob(); assert.equal(lease?.runId, sent.runId); let calls = 0;
     await processAgentAnswer(lease!, { model: async (messages, tools, turn) => {
       calls++;
-      if (!turn) return call('query_materials', { leadId: '', room: '书房' });
+      if (!turn) return call('query_materials', { room: '书房' });
       const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as SynthesisSource[];
       assert.ok(sources.some(s => s.material?.need?.interpretation?.currentFactId === null));
       assert.ok(!JSON.stringify(sources).includes('单人办公'));
@@ -314,7 +316,9 @@ for (const mutation of ['drawing','need','issue','publisher','media','membership
   });
 }
 test('explicit and knowledge-bound paths persist distinct review/formal citations and survive normal reentry', async () => {
-  for (const tool of ['query_materials','search_knowledge']) {
+  // This fixture has no indexed enterprise corpus, so only the explicit read is
+  // offered; knowledge citation parity is covered by the knowledge suites.
+  for (const tool of ['query_materials']) {
     const x = await fixture(); await x.check(); await x.forward(); await x.publish(); await deliverPlans(); const run = await x.answer(undefined, tool);
     assert.equal(run.status, 'succeeded', JSON.stringify(run)); const message = (await x.chat.messages(x.cid)).items.find(m => m.id === run.outputMessageId)!;
     assert.equal(message.available, true); assert.match(JSON.stringify(message), /团队明确回传的图纸关联核对/); assert.match(JSON.stringify(message), /精确正式方案版本与客户决定/);

@@ -16,11 +16,12 @@ business flows.
 
 ## Production release
 
-On Windows, `release.bat` runs ESLint, the survey/AI/PostgreSQL test suites, a
-production Next.js build, and a no-cache Docker build. A release gets a stable
-`YYYYMMDD-NNN` version, a matching `zmc1212/sfp-admin:<version>` image, integrity
-manifests, and `release/sfp-admin-release-<version>.zip`. Pass an explicit
-version when needed, for example `release.bat -Version 20260901-001`.
+On Windows, `release.bat` runs ESLint and the survey canvas and AI tests, then
+builds Next.js in Docker with layer caching. Use `release.bat -Full` for full
+release validation with the isolated PostgreSQL contract tests. Each package gets
+a `YYYYMMDD-NNN` version, a matching `zmc1212/sfp-admin:<version>` image, integrity
+manifests, and `release/sfp-admin-release-<version>.zip`. Pass an explicit version
+when needed, for example `release.bat -Version 20260901-001`.
 
 The archive intentionally contains no `.env.production`. Keep production
 secrets in `/datas/smartfloor/.env.production` on the server with mode `600`,

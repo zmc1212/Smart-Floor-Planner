@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
 import type { Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint } from '../contracts';
-import { knowledgeSynthesisSources, businessSynthesisSources, type SynthesisContext } from './synthesis';
+import { knowledgeSynthesisSources, businessSourceResultKey, businessSynthesisSources, type SynthesisContext } from './synthesis';
 import { synthesisContextAvailable } from './synthesis-sources';
 import { queryBusiness, type BusinessQuery, type BusinessSnapshot } from './business-tools';
 import { KnowledgeSearchUnavailable, retrieveKnowledge } from '../knowledge/retrieval';
@@ -173,7 +173,7 @@ export function dialogueBusinessQuery(rt: DialogueToolRuntime) {
         rt.delivered.push(snapshot);
         // The synthesis guard revalidates every snapshot version before delivery.
         rt.context.snapshots.push(snapshot);
-        rt.context.sources.push(...businessSynthesisSources('F1:' + lease.runId + ':' + sequence, snapshot));
+        rt.context.sources.push(...businessSynthesisSources(businessSourceResultKey(lease.runId, 1400 + sequence), snapshot));
         return receipt;
       })();
       businesses.set(key, pending);

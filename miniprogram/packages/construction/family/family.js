@@ -1,30 +1,27 @@
 const api = require('../../../utils/api.js');
+const { displayName, familyErrorText } = require('../lib/family-view');
+const { loadSiteFont } = require('../lib/site-font');
 
 function sessionToken() {
   const app = getApp();
   return (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
 }
 
-function operationKey() {
-  return 'family-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
-}
-
-function errorText(error) {
-  const code = error && (error.error || error.code);
-  if (error && error.statusCode === 401) return '请先登录后再打开。';
-  if (code === 'family_invite_used') return '这份邀请已经被使用，请让家人重新分享。';
-  if (code === 'construction_invite_invalid' || code === 'construction_invite_expired' || code === 'construction_not_found')
-    return '邀请已失效，请让家人重新分享。';
-  if (code === 'construction_forbidden' || code === 'camera_forbidden') return '当前身份不能查看这个工地。';
-  if (code === 'version_conflict') return '授权状态已变化，请刷新后重试。';
-  if (code === 'camera_project_unavailable' || code === 'camera_unavailable') return '工地视频暂时还没有开通。';
-  return '云工地暂时无法读取，请稍后重试。';
+function navigationMetrics() {
+  const info = wx.getWindowInfo?.() || wx.getSystemInfoSync?.() || {};
+  let capsule;
+  try { capsule = wx.getMenuButtonBoundingClientRect?.(); } catch (_) { /* Use the safe fallback. */ }
+  const width = info.windowWidth || 390;
+  const status = info.statusBarHeight || 24;
+  const center = capsule?.height && capsule.top >= status ? capsule.top + capsule.height / 2 : status + 22;
+  const rightEdge = capsule?.left || width - 94;
+  return { navTop: Math.round(center - 22), navRight: width - rightEdge + 8 };
 }
 
 function normalizeItem(item) {
   return {
     id: String((item && item.id) || ''),
-    name: String((item && item.name) || '未命名工地'),
+    name: displayName(item && item.name, '未命名工地'),
     leadId: String((item && item.leadId) || ''),
     role: item && item.role === 'owner' ? 'owner' : 'family',
   };
@@ -32,6 +29,8 @@ function normalizeItem(item) {
 
 Page({
   data: {
+    navTop: 24,
+    navRight: 102,
     loading: true,
     error: '',
     needLogin: false,
@@ -43,23 +42,23 @@ Page({
     progressError: '',
     cameras: [],
     cameraError: '',
-    inviteToken: '',
-    inviteExpiresAt: '',
-    inviteError: '',
-    inviteLoading: false,
-    viewers: [],
-    viewerLoading: false,
-    viewerError: '',
-    busy: false,
   },
 
   onLoad(query) {
-    this._invite = String((query && query.invite) || '');
+    void loadSiteFont();
+    const scene = String((query && query.scene) || '');
+    let invite = String((query && query.invite) || '');
+    // A scanned Mini Program code only carries the 32-character scene.
+    if (!invite && scene) {
+      try { invite = decodeURIComponent(scene); } catch (_) { invite = scene; }
+    }
+    this._invite = invite;
     this._leadId = String((query && query.leadId) || '');
     this._projectId = String((query && query.projectId) || '');
     this._accepted = false;
     this._started = false;
     this._token = '';
+    this.setData(navigationMetrics());
   },
 
   onShow() {
@@ -70,23 +69,28 @@ Page({
       this.load();
       return;
     }
-    // Returning from the camera page only refreshes facts. The invite token is
-    // kept so a card already shared from this page stays usable.
-    if (this.data.projectId) this.refreshProject();
+    // Returning from the viewer rechecks the current family grant.
+    if (this.data.projectId && !this.data.loading && !this.data.error) {
+      this.refreshProject();
+    }
   },
 
   onPullDownRefresh() {
     this.load().finally(() => wx.stopPullDownRefresh());
   },
 
+  onUnload() {
+    this._generation = (this._generation || 0) + 1;
+  },
+
   async load() {
     const token = sessionToken();
     this._token = token;
+    const g = this._generation = (this._generation || 0) + 1;
     if (!token) {
       this.setData({ loading: false, error: '请先登录后再打开。', needLogin: true });
       return;
     }
-    const g = this._generation = (this._generation || 0) + 1;
     this.setData({ loading: true, error: '', needLogin: false });
     try {
       if (this._invite && !this._accepted) {
@@ -121,7 +125,7 @@ Page({
       }
       this.setData({ items, projectId: '', loading: false, error: '' });
     } catch (error) {
-      if (g === this._generation) this.setData({ loading: false, error: errorText(error), needLogin: error && error.statusCode === 401 });
+      if (g === this._generation) this.setData({ loading: false, error: familyErrorText(error), needLogin: error && error.statusCode === 401 });
     }
   },
 
@@ -129,9 +133,23 @@ Page({
     wx.navigateTo({ url: '/packages/business/login/login' });
   },
 
+  goBack() {
+    wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/index/index' }) });
+  },
+
   async openProject(item, generation) {
     const g = generation || this._generation;
     this._projectId = item.id;
+    if (item.role === 'owner') {
+      this.setData({ loading: true, error: '' });
+      wx.reLaunch({
+        url: '/pages/index/index?customerTab=service&familyProject=' + encodeURIComponent(item.id),
+        fail: () => {
+          if (g === this._generation) this.setData({ loading: false, error: '暂时无法打开我家工地，请重试。' });
+        },
+      });
+      return;
+    }
     this.setData({
       projectId: item.id,
       projectName: item.name,
@@ -142,81 +160,30 @@ Page({
       progressError: '',
       cameras: [],
       cameraError: '',
-      inviteToken: '',
-      inviteExpiresAt: '',
-      inviteError: '',
-      inviteLoading: false,
-      viewers: [],
-      viewerError: '',
     });
-    await this.refreshProject(g);
-    if (item.role === 'owner') {
-      await this.loadViewers(g);
-      if (!this.data.inviteToken) await this.createInvite(g);
-    }
+    await this.refreshProject();
   },
 
-  async refreshProject(generation) {
-    const g = generation || this._generation;
+  async refreshProject() {
+    const g = this._generation;
     const projectId = this.data.projectId || this._projectId;
     if (!projectId) return;
+    const request = this._projectRequest = (this._projectRequest || 0) + 1;
     const [progress, cameras] = await Promise.all([
       api.request('/miniprogram/construction/projects/' + projectId + '/progress', 'GET')
         .then(result => ({ data: result.data }), error => ({ error })),
       api.request('/miniprogram/construction/video/projects/' + projectId + '/cameras', 'GET')
         .then(result => ({ data: result.data }), error => ({ error })),
     ]);
-    if (g !== this._generation) return;
-    const progressData = progress && progress.data;
+    if (g !== this._generation || request !== this._projectRequest) return;
+    const currentProgress = progress.data?.progress;
     this.setData({
-      progress: progressData && progressData.progress ? progressData.progress : null,
-      progressError: progress.error ? errorText(progress.error) : '',
+      progress: currentProgress || null,
+      progressError: progress.error ? familyErrorText(progress.error, '施工进度暂时无法查看。') : '',
       cameras: cameras.data && Array.isArray(cameras.data.items) ? cameras.data.items : [],
-      cameraError: cameras.error ? errorText(cameras.error) : '',
+      cameraError: cameras.error ? familyErrorText(cameras.error, '直播入口暂时无法加载。') : '',
       loading: false,
     });
-  },
-
-  async loadViewers(generation) {
-    if (this.data.role !== 'owner' || !this.data.projectId) return;
-    const g = generation || this._generation;
-    this.setData({ viewerLoading: true, viewerError: '' });
-    try {
-      const result = await api.request(
-        '/miniprogram/construction/projects/' + this.data.projectId + '/family-viewers',
-        'GET',
-      );
-      if (g !== this._generation) return;
-      this.setData({ viewers: Array.isArray(result.data) ? result.data : [], viewerLoading: false });
-    } catch (error) {
-      if (g === this._generation) this.setData({ viewers: [], viewerLoading: false, viewerError: errorText(error) });
-    }
-  },
-
-  async createInvite(generation) {
-    if (this.data.role !== 'owner' || !this.data.projectId || this.data.inviteLoading) return;
-    const g = generation || this._generation;
-    this.setData({ inviteError: '', inviteLoading: true });
-    try {
-      const result = await api.request(
-        '/miniprogram/construction/projects/' + this.data.projectId + '/family-invite',
-        'POST',
-        {},
-      );
-      if (g !== this._generation) return;
-      this.setData({
-        inviteToken: String((result.data && result.data.token) || ''),
-        inviteExpiresAt: String((result.data && result.data.expiresAt) || ''),
-      });
-    } catch (error) {
-      if (g === this._generation) this.setData({ inviteError: errorText(error) });
-    } finally {
-      if (g === this._generation) this.setData({ inviteLoading: false });
-    }
-  },
-
-  refreshInvite() {
-    return this.createInvite();
   },
 
   selectProject(event) {
@@ -225,41 +192,9 @@ Page({
     if (item) this.openProject(item);
   },
 
-  openCamera(event) {
-    const projectId = String((event.currentTarget.dataset && event.currentTarget.dataset.project) || this.data.projectId);
-    if (!/^[1-9]\d*$/.test(projectId)) return;
+  openCamera() {
+    const projectId = this.data.projectId;
+    if (!this.data.cameras.length || !/^[1-9]\d*$/.test(projectId)) return;
     wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(projectId) });
-  },
-
-  async revokeViewer(event) {
-    const viewerId = String((event.currentTarget.dataset && event.currentTarget.dataset.viewer) || '');
-    const version = Number(event.currentTarget.dataset && event.currentTarget.dataset.version);
-    if (!/^[1-9]\d*$/.test(viewerId) || !Number.isSafeInteger(version) || this.data.busy) return;
-    this.setData({ busy: true, viewerError: '' });
-    try {
-      await api.request(
-        '/miniprogram/construction/projects/' + this.data.projectId + '/family-viewers/' + viewerId,
-        'POST',
-        { expectedVersion: version, allowed: false },
-        { headers: { 'Idempotency-Key': operationKey() } },
-      );
-      wx.showToast({ title: '已撤销', icon: 'success' });
-      await this.loadViewers();
-    } catch (error) {
-      this.setData({ viewerError: errorText(error) });
-    } finally {
-      this.setData({ busy: false });
-    }
-  },
-
-  onShareAppMessage() {
-    const projectId = this.data.projectId || this._projectId;
-    const params = [];
-    if (projectId) params.push('projectId=' + encodeURIComponent(projectId));
-    if (this.data.inviteToken) params.push('invite=' + encodeURIComponent(this.data.inviteToken));
-    return {
-      title: '家人一起看工地进度',
-      path: '/packages/construction/family/family' + (params.length ? '?' + params.join('&') : ''),
-    };
   },
 });

@@ -70,7 +70,7 @@
     transform: rotate(-2deg);
   }
 
-  .approved-plan-status image { width: 29rpx; height: 29rpx; }
+  .approved-plan-status .chat-image { width: 29rpx; height: 29rpx; }
   .approved-plan-version, .approved-plan-copy, .approved-plan-impact { display: block; line-height: 1.5; }
   .approved-plan-version { margin-top: 3rpx; font-size: 25rpx; }
   .approved-plan-copy { margin-top: 7rpx; font-size: 27rpx; white-space: pre-wrap; }
@@ -95,7 +95,7 @@
     text-align: left;
   }
 
-  .approved-plan-action[disabled] { opacity: .58; }
+  .approved-plan-action.is-disabled { opacity: .58; }
   .approved-plan-icon { flex: none; width: 56rpx; height: 56rpx; }
   .approved-plan-action-copy {
     display: flex;
@@ -104,10 +104,10 @@
     padding-left: 16rpx;
     border-left: 1rpx solid #9bae99;
   }
-  .approved-plan-action-copy text { text-decoration: underline; text-underline-offset: 4rpx; }
-  .approved-plan-action-copy image { flex: none; width: 25rpx; height: 25rpx; }
+  .approved-plan-action-copy .chat-text { text-decoration: underline; text-underline-offset: 4rpx; }
+  .approved-plan-action-copy .chat-image { flex: none; width: 25rpx; height: 25rpx; }
   .approved-plan-drawing { padding-top: 12rpx; }
-  .approved-plan-drawing image { display: block; width: 100%; height: 320rpx; }
+  .approved-plan-drawing .chat-image { display: block; width: 100%; height: 320rpx; }
 
   .construction-closure-paper { padding: 58rpx 40rpx 32rpx; }
   .construction-closure-paper .construction-closure-tag {
@@ -143,7 +143,7 @@
     border-radius: 50%;
     background: var(--ink);
   }
-  .construction-closure-check image { width: 23rpx; height: 23rpx; }
+  .construction-closure-check .chat-image { width: 23rpx; height: 23rpx; }
   .construction-closure-result {
     margin: 22rpx 0 24rpx;
     padding: 14rpx 18rpx;
@@ -182,7 +182,7 @@
     padding: 0;
     border-radius: 0;
   }
-  .construction-closure-photo image { display: block; width: 100%; height: 100%; }
+  .construction-closure-photo .chat-image { display: block; width: 100%; height: 100%; }
   .construction-closure-photo-feedback {
     display: flex;
     align-items: center;
@@ -195,8 +195,8 @@
     line-height: 1.45;
   }
   .construction-closure-references { flex: 1; min-width: 0; padding-top: 8rpx; }
-  .construction-closure-references text { display: block; font-size: 24rpx; line-height: 1.5; }
-  .construction-closure-references text + text { margin-top: 7rpx; }
+  .construction-closure-references .chat-text { display: block; font-size: 24rpx; line-height: 1.5; }
+  .construction-closure-references .chat-text + .chat-text { margin-top: 7rpx; }
   .construction-paper-note { color: #526d65; font-size: 22rpx; line-height: 1.5; }
   .construction-closure-foot {
     display: block;

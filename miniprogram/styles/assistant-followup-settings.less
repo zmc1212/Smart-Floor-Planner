@@ -5,18 +5,18 @@
   .followup-settings-sheet > .followup-detail-title { font-family: 'Chat Settings Serif','Chat Serif',SimSun,serif; font-size: 62rpx; font-weight: 900; }
   .followup-settings-sheet { margin-left: 32rpx; width: calc(100% - 32rpx); height: calc(100% - 88px); padding: 55rpx 44rpx calc(22rpx + env(safe-area-inset-bottom)) 40rpx; }
   .followup-settings-picker { display: flex; align-items: center; gap: 20rpx; min-height: 44px; box-sizing: border-box; padding: 6rpx 20rpx; border: 1rpx solid #789985; border-radius: 8rpx; color: #073c30; font-size: 28rpx; }
-  .followup-settings-picker image { width: 42rpx; height: 42rpx; flex: none; }
-  .followup-settings-picker > text:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Chat Serif',SimSun,serif; font-weight: 700; }
+  .followup-settings-picker .chat-image { width: 42rpx; height: 42rpx; flex: none; }
+  .followup-settings-picker > .chat-text:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Chat Serif',SimSun,serif; font-weight: 700; }
   .followup-settings-sheet > .followup-caption { margin-top: 8rpx; }
   .followup-settings-group { border-bottom: 1rpx solid #88a58a; padding-top: 30rpx; }
   .followup-settings-group > .fabric-label { margin: 0 0 12rpx; transform: rotate(-5deg); font-size: 28rpx; line-height: 1.5; }
   .followup-settings-group:first-of-type { border-top: 1rpx solid #88a58a; margin-top: 28rpx; padding-top: 0; }
   .followup-preference-row { display: flex; align-items: center; gap: 24rpx; min-height: 44px; padding: 0 12rpx 0 16rpx; box-sizing: border-box; border-bottom: 1rpx solid #c8d2bf; color: #073c30; font-size: 31rpx; }
-  .followup-preference-row > text { flex: 1; }
+  .followup-preference-row > .chat-text { flex: 1; }
   .followup-preference-row:last-child, .followup-settings-group .followup-setting-row:last-child { border-bottom: none; }
-  .followup-preference-row switch { flex: none; transform: scale(.78); transform-origin: right center; }
+  .followup-preference-row .chat-switch { flex: none; transform: scale(.78); transform-origin: right center; }
   .followup-settings-group .followup-setting-row { gap: 24rpx; min-height: 64px; padding: 13rpx 12rpx 13rpx 16rpx; box-sizing: border-box; font-size: 31rpx; }
-  .followup-settings-group .followup-setting-row > view:nth-child(2) { flex: 1; min-width: 0; }
+  .followup-settings-group .followup-setting-row > .chat-group:nth-child(2) { flex: 1; min-width: 0; }
   .followup-settings-group .followup-setting-row .followup-caption { font-size: 21rpx; margin-top: 3rpx; }
   .followup-settings-group .followup-setting-delete { color: #cb2b25; }
   .followup-settings-save { width: 100%; margin: 30rpx 0 0; min-height: 44px; line-height: 44px; border-radius: 8rpx; font-size: 29rpx; flex: none; }

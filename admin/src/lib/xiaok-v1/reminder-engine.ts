@@ -23,6 +23,7 @@ export type ReminderPlanNode = {
   key: string; stageId: string | null; roomId: string | null; roomName: string;
   plannedStart: string; plannedEnd: string; color: 'green' | 'yellow' | 'red' | 'gray';
   completion: 'completed' | 'in_progress' | 'unknown';
+  managementOnly?: boolean;
 };
 export type ReminderIssue = { id: string; title: string; status: string; updatedAt: string; dueAt?: string | null };
 export type ReminderProjectFacts = {
@@ -199,7 +200,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
     for (const node of facts.schedule.nodes) {
       if (node.stageId !== stageId || node.completion === 'completed') continue;
       const daysToEnd = dayDiff(node.plannedEnd, today);
-      if (daysToEnd >= 0 && daysToEnd <= policy.dueSoonDays) {
+      if (!node.managementOnly && daysToEnd >= 0 && daysToEnd <= policy.dueSoonDays) {
         for (const role of ['owner', 'worker', 'manager'] as const) {
           if (!policy.roles.includes(role)) continue;
           for (const userId of recipientsFor(facts, role)) drafts.push(draft({ facts, policy, now, triggerType: 'plan_node_due_soon',
@@ -212,6 +213,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
       }
       if (daysToEnd < 0) {
         for (const role of ['manager', 'owner'] as const) {
+          if (node.managementOnly && role !== 'manager') continue;
           if (!policy.roles.includes(role)) continue;
           for (const userId of recipientsFor(facts, role)) drafts.push(draft({ facts, policy, now, triggerType: 'plan_node_overdue',
             targetRole: role, targetUserId: userId, relatedTaskId: node.key,
@@ -221,6 +223,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
             detail: '计划结束日已过且当前没有完成证据，请核对实际进展，不要直接认定未施工。' }));
         }
       }
+      if (node.managementOnly) continue;
       if (policy.endPreparationDays !== null && daysToEnd >= 0 && daysToEnd <= policy.endPreparationDays) {
         for (const role of ['worker', 'manager', 'designer'] as const) {
           if (!policy.roles.includes(role)) continue;
@@ -291,7 +294,7 @@ export function buildReminderDrafts(facts: ReminderProjectFacts, policy: StageRe
   if (bossRecipients.length && policy.bossEscalationDays >= 0) {
     if (facts.schedule.available) {
       for (const node of facts.schedule.nodes) {
-        if (node.stageId !== stageId || node.completion === 'completed') continue;
+        if (node.managementOnly || node.stageId !== stageId || node.completion === 'completed') continue;
         if (dayDiff(today, node.plannedEnd) < policy.bossEscalationDays) continue;
         for (const userId of bossRecipients) drafts.push(draft({ facts, policy, now, triggerType: 'plan_node_overdue',
           targetRole: 'boss', targetUserId: userId, relatedTaskId: node.key,

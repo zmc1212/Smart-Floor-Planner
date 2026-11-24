@@ -57,9 +57,9 @@ async function fixture() {
   console.log('SYNTHETIC_RECOVERY_FIXTURE '+JSON.stringify({...f,conversationId}));
   return {...f,actor,chat,usage,conversationId};
 }
-async function unknown(f: Awaited<ReturnType<typeof fixture>>, observed = 100, alreadyDispatched = false) {
+async function unknown(f: Awaited<ReturnType<typeof fixture>>, observed = 100, alreadyDispatched = false, conversationId = f.conversationId) {
   const key = randomUUID(), body = content('合成协议测试：模拟已知用量之后连接中断，不调用模型。');
-  const sent = await f.chat.send(f.conversationId,key,body), runId = String(sent.runId);
+  const sent = await f.chat.send(conversationId,key,body), runId = String(sent.runId);
   const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId,runId);
   await withTenantTransaction(f.enterpriseId,async tx => {
     const run = (await one(tx,sql`select created_at from app.assistant_runs where id=${runId} and enterprise_id=${f.enterpriseId}`))!;
@@ -139,7 +139,11 @@ test('reviewed totals persist across budget dates, stages and groups, above-rese
 });
 
 test('one reviewed run does not clear another unresolved run or permit totals below observed usage',async()=>{
-  const f=await fixture(), a=await unknown(f), b=await unknown(f,100,true);
+  const f=await fixture(), a=await unknown(f);
+  // A conversation with an unresolved provider outcome cannot accept a new
+  // message; the second synthetic unknown lives in its own conversation while
+  // the budget review stays enterprise-wide.
+  const other=String((await f.chat.create(randomUUID())).id), b=await unknown(f,100,true,other);
   await assert.rejects(f.usage.reconcile(String(a.q.id),review(a.q.version,'99'),randomUUID()),/observed_tokens_conflict/);
   await f.usage.reconcile(String(a.q.id),review(a.q.version),randomUUID());
   assert.equal((await snapshot(f)).unknownUsage,true); assert.equal((await f.chat.run(b.runId)).usageReconciled,false);

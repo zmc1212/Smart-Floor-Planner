@@ -327,6 +327,7 @@ export function leadToDto(record: LeadWithRelations, options: {
     appointment: record.appointment
       ? {
           id: record.appointment.id.toString(),
+          designerHandlesVisit: record.appointment.designerId === record.appointment.measurerId,
           address: record.appointment.address,
           locationName: record.appointment.locationName,
           latitude: record.appointment.latitude == null ? null : Number(record.appointment.latitude),

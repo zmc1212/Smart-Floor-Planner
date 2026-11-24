@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { reportContext } from '@/lib/construction/report-reference';
+import { configuredPublicSiteGuide, type PublicSiteGuideTurn } from '@/lib/construction/public-guide';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -46,6 +47,9 @@ async function authorized(repo: AssistantRepository, run: Row) {
     || (!localReport && run.purpose !== 'speech.transcribe' && runKnowledgeEnabled(run.policy_snapshot as Row) && settings!.knowledge_epoch !== run.knowledge_epoch)
     || Number(settings!.policy_version) !== Number((run.policy_snapshot as { policyVersion: number }).policyVersion)) fail('context_changed');
   const configuredAgent = agentConfig((run.policy_snapshot as Row).agent);
+  const guideTurn = (run.policy_snapshot as Row).publicSiteGuideTurn as PublicSiteGuideTurn | undefined;
+  if (guideTurn && fingerprint(configuredPublicSiteGuide(settings!.guidance_config)) !== guideTurn.configHash)
+    fail('context_changed');
   const reportVersion = (run.policy_snapshot as Row).reportContextVersion;
   if (!scheduledReport && reportVersion !== undefined && reportContext(c.entry_snapshot).revision !== reportVersion) fail('context_changed');
   if (c.purpose === 'customer_consultation' && run.purpose === 'reply')
@@ -259,6 +263,30 @@ export async function completeReportComposition(lease: Lease, commit: (tx: Postg
     await finish(tx, lease, 'succeeded', null);
   });
 }
+/** A transient model failure that happened before any provider dispatch is safe
+ * to retry: no external model call or charge occurred. Requeue the same run with
+ * a short backoff; once a provider was started the outcome is unknown and must
+ * stay fail-closed for reconciliation. */
+export async function requeuePreDispatchModelFailure(lease: Lease, code: string, details?: Row) {
+  try {
+    return await withTenantTransaction(lease.enterpriseId, async tx => {
+      const { job } = await runContext(tx, lease);
+      if (code !== 'model_unavailable' || job.provider_started_at || Number(job.attempts) >= 2) return false;
+      if (await one(tx, sql`select id from app.ai_provider_attempts where enterprise_id=${lease.enterpriseId} and assistant_run_id=${lease.runId} limit 1`)) return false;
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+        select ${lease.enterpriseId},${lease.runId},coalesce(max(step_seq),0)+1,'execution','retry_scheduled',
+          ${JSON.stringify({ ...details, code, disposition: 'pre_dispatch_retry', attempts: Number(job.attempts) })}::jsonb
+        from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
+        on conflict do nothing`);
+      await tx.execute(sql`update app.assistant_jobs set status='queued',available_at=now()+interval '5 seconds',
+        lease_token=null,lease_expires_at=null,heartbeat_at=null,last_error=${code},updated_at=now(),version=version+1
+        where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
+      await tx.execute(sql`update app.assistant_runs set status='queued',error_code=null,completed_at=null,updated_at=now(),version=version+1
+        where enterprise_id=${lease.enterpriseId} and id=${lease.runId}`);
+      return true;
+    });
+  } catch { return false; }
+}
 export async function failRun(lease: Lease, code: string, outcomeKnown=false, details?: Row) {
   return withTenantTransaction(lease.enterpriseId, async tx => {
     const { job, run } = await live(tx, lease);
@@ -421,7 +449,7 @@ export async function completeStageKnowledge(lease: Lease, resolve: (tx: Postgre
 }
 
 export async function completeGuidance(lease: Lease, reply: string | ((tx: PostgresTransaction,
-  context: Awaited<ReturnType<typeof runContext>>) => Promise<string | null>)) {
+  context: Awaited<ReturnType<typeof runContext>>) => Promise<string | null>), purpose = 'requirements.guidance') {
   return withTenantTransaction(lease.enterpriseId, async tx => {
     const context = await runContext(tx, lease);
     const text = typeof reply === 'string' ? reply : await reply(tx, context);
@@ -430,7 +458,7 @@ export async function completeGuidance(lease: Lease, reply: string | ((tx: Postg
     const { conversation, job } = context;
     if (job.provider_started_at) fail('context_changed');
     const message = await appendMessage(tx, lease.actor, String(conversation.id), {
-      author: 'assistant', runId: lease.runId, purpose: 'requirements.guidance', content: { version: 1, blocks: [{ type: 'text', text }] },
+      author: 'assistant', runId: lease.runId, purpose, content: { version: 1, blocks: [{ type: 'text', text }] },
     });
     await tx.execute(sql`update app.assistant_quota_reservations set status='released',version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}`);
     await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,quantity,measurement_kind,input_tokens,output_tokens)
@@ -478,7 +506,9 @@ type KnowledgeDegradation = {
  * unknown bill. Completing this message never completes the provider attempt. */
 export async function recoverKnowledgeAnswer(lease: Lease, error: unknown) {
   const failure = modelFailure(error);
-  if (!failure) return null;
+  // An explicit payment rejection is a known failure, not a degraded model
+  // invocation. A facts-only answer must never mask a billing refusal.
+  if (!failure || (error instanceof AiProviderError && error.code === 'HTTP_402')) return null;
   try {
     const completed = await withTenantTransaction(lease.enterpriseId, async tx => {
       const state = await runContext(tx, lease);

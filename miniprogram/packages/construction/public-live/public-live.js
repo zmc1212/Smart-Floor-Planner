@@ -1,7 +1,7 @@
 const api = require('../../../utils/api');
 const { loadSiteFont } = require('../lib/site-font');
 const { publicConsultationId } = require('../../../utils/public-site-client');
-const empty = () => ({ loading:true, detail:null, src:'', playerEpoch:0, state:'connecting', error:'', paused:false, shareAvailable:false, canConsult:false, navTop:47, navRight:100, navHeight:44 });
+const empty = () => ({ loading:true, detail:null, src:'', playerEpoch:0, state:'connecting', error:'', paused:false, shareAvailable:false, canConsult:false, guideQuestion:'', navTop:47, navRight:100, navHeight:44 });
 const validId = v => /^[1-9]\d{0,18}$/.test(String(v||''));
 const withdrawn = error => [401,403,404].includes(error.statusCode) || error.code === 'public_live_unavailable';
 const connectionError = '暂时无法连接直播，请重试。';
@@ -26,15 +26,16 @@ Page({
     if (validId(this.options.conversationId)) void publicConsultationId(this.options).then(cid => {
       if (this.alive && this.visible && this.consultTicket === ticket) {
         this.consultationId = cid; this.setData({ canConsult: !!cid });
+        void this.loadGuide();
       }
     });
     this.connect();
   },
   onHide() {this.clear();},
   onUnload() {this.alive=false;this.clear();},
-  clear() {this.visible=false;this.epoch++;this.consultationId='';clearInterval(this.poll);clearTimeout(this.renew);try{wx.createVideoContext('public-live-video',this).stop();}catch(_){}this.setData({src:'',state:'stopped',paused:false,shareAvailable:false,canConsult:false});},
+  clear() {this.visible=false;this.epoch++;this.consultationId='';clearInterval(this.poll);clearTimeout(this.renew);try{wx.createVideoContext('public-live-video',this).stop();}catch(_){}this.setData({src:'',state:'stopped',paused:false,shareAvailable:false,canConsult:false,guideQuestion:''});},
   setShareAvailable(shareAvailable) {
-    this.setData({ shareAvailable });
+    this.setData({ shareAvailable, ...(shareAvailable ? {} : { guideQuestion: '' }) });
     const options = { menus: ['shareAppMessage'] };
     if (shareAvailable) wx.showShareMenu?.(options);
     else wx.hideShareMenu?.(options);
@@ -42,6 +43,21 @@ Page({
   async read(suffix='',method='GET') {
     const r=await api.request('/public/construction-live/'+this.options.enterpriseId+'/'+this.options.key+suffix,method,{}, {suppressUnauthorized:true});
     if(!r?.success||!r.data)throw {code:r?.code||'invalid_response'};return r.data;
+  },
+  async loadGuide() {
+    const cid = this.consultationId;
+    const { siteId, versionId } = this.options;
+    const { key: liveKey, versionId: liveVersionId } = this.data.detail || {};
+    if (!cid || !this.data.shareAvailable || !validId(siteId) || !validId(versionId)
+      || liveKey !== this.options.key || !validId(liveVersionId)) return;
+    const epoch = this.epoch;
+    try {
+      const result = await api.request(`/miniprogram/assistant/conversations/${cid}/public-sites/${siteId}/guide`,
+        'GET', { versionId, liveKey, liveVersionId }, { suppressUnauthorized: true });
+      const text = result?.data?.question;
+      if (this.alive && this.visible && epoch === this.epoch && this.consultationId === cid && this.data.shareAvailable)
+        this.setData({ guideQuestion: result?.success && typeof text === 'string' ? text : '' });
+    } catch (_) { /* The standard consultation entry stays available. */ }
   },
   async connect() {
     clearInterval(this.poll);
@@ -60,6 +76,7 @@ Page({
       if (detail.key !== this.options.key) throw { code:'public_live_unavailable' };
       this.setData({ detail });
       this.setShareAvailable(true);
+      void this.loadGuide();
       this.poll = setInterval(() => this.check(epoch), 5000);
 
       const session = await this.read('/session', 'POST');

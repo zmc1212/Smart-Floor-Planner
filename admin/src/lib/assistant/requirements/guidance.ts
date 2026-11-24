@@ -34,7 +34,14 @@ export function validateGuidance(value: unknown): Guidance {
     return { field: q.field, text: text(q.text, 500) };
   }) };
 }
-export function configuredGuidance(value: unknown) { return value ? validateGuidance(value) : defaultGuidance; }
+export function configuredGuidance(value: unknown) {
+  if (value && typeof value === 'object' && !Array.isArray(value) && 'publicSiteGuide' in value) {
+    const guidance: Record<string, unknown> = { ...value };
+    delete guidance.publicSiteGuide;
+    return Object.keys(guidance).length ? validateGuidance(guidance) : defaultGuidance;
+  }
+  return value ? validateGuidance(value) : defaultGuidance;
+}
 export function guidanceOpening(g: Guidance) { return g.enabled ? '先聊聊你家的情况吧，新房还是旧房？' : null; }
 export function conversationGuidance(entry: unknown): Guidance | null {
   const g = (entry as { guidance?: Guidance } | null)?.guidance;

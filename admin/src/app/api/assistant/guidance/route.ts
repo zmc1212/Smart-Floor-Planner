@@ -12,7 +12,9 @@ async function handle(request: NextRequest) {
         try { input = JSON.parse(text); } catch { fail('invalid_message', 422); }
         if (!input || typeof input !== 'object' || Array.isArray(input)) fail('invalid_message', 422);
       }
-      const data = await new GuidanceSettingsService(actor.enterpriseId!, actor.userId).execute(input);
+      const service = new GuidanceSettingsService(actor.enterpriseId!, actor.userId);
+      const data = request.nextUrl.searchParams.get('scene') === 'public-site'
+        ? await service.execute(input, 'public-site') : await service.execute(input);
       return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (e) {
       return NextResponse.json({ success: false, error: e instanceof AssistantError ? e.code : 'assistant_unavailable' },

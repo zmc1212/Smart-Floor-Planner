@@ -85,7 +85,7 @@ async function readPartyViews(appointmentId: bigint, targetLeadId = leadId) {
       .findCustomerProject(customerUserId, targetLeadId);
     const customerIndex = (await new CustomerProjectRepository(transaction).listCustomerProjects(customerUserId))
       .find((item) => item.leadId === targetLeadId);
-        const measurerCalendar = (await appointments.listByMeasurer(enterpriseId, leadRecord.measurerId || measurerId))
+    const measurerCalendar = (await appointments.listByMeasurer(enterpriseId, designerId))
       .filter((row) => row.leadId === targetLeadId);
     const workbenchAppointments = selectMeasurerWorkbenchAppointments(measurerCalendar);
     return {

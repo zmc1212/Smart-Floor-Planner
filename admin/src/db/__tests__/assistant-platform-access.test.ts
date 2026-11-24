@@ -9,6 +9,7 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import { authorizeKnowledgeManager } from '@/lib/assistant/knowledge/manager';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
@@ -25,6 +26,7 @@ const roles=['super_admin','admin'];
 const published:Row[]=[];
 before(async()=>{
   loadEnvConfig(process.cwd());
+  useLocalKnowledgeTestDatabase();
   const url=new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['localhost','127.0.0.1'].includes(url.hostname));
   assert.equal(url.port,'55432');assert.equal(url.pathname,'/xiaok_embedding_eval');

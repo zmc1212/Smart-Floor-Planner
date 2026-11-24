@@ -83,6 +83,10 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
         for (const node of schedule.nodes) {
           if (schedule.gaps.some(gap => gap.nodeKey === node.key && ['stage_unavailable', 'room_unavailable'].includes(gap.kind))) continue;
           const location = node.roomName ? `${node.roomName} · ` : '';
+          if (node.timeKind) {
+            lines.push(`已发布施工计划：${location}${node.stageName}，${node.timeText}。`);
+            continue;
+          }
           const start = publishedPlanDate(node.plannedStart);
           const range = node.plannedEnd === node.plannedStart ? start : `${start} 至 ${publishedPlanDate(node.plannedEnd)}`;
           lines.push(`已发布施工计划：${location}${node.stageName}，计划时间 ${range}。`);

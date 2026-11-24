@@ -4,7 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, safeText, type ActorContext, type Evidence } from '../contracts';
 import { resolveEvidence } from '../knowledge/sources';
 import { businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
-import { businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from './synthesis';
+import { businessSourceResultKey, businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from './synthesis';
 import { historySynthesisSources, historyRefsAvailable, type HistorySnapshot } from './history';
 import { needMemoryPolicy, readMemory } from './memory';
 import { resolveWebEvidence, webEvidence, webSynthesisSources } from './web-evidence';
@@ -87,8 +87,7 @@ export async function currentSynthesisContext(tx: PostgresTransaction, actor: Ac
       const snapshot = bound ? bound.snapshot : step.private_checkpoint as BusinessSnapshot;
       if (!await businessSnapshotAvailable(tx, actor.enterpriseId, snapshot, actor)) fail('context_changed');
       context.snapshots.push(snapshot);
-      const seq = Number(step.step_seq) - 1200;
-      context.sources.push(...businessSynthesisSources(bound?.resultKey || `${runId}:${Math.floor(seq / 10)}:${seq % 10}`, snapshot));
+      context.sources.push(...businessSynthesisSources(bound?.resultKey || businessSourceResultKey(runId, Number(step.step_seq)), snapshot));
     }
   }
   // The same original can be consulted by both the optional digest and recall.

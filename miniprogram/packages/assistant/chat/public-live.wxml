@@ -9,7 +9,7 @@
         <view wx:else class="owner-live-connecting">暂无定时抓拍</view>
       </view>
       <text wx:if="{{coverPath && card.coverTime}}" class="owner-live-cover-time">抓拍于 {{card.coverTime}}</text>
-      <button class="owner-live-primary owner-live-play" data-id="{{card.id}}" data-action="preview" bindtap="liveDecision" disabled="{{busy || pending}}">{{card.projectId ? '查看直播公开申请' : '播放直播'}}</button>
+      <button class="owner-live-primary owner-live-play chat-button {{(busy || pending) ? 'is-disabled' : ''}}" data-id="{{card.id}}" data-action="preview" bindtap="liveDecision" disabled="{{busy || pending}}">{{card.projectId ? '查看直播公开申请' : '播放直播'}}</button>
     </block>
     <block wx:if="{{card.canDecide && card.playbackReady}}">
       <text class="fabric-label owner-live-scope-label">观看范围</text>
@@ -17,13 +17,13 @@
       <text class="owner-live-body">仅此机位，无声直播，不提供回放。</text>
       <text class="owner-live-body">同意后仍需企业审核，才会公开。</text>
       <view class="owner-live-rule"/>
-      <button class="owner-live-primary owner-live-approve" data-id="{{card.id}}" data-action="approve" bindtap="liveDecision" disabled="{{busy || pending}}">{{busy ? '正在核对决定…' : '同意公开这路直播'}}</button>
+      <button class="owner-live-primary owner-live-approve chat-button {{(busy || pending) ? 'is-disabled' : ''}}" data-id="{{card.id}}" data-action="approve" bindtap="liveDecision" disabled="{{busy || pending}}">{{busy ? '正在核对决定…' : '同意公开这路直播'}}</button>
     </block>
     <text wx:if="{{!card.available}}" class="owner-live-body">机位、业主或访问范围已有变化，原决定不再用于公开。</text>
-    <view wx:if="{{card.canDecide}}" class="owner-live-options"><button data-id="{{card.id}}" data-action="decline" bindtap="liveDecision" disabled="{{busy || pending}}">暂不公开</button><text>｜</text><button data-id="{{card.id}}" data-action="later" bindtap="liveDecision" disabled="{{busy || pending}}">稍后再看</button></view>
-    <button wx:if="{{card.canWithdraw}}" class="owner-live-stop" data-id="{{card.id}}" bindtap="stopPublicLive" disabled="{{busy || pending}}">{{card.status === 'published' ? '停止公开直播' : '撤回直播申请'}}</button>
+    <view wx:if="{{card.canDecide}}" class="owner-live-options"><button class="chat-button {{(busy || pending) ? 'is-disabled' : ''}}" data-id="{{card.id}}" data-action="decline" bindtap="liveDecision" disabled="{{busy || pending}}">暂不公开</button><text>｜</text><button class="chat-button {{(busy || pending) ? 'is-disabled' : ''}}" data-id="{{card.id}}" data-action="later" bindtap="liveDecision" disabled="{{busy || pending}}">稍后再看</button></view>
+    <button wx:if="{{card.canWithdraw}}" class="owner-live-stop chat-button {{(busy || pending) ? 'is-disabled' : ''}}" data-id="{{card.id}}" bindtap="stopPublicLive" disabled="{{busy || pending}}">{{card.status === 'published' ? '停止公开直播' : '撤回直播申请'}}</button>
     <text wx:if="{{card.reason}}" class="owner-live-body">{{card.reason}}</text>
-    <view wx:if="{{error || pending}}" class="owner-live-feedback" role="alert"><text>{{error || '同次操作结果待核对。'}}</text><button bindtap="retryLiveConsent" disabled="{{busy}}">{{pending ? '核对同次操作' : '重新读取'}}</button></view>
+    <view wx:if="{{error || pending}}" class="owner-live-feedback" role="alert"><text>{{error || '同次操作结果待核对。'}}</text><button class="chat-button {{(busy) ? 'is-disabled' : ''}}" bindtap="retryLiveConsent" disabled="{{busy}}">{{pending ? '核对同次操作' : '重新读取'}}</button></view>
     <text class="owner-live-note">只决定这路直播，照片和记录授权不变。可随时停止公开直播。</text>
   </view>
 </template>

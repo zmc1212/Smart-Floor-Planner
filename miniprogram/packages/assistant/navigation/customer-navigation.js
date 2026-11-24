@@ -1,5 +1,10 @@
 const ownerReminders = require('../../../utils/owner-reminders');
 
+// 工地 and 我的 share the approved floating navigation; 小K keeps the docked bar.
+function floatsFor(key) {
+  return key === 'service' || key === 'mine';
+}
+
 // The customer-only navigation and its artwork stay in the asynchronously
 // loaded assistant package. The main-package professional navigation is shared.
 Component({
@@ -27,13 +32,13 @@ Component({
       const items = bar.data.list;
       const view = getApp().globalData.customerTab || 'xiaok';
       const selected = items.findIndex(item => item.pagePath === '/' + page.route && (!item.customerView || item.customerView === view));
-      this.setData({ items, selected: Math.max(0, selected), floating: items[Math.max(0, selected)]?.key === 'mine', keyboardHidden: false });
+      this.setData({ items, selected: Math.max(0, selected), floating: floatsFor(items[Math.max(0, selected)]?.key), keyboardHidden: false });
     },
     switchTab(event) {
       const index = Number(event.currentTarget.dataset.index), item = this.data.items[index];
       if (!item || this._switching) return;
       const app = getApp(), page = getCurrentPages().slice(-1)[0];
-      const floating = item.key === 'mine', animate = floating !== this.data.floating;
+      const floating = floatsFor(item.key), animate = floating !== this.data.floating;
       const previousView = app.globalData.customerTab;
       if (item.customerView) app.globalData.customerTab = item.customerView;
       this.setData({ selected: index, floating });

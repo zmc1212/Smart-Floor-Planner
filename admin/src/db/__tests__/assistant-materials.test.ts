@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows } from '@/db/repositories/assistant-repository';
@@ -32,6 +33,7 @@ const output = (name: string, args: unknown): ModelTurnOutput => ({ text: '', to
   name === 'record_need' ? { ...(args as Record<string, unknown>), additionalNeeds: [] } : args) }],
   usage: { inputTokens: 20, outputTokens: 20 }, finishReason: 'tool_calls', providerRequestId: null });
 before(async () => {
+  loadEnvConfig(process.cwd());
   const url = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['localhost','127.0.0.1'].includes(url.hostname));
   assert.equal(url.port, process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55432');

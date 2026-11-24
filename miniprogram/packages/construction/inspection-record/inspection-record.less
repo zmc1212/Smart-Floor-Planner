@@ -1,0 +1,22 @@
+@import '../notebook.less';
+
+.review-header,.review-section { margin-bottom: 14px; }
+.review-project,.review-meta,.review-reason,.review-copy { display: block; line-height: 1.6; }
+.review-project,.review-meta { color: #526c60; font-size: 13px; }
+.review-meta,.review-reason,.review-copy { margin-top: 6px; }
+.review-title-row { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.review-title,.review-heading { display: block; min-width: 0; font: 900 22px/1.45 'Site Serif','Songti SC',SimSun,serif; overflow-wrap: anywhere; }
+.review-heading { font-size: 18px; }
+.review-state { flex: none; padding: 3px 7px; color: #664411; background: #f3e4c6; border-radius: 4px; font-size: 13px; }
+.review-state.published { color: #28583d; background: #e0ebd9; }
+.review-state.changes_requested { color: #8a4f3b; background: #f5e4d8; }
+.review-reason,.review-copy { font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-photos { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 10px; }
+.review-photos .photo-slot { min-height: 64px; aspect-ratio: 1; border: 2px solid #fffdf5; }
+.review-photos image { width: 100%; height: 100%; }
+.review-success { padding: 10px 12px; margin-bottom: 12px; border-radius: 6px; background: #e4eddf; font-size: 14px; }
+.review-actions { display: flex; gap: 10px; margin: 12px 0; }
+.review-actions button { flex: 1; min-width: 0; }
+.inspection-review .sheet-mask { opacity: 1; }
+.inspection-review .sheet-body { max-height: 56vh; }
+.review-sheet-body .stage-row { gap: 10px; }

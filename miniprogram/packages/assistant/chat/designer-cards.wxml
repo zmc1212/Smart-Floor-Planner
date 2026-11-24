@@ -2,10 +2,10 @@
   <view class="designer-cards promotion-paper">
     <view class="answer-label"><text class="fabric-label">设计师作品</text></view>
     <view wx:for="{{recommendation.items}}" wx:for-item="card" wx:key="authorId" class="designer-card">
-      <button class="designer-card-head" data-id="{{card.authorId}}" data-work="{{card.work.id}}"
+      <button class="designer-card-head chat-button {{(blocked) ? 'is-disabled' : ''}}" data-id="{{card.authorId}}" data-work="{{card.work.id}}"
         bindtap="openCardDesigner" disabled="{{blocked}}" aria-label="{{card.authorName}}的设计师主页">
         <view class="designer-card-avatar">
-          <image src="{{portraits[card.authorId] || card.fallbackAvatar}}" mode="aspectFill" aria-hidden="true" />
+          <image class="chat-image" src="{{portraits[card.authorId] || card.fallbackAvatar}}" mode="aspectFill" aria-hidden="true" />
         </view>
         <view class="designer-card-identity">
           <text class="designer-card-name">{{card.authorName}}</text>
@@ -16,7 +16,7 @@
       <view class="designer-card-work" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" bindtap="openCardWork">
         <view class="designer-card-photo">
           <view class="designer-card-cover">
-            <image wx:if="{{images['i' + card.work.coverAssetId]}}" src="{{images['i' + card.work.coverAssetId]}}" mode="aspectFill" />
+            <image class="chat-image" wx:if="{{images['i' + card.work.coverAssetId]}}" src="{{images['i' + card.work.coverAssetId]}}" mode="aspectFill" />
             <text wx:if="{{card.work.coverLabel}}" class="designer-card-cover-label">{{card.work.coverLabel}}</text>
           </view>
           <view class="welcome-tape designer-card-tape" aria-hidden="true"></view>
@@ -27,11 +27,11 @@
         </view>
       </view>
       <view class="designer-card-actions">
-        <button class="designer-card-link" data-id="{{card.authorId}}" data-work="{{card.work.id}}" bindtap="openCardDesigner" disabled="{{blocked}}">
-          <text>设计师主页 ↗</text>
+        <button class="designer-card-link chat-button {{(blocked) ? 'is-disabled' : ''}}" data-id="{{card.authorId}}" data-work="{{card.work.id}}" bindtap="openCardDesigner" disabled="{{blocked}}">
+          <text class="chat-text">设计师主页 ↗</text>
         </button>
-        <button class="work-open" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" bindtap="openCardWork" disabled="{{blocked}}">
-          <text>看这套作品 ↗</text>
+        <button class="work-open chat-button {{(blocked) ? 'is-disabled' : ''}}" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" bindtap="openCardWork" disabled="{{blocked}}">
+          <text class="chat-text">看这套作品 ↗</text>
         </button>
       </view>
     </view>

@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { test } from 'node:test';
 import { AssistantError, type ActorContext } from '../contracts';
-import type { AgentModelGateway, ModelToolCall, ModelTurnInput, ModelTurnOutput } from '../contracts/model';
+import type { ModelToolCall } from '../contracts/model';
 import { ToolExecutor } from '../tools/executor';
-import { runToolLoop } from '../tools/loop';
 import { createWebToolRegistry } from '../web-search/tools';
 import {
   configuredWebSearchProvider, ddgsSearchHits, openserpSearchHits, searxngSearchHits,
@@ -13,7 +12,6 @@ import { fetchPublicDocument } from '../web-search/page';
 import {
   assessWebSources, auditAnswerCitations, classifyWebSource, webAnswerBoundaryIssues, WebEvidenceCollector,
 } from '../web-search/trust';
-import { planWebResearch, runWebResearch } from '../web-search/workflow';
 import type { WebSearchHit, WebSearchProvider, WebSearchProviderResult } from '../web-search/contract';
 
 const actor = (capabilities: string[] = ['assistant.chat.self']): ActorContext => ({
@@ -42,33 +40,6 @@ function syntheticProvider(
   return { name: 'synthetic', supportsNews, search };
 }
 
-function gateway(responses: ModelTurnOutput[]) {
-  const seen: Array<Omit<ModelTurnInput, 'model'>> = [];
-  let index = 0;
-  const value: AgentModelGateway & { seen: typeof seen } = {
-    capabilities: {
-      text: true, imageInput: false, toolCalling: true, structuredOutput: false,
-      streaming: false, usageReporting: false, contextLimit: 16000, maxImages: 4, maxImageBytes: 4 * 1024 * 1024,
-    },
-    async generate(input) {
-      seen.push(structuredClone(input));
-      const response = responses[Math.min(index, responses.length - 1)];
-      index++;
-      return { ...response, attemptId: `attempt_${index}` };
-    },
-    seen,
-  };
-  return value;
-}
-
-function reply(text: string): ModelTurnOutput {
-  return { text, toolCalls: [], finishReason: 'stop', providerRequestId: 'resp_text', usage: null };
-}
-
-function callTurn(toolCalls: ModelToolCall[], text = ''): ModelTurnOutput {
-  return { text, toolCalls, finishReason: 'tool_calls', providerRequestId: 'resp_tool', usage: null };
-}
-
 const articleHtml = `<!doctype html><html><head><title>卫生间防水施工要求</title>
 <meta property="og:site_name" content="国家标准示例">
 <meta property="article:published_time" content="2026-10-01T08:00:00Z">
@@ -79,37 +50,6 @@ const articleHtml = `<!doctype html><html><head><title>卫生间防水施工要�
 </article></main><script>globalThis.executed = true</script></body></html>`;
 
 const readArticle = async (url: string) => ({ url, body: articleHtml, type: 'text/html; charset=utf-8' });
-
-test('planning separates ordinary advice from the four renovation business scenarios', () => {
-  const ordinary = planWebResearch('你好，帮我解释一下什么是北欧风格');
-  assert.equal(ordinary.needsSearch, false);
-  assert.equal(ordinary.reason, 'no_external_fact_needed');
-
-  const waterproof = planWebResearch('卫生间防水施工需要注意什么');
-  assert.equal(waterproof.needsSearch, true);
-  assert.equal(waterproof.intent, 'safety');
-  assert.equal(waterproof.officialPreferred, true);
-  assert.ok(waterproof.queries.some(query => /防水/.test(query)));
-
-  const product = planWebResearch('设计师想确认某类插座产品的技术参数');
-  assert.equal(product.needsSearch, true);
-  assert.equal(product.intent, 'product');
-  assert.ok(product.queries.some(query => /技术参数|规格/.test(query)));
-
-  const node = planWebResearch('施工人员想核对某个施工节点的检查要求');
-  assert.equal(node.needsSearch, true);
-  assert.equal(node.intent, 'standard');
-  assert.equal(node.officialPreferred, true);
-
-  const market = planWebResearch('老板要求搜集某类装修材料的市场信息');
-  assert.equal(market.needsSearch, true);
-  assert.equal(market.intent, 'market');
-  assert.ok(market.queries.some(query => /市场|行情|价格/.test(query)));
-
-  const privateInfo = planWebResearch('我的电话是13812345678，卫生间防水怎么做');
-  assert.equal(privateInfo.needsSearch, false);
-  assert.equal(privateInfo.reason, 'private_information');
-});
 
 test('provider parsers normalize snippets, domains, publication times and duplicates', () => {
   const searx = searxngSearchHits({ results: [
@@ -218,27 +158,6 @@ test('web tools are registered with schemas and reject callers without search pe
   assert.equal(payload.results[0].verified, true);
 });
 
-test('search results are returned to the model through function_call_output', async () => {
-  const provider = syntheticProvider(async request => providerResult(request.query, [hit()]));
-  const registry = createWebToolRegistry({ provider });
-  const model = gateway([
-    callTurn([call('web_search', { query: '卫生间防水施工规范' })]),
-    reply('已找到公开规范，来源：https://std.samr.gov.cn/waterproof'),
-  ]);
-  const outcome = await runToolLoop({
-    gateway: model, registry,
-    messages: [{ role: 'user', content: [{ type: 'text', text: '卫生间防水施工需要注意什么' }] }],
-    context: { actor: actor(), projectId: '9' },
-  });
-  assert.equal(outcome.status, 'completed');
-  assert.equal(outcome.records[0].status, 'succeeded');
-  const second = JSON.stringify(model.seen[1].messages);
-  assert.match(second, /function_call_output|std\.samr\.gov\.cn/);
-  const toolMessage = model.seen[1].messages.find(message => message.role === 'tool')!;
-  assert.equal(toolMessage.role === 'tool' ? toolMessage.callId : null, 'call_1');
-  assert.match(toolMessage.role === 'tool' ? toolMessage.content : '', /search_snippet/);
-});
-
 test('batch search dedupes across queries, keeps partial failures and fails only when all fail', async () => {
   const calls: string[] = [];
   const provider = syntheticProvider(async request => {
@@ -332,21 +251,13 @@ test('quarantines detected page instructions before the model or citation collec
   assert.deepEqual(collector.sources(), []);
 });
 
-test('search failures and timeouts stay visible while the Agent can still answer', async () => {
+test('search failures and timeouts stay visible as failed tool results', async () => {
   const provider = syntheticProvider(async () => { throw new AssistantError('web_search_timeout', 503); });
-  const registry = createWebToolRegistry({ provider });
-  const model = gateway([
-    callTurn([call('web_search', { query: '最新防水规范' })]),
-    reply('联网检索超时，无法确认最新公开资料；以下仅说明通用注意事项。'),
-  ]);
-  const outcome = await runToolLoop({
-    gateway: model, registry,
-    messages: [{ role: 'user', content: [{ type: 'text', text: '最新防水规范是什么' }] }],
-    context: { actor: actor(), projectId: '9' },
-  });
-  assert.equal(outcome.status, 'completed');
-  assert.equal(outcome.records[0].status, 'failed');
-  assert.match(outcome.records[0].content, /web_search_timeout/);
+  const executor = new ToolExecutor(createWebToolRegistry({ provider }));
+  const result = await executor.execute(call('web_search', { query: '最新防水规范' }), scope());
+  assert.equal(result.status, 'failed');
+  assert.equal(result.record.executed, true);
+  assert.match(result.content, /web_search_timeout/);
 });
 
 test('empty results remain empty instead of being replaced by invented sources', async () => {
@@ -398,54 +309,6 @@ test('source trust, conflicts and citation auditing do not treat rank as credibi
 
   assert.deepEqual(webAnswerBoundaryIssues('根据本企业标准，防水应这样做。', 1), ['claimed_enterprise_standard']);
   assert.deepEqual(webAnswerBoundaryIssues('已联网核实该参数。', 0), ['claimed_web_verification_without_source']);
-});
-
-test('end-to-end research searches, fetches the original and keeps its citation', async () => {
-  const provider = syntheticProvider(async request => providerResult(request.query, [hit()]));
-  const model = gateway([
-    callTurn([call('web_search', { query: '卫生间防水施工需要注意什么' })]),
-    callTurn([call('web_fetch', { url: 'https://std.samr.gov.cn/waterproof' })]),
-    reply('公开资料提示：基层应平整坚实，防水层完成后做蓄水试验。来源：https://std.samr.gov.cn/waterproof 。这是公开通用要求，不等于本企业标准或现场已验收。'),
-  ]);
-  const result = await runWebResearch({
-    question: '卫生间防水施工需要注意什么', gateway: model, provider, readPage: readArticle,
-    context: { actor: actor(), projectId: '9' },
-    now: () => new Date('2026-11-12T00:00:00.000Z'),
-  });
-  assert.equal(result.status, 'completed');
-  assert.equal(result.plan.needsSearch, true);
-  assert.equal(result.searchPerformed, true);
-  assert.equal(result.sources.length, 1);
-  assert.equal(result.sources[0].evidence, 'full_page');
-  assert.equal(result.sources[0].trust.verified, true);
-  assert.equal(result.citationAudit.ok, true);
-  assert.deepEqual(result.citationAudit.invalidUrls, []);
-  assert.deepEqual(result.boundaryIssues, []);
-  assert.equal(result.enterpriseKnowledgeAvailable, false);
-  assert.equal(result.outcome?.records.length, 2);
-});
-
-test('research without a tool call and enterprise-standard claims are flagged explicitly', async () => {
-  const provider = syntheticProvider(async request => providerResult(request.query, [hit()]));
-  const noCall = gateway([reply('根据本企业标准，卫生间防水应这样做。来源：https://forged.example/x')]);
-  const result = await runWebResearch({
-    question: '卫生间防水施工需要注意什么', gateway: noCall, provider,
-    context: { actor: actor(), projectId: '9' },
-  });
-  assert.equal(result.status, 'failed');
-  assert.equal(result.searchPerformed, false);
-  assert.ok(result.boundaryIssues.includes('search_not_performed'));
-  assert.ok(result.boundaryIssues.includes('invalid_citation'));
-  assert.ok(result.boundaryIssues.includes('claimed_enterprise_standard'));
-  assert.equal(result.citationAudit.ok, false);
-
-  const noSearch = gateway([reply('不会调用')]);
-  const skipped = await runWebResearch({
-    question: '你好，帮我解释一下什么是北欧风格', gateway: noSearch, provider,
-    context: { actor: actor(), projectId: '9' },
-  });
-  assert.equal(skipped.status, 'no_search');
-  assert.equal(noSearch.seen.length, 0);
 });
 
 test('blocks out-of-scope fetches and does not dispatch an already aborted page read', async () => {

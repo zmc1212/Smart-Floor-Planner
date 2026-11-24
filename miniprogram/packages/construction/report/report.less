@@ -2,19 +2,18 @@
 
 .report-page { position:relative; min-height:100vh; box-sizing:border-box; color:#073c30; background:radial-gradient(ellipse at 65% 25%,#fff8,transparent 72%),#f7f3e9; padding-bottom:calc(104px + env(safe-area-inset-bottom)); }
 .report-scroll { position:relative; }
-.report-content { position:relative; padding:8px 18px 18px 34px; }
+.report-content { position:relative; padding:8px 18px 130px 34px; }
 .book-nav-title { font-size:21px; }
 .project-line { padding:0 0 9px; margin-bottom:14px; border-bottom:1px solid #789981; }
 .project-name { display:block; font-size:16px; line-height:1.5; overflow-wrap:anywhere; }
 
-.paper { padding:34px 16px 16px; margin-bottom:16px; }
-.paper-heading,.stage-heading { display:flex; align-items:center; gap:9px; min-height:30px; margin-top:-34px; margin-bottom:12px; }
+.paper { padding:32px 16px 14px; margin-bottom:14px; }
+.paper-heading,.stage-heading { display:flex; align-items:center; gap:9px; min-height:30px; margin-top:-32px; margin-bottom:10px; }
 .paper-heading .fabric,.stage-fabric { flex:none; }
-.paper-limit,.stage-source { margin-left:auto; flex:none; color:#526c60; font-size:12px; line-height:1.45; }
+.paper-limit { margin-left:auto; flex:none; color:#526c60; font-size:12px; line-height:1.45; }
 .stage-title { flex:1; min-width:0; font:900 18px/1.4 'Site Serif','Songti SC',SimSun,serif; overflow-wrap:anywhere; }
-.stage-source { max-width:120px; text-align:right; }
-.stage-chips { display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 10px; }
-.stage-chip { box-sizing:border-box; display:flex; align-items:center; justify-content:center; min-height:36px; padding:6px 16px; border:1px solid #a3b59d; border-radius:18px; background:#fbf8ef; color:#235a46; font-size:14px; line-height:1.4; }
+.stage-chips { display:flex; flex-wrap:wrap; gap:7px; margin:2px 0 8px; }
+.stage-chip { box-sizing:border-box; display:flex; align-items:center; justify-content:center; min-height:34px; padding:5px 13px; border:1px solid #a3b59d; border-radius:17px; background:#fbf8ef; color:#235a46; font-size:14px; line-height:1.4; }
 .stage-chip.selected { border-color:#00513c; background:#00513c; color:#fffdf0; }
 .stage-paper .helper { margin-top:2px; }
 
@@ -41,13 +40,15 @@ button.photo-remove { position:absolute; top:4px; right:4px; width:24px !importa
 .queue-row { padding:8px 4px; color:#526c60; font-size:13px; line-height:1.5; }
 .submit-helper { display:block; margin:6px 0 4px; text-align:center; color:#526c60; font-size:12px; line-height:1.55; }
 
-.report-footer { position:fixed; z-index:8; left:0; right:0; bottom:0; box-sizing:border-box; padding:10px 18px calc(10px + env(safe-area-inset-bottom)) 34px; background:linear-gradient(180deg,#f7f3e9e6,#f7f3e9 35%); }
-.report-footer .submit-button { min-height:52px; border-radius:10px; font-size:18px; font-weight:600; }
+.report-footer { position:fixed; z-index:8; left:0; right:0; bottom:0; box-sizing:border-box; padding:10px 18px calc(10px + env(safe-area-inset-bottom)); background:linear-gradient(180deg,#f7f3e9e6,#f7f3e9 35%); }
+.report-footer .submit-button { width:100% !important; min-height:52px; border-radius:10px; font-size:18px; font-weight:600; }
 
 @media(max-width:360px) {
   .report-content { padding-left:29px; padding-right:13px; }
-  .report-footer { padding-left:29px; padding-right:13px; }
-  .stage-source { max-width:96px; }
+  .report-footer { padding-left:13px; padding-right:13px; }
   .stage-title { font-size:17px; }
   .photo-wall { gap:6px; }
 }
+.report-page .checkpoint-title { display: block; margin: 14px 0 8px; }
+.report-page button.stage-chip { min-height: 44px; white-space: normal; }
+.report-page .queue-row .outline { margin-top: 8px; }

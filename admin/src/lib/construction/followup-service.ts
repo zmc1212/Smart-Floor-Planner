@@ -13,6 +13,7 @@ import { reportBodyView, reportKnowledgeSource } from './report-body-view';
 import type { ReportBody } from './report-composition';
 import { enqueueReportBody } from './report-body-store';
 import { buildRoleWeeklyDigest } from '@/lib/xiaok-v1/weekly-report-service';
+import { reportWorkbench } from './report-workbench';
 
 type ReminderPreferences = { stage: boolean; daily: boolean; weekly: boolean };
 const preferences = (b: Row): ReminderPreferences => ({ stage: b.remind_stage !== false, daily: b.remind_daily !== false, weekly: b.remind_weekly !== false });
@@ -262,6 +263,19 @@ export class FollowupService {
     return this.scoped(async repo => {
       const b = await bindingForActor(repo.tx, this.actor, bindingId); await repo.conversation(String(b.conversation_id));
       return this.version(repo, b, reportId, revision);
+    });
+  }
+  workbench(bindingId: string, reportId: string, revision: number, projectId?: string) {
+    [bindingId, reportId].forEach(id);
+    if (projectId) id(projectId);
+    return this.scoped(async repo => {
+      const b = await bindingForActor(repo.tx, this.actor, bindingId);
+      await repo.conversation(String(b.conversation_id));
+      const report = await this.version(repo, b, reportId, revision);
+      if (!report.available || !report.facts || !('kind' in report)) return { report, workbench: null };
+      if (!['daily', 'weekly'].includes(report.kind)) fail('invalid_construction', 422);
+      if (projectId && !report.facts.projects.some(p => p.id === projectId)) fail('construction_not_found', 404);
+      return { report, workbench: await reportWorkbench(repo, b, { ...report, facts: report.facts }, projectId) };
     });
   }
   knowledgeSource(bindingId: string, reportId: string, revision: number, projectId: string, sourceId: string, original = false) {

@@ -7,7 +7,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deletePortfolioData } from '@/db/repositories/portfolio-cleanup';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
-import { getPlatformLlmOverrideRuntime } from '@/lib/platform-llm-config';
+import { getPlatformLlmOverrideRuntime, savePlatformLlmConfig } from '@/lib/platform-llm-config';
 import { PortfolioService } from '@/lib/portfolio/service';
 import { PortfolioCopyService, type CopyPorts } from '@/lib/portfolio/copy-service';
 import { workContent } from '@/lib/portfolio/contracts';
@@ -22,7 +22,7 @@ after(() => {
   if (initialDailyLimits === undefined) delete process.env.ASSISTANT_DAILY_LIMITS_ENABLED;
   else process.env.ASSISTANT_DAILY_LIMITS_ENABLED = initialDailyLimits;
 });
-let runtime: AiProviderRuntimeConfig, generated = 0;
+let runtime: AiProviderRuntimeConfig, generated = 0, seededPlatformConfig = false;
 const output: ModelTurnOutput = { text: JSON.stringify({ title: '原木客餐厅收纳参考', description: 'AI生成效果图展示客餐厅收纳思路。', shareText: '分享一份原木客餐厅收纳参考，欢迎聊聊家里的使用习惯。', checks: ['实施与材料待核对'] }), toolCalls: [], finishReason: 'stop', providerRequestId: 'synthetic-only', usage: { inputTokens: 50, outputTokens: 60 } };
 const ports: CopyPorts = { runtime: async () => runtime, generate: async () => { generated++; return structuredClone(output); } };
 const actor = (tenant = 0, index = 0) => ({ enterpriseId: tenants[tenant], adminId: designers[tenant][index] });
@@ -30,7 +30,16 @@ const service = (tenant = 0, index = 0) => new PortfolioService(actor(tenant, in
 const copy = (custom = ports, tenant = 0, index = 0) => new PortfolioCopyService(actor(tenant, index), custom);
 before(async () => {
   const url = new URL(resolvePostgresRuntimeConfig().connectionString); assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
-  const configured = await getPlatformLlmOverrideRuntime('chat'); assert.ok(configured);
+  let configured = await getPlatformLlmOverrideRuntime('chat');
+  if (!configured) {
+    // A clean isolated clone has no platform LLM override; this suite only needs
+    // a bound runtime for the mocked copy provider, never a network call.
+    await savePlatformLlmConfig({ enabled: true, providerKey: 'dashscope',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen3.8-flash', apiKey: 'SYNTHETIC-NO-NETWORK' });
+    seededPlatformConfig = true;
+    configured = await getPlatformLlmOverrideRuntime('chat');
+  }
+  assert.ok(configured);
   runtime = { ...configured, baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', adapterType: 'openai_compatible', modelMappings: { ...configured.modelMappings, 'chat.general': 'qwen3.8-flash' }, apiKey: 'SYNTHETIC-NO-NETWORK' };
   await withPlatformTransaction(async tx => {
     for (let n = 0; n < 2; n++) {
@@ -45,7 +54,11 @@ before(async () => {
     for (const role of ['admin', 'super_admin']) platform.push(String((await one(tx, sql`insert into app.admin_users(username,password_hash,role,status,must_change_password) values(${prefix + role},'SYNTHETIC-ONLY',${role},'active',false) returning id`))!.id));
   });
 });
-after(async () => { try { await withPlatformTransaction(async tx => { for (const eid of tenants) { await deletePortfolioData(tx, BigInt(eid)); await deleteAssistantData(tx, BigInt(eid)); await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`); await tx.execute(sql`delete from app.enterprises where id=${eid}`); } for (const aid of platform) await tx.execute(sql`delete from app.admin_users where id=${aid}`); }); } finally { await closePostgresPool(); } });
+after(async () => { try {
+  await withPlatformTransaction(async tx => { for (const eid of tenants) { await deletePortfolioData(tx, BigInt(eid)); await deleteAssistantData(tx, BigInt(eid)); await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`); await tx.execute(sql`delete from app.enterprises where id=${eid}`); } for (const aid of platform) await tx.execute(sql`delete from app.admin_users where id=${aid}`); });
+  if (seededPlatformConfig) await savePlatformLlmConfig({ enabled: false, providerKey: 'dashscope',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen3.8-flash' });
+} finally { await closePostgresPool(); } });
 async function make() {
   const w = await service().execute('create', { content: workContent({ title: '原木草稿', description: '客餐厅收纳', primaryStyle: '原木风', source: '合成作者/测试素材', authorization: '仅本隔离测试使用' }) }, randomUUID());
   return String(w.id);

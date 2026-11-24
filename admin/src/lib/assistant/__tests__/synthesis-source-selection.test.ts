@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { knowledgeSynthesisSources, parseSynthesis, synthesisRepairFeedback, type SynthesisSource } from '../agent/synthesis';
+import { businessSourceResultKey, businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisRepairFeedback, type SynthesisSource } from '../agent/synthesis';
+import { modelCitationCatalog } from '../agent/citation-catalog';
+import type { BusinessSnapshot } from '../agent/business-tools';
 
 const original='合成原件：高度不低于1800mm；须先核对基层，例外由负责人确认。原字词“锡铂”和 空格 保留。😀';
 const sources=knowledgeSynthesisSources([{ref:{type:'knowledge_chunk',id:'1',version:'7'},hash:'original',text:original}]);
@@ -42,4 +44,17 @@ test('an invalid full-source mode for a known long source receives exact-quote f
   assert.throws(()=>parseSynthesis(raw,[source]),/invalid_model_citation/,'Feedback does not promote an unmarked source to full selection');
   assert.doesNotThrow(()=>parseSynthesis(answer({sourceId:'B1',quote:'合成工地当前节点是防水。'},'当前项目为防水阶段，仍需核对检查记录。'),[source]));
   assert.throws(()=>synthesisRepairFeedback(answer({sourceId:'unknown',quoteFromSource:true}),[source]),/invalid_model_citation/);
+});
+
+test('a business tool receipt citation resolves against the final source rebuild',()=>{
+  const snapshot={query:{domain:'construction',leadId:'50'},leadIds:['50'],version:'v1',
+    queriedAt:'2026-11-18T00:00:00.000Z',displayText:'本次完成：线管铺设。\n尚未完成：底盒固定。',
+    data:[{projectId:'6',leadId:'50',stageKey:'utilities'}]} as unknown as BusinessSnapshot;
+  const receipt=businessSynthesisSources(businessSourceResultKey('run-1',1401),snapshot);
+  const rebuilt=businessSynthesisSources(businessSourceResultKey('run-1',1401),snapshot);
+  const option=modelCitationCatalog(receipt[0])[0];
+  const raw=JSON.stringify({kind:'synthesis',segments:[{basis:'evidence',text:'本次完成：线管铺设。',citations:[{citationId:option.citationId}]}]});
+  assert.equal(parseSynthesis(raw,rebuilt).segments[0].citations[0].sourceId,receipt[0].sourceId);
+  // The removed receipt-prefix key produced unresolvable ids at validation.
+  assert.throws(()=>parseSynthesis(raw,businessSynthesisSources('F1:run-1:1',snapshot)),/invalid_model_citation/);
 });

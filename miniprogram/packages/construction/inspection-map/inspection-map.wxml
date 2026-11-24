@@ -1,0 +1,108 @@
+<view class="construction-page inspection-route">
+  <view class="book-spine" aria-hidden="true">
+    <view class="book-stitch" style="top:84px" /><view class="book-stitch" style="top:37%" />
+    <view class="book-stitch" style="top:65%" /><view class="book-stitch" style="bottom:28px" />
+  </view>
+  <view class="book-nav route-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px">
+    <button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png" mode="aspectFit" /></button>
+    <text class="book-nav-title">巡检路线</text>
+  </view>
+
+  <view class="inspection-map-content {{ready && (editing && stations.length || next) ? 'with-footer' : ''}}">
+    <view wx:if="{{!ready}}" class="state" aria-role="status">
+      <text>{{error || '正在读取巡检工地…'}}</text>
+      <button wx:if="{{error}}" class="text-action" bindtap="open">重新读取</button>
+    </view>
+    <block wx:elif="{{editing}}">
+      <view class="route-summary">
+        <text class="section-title">选择巡检工地</text>
+        <button wx:if="{{hasRoute}}" class="route-link" bindtap="cancelEdit" disabled="{{busy || !!pinBusy}}">返回路线</button>
+      </view>
+      <view wx:if="{{!stations.length}}" class="state">目前没有待到场的工地。</view>
+      <block wx:else>
+        <view class="route-origin paper">
+          <text class="origin-name">{{picking ? '点按地图选择巡检起点' : originName}}</text>
+          <view class="origin-actions">
+            <button wx:if="{{originName !== '从当前位置出发'}}" class="route-link" disabled="{{busy}}" bindtap="currentOrigin">用当前位置</button>
+            <button wx:if="{{!mapFailed}}" class="route-link map-pick-origin" disabled="{{busy}}" bindtap="pickOrigin">{{picking ? '取消选点' : '地图选起点'}}</button>
+            <picker wx:if="{{originChoices.length}}" range="{{originChoices}}" class="route-link map-site-origin" disabled="{{busy}}" bindchange="siteOrigin">选工地起点</picker>
+          </view>
+        </view>
+        <map wx:if="{{picking && !mapFailed}}" id="inspection-origin-map" class="inspection-basemap route-pick-map" aria-label="选择巡检起点"
+          latitude="{{center.latitude}}" longitude="{{center.longitude}}" scale="{{scale}}"
+          markers="{{markers}}" include-points="{{includePoints}}" bindtap="mapTap" binderror="mapError" />
+        <text wx:if="{{mapFailed}}" class="map-feedback">地图暂不可用，可用当前位置或工地作为起点。</text>
+        <view class="route-selection" aria-role="status">已选 {{selectedCount}} 个工地 · 最多 8 站</view>
+        <text wx:if="{{status}}" class="map-feedback route-status" aria-role="status">{{status}}</text>
+        <view wx:for="{{stations}}" wx:key="projectId" class="route-station">
+          <button wx:if="{{item.pinned}}" class="route-station-choice" aria-role="checkbox" aria-checked="{{item.selected}}" disabled="{{busy || !!pinBusy}}"
+            data-id="{{item.projectId}}" bindtap="toggleStop">
+            <text class="route-checkbox {{item.selected ? 'is-selected' : ''}}">{{item.selected ? '✓' : ''}}</text>
+            <view class="route-site-copy">
+              <text class="route-station-name">{{item.name}}</text>
+              <text class="route-meta">{{item.visitLabel}} · {{item.count}} 项待办</text>
+            </view>
+          </button>
+          <view wx:else class="route-site-copy unpinned">
+            <text class="route-station-name">{{item.name}}</text>
+            <text class="route-meta">{{item.visitLabel}} · {{item.count}} 项待办 · 待补位置</text>
+          </view>
+          <view class="route-station-actions">
+            <button wx:if="{{!item.pinned && item.canSetPin}}" class="route-link route-set-pin" disabled="{{busy || !!pinBusy}}"
+              loading="{{pinBusy === item.projectId}}" data-id="{{item.projectId}}" bindtap="setPin">补位置</button>
+            <button data-id="{{item.projectId}}" class="route-link" bindtap="openTasks">查看待办</button>
+            <button wx:if="{{item.selected}}" data-id="{{item.projectId}}" class="route-link route-prefer {{item.first ? 'is-first' : ''}}" disabled="{{busy}}"
+              bindtap="preferStop">{{item.first ? '优先到访' : '先去这里'}}</button>
+          </view>
+        </view>
+      </block>
+    </block>
+    <block wx:else>
+      <view class="route-summary">
+        <text class="route-drive-summary">{{ordered.length}} 站{{showDriveTime ? ' · 驾车约 ' + estimate + ' 分钟' : ''}}</text>
+        <button class="route-link route-adjust" bindtap="adjust">调整路线<view class="route-chevron" /></button>
+      </view>
+      <map wx:if="{{!mapFailed && markers.length}}" id="inspection-map" class="inspection-basemap" aria-label="巡检路线地图"
+        latitude="{{center.latitude}}" longitude="{{center.longitude}}" scale="{{scale}}"
+        markers="{{markers}}" polyline="{{polyline}}" include-points="{{includePoints}}" binderror="mapError" />
+      <text wx:elif="{{mapFailed}}" class="map-feedback">地图预览暂不可用，仍可查看站点和待办。</text>
+      <text wx:if="{{stale}}" class="map-feedback route-status">工地权限或点位有变化，可重新规划剩余站点。</text>
+      <text wx:if="{{status}}" class="map-feedback route-status" aria-role="status">{{status}}</text>
+
+      <view wx:if="{{next}}" class="route-current paper">
+        <view class="route-current-heading">
+          <text class="route-number current-number">{{next.index}}</text>
+          <text class="route-current-title">{{next.name}}</text>
+          <text class="route-visit">{{next.visitLabel}}</text>
+        </view>
+        <text class="route-meta current-meta">{{showDriveTime ? '本段约 ' + next.minutes + ' 分钟 · ' : ''}}{{next.count}} 项待办</text>
+        <view class="route-current-task">
+          <text class="route-task-title">{{next.nextTitle || '现场上报'}}</text>
+          <button class="route-link route-current-tasks" data-id="{{next.projectId}}" bindtap="openTasks">查看待办<view class="route-chevron" /></button>
+        </view>
+        <button wx:if="{{navigated}}" class="route-link route-repeat" bindtap="navigateNext">再次导航</button>
+      </view>
+      <view wx:else class="state route-end" aria-role="status">{{routeActive ? '可恢复暂缓站点或调整路线后继续巡检。' : '今日路线上的待到场事项已处理。'}}</view>
+
+      <view wx:if="{{otherStops.length}}" class="route-following">
+        <text class="route-following-title">{{next && next.index === 1 ? '后续站点' : '路线站点'}}</text>
+        <view wx:for="{{otherStops}}" wx:key="projectId" class="route-ordered">
+          <text class="route-number {{item.done || item.deferred ? 'muted' : ''}}">{{item.index}}</text>
+          <view class="route-site-copy">
+            <text class="route-station-name">{{item.name}}</text>
+            <text class="route-meta">{{item.done ? '已处理' : item.deferred ? '暂缓 · ' + item.count + ' 项待办' : !item.pinned ? '待补位置 · ' + item.count + ' 项待办' : (showDriveTime ? item.minutes + ' 分钟 · ' : '') + item.count + ' 项待办'}}</text>
+          </view>
+          <button wx:if="{{!item.done && item.deferred}}" class="route-link route-restore" data-id="{{item.projectId}}" bindtap="restoreStop">恢复到路线</button>
+          <button wx:elif="{{!item.done && !item.pinned}}" class="route-link" data-id="{{item.projectId}}" bindtap="openTasks">查看待办</button>
+        </view>
+      </view>
+    </block>
+  </view>
+  <view wx:if="{{ready && editing && stations.length}}" class="route-footer">
+    <button class="primary route-plan" disabled="{{busy || !!pinBusy || !canPlan}}" loading="{{busy}}" bindtap="plan">{{busy ? '规划中' : '规划驾车路线'}}</button>
+  </view>
+  <view wx:elif="{{ready && !editing && next}}" class="route-footer">
+    <button wx:if="{{navigated}}" class="primary route-verify" bindtap="verifyNext">到场核查</button>
+    <button wx:else class="primary route-navigate" bindtap="navigateNext" aria-label="导航到{{next.name}}"><text class="route-primary-label">导航到{{next.name}}</text></button>
+  </view>
+</view>

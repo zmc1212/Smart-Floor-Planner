@@ -22,7 +22,7 @@
     text-align: center;
   }
   .promotion-entry-brand { display: flex; align-items: center; justify-content: center; gap: 8rpx; margin-top: 12rpx; color: #527062; font-size: 24rpx; }
-  .promotion-entry-brand image { width: 36rpx; height: 36rpx; flex: none; }
+  .promotion-entry-brand .chat-image { width: 36rpx; height: 36rpx; flex: none; }
   .promotion-entry-copy { display: block; margin: 36rpx 0 38rpx; font-size: 29rpx; line-height: 1.6; color: #252c2d; }
   .promotion-entry-primary, .promotion-entry-secondary {
     display: flex; align-items: center; justify-content: center;
@@ -33,9 +33,9 @@
     min-height: 94rpx; color: #fffdf0; border-radius: 10rpx; font-weight: 700;
     background: repeating-linear-gradient(13deg, #ffffff0a 0 1rpx, transparent 1rpx 6rpx), #145440;
   }
-  .promotion-entry-primary[disabled] { color: #f7f5ed; background: #6c8a7b; }
+  .promotion-entry-primary.is-disabled { color: #f7f5ed; background: #6c8a7b; }
   .promotion-entry-secondary { margin: 12rpx 0 0; }
-  .promotion-entry-secondary text, .promotion-resume-link text { padding: 3rpx 4rpx; border-bottom: 2rpx solid #9ca98b; }
+  .promotion-entry-secondary .chat-text, .promotion-resume-link .chat-text { padding: 3rpx 4rpx; border-bottom: 2rpx solid #9ca98b; }
   .promotion-resume {
     position: relative; display: flex; align-items: center; gap: 10rpx;
     flex: none; margin: 12rpx 27rpx 6rpx 62rpx; padding: 0 15rpx;

@@ -115,7 +115,7 @@ test('an explicit reply reaches durable sourced memory and the original staff re
     assert.match(JSON.stringify(messages), /书房需要预留哪些设备/);
     if (turn === 0) {
       assert.ok(tools.some(t => t.name === 'record_need'));
-      return response('record_need', { room: '书房', field: 'devices', quote: text, value: '需要电脑和打印机的插座' });
+      return response('record_need', { room: '书房', field: 'devices', quote: text, value: '需要电脑和打印机的插座', additionalNeeds: [] });
     }
     return response('final_response', { kind: 'general', text: '已记录书房的设备需求，后续由设计师核对。' });
   });

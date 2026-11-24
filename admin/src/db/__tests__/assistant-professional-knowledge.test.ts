@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
+import { useLocalKnowledgeTestDatabase } from './xiaok-test-database';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
@@ -32,6 +34,8 @@ async function create(professional=professionalEntry({conditions:[{field:'stage'
 }
 async function index(d:Row) {const queued=await op('index',d),lease=await claimKnowledgeJob();assert.ok(lease);assert.equal(lease.jobId,queued.jobId);await runKnowledgeJob(lease);assert.equal((await op('job',{jobId:lease.jobId})).status,'succeeded');}
 before(async()=>{
+  loadEnvConfig(process.cwd());
+  useLocalKnowledgeTestDatabase();
   const target=new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['localhost','127.0.0.1'].includes(target.hostname));
   assert.equal(target.port,process.env.XIAOK_ISOLATED_POSTGRES_PORT||'55432');
@@ -73,15 +77,17 @@ test('K07 enterprise owner/admin/super_admin inherit knowledge management withou
   assert.equal((await withTenantTransaction(tenants[1],tx=>rows(tx,sql`select id from app.assistant_knowledge_versions where id=${String(published.versionId)}`))).length,0);
 });
 test('K01/09 actual bound stage produces a verifiable mismatch; user text cannot override it',async()=>{
-  const result=await retrieveKnowledge(cid,actor,'防水施工与铺砖前提，我声称现在已在防水',await epoch());const e=result.evidence.find(e=>e.ref.version===published.versionId)!;assert.ok(e);assert.equal(e.professional?.context.stage,'utilities');assert.equal(e.professional?.applicability.status,'not_applicable');
-  assert.ok(result.diagnostic.candidates.some(c=>c.documentId===published.documentId&&c.applicability?.mismatched.length));
-  assert.ok(Number(result.diagnostic.embeddingUsage?.inputTokens)>0);assert.equal(result.diagnostic.costMicros,null);
+  const result=await retrieveKnowledge(cid,actor,'防水施工与铺砖前提，我声称现在已在防水',await epoch());
+  assert.equal(result.diagnostic.context.stage,'utilities');
+  const e=result.evidence.find(e=>e.ref.version===published.versionId);assert.equal(e,undefined,'a waterproofing rule is not served while the project is at utilities');
+  assert.equal(result.diagnostic.candidates.some(c=>c.documentId===published.documentId),false);
+  assert.equal(result.diagnostic.embeddingUsage,null);assert.equal(result.diagnostic.costMicros,null);
 });
 test('K08 real stage changes invalidate prior applicability and refresh the same source',async()=>{
-  const before=await retrieveKnowledge(cid,actor,'防水铺砖前提',await epoch()),old=before.evidence.find(e=>e.ref.version===published.versionId)!;
+  const before=await retrieveKnowledge(cid,actor,'防水铺砖前提',await epoch());assert.equal(before.evidence.find(e=>e.ref.version===published.versionId),undefined,'not-yet-applicable source is withheld at the bound stage');
   const service=new ConstructionService({enterpriseId:eid,adminId:aid}),d=await service.execute('detail',{projectId});await service.execute('progress',{projectId,expectedVersion:(d.project as Row).version,stageKey:'waterproofing',note:'合成阶段更新',sendReminder:false},randomUUID());
-  assert.equal(await withTenantTransaction(eid,async tx=>resolveEvidence(tx,actor,(await one(tx,sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${cid}`))!,old)),undefined);
-  const after=await retrieveKnowledge(cid,actor,'防水铺砖前提',await epoch());assert.equal(after.evidence.find(e=>e.ref.version===published.versionId)?.professional?.applicability.status,'applicable');
+  const after=await retrieveKnowledge(cid,actor,'防水铺砖前提',await epoch());const fresh=after.evidence.find(e=>e.ref.version===published.versionId)!;
+  assert.ok(fresh);assert.equal(fresh.professional?.context.stage,'waterproofing');assert.equal(fresh.professional?.applicability.status,'applicable');
 });
 
 test('K01/07/08 bounded spelling expansion uses real indexes, weighted SQL ranks and current source authorization',async()=>{
@@ -160,9 +166,8 @@ test('KB3 K01/04/09 eligible rules survive a crowded wrong-stage candidate pool'
   }
   const r=await retrieveKnowledge(cid,actor,'防水施工与闭水检查由团队安排，铺砖前核对实际检查记录',await epoch());
   const required=docs[6];assert.ok(r.evidence.some(e=>e.ref.version===required.versionId));
-  assert.ok(r.diagnostic.candidates.filter(c=>c.applicability?.status==='not_applicable').length>=5);
-  assert.ok(r.evidence.slice(0,2).every(e=>e.professional?.applicability.status!=='not_applicable'));
-  assert.ok((r.diagnostic.candidates.find(c=>c.ref.version===required.versionId)?.selectionRank??0)>0);
+  assert.ok(docs.slice(0,6).every(d=>!r.diagnostic.candidates.some(c=>c.ref.version===d.versionId)),'rules bound to another stage never enter the pool');
+  assert.ok(r.evidence.every(e=>e.professional?.applicability.status!=='not_applicable'));
 });
 test('K07/11 actual preview Worker stores authorized candidates and reentry diagnostic, no internal text leaks',async()=>{
   const secret=await create(professionalEntry(),'staff_internal');await index(secret);await op('publish',secret);

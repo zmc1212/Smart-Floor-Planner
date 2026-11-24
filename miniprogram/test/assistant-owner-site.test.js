@@ -55,21 +55,18 @@ test('the site welcome keeps the notebook language and the three-step topics', (
   assert.match(wxml, /bindtap="pickPrompt"/);
 });
 
-test('the site report offers 问小K and the compact 小K提醒 strip', () => {
+test('the site report offers 问小K and the shared utility card opens reminders', () => {
   const wxml = fs.readFileSync(path.join(root, 'packages', 'construction', 'owner-home', 'owner-home.wxml'), 'utf8');
   const js = fs.readFileSync(path.join(root, 'packages', 'construction', 'owner-home', 'owner-home.js'), 'utf8');
-  const less = fs.readFileSync(path.join(root, 'packages', 'construction', 'owner-home', 'owner-home.less'), 'utf8');
   assert.match(wxml, /class="site-report-actions"/);
   assert.match(wxml, /bindtap="askXiaok"/);
-  assert.match(wxml, /class="site-report-ask-icon" src="\.\.\/assets\/notebook\/xiaok-chat\.png"/);
   assert.match(wxml, /bindtap="openReport"/);
-  assert.match(wxml, /class="site-paper site-xiaok-reminder"/);
-  assert.match(wxml, /bindtap="openXiaokReminder"/);
+  assert.match(wxml, /class="site-paper site-utility"/);
+  assert.match(wxml, /bindtap="toggleSiteReminders"/);
+  assert.match(wxml, /bindtap="openSiteReminder"/);
   assert.match(js, /ask: '1', prompt: '今天工地做了什么？'/);
-  assert.match(js, /readXiaokReminder/);
+  assert.match(js, /ownerReminders\.list\(projectId\)/);
   assert.match(js, /ownerReminders\.read\(item\)/);
-  assert.match(js, /xiaokReminder: view\.find\(item => !item\.readAt\)/);
-  assert.match(less, /\.site-xiaok-reminder \{/);
 });
 
 test('the 问小K entry reuses the owner report context and asks once', () => {

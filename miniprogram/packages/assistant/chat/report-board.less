@@ -1,0 +1,101 @@
+.notebook-chat {
+  .report-board { flex: 1; min-height: 0; height: 0; }
+  .report-board-inner { padding: 0 18px calc(22px + env(safe-area-inset-bottom)) 34px; color: #073c30; }
+  .report-board-title, .report-board-item-title {
+    display: block; font-family: 'Chat Serif', 'Songti SC', SimSun, serif; font-weight: 700; overflow-wrap: anywhere;
+  }
+  .report-board-title { font-size: 28px; line-height: 1.26; margin: 0 0 3px; }
+  .report-board-item-title { font-size: 19px; line-height: 1.38; }
+  .report-board-meta, .report-board-period { display: block; color: #465d54; font-size: 13px; line-height: 1.5; }
+  .report-board-period { text-align: right; padding-bottom: 2px; }
+  .report-board-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid #9bac92; margin-top: 7px; padding-top: 2px; }
+  .report-board-tabs { display: flex; gap: 2px; }
+  .report-board-tabs .chat-button, .report-board-history {
+    margin: 0; padding: 0 12px; min-height: 44px; min-width: 56px; border: 1px solid #809986;
+    border-radius: 7px; background: transparent; color: #073c30; font-size: 14px; line-height: 42px; font-weight: 600;
+  }
+  .report-board-tabs .chat-button { min-width: 78px; }
+  .report-board-tabs .chat-button.active { background: #00513c; border-color: #00513c; color: #fffdf7; }
+  .report-board-history { border-color: transparent; padding-right: 0; }
+  .report-board-owner {
+    .report-board-meta-row {
+      position: relative; display: flex; align-items: center; min-height: 24px; padding-right: 68px;
+    }
+    .report-board-meta-row .report-board-meta { min-width: 0; overflow-wrap: anywhere; }
+    .report-board-owner-history {
+      position: absolute; z-index: 1; top: 50%; right: 0; transform: translateY(-50%);
+      display: flex; align-items: center; width: 60px; height: 44px; padding: 0; border: 0; background: transparent;
+      font-size: 12px; line-height: 1; color: #073c30;
+    }
+    .report-board-history-label {
+      box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 4px;
+      width: 100%; height: 24px; border: 1px solid #9bad9b; border-radius: 12px;
+    }
+    .report-board-history-icon { flex: none; width: 15px; height: 15px; }
+    .report-board-toolbar { margin-top: 6px; padding-top: 0; }
+    .report-board-tabs { flex: none; }
+    .report-board-tabs .chat-button {
+      display: flex; align-items: center; width: 84px; min-width: 0; height: 44px;
+      padding: 0; border: 0; background: transparent; font-size: 12px; line-height: 1;
+    }
+    .report-board-tabs .chat-button.active { background: transparent; }
+    .report-board-tab-label {
+      box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+      width: 100%; height: 29px; border: 1px solid #9bad9b; border-radius: 8px;
+    }
+    .report-board-tabs .active .report-board-tab-label { background: #00513c; border-color: #00513c; }
+    .report-board-tabs .button-hover .report-board-tab-label,
+    .report-board-owner-history.button-hover .report-board-history-label { opacity: .72; }
+    .report-board-period {
+      min-width: 0; padding-bottom: 0; color: #456860; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere;
+    }
+  }
+  .report-board-paper {
+    position: relative; display: block; margin-top: 15px; padding: 12px 14px 13px;
+    border: 1px solid #f8f3e7; border-radius: 1px; background: #fbf7ed; box-shadow: 0 3px 8px #826e432b;
+  }
+  .report-board-paper .fabric-label { transform: rotate(-5deg); margin-bottom: 6px; font-size: 14px; }
+  .report-board-paper-head { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+  .report-board-paper-head > .fabric-label { flex: none; }
+  .report-board-line { display: block; font-size: 15px; line-height: 1.52; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .report-board-tag { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 13px; line-height: 1.4; flex: none; }
+  .report-board-tag.pending { color: #664912; background: #eedcb0; }
+  .report-board-tag.late { color: #822d25; background: #f2cec2; }
+  .report-board-tag.done { color: #1d5137; background: #dce8d3; }
+  .report-board-paper > .report-board-tag { margin-bottom: 4px; }
+  .report-board-button, .report-board-link, .report-board-row, .report-board-photo {
+    background: transparent; color: #073c30; font-size: 15px; min-height: 44px; padding: 0; margin: 0; line-height: 1.4;
+  }
+  .report-board-button::after, .report-board-link::after, .report-board-row::after, .report-board-photo::after, .report-board-tabs .chat-button::after, .report-board-history::after { border: 0; }
+  .report-board-button {
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 10px;
+    border: 1px solid #557864; border-radius: 6px; font-weight: 600; padding: 5px 9px;
+  }
+  .report-board-button.primary { background: #00513c; border-color: #00513c; color: #fffdf7; }
+  .report-board-button.compact { width: auto; min-width: 145px; }
+  .report-board-link { display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; }
+  .report-board-more { display: flex; margin: 8px 0 0; justify-content: flex-start; }
+  .report-board-feedback { color: #465d54; font-size: 15px; line-height: 1.5; }
+  .report-board-feedback .report-board-link { margin-left: 8px; }
+  .report-board-row {
+    width: 100%; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 7px;
+    padding: 8px 0; border-radius: 0; border-top: 1px solid #cbd4be; overflow-wrap: anywhere;
+  }
+  .report-board-row > .chat-group, .report-board-row > .chat-text:first-child { flex: 1; min-width: 0; }
+  .report-board-photos { display: flex; gap: 8px; margin-top: 8px; }
+  .report-board-photo { flex: 1; min-width: 0; text-align: left; border-radius: 0; }
+  .report-board-photo .chat-image { display: block; width: 100%; height: 108px; border-radius: 6px; background: #e4e9db; }
+  .report-board-photo .chat-text { display: inline-block; font-size: 13px; padding: 1px 4px; margin-top: 4px; background: #e1e8d3; }
+  .report-board-design-feature { display: flex; align-items: center; gap: 9px; margin: 7px 0 12px; }
+  .report-board-design-copy { flex: 1; min-width: 0; }
+  .report-board-design-feature .report-board-photo { flex: 0 0 88px; }
+  .report-board-design-feature .report-board-photo .chat-image { height: 82px; }
+  .report-board-stats { display: flex; padding: 13px 5px; }
+  .report-board-stats > .chat-group { text-align: center; flex: 1; min-width: 0; font-size: 13px; line-height: 1.45; }
+  .report-board-stats > .chat-group + .chat-group { border-left: 1px solid #bac8b2; }
+  .report-board-number { display: block; font-size: 28px; font-weight: 700; line-height: 1.1; }
+  .report-board-number.late { color: #903b30; }
+  .report-board-exception + .report-board-exception { margin-top: 6px; padding-top: 10px; border-top: 1px solid #bac8b2; }
+  .report-board-exception .report-board-link { display: flex; justify-content: flex-end; margin-left: auto; }
+  .report-board-note-label { padding-top: 8px; }
+}

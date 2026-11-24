@@ -64,7 +64,7 @@ async function readPartyViews(appointmentId: bigint) {
     const appointmentRow = await appointments.findById(enterpriseId, appointmentId);
     const customerAccess = await appointments.findCustomerAppointmentForAccess(customerUserId, appointmentId);
     const leadAppointments = await appointments.listByLead(enterpriseId, leadId);
-    const measurerCalendar = await appointments.listByMeasurer(enterpriseId, measurerId);
+    const measurerCalendar = await appointments.listByMeasurer(enterpriseId, designerId);
     const enterpriseSchedule = await appointments.listByEnterprise(enterpriseId, ['confirmed'], 50);
     const customerProject = await projects.findCustomerProject(customerUserId, leadId);
     const customerIndex = (await projects.listCustomerProjects(customerUserId))
@@ -225,7 +225,7 @@ after(async () => {
   await closePostgresPool();
 });
 
-test('booking then customer and staff reschedule keep customer, designer, measurer, and enterprise views in sync', async () => {
+test('booking then customer and staff reschedule keep customer, designer and enterprise views in sync', async () => {
   const firstSlot = nextDaySlot('09:00');
   const customerSlot = nextDaySlot('14:00');
   const staffSlot = nextDaySlot('16:00');
@@ -263,7 +263,7 @@ test('booking then customer and staff reschedule keep customer, designer, measur
   assert.equal(afterCreate.enterpriseSchedule.some((row) => row.id === booked.id), true);
   assert.equal(afterCreate.workbenchItem?.appointmentId, booked.id.toString());
   assert.equal(afterCreate.workbenchItem?.timeRange, createdIso);
-  assert.equal(afterCreate.appointmentRow?.measurerId, measurerId);
+  assert.equal(afterCreate.appointmentRow?.measurerId, designerId);
   assert.equal(afterCreate.appointmentRow?.designerId, designerId);
   assert.equal(afterCreate.events.map((event) => event.eventType).join(','), 'created');
   assert.equal(await occupancyFor(leadId, firstSlot.localDate, firstSlot.startAt), true, '改期列表排除本预约，自身档仍可选');
@@ -305,7 +305,7 @@ test('booking then customer and staff reschedule keep customer, designer, measur
   assert.equal(afterCustomer.workbenchItem?.timeRange, customerIso);
   assert.equal(afterCustomer.home.kind, 'reschedule');
   assert.notEqual(afterCustomer.home.appointmentSummary, afterCreate.home.appointmentSummary);
-  assert.equal(afterCustomer.appointmentRow?.measurerId, measurerId);
+  assert.equal(afterCustomer.appointmentRow?.measurerId, designerId);
   assert.deepEqual(
     afterCustomer.events.map((event) => event.eventType).sort(),
     ['created', 'customer_rescheduled']

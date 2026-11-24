@@ -216,6 +216,33 @@ export async function customerPlans(tx: PostgresTransaction, eid: string, uid: s
   }
   return result;
 }
+
+/** A report links back to an existing, still accessible owner decision. The
+ * approved plan, media, and write are still read in its original conversation. */
+export async function reportOwnerDecisions(repo: AssistantRepository, projectId: string, cutoff: Date) {
+  const { tx, actor } = repo;
+  if (actor.principal.kind !== 'user') return [];
+  const eid = actor.enterpriseId, uid = actor.principal.userId;
+  const candidates = await rows(tx, sql`select e.id from app.domain_event_outbox e
+    join app.assistant_conversations c on c.enterprise_id=e.enterprise_id and c.id::text=e.payload->>'conversationId'
+    where e.enterprise_id=${eid} and e.type=${publishedType} and e.payload->>'projectId'=${projectId}
+    and e.payload->>'customerId'=${uid} and e.created_at<${cutoff}
+    and c.purpose='customer_consultation' and c.status='open'
+    and coalesce(c.entry_snapshot->>'retentionRedacted','false')<>'true' order by e.id desc limit 15`);
+  const consultations = new AssistantRepository(tx, { ...actor, capabilities: ['assistant.chat.self'] });
+  const items = [];
+  for (const candidate of candidates) {
+    const plan = await readPlan(tx, eid, String(candidate.id));
+    if (!plan || plan.projectId !== projectId || plan.customerId !== uid
+      || !await isConsultationOwner(tx, actor, plan.conversationId)) continue;
+    const conversation = await consultations.conversation(plan.conversationId, 'share');
+    if (conversation.status !== 'open' || conversation.mode !== 'ai') continue;
+    items.push({ id: plan.id, conversationId: plan.conversationId, leadId: String(conversation.lead_id || ''),
+      title: plan.title, room: plan.roomName, number: plan.number, status: plan.status,
+      label: planStatusLabels[plan.status] || '', canDecide: ['pending_customer', 'deferred'].includes(plan.status) });
+  }
+  return items;
+}
 export class PlanCustomerService {
   constructor(readonly actor: ActorContext, readonly cid: string) { requireCapability(actor, 'assistant.chat.self'); id(cid); if (actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403); }
   private scope<T>(versionId: string, write: boolean, fn: (tx: PostgresTransaction, p: PlanView, c: Row) => Promise<T>) {

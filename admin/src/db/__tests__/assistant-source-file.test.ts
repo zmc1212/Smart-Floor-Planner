@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before,after,test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction,withPlatformTransaction } from '@/db/transaction';
 import { one,rows,type Row } from '@/db/repositories/assistant-repository';
@@ -36,6 +37,7 @@ async function run(jobId:unknown){const lease=await claimKnowledgeJob();assert.o
 async function latest(d:Row){const detail=await op('detail',{documentId:d.documentId});return(detail.versions as Row[]).find(v=>String(v.id)===d.versionId)!;}
 async function ready(d:Row){assert.equal((await run(d.jobId)).status,'succeeded');d.expectedEditVersion=2;await op('reviewFile',{...d,acknowledgeWarnings:true,excludedBlockIds:[]});d.expectedEditVersion=3;const j=await op('index',d);assert.equal((await run(j.jobId)).status,'succeeded');}
 before(async()=>{
+ loadEnvConfig(process.cwd());
  useLocalKnowledgeTestDatabase();
  await withPlatformTransaction(async tx=>{
   for(let i=0;i<2;i++)tenants.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));eid=tenants[0];

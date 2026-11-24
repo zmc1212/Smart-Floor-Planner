@@ -13,8 +13,7 @@ import { readReplyPreview, replyStreamAvailable, replyStreamProtocol } from './a
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
 import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { fastGPTRagConfiguration, fastGPTRagProtocol } from '../fastgpt/rag-config';
-import { fastGPTAgentV2Configuration, fastGPTAgentV2Presentation, fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
-import { openingScene, sceneForOpeningPurpose } from '../fastgpt/agent-v2/openings';
+import { nativeAgentRuntimeBinding, nativeExecutorConfigurationIssue } from '../fastgpt/agent-v2/config';
 import { stagePreviewDraft, type EnterpriseStageAgent } from '@/lib/xiaok-v1/stage-workflow-settings';
 import { isWechatConsultation } from '../wechat/subject';
 import type { StageId } from '@/lib/xiaok-v1/stages';
@@ -37,7 +36,6 @@ import { stageHandoffProposal } from '../handoff/proposal';
 import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig, type AgentConfig } from '../agent/config';
 import { xiaokNativeExecutorProtocol } from '../agent/native-executor';
-import { nativeAgentRuntimeBinding, nativeExecutorConfigurationIssue } from '../fastgpt/agent-v2/config';
 import { knowledgePolicy, enterpriseKnowledgeEnabled } from '../knowledge-policy';
 import { knowledgeToolProtocol } from '../knowledge/rag-tools';
 import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
@@ -68,6 +66,7 @@ import { nearbyLocationVersion } from '../location/region';
 import type { ReportCompositionScope } from '@/lib/construction/report-composition';
 import { samePublicRef, type PublicContextRef } from '@/lib/construction/public-contract';
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
+import { configuredPublicSiteGuide, publicGuideTurn } from '@/lib/construction/public-guide';
 import { publicMessageAvailable } from '@/lib/construction/public-projections';
 import { editableQuestion, feedbackInput, loadReplyFeedback, ownedQuestion, ownedReply, readableReply, regenerationSource, replyControls, replyText, saveReplyFeedback, searchConsultations } from './conversation-interactions';
 import { synthesizeReply } from '../speech/read-aloud';
@@ -95,11 +94,14 @@ const json = (value: unknown) => JSON.stringify(value);
 export function conversationDto(c: Row, requirementProposalPending = false) {
   const guidance = conversationGuidance(c.entry_snapshot);
   const entry = c.entry_snapshot as Row;
+  const measureOffer = entry?.measureOffer as Row | undefined;
 
   return { id: String(c.id), purpose: c.purpose, status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, lastSeq: String(c.last_seq), createdAt: c.created_at,
     ...(entry?.requirementReviewMode===true && entry?.requirementWorkflow==='langgraph' ? {reviewWorkflow:'langgraph'} : {}),
     ...(c.purpose === 'knowledge_preview' && entry.stagePreview ? { stagePreview: { stageId:(entry.stagePreview as EnterpriseStageAgent).stageId, version:(entry.stagePreview as EnterpriseStageAgent).version } } : {}),
     requirementProposalPending,
+    measureOffer: !!measureOffer?.at,
+    ...(measureOffer?.at ? { measureOfferAt: String(measureOffer.at) } : {}),
     guidanceEnabled: !!guidance, guidanceOpening: guidance ? guidanceOpening(guidance) : null,
     humanName: ((c.entry_snapshot as Row)?.handoff as Row)?.ownerName || null };
 }
@@ -157,8 +159,7 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
     .queueSpecialistAnalysisCompletion(tx, enterpriseId, runId, status);
 }
 /** A visitor's own question replaces a site opening that has not started yet. The
- * opening is a convenience for someone browsing in silence, never a blocker, and
- * a cancelled opening is not regenerated for the same site version. */
+ * opening is a convenience for someone browsing in silence, never a blocker. */
 export async function cancelQueuedRun(tx: PostgresTransaction, enterpriseId: string, runId: string) {
   const cancelled = await rows(tx, sql`update app.assistant_runs set status='cancelled',completed_at=now(),updated_at=now(),version=version+1
     where enterprise_id=${enterpriseId} and id=${runId} and purpose='public.site.intro' and status='queued' returning id`);
@@ -194,36 +195,26 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     privateFollowup, selected: !!reference.selection });
   if (report && !agent) fail('assistant_capability_forbidden', 403);
   const entry = c.entry_snapshot as Row;
+  const publicSiteGuideOpening = purpose === 'public.site.intro' && entry.activePublicSite && actor.principal.kind === 'user'
+    ? entry.activePublicSite as PublicContextRef : null;
+  if (publicSiteGuideOpening && !configuredPublicSiteGuide(settings.guidance_config).enabled) fail('context_changed');
   const rag = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
     && actor.principal.kind === 'user' && entry.requirementReviewMode !== true && !entry.activePublicSite ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
-  const openingSceneKey = purpose === 'public.site.intro' ? sceneForOpeningPurpose(purpose) : undefined;
-  const openingReady = !!openingSceneKey && !!openingScene(actor.enterpriseId, openingSceneKey);
-  // A registered opening scene belongs to its own FastGPT app; without a
-  // registry entry the existing local opening path stays in charge.
-  const agentV2 = agent && (purpose === 'reply' && trigger.kind === 'user_message' || openingReady)
-    && c.purpose === 'customer_consultation' && actor.principal.kind === 'user' && entry.requirementReviewMode !== true
-    ? fastGPTAgentV2Configuration(actor.enterpriseId) : undefined;
   // The explicit per-enterprise executor switch (`runtime: 'langgraph-v1'`).
-  // Unlike the bridge selection it is decoupled from the knowledge switch:
-  // knowledge-off replies keep the same code executor, minus enterprise
-  // material, instead of falling back to another framework. The public-site
-  // opening is a one-shot system event on the same customer consultation, so
-  // it follows the same native switch; a V2 opening scene still wins while the
-  // V2 bridge is the bound runtime.
-  const nativeExecutor = !agentV2 && agent && (purpose === 'reply' || purpose === 'public.site.intro')
+  // Unlike the knowledge switch it is decoupled from enterprise knowledge:
+  // Knowledge-off replies keep the same executor, minus enterprise material.
+  const nativeExecutor = agent && !publicSiteGuideOpening && (purpose === 'reply' || purpose === 'public.site.intro')
     && trigger.kind === 'user_message'
     && (stagePreview || c.purpose === 'customer_consultation' && actor.principal.kind === 'user') && entry.requirementReviewMode !== true
     ? nativeAgentRuntimeBinding(actor.enterpriseId) : undefined;
-  const triggerContent = rag || agentV2 || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
+  const triggerContent = rag || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
   const textOnlyTrigger = (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text');
   if ((stagePreview || isWechatConsultation(actor)) && (!nativeExecutor || !agent || !textOnlyTrigger)) fail('stage_preview_unavailable',503);
   const nativeConfigurationIssue = nativeExecutor && agent && textOnlyTrigger ? nativeExecutorConfigurationIssue(agent) : null;
   if (nativeConfigurationIssue && (stagePreview || isWechatConsultation(actor) || purpose !== 'reply')) fail(nativeConfigurationIssue, 503);
-  const agentRuntime = agentV2 && (openingReady || enterpriseKnowledgeEnabled(settings.agent_config)) && textOnlyTrigger
-    ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding }
-    : nativeExecutor && textOnlyTrigger && !nativeConfigurationIssue
-      ? { protocol: xiaokNativeExecutorProtocol, binding: nativeExecutor.binding } : undefined;
+  const agentRuntime = nativeExecutor && textOnlyTrigger && !nativeConfigurationIssue
+    ? { protocol: xiaokNativeExecutorProtocol, binding: nativeExecutor.binding } : undefined;
   const nativeRag = !agentRuntime && !nativeConfigurationIssue && rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
     && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
     ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
@@ -232,8 +223,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     && entry.requirementWorkflow === 'langgraph' ? boundReviewProtocol(entry, actor.enterpriseId) : null;
   // The snapshot and quota are bound together; old image runs never gain an
   // enlarged request envelope without its corresponding reservation.
-  const reservation = runQuotaReservation(agent);
-  if (speech) { reservation.tokens = 0; reservation.costMicros = 0; }
+  const reservation = runQuotaReservation(publicSiteGuideOpening ? null : agent);
+  if (speech || publicSiteGuideOpening) { reservation.tokens = 0; reservation.costMicros = 0; }
   const tokenReservation = reservation.tokens, costReservation = reservation.costMicros;
   const rate = Number(process.env.ASSISTANT_REQUESTS_PER_MINUTE || 30);
   if (!Number.isInteger(rate) || rate < 1 || rate > 1000) fail('assistant_disabled', 403);
@@ -261,15 +252,21 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const copyBudget = await portfolioCopyBudget(tx, actor.enterpriseId);
   if (assistantDailyLimitsEnabled() && (Number(budget.requests) + Number(copyBudget.requests) + 1 > Number(settings.daily_requests) || BigInt(String(budget.tokens)) + BigInt(String(copyBudget.tokens)) + BigInt(tokenReservation) > BigInt(String(settings.daily_tokens))
       || BigInt(String(budget.cost)) + BigInt(String(copyBudget.cost)) + BigInt(costReservation) > BigInt(String(settings.daily_cost_micros)))) fail('assistant_quota_exceeded', 429);
+  const publicSiteGuideTurn = purpose === 'reply' && c.purpose === 'customer_consultation' && entry.activePublicSite
+    && actor.principal.kind === 'user' && trigger.kind === 'user_message'
+    ? await publicGuideTurn(tx, actor.enterpriseId, c, trigger.messageId, configuredPublicSiteGuide(settings.guidance_config)) : undefined;
   const stageConfig = agentRuntime ? await currentConversationExperience(tx,actor,c) : null;
   const r = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,trigger_event_id,trigger_schedule_key,purpose,retry_of_run_id,policy_snapshot,context_revision,knowledge_epoch)
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
-    ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version, agent,
+    ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version,
+      agent: publicSiteGuideOpening ? null : agent,
       ...(stageConfig ? {stageHistoryLimit:stageConfig.historyRounds*2+1} : {}),
       knowledgePolicy: c.purpose === 'knowledge_preview' && !stagePreview ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
       ...(purpose === 'reply' && c.purpose === 'customer_consultation' && trigger.kind === 'user_message'
         ? { publicSiteSelection: entry.activePublicSite ?? null } : {}),
+      ...(publicSiteGuideOpening ? { publicSiteGuideOpening } : {}),
+      ...(publicSiteGuideTurn ? { publicSiteGuideTurn } : {}),
       ...(nativeRag ? { nativeRag } : {}),
       ...(agentRuntime ? { agentRuntime } : {}),
       ...(agentRuntime && agent && ['dashscope', 'bailian', 'deepseek', 'siliconflow'].includes(agent.providerKey)
@@ -293,7 +290,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         reportReadCompletion: reportReadCompletionProtocol, reportHistoryScope: reportHistoryScopeProtocol, reportCoordination: reportCoordinationProtocol } : {}),
       ...(agent && (enterpriseKnowledgeEnabled(settings.agent_config) || c.purpose === 'knowledge_preview') && !agent.structuredFinal && ['reply','site.question','specialist.workflow'].includes(purpose)
         ? { sourceAnswerMode: agent.knowledgeExplanation || sourceExcerptProtocol,
-          ...(agent.tools && agentRuntime?.protocol !== fastGPTAgentV2Protocol && !nativeRag && !agent.consultation ? { knowledgeTools: knowledgeToolProtocol } : {}),
+          ...(agent.tools && !nativeRag && !agent.consultation ? { knowledgeTools: knowledgeToolProtocol } : {}),
           ...(agent.knowledgeExplanation === naturalKnowledgeProtocol ? { knowledgeQuantityScope: knowledgeQuantityScopeProtocol,
           ...(agent.knowledgeAnswerValidation === sourceBoundaryValidationProtocol && (staffPreview || ['customer_consultation','project_collaboration'].includes(String(c.purpose)))
               ? { knowledgeAnswerValidation: sourceBoundaryValidationProtocol } : {}),
@@ -309,11 +306,11 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
           drawingChecklistRead: drawingChecklistReadProtocol, homeSourceView: homeSourceViewProtocol,
           ownerQuestionScope: ownerQuestionScopeProtocol, ownerArchiveRead: ownerArchiveReadProtocol,
           ownerProjectStatusRead: ownerProjectStatusReadProtocol,
-          ...(!reviewRuntime && agentRuntime?.protocol !== fastGPTAgentV2Protocol && !nativeRag && !agent.structuredFinal && specialistPolicy(actor.enterpriseId, agent)
+          ...(!reviewRuntime && !nativeRag && !agent.structuredFinal && specialistPolicy(actor.enterpriseId, agent)
             ? { specialist: specialistPolicy(actor.enterpriseId, agent) } : {}),
           ...(agent.providerKey === 'dashscope' && agent.model === 'qwen3.8-flash' ? { ownerCitationCarrier: ownerCitationCarrierProtocol } : {}) } : {}),
       ...(agent && !isWechatConsultation(actor) && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId)
-        ? { longTermMemory: true, ...(agent.tools && agentRuntime?.protocol !== fastGPTAgentV2Protocol ? { delegationToolProtocol } : {}) } : {}),
+        ? { longTermMemory: true, ...(agent.tools ? { delegationToolProtocol } : {}) } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);

@@ -135,8 +135,8 @@ test('customer-facing project surfaces hide enterprise branding', () => {
   const companionJs = fs.readFileSync(path.join(root, 'components', 'customer-service-home', 'customer-service-home.js'), 'utf8');
   assert.doesNotMatch(redirectShell, /project-list|project-card|enterprise\.name|item\.enterprise/);
   assert.match(folio, /您的家装顾问/);
-  assert.match(folio, /现场顾问与设计方案全记录/);
-  assert.doesNotMatch(folio, /\{\{heroTitle|\{\{heroSubtitle/);
+  assert.match(folio, /\{\{heroSubtitle\}\}/);
+  assert.doesNotMatch(folio, /\{\{heroTitle/);
   assert.doesNotMatch(folio, /免费量房与设计方案全纪录/);
   assert.doesNotMatch(folio, /enterpriseName|\{\{enterpriseName\}\}/);
   assert.match(companion, /家客来 · 服务向导|我的装修服务/);
@@ -172,7 +172,8 @@ test('customer project template and stylesheet stay aligned for the restored arc
   assert.match(less, /\.booking-actions > \.booking-action \+ \.booking-secondary[\s\S]*?margin-left: 16rpx;/);
   assert.match(less, /\.footer-outline,\s*\.footer-primary \{[^}]*display: flex;[^}]*align-items: center;[^}]*justify-content: center;/);
   assert.match(wxml, /booking-heading[\s\S]*booking-title[\s\S]*booking-badge/);
-  assert.match(wxml, /选择方便的时间，家装现场顾问会提前与你确认/);
+  assert.match(wxml, /选择方便的时间，设计师会提前与你确认/);
+  assert.match(wxml, /wx:if="\{\{measurerName\}\}"\s+class="person-card is-measurer"/);
   assert.match(less, /\.booking-heading \{[\s\S]*align-items: center;[\s\S]*flex-wrap: wrap;/);
   assert.match(less, /\.booking-badge \{[\s\S]*display: inline-flex;[\s\S]*align-items: center;/);
   assert.match(less, /\.booking-helper \{[^}]*white-space: normal;/);

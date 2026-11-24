@@ -13,7 +13,11 @@ export type RagConfiguration = { protocol: typeof fastGPTRagProtocol; enterprise
 export function fastGPTRagConfiguration(enterpriseId: string): { configuration: RagConfiguration; binding: string } | undefined {
   const file = process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
   if (!file) return;
-  const bytes = fs.readFileSync(file), configuration = JSON.parse(bytes.toString('utf8')).rag as RagConfiguration | undefined;
+  // A machine-local binding that has been removed means the optional FastGPT
+  // transport is not configured here; ordinary answers keep their own path.
+  let bytes: Buffer;
+  try { bytes = fs.readFileSync(file); } catch { return; }
+  const configuration = JSON.parse(bytes.toString('utf8')).rag as RagConfiguration | undefined;
   if (!configuration || configuration.enterpriseId !== enterpriseId) return;
   if (configuration.protocol !== fastGPTRagProtocol || configuration.mode !== undefined && configuration.mode !== 'unified'
     || configuration.grounding !== undefined && (!['native-dataset','native-dataset-classified','native-chat-quote'].includes(configuration.grounding) || configuration.mode !== 'unified')

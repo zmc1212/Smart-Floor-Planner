@@ -1,6 +1,6 @@
 const { key, errorText, siteMessageTime } = require('./site-client');
 const clone = value => JSON.parse(JSON.stringify(value));
-const emptyDraft = () => ({ text: '', photos: [], voice: null, stageKeys: [], quick: { workId: '', roomId: '', location: null, progress: '' } });
+const emptyDraft = () => ({ text: '', photos: [], voice: null, stageKeys: [], inspectionCheckpoint: null, quick: { workId: '', roomId: '', location: null, progress: '' } });
 const fileCall = (name, options) => new Promise((resolve, reject) => wx.getFileSystemManager()[name]({ ...options, success: resolve, fail: reject }));
 const nativeFiles = {
   async save(source, kind) {
@@ -44,6 +44,7 @@ class SiteCapture {
     const draft = this.value.draft;
     const pending = this.site.state.items || [];
     this.emit({ captureText: draft.text, capturePhotos: draft.photos, captureVoice: draft.voice, quickChoice: draft.quick,
+      captureStages: draft.stageKeys, captureCheckpoint: draft.inspectionCheckpoint,
       captureQueue: this.value.queue.filter(e => !pending.some(i => i.message.client_message_id === e.key)).map(e => ({ ...e, time: siteMessageTime(e.createdAt),
         received: !!e.receipt, uncertain: !e.receipt && e.dispatched, uploading: this.activeKey === e.key,
         text: e.displayText || (e.voice ? '语音上报' : '现场照片 · ' + e.photos.length + '张') })), captureSending: !!this.activeKey });
@@ -56,7 +57,11 @@ class SiteCapture {
   }
   input(text) { return this.writeDraft({ text }); }
   choose(patch) { return this.writeDraft({ quick: { ...this.value.draft.quick, ...patch } }); }
-  stages(keys) { return this.writeDraft({ stageKeys: Array.isArray(keys) ? [...keys] : [] }); }
+  stages(keys) {
+    const stageKeys = Array.isArray(keys) ? [...keys] : [], selected = this.value?.draft.inspectionCheckpoint;
+    return this.writeDraft({ stageKeys, inspectionCheckpoint: selected && stageKeys.includes(selected.stageKey) ? selected : null });
+  }
+  checkpoint(selection) { return this.writeDraft({ inspectionCheckpoint: selection }); }
   async addFile(source, kind, durationMs = 0) {
     if (!this.valid() || !this.value || this.saving || this.site.state.fatal) return;
     if (kind === 'photo' && this.value.draft.photos.length >= 9 || kind === 'voice' && this.value.draft.voice) return;
@@ -88,6 +93,7 @@ class SiteCapture {
     const room = this.site.state.rooms?.find(r => r.id === selection.roomId);
     const work = this.site.state.quickWorks?.find(w => w.id === selection.workId);
     const entry = { key: key(), createdAt: new Date().toISOString(), text: d.text.trim(), photos: clone(d.photos), voice: d.voice && clone(d.voice), stageKeys: clone(d.stageKeys || []), capture,
+      ...(!quick && d.inspectionCheckpoint ? { inspectionCheckpoint: clone(d.inspectionCheckpoint) } : {}),
       displayText: quick ? `${room?.name || (selection.location === 'whole' ? '全屋' : '部位待核对')} · ${work?.label || ''} · ${labels[selection.progress]}${d.text.trim() ? '\n' + d.text.trim() : ''}` : d.text.trim(), dispatched: false };
     try {
       this.persist({ ...this.value, draft: emptyDraft(), queue: [...this.value.queue, entry] });
@@ -99,6 +105,17 @@ class SiteCapture {
     const next = clone(this.value), entry = next.queue.find(e => e.key === id);
     if (!entry) throw Error('local_entry_missing');
     Object.assign(entry, patch); this.persist(next); return entry;
+  }
+  restoreCheckpointDraft() {
+    if (!this.valid() || this.flushing) return false;
+    const entry = this.value?.queue.find(item => item.checkpointChanged && !item.dispatched && !item.receipt);
+    const draft = this.value?.draft;
+    if (!entry || !draft || draft.text || draft.photos.length || draft.voice || draft.stageKeys.length) return false;
+    try {
+      this.persist({ ...this.value, queue: this.value.queue.filter(item => item.key !== entry.key),
+        draft: { ...emptyDraft(), stageKeys: entry.stageKeys, photos: entry.photos, text: entry.text, voice: entry.voice } });
+      return true;
+    } catch { return false; }
   }
   async accepted(items = []) {
     if (!this.valid() || !this.value) return;
@@ -143,7 +160,8 @@ class SiteCapture {
               const photos = clone(e.photos); photos[i].mediaId = String(upload.id); e = this.update(e.key, { photos });
             }
             if (!e.body) e = this.update(e.key, { body: { text: e.text, mediaIds: e.photos.map(p => p.mediaId), capture: e.capture,
-              ...(e.stageKeys?.length ? { stageKeys: e.stageKeys } : {}) } });
+              ...(e.stageKeys?.length ? { stageKeys: e.stageKeys } : {}),
+              ...(e.inspectionCheckpoint ? { inspectionCheckpoint: e.inspectionCheckpoint } : {}) } });
             const body = clone(e.body);
             if (e.voice) body.recording = await this.files.read(e.voice.path);
             if (!this.valid(epoch)) return;
@@ -164,7 +182,9 @@ class SiteCapture {
           }
           if (!this.valid(epoch) || !this.value.queue.some(x => x.key === e.key)) return;
           const known = error.statusCode >= 400 && error.statusCode < 500 && error.statusCode !== 408;
-          this.update(e.key, { ...(known ? { dispatched: false } : {}), error: known ? errorText(error) : e.dispatched ? '送达结果待核对' : '待上传 · 已留在手机' });
+          const checkpointChanged = known && (error.error || error.code || error.message) === 'inspection_checkpoint_changed';
+          this.update(e.key, { ...(known ? { dispatched: false } : {}), checkpointChanged,
+            error: known ? errorText(error) : e.dispatched ? '送达结果待核对' : '待上传 · 已留在手机' });
           break;
         }
       }

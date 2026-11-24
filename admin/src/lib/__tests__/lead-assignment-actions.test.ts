@@ -20,25 +20,25 @@ function lead(input: Partial<{
   };
 }
 
-test('enterprise managers and platform admins can assign both roles', () => {
+test('enterprise managers and platform admins can assign the responsible designer', () => {
   assert.deepEqual(getLeadAssignmentActions(lead(), 'enterprise_admin', 1n), {
     canAssignDesigner: true,
-    canAssignMeasurer: true,
+    canAssignMeasurer: false,
   });
   assert.deepEqual(getLeadAssignmentActions(lead(), 'admin', 1n), {
     canAssignDesigner: true,
-    canAssignMeasurer: true,
+    canAssignMeasurer: false,
   });
   assert.deepEqual(getLeadAssignmentActions(lead(), 'super_admin', 1n), {
     canAssignDesigner: true,
-    canAssignMeasurer: true,
+    canAssignMeasurer: false,
   });
 });
 
-test('assigned designers can change the measurer only', () => {
+test('designers cannot add a second assignee or change the responsible designer', () => {
   assert.deepEqual(getLeadAssignmentActions(lead(), 'designer', 8n), {
     canAssignDesigner: false,
-    canAssignMeasurer: true,
+    canAssignMeasurer: false,
   });
   assert.deepEqual(getLeadAssignmentActions(lead(), 'designer', 99n), {
     canAssignDesigner: false,
@@ -68,7 +68,7 @@ test('measurers and closed leads cannot reassign staff', () => {
       actorId: 9n,
       measurerId: 21n,
     }),
-    /无权分配或更换家装现场顾问/
+    /线索统一分配给设计师/
   );
   assert.deepEqual(
     getLeadAssignmentActions(lead({ archivedAt: new Date() }), 'enterprise_admin', 1n),
@@ -80,6 +80,6 @@ test('measurers and closed leads cannot reassign staff', () => {
   );
   assert.deepEqual(
     getLeadAssignmentActions(lead({ status: 'converted' }), 'enterprise_admin', 1n),
-    { canAssignDesigner: true, canAssignMeasurer: true }
+    { canAssignDesigner: true, canAssignMeasurer: false }
   );
 });

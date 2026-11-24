@@ -2,11 +2,19 @@
 param(
   [Parameter(Mandatory = $false)]
   [ValidatePattern('^\d{8}-\d{3}$')]
-  [string]$Version
+  [string]$Version,
+  # Full release validation, including the isolated PostgreSQL suite.
+  [switch]$Full,
+  # Hotfix path: skip local checks. The image still builds Next.js.
+  [switch]$Fast
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ($Full -and $Fast) {
+  throw 'Choose either -Full or -Fast.'
+}
 
 $imageRepository = 'zmc1212/sfp-admin'
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -125,8 +133,13 @@ if (-not $Version) {
 $imageName = "${imageRepository}:$Version"
 $packageDir = Join-Path $releaseRoot 'sfp-admin-release'
 $packageZip = Join-Path $releaseRoot "sfp-admin-release-$Version.zip"
+$releaseMode = if ($Full) { 'full' } elseif ($Fast) { 'fast' } else { 'standard' }
+$postgresTests = 'not_run'
 
-foreach ($command in @('docker', 'npm', 'git')) {
+$requiredCommands = @('docker', 'git')
+if (-not $Fast) { $requiredCommands += 'npm' }
+if ($Full) { $requiredCommands += 'node' }
+foreach ($command in $requiredCommands) {
   if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
     throw "$command is not available on PATH."
   }
@@ -136,27 +149,101 @@ Push-Location $scriptDir
 try {
   Write-Host "Release version: $Version"
   Write-Host "Docker image: $imageName"
+  Write-Host "Build mode: $releaseMode"
 
-  Write-Host '[PRECHECK] Checking Docker and PostgreSQL before the release quality gate...'
+  Write-Host '[PRECHECK] Checking Docker before the release...'
   & docker info --format '{{.ServerVersion}}'
   if ($LASTEXITCODE -ne 0) {
     throw 'Docker engine is unavailable. Start Docker Desktop, wait for the engine to be ready, then rerun release.bat.'
   }
-  & npm run db:check
-  if ($LASTEXITCODE -ne 0) {
-    throw 'PostgreSQL preflight failed. Check the local DATABASE_URL, start the local PostgreSQL service, and apply pending local migrations before rerunning release.bat. See docs/production-deployment.md.'
+  if ($Full) {
+    Write-Host '[PRECHECK] Checking PostgreSQL before the release quality gate...'
+    & npm run db:check
+    if ($LASTEXITCODE -ne 0) {
+      throw 'PostgreSQL preflight failed. Check the local DATABASE_URL, start the local PostgreSQL service, and apply pending local migrations before rerunning release.bat -Full. See docs/production-deployment.md.'
+    }
+
+    # The contract suite indexes vectors, so it must never fall back to the regular
+    # development database. Resolve the isolated clone explicitly instead of
+    # depending on the shell that launched release.bat.
+    $contractDatabaseUrl = $env:DATABASE_URL
+    $contractMigrationUrl = $null
+    $isolatedConfigPath = Join-Path $scriptDir '..\tmp\xiaok-vector\connection.private.json'
+    if (Test-Path -LiteralPath $isolatedConfigPath -PathType Leaf) {
+      $isolatedConfig = Get-Content -Raw -LiteralPath $isolatedConfigPath | ConvertFrom-Json
+      if ($isolatedConfig.DATABASE_URL -match '@(127\.0\.0\.1|localhost):55432/xiaok_embedding_eval') {
+        if (-not $contractDatabaseUrl -or $contractDatabaseUrl -notmatch '@(127\.0\.0\.1|localhost):55432/xiaok_embedding_eval') {
+          $contractDatabaseUrl = $isolatedConfig.DATABASE_URL
+        }
+      }
+      if ($isolatedConfig.EMBEDDING_EVAL_OWNER_URL -match '@(127\.0\.0\.1|localhost):55432/xiaok_embedding_eval') {
+        $contractMigrationUrl = $isolatedConfig.EMBEDDING_EVAL_OWNER_URL
+      }
+    }
+    if (-not $contractDatabaseUrl -or $contractDatabaseUrl -notmatch '@(127\.0\.0\.1|localhost):55432/xiaok_embedding_eval') {
+      throw 'PostgreSQL contract tests require the isolated evaluation clone at 127.0.0.1:55432/xiaok_embedding_eval. Start the tunnel/database and rerun release.bat -Full (see scripts/xiaok-embedding/prepare-vector-clone.ps1).'
+    }
+    if (-not $contractMigrationUrl) {
+      throw 'PostgreSQL contract tests require EMBEDDING_EVAL_OWNER_URL from tmp/xiaok-vector/connection.private.json so isolated fixtures do not fall back to the local development database.'
+    }
+
+    Write-Host '[PRECHECK] Checking the isolated acceptance database...'
+    Invoke-CheckedCommand 'Isolated acceptance database preflight' {
+      $previousDatabaseUrl = $env:DATABASE_URL
+      try {
+        $env:DATABASE_URL = $contractDatabaseUrl
+        node scripts/postgres-contract-tests.mjs --preflight
+        if ($LASTEXITCODE -ne 0) { throw "Isolated acceptance database preflight failed with exit code $LASTEXITCODE." }
+      } finally {
+        $env:DATABASE_URL = $previousDatabaseUrl
+      }
+    }
   }
 
-  Write-Host '[1/6] Running the release quality gate...'
-  Invoke-CheckedCommand 'ESLint' { npm run lint }
-  Invoke-CheckedCommand 'Survey canvas tests' { npm run test:survey-canvas }
-  Invoke-CheckedCommand 'AI tests' { npm run test:ai }
-  Invoke-CheckedCommand 'PostgreSQL contract tests' { npm run test:postgresql }
-  Invoke-CheckedCommand 'Next.js production build' { npm run build }
+  Write-Host '[1/6] Running local build checks...'
+  if ($Fast) {
+    Write-Warning '[FAST] ESLint and test suites skipped. The Docker builder still runs the production Next.js build.'
+  } else {
+    Invoke-CheckedCommand 'ESLint' { npm run lint }
+    Invoke-CheckedCommand 'Survey canvas tests' { npm run test:survey-canvas }
+    Invoke-CheckedCommand 'AI tests' { npm run test:ai }
+  }
+  if ($Full) {
+    Invoke-CheckedCommand 'PostgreSQL contract tests' {
+      $previousDatabaseUrl = $env:DATABASE_URL
+      $previousMigrationUrl = $env:DATABASE_MIGRATION_URL
+      $previousWorkflowFile = $env:XIAOK_FASTGPT_WORKFLOWS_FILE
+      $previousOpeningsFile = $env:XIAOK_OPENINGS_FILE
+      try {
+        $env:DATABASE_URL = $contractDatabaseUrl
+        # Fixtures that create a disposable schema must stay inside the same
+        # isolated clone; never let .env.local point them at the development DB.
+        $env:DATABASE_MIGRATION_URL = $contractMigrationUrl
+        # Machine-local private bindings often point at removed tmp files. The
+        # suites that exercise them create their own fixture files; an empty
+        # value keeps the gate independent of stale developer state.
+        $env:XIAOK_FASTGPT_WORKFLOWS_FILE = ''
+        $env:XIAOK_OPENINGS_FILE = ''
+        npm run test:postgresql
+        if ($LASTEXITCODE -ne 0) { throw "npm run test:postgresql failed with exit code $LASTEXITCODE." }
+      } finally {
+        $env:DATABASE_URL = $previousDatabaseUrl
+        $env:DATABASE_MIGRATION_URL = $previousMigrationUrl
+        $env:XIAOK_FASTGPT_WORKFLOWS_FILE = $previousWorkflowFile
+        $env:XIAOK_OPENINGS_FILE = $previousOpeningsFile
+      }
+    }
+    $postgresTests = 'passed'
+    Invoke-CheckedCommand 'Next.js production build' { npm run build }
+  } elseif (-not $Fast) {
+    Write-Host '[SKIP] PostgreSQL contract tests. Use release.bat -Full to run the full release gate.'
+  }
 
-  Write-Host '[2/6] Building the versioned Docker image without cache...'
+  $dockerBuildArgs = @('build')
+  if ($Full) { $dockerBuildArgs += '--no-cache' }
+  Write-Host ('[2/6] Building the versioned Docker image ({0})...' -f $(if ($Full) { 'no cache' } else { 'reusing cache' }))
   Invoke-CheckedCommand "Docker build $imageName" {
-    docker build --no-cache --build-arg "SFP_RELEASE_VERSION=$Version" -t $imageName .
+    docker @dockerBuildArgs --build-arg "SFP_RELEASE_VERSION=$Version" -t $imageName .
   }
 
   Write-Host '[3/6] Preparing the secret-free offline package...'
@@ -177,6 +264,8 @@ try {
     "image=$imageName",
     "git_commit=$gitCommit",
     "git_dirty=$gitDirty",
+    "release_mode=$releaseMode",
+    "postgresql_contract_tests=$postgresTests",
     "built_at=$((Get-Date).ToString('o'))"
   ) | Set-Content -LiteralPath (Join-Path $packageDir 'BUILD_INFO') -Encoding ascii
 
@@ -253,10 +342,11 @@ compatible with the immediately previous application release.
 
   Write-Host ''
   Write-Host '================================================================'
-  Write-Host '[SUCCESS] Release quality gate passed and package created:'
+  Write-Host '[SUCCESS] Release package created:'
   Write-Host $packageZip
   Write-Host "[INFO] Version: $Version"
   Write-Host "[INFO] Image: $imageName"
+  Write-Host "[INFO] PostgreSQL contract tests: $postgresTests"
   Write-Host "[INFO] ZIP SHA-256: $zipHash"
   Write-Host '[INFO] No production environment file is included.'
   Write-Host 'Upload the ZIP, its .sha256 file, and the updated auto_deploy.sh.'

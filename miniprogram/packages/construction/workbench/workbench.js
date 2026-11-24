@@ -2,15 +2,17 @@ const api = require('../../../utils/api');
 const { openAIDesignTab } = require('../../../utils/aiDesignNavigation');
 const { canAccessRoute } = require('../../../utils/identity-navigation');
 const { loadSiteFont } = require('../lib/site-font');
+const { inspectionJourneyKey, readInspectionJourney } = require('../lib/inspection-journey');
 const { siteMessageTime, errorText } = require('../chat/site-client');
 
 const base = '/miniprogram/construction/workbench';
 const projects = '/packages/construction/projects/projects';
 const chat = '/packages/construction/chat/chat';
 const reportPage = '/packages/construction/report/report';
-const reports = '/packages/assistant/chat/chat?followup=1';
+const reviewPage = '/packages/construction/inspection-record/inspection-record';
+const reports = '/packages/assistant/chat/chat?followup=1&reportBoard=1';
 const options = { suppressUnauthorized: true };
-const titles = { worker: '施工工作台', manager: '项目经理工作台', designer: '设计师工作台', boss: '老板工作台' };
+const titles = { worker: '我的工地', manager: '项目经理工作台', designer: '设计师工作台', boss: '老板工作台' };
 const statusLabels = { organizing: '待整理', draft: '等经理核对', published: '已发布', changes_requested: '待补拍', withdrawn: '已撤回' };
 
 function session() {
@@ -18,7 +20,7 @@ function session() {
   const context = global.bootstrap?.current?.context || global.userInfo || {};
   return { token: global.token || wx.getStorageSync('token'),
     key: [context.enterpriseId, context.staffId || context.adminId].filter(Boolean).join(':'),
-    identity: global.bootstrap || global.userInfo };
+    identity: global.bootstrap || global.userInfo, inspectionKey: inspectionJourneyKey(context) };
 }
 
 function viewForRole(role) {
@@ -186,9 +188,10 @@ Component({
           : (this.data.reportRange || rangeForKey('today'));
         this.setData({
           model,
+          resumeInspection: model.view === 'manager' && readInspectionJourney(binding.inspectionKey)?.route?.active === true,
           title: titles[model.view],
           selectedIndex: Math.max(0, (model.choices || []).findIndex(item => item.id === model.project?.id)),
-          reports: data.reports?.items || [],
+          reports: model.reports?.items || data.reports?.items || [],
           todaySummary: data.todaySummary || { total: 0, pending: 0, approved: 0, returned: 0 },
           reportRange: nextRange,
           loading: false,
@@ -237,13 +240,11 @@ Component({
       if (task?.issueId) this.openIssue({ currentTarget: { dataset: { issue: task.issueId } } });
       else if (task) this.openProject();
     },
-    capture(event) {
+    capture() {
       const { project, canCapture } = this.data.model || {};
-      const action = event.currentTarget.dataset.action;
-      if (canCapture && ['photo', 'voice'].includes(action)) {
-        this._reloadTodayOnShow = true;
-        this.navigate(reportPage + '?projectId=' + project.id + '&mode=' + action);
-      }
+      if (!canCapture || !project) return;
+      this._reloadTodayOnShow = true;
+      this.navigate(reportPage + '?projectId=' + project.id);
     },
     selectRange(event) {
       const key = event.currentTarget.dataset.key;
@@ -252,14 +253,20 @@ Component({
       const range = rangeForKey(key);
       this.setData({ reportRange: range }, () => this.load(null, range, { silent: true }));
     },
+    notifySheet(open) {
+      const app = getApp();
+      if (app?.globalData) app.globalData.siteWorkbenchSheetOpen = Boolean(open);
+      this.triggerEvent('sheetchange', { open: Boolean(open) });
+    },
     openCalendar() {
       const range = this.data.reportRange || rangeForKey('today');
       const month = String(range.from || dateKey(new Date())).slice(0, 7);
       const from = range.from || '', to = range.to || '';
       this._calendarMonth = month;
       this.setData({ showCalendar: true, calendar: this.calendarState(month, from, to) });
+      this.notifySheet(true);
     },
-    closeCalendar() { this.setData({ showCalendar: false }); },
+    closeCalendar() { this.notifySheet(false); this.setData({ showCalendar: false }); },
     calendarPrev() { this.shiftCalendar(-1); },
     calendarNext() { this.shiftCalendar(1); },
     shiftCalendar(offset) {
@@ -319,6 +326,7 @@ Component({
       const startMs = Date.parse(from + 'T00:00:00Z'), endMs = Date.parse(end + 'T00:00:00Z');
       if (endMs - startMs > 92 * 86400000) { wx.showToast({ title: '最多可查近3个月', icon: 'none' }); return; }
       const range = customRange(from, end);
+      this.notifySheet(false);
       this.setData({ showCalendar: false, reportRange: range }, () => this.load(null, range, { silent: true }));
     },
     openRecord(event) {
@@ -328,6 +336,7 @@ Component({
         this.setData({ showDetail: true, detailLoading: true, detail: null, detailError: '', detailPhotos: [] }, () => {
           void this.loadDetail(project.id, id);
         });
+        this.notifySheet(true);
       }
     },
     async loadDetail(projectId, recordId) {
@@ -357,8 +366,9 @@ Component({
             coordination: String(record.data?.coordination || ''),
             note: String(record.data?.note || ''),
             reviewRequirements: String(record.review_requirements || history?.returnReason || ''),
-            approvedByName: String(record.approved_name || history?.approvedByName || ''),
-            approvedAt: record.published_at ? siteMessageTime(record.published_at) : '',
+            approvedByName: record.approved_by ? String(record.approved_name || history?.approvedByName || '') : '',
+            approvedAt: record.approved_by && record.published_at ? siteMessageTime(record.published_at) : '',
+            inspectionNote: status === 'approved' ? String(record.inspection_receipt?.note || '') : '',
             speech: record.speech || null,
             speechSeconds: record.speech?.duration_ms ? Math.max(1, Math.ceil(record.speech.duration_ms / 1000)) : 0,
             media: Array.isArray(record.media) ? record.media.slice(0, 9) : [],
@@ -390,7 +400,10 @@ Component({
     closeDetail(force = false) {
       this.stopDetailVoice();
       this.clearDetailPhotos();
-      if (this.data.showDetail || force) this.setData({ showDetail: false, detail: null, detailPhotos: [], detailLoading: false, detailError: '' });
+      if (this.data.showDetail || force) {
+        this.notifySheet(false);
+        this.setData({ showDetail: false, detail: null, detailPhotos: [], detailLoading: false, detailError: '' });
+      }
     },
     previewDetail(event) {
       const path = event.currentTarget.dataset.path;
@@ -424,14 +437,20 @@ Component({
       const projectId = this._detailProjectId, recordId = this.data.detail?.recordId;
       if (projectId && recordId) {
         this.closeDetail();
-        this.navigate(chat + '?projectId=' + projectId + '&recordId=' + recordId + '&mode=review');
+        this.navigate(reviewPage + '?projectId=' + projectId + '&recordId=' + recordId);
       }
     },
     openApproval(event) {
       const report = this.data.model?.pendingReport || {};
       const projectId = event.currentTarget.dataset.project || report.projectId;
       const recordId = event.currentTarget.dataset.record || report.recordId;
-      if (projectId && recordId) this.navigate(chat + '?projectId=' + projectId + '&recordId=' + recordId + '&mode=review');
+      if (projectId && recordId) this.navigate(reviewPage + '?projectId=' + projectId + '&recordId=' + recordId);
+    },
+    openInspection() {
+      if (this.data.model?.inspection) this.navigate('/packages/construction/inspection/inspection');
+    },
+    openInspectionRoute() {
+      if (this.data.model?.view === 'manager' && this.data.model.inspection) this.navigate('/packages/construction/inspection-map/inspection-map');
     },
     openIssue(event) {
       const { issue, project, record } = event.currentTarget.dataset;

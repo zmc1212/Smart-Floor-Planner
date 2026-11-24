@@ -1,17 +1,29 @@
 const api = require('../../../utils/api');
 const ownerReminders = require('../../../utils/owner-reminders');
 const { loadSiteFont } = require('../lib/site-font');
+const { displayName } = require('../lib/family-view');
 const { ownerLiveAuthorizationPath } = require('../../../utils/owner-live-authorization');
 
 const base = '/miniprogram/construction/owner-sites';
+const familyBase = '/miniprogram/construction/customer-projects';
 const readOptions = { suppressUnauthorized: true };
-const siteSections = ['reminders', 'camera', 'family', 'report', 'confirmation'];
-const liveSiteSections = ['camera', 'report', 'confirmation', 'reminders', 'family'];
 const emptyReminders = { remindersOpen: false, siteReminders: [], remindersLoading: false, remindersError: '',
   reminderSelected: '', reminderDetail: null, reminderReading: false, reminderReadError: '' };
 const emptyProject = { project: null, report: null, camera: null, projectLoading: false, projectError: '', cameraLoading: false, cameraError: '',
-  liveApplication: null, liveError: '', xiaokReminder: null, xiaokReminderOpen: false, xiaokReminderReading: false,
-  xiaokReminderDetail: null, xiaokReminderError: '', ...emptyReminders };
+  liveApplication: null, liveError: '', schedule: null, scheduleLoading: false, scheduleError: '', scheduleOpen: false,
+  familyVisible: false, familyProjects: [], ...emptyReminders };
+
+// A family viewer keeps the owner-owned Site data out of this page and only
+// gets a read-only entry into the approved cloud-site family view.
+function sharedFamilyProjects(items, listed) {
+  return (Array.isArray(items) ? items : []).reduce((projects, item) => {
+    const projectId = String(item?.id || '');
+    if (item?.role !== 'family' || !/^[1-9]\d*$/.test(projectId) || listed.has(projectId)
+      || projects.some(project => project.id === projectId)) return projects;
+    projects.push({ id: projectId, name: displayName(item.name, '未命名工地') });
+    return projects;
+  }, []);
+}
 
 function session() {
   return getApp().globalData.token || wx.getStorageSync('token');
@@ -25,7 +37,8 @@ function shanghaiDate(value, includeTime = false) {
 }
 
 Component({
-  data: { ...emptyProject, siteSections, liveSiteSections, projects: [], selectedIndex: 0, loading: true, error: '', needsLogin: false, navTop: 32, navHeight: 32, navRight: 96 },
+  properties: { requestedFamilyProjectId: String },
+  data: { ...emptyProject, projects: [], selectedIndex: 0, loading: true, error: '', needsLogin: false, navTop: 32, navHeight: 32, navRight: 96 },
   lifetimes: {
     attached() { this.measureNav(); void loadSiteFont(); this.showSite(); },
     detached() { this._visible = false; this._generation++; },
@@ -33,6 +46,8 @@ Component({
   pageLifetimes: {
     show() { this.showSite(); },
     hide() {
+      this._resumeFamily = this.data.familyVisible && this.data.project && this.current(this._generation, this._projectSession)
+        ? { projectId: this.data.project.id, token: this._projectSession } : null;
       this._visible = false;
       this._generation++;
       this.setData({ ...emptyProject, projects: [], loading: true, error: '', needsLogin: false });
@@ -63,13 +78,30 @@ Component({
       if (!token) { this.setData({ loading: false, needsLogin: true }); return; }
       void ownerReminders.refreshSummary();
       try {
-        const { data } = await api.request(base, 'GET', {}, readOptions);
+        const [sites, shared] = await Promise.all([
+          api.request(base, 'GET', {}, readOptions),
+          // Owner-site data never carries a family grant. Read the shared-site
+          // list separately so an invited family account can reopen it here.
+          api.request(familyBase, 'GET', {}, readOptions).then(({ data }) => {
+            if (!Array.isArray(data)) throw new Error('Invalid shared-site list');
+            return { items: data };
+          }).catch(error => ({ error })),
+        ]);
         if (!this.current(generation, token)) return;
-        const projects = data.items;
-        const selectedProjectId = this._projectId || ownerReminders.summary()?.unreadProjectId;
-        const selectedIndex = Math.max(projects.findIndex(project => project.id === selectedProjectId), 0);
-        this.setData({ projects, selectedIndex, loading: false });
-        if (projects.length) await this.readProject(projects[selectedIndex]);
+        const projects = sites.data.items.map(project => ({ ...project, name: displayName(project.name, '未命名工地') }));
+        const requested = this.data.requestedFamilyProjectId;
+        const resume = this._resumeFamily?.token === token ? this._resumeFamily.projectId : '';
+        this._resumeFamily = null;
+        const familyProjectId = requested || resume;
+        // A failed shared read cannot establish that the account has no sites.
+        if (shared.error && !projects.length && !familyProjectId) throw shared.error;
+        const familyProjects = sharedFamilyProjects(shared.items, new Set(projects.map(project => project.id)));
+        const selectedProjectId = familyProjectId || this._projectId || ownerReminders.summary()?.unreadProjectId;
+        const index = projects.findIndex(project => project.id === selectedProjectId);
+        const selected = index >= 0 ? projects[index] : familyProjectId ? { id: familyProjectId } : projects[0];
+        this.setData({ projects, familyProjects, selectedIndex: Math.max(index, 0), loading: false, projectLoading: !!selected });
+        if (requested) this.triggerEvent('familyentryconsumed');
+        if (selected) await this.readProject(selected, selected.id === familyProjectId);
       } catch (error) {
         if (this.current(generation, token)) this.setData({ loading: false, needsLogin: error.statusCode === 401,
           error: error.statusCode === 401 ? '' : '工地暂时无法读取' });
@@ -77,7 +109,7 @@ Component({
     },
     selectProject(event) {
       const index = Number(event.detail.value), selected = this.data.projects[index];
-      if (!selected || selected.id === this._projectId) return;
+      if (!selected || selected.id === this._projectId || this.data.familyVisible) return;
       this.setData({ selectedIndex: index });
       return this.readProject(selected);
     },
@@ -91,63 +123,18 @@ Component({
     },
     async loadSiteReminders() {
       const projectId = this.data.project?.id, generation = this._generation, token = this._projectSession;
-      if (!projectId || !this.data.remindersOpen || this.data.remindersLoading || !this.current(generation, token)) return;
-      if (this._reminderItems && this._reminderProject === projectId && this._reminderGeneration === generation) {
-        this.setData({ siteReminders: this.reminderView(this._reminderItems) });
-        return;
-      }
+      if (!this.data.project?.progressAccess || !this.data.remindersOpen || this.data.remindersLoading || !this.current(generation, token)) return;
       const action = this._reminderAction;
       const current = () => this.current(generation, token) && this._reminderAction === action;
       this.setData({ remindersLoading: true, remindersError: '' });
       try {
         const items = await ownerReminders.list(projectId);
-        if (current()) this.setReminderItems(projectId, generation, items);
+        if (current()) this.setData({ siteReminders: items.map(item => ({ ...item,
+          dateLabel: item.deliveredAt ? shanghaiDate(item.deliveredAt, true) : '' })) });
       } catch (error) {
         if (current()) this.setData({ remindersError: error.statusCode === 404 ? '当前工地提醒不可查看。' : '提醒暂时无法读取。' });
       } finally {
         if (current()) this.setData({ remindersLoading: false });
-      }
-    },
-    reminderView(items) {
-      return items.map(item => ({ ...item,
-        dateLabel: item.deliveredAt ? shanghaiDate(item.deliveredAt, true) : '' }));
-    },
-    setReminderItems(projectId, generation, items) {
-      this._reminderItems = items;
-      this._reminderProject = projectId;
-      this._reminderGeneration = generation;
-      const view = this.reminderView(items);
-      this.setData({ siteReminders: view, xiaokReminder: view.find(item => !item.readAt) || null });
-    },
-    async readXiaokReminder(projectId, generation, token) {
-      if (!projectId || !this.current(generation, token)) return;
-      try {
-        const items = await ownerReminders.list(projectId);
-        if (this.current(generation, token)) this.setReminderItems(projectId, generation, items);
-      } catch (_) {
-        // The expanded 当前提醒 card owns the visible error; the compact strip stays hidden.
-      }
-    },
-    async openXiaokReminder() {
-      const item = this.data.xiaokReminder;
-      const generation = this._generation, token = this._projectSession;
-      if (!item || this.data.xiaokReminderReading || !this.current(generation, token)) return;
-      if (this.data.xiaokReminderOpen && !this.data.xiaokReminderError) {
-        this.setData({ xiaokReminderOpen: false });
-        return;
-      }
-      this.setData({ xiaokReminderOpen: true, xiaokReminderReading: true, xiaokReminderDetail: null, xiaokReminderError: '' });
-      try {
-        const detail = await ownerReminders.read(item);
-        if (!this.current(generation, token)) return;
-        const readAt = detail.readAt;
-        if (this._reminderItems) this._reminderItems = this._reminderItems.map(row => row.reminderId === item.reminderId ? { ...row, readAt } : row);
-        this.setData({ xiaokReminderDetail: detail, xiaokReminder: { ...item, readAt },
-          siteReminders: this.data.siteReminders.map(row => row.reminderId === item.reminderId ? { ...row, readAt } : row) });
-      } catch (error) {
-        if (this.current(generation, token)) this.setData({ xiaokReminderError: ownerReminders.readError(error) });
-      } finally {
-        if (this.current(generation, token)) this.setData({ xiaokReminderReading: false });
       }
     },
     async openSiteReminder(event) {
@@ -166,10 +153,8 @@ Component({
         const detail = await ownerReminders.read(item);
         if (current()) {
           const readAt = detail.readAt;
-          if (this._reminderItems) this._reminderItems = this._reminderItems.map(row => row.reminderId === id ? { ...row, readAt } : row);
           this.setData({ reminderDetail: detail,
-            siteReminders: this.data.siteReminders.map(row => row.reminderId === id ? { ...row, readAt } : row),
-            ...(this.data.xiaokReminder?.reminderId === id ? { xiaokReminder: { ...this.data.xiaokReminder, readAt } } : {}) });
+            siteReminders: this.data.siteReminders.map(row => row.reminderId === id ? { ...row, readAt } : row) });
         }
       } catch (error) {
         if (current()) this.setData({ reminderReadError: ownerReminders.readError(error) });
@@ -177,10 +162,9 @@ Component({
         if (current()) this.setData({ reminderReading: false });
       }
     },
-    async readProject(selected) {
+    async readProject(selected, openFamily = false) {
       const token = session(), generation = this._generation = (this._generation || 0) + 1;
       this._projectSession = token;
-      this._reminderItems = null; this._reminderProject = ''; this._reminderGeneration = 0;
       const projectId = this._projectId = selected.id;
       this.setData({ ...emptyProject, projectLoading: true });
       try {
@@ -188,16 +172,55 @@ Component({
         if (!this.current(generation, token)) return;
         if (!data.project || data.project.id !== projectId) throw new Error('project mismatch');
         const report = data.report ? { ...data.report, dateLabel: shanghaiDate(data.report.periodStart) } : null;
-        this.setData({ project: data.project, report, projectLoading: false, cameraLoading: true });
+        const project = { ...data.project, name: displayName(data.project.name, '未命名工地') };
+        const projects = this.data.projects;
+        const unlisted = openFamily && !projects.some(item => item.id === projectId);
+        this.setData({ project, report, projectLoading: false, cameraLoading: true,
+          ...(unlisted ? { projects: [...projects, { id: projectId, name: project.name }], selectedIndex: projects.length } : {}) });
+        if (openFamily) this.openFamilySheet();
         await Promise.all([
           this.readCover(projectId, generation, token),
-          data.project.progressAccess && this.readLiveApplication(projectId, generation, token),
-          data.project.progressAccess && this.readXiaokReminder(projectId, generation, token),
+          project.progressAccess && this.readLiveApplication(projectId, generation, token),
+          project.progressAccess && this.readSchedule(),
         ]);
       } catch (error) {
         if (this.current(generation, token)) this.setData({ ...emptyProject,
           projectError: error.statusCode === 404 ? '这个工地目前不可查看' : '工地资料暂时无法读取' });
       }
+    },
+    async readSchedule() {
+      const { project, scheduleLoading } = this.data;
+      const generation = this._generation, token = this._projectSession;
+      if (!project?.progressAccess || scheduleLoading || !this.current(generation, token)) return;
+      this.setData({ scheduleLoading: true, scheduleError: '' });
+      try {
+        const { data } = await api.request('/miniprogram/construction/projects/' + project.id + '/progress', 'GET', {}, readOptions);
+        if (!this.current(generation, token)) return;
+        if (data.projectId !== project.id || data.access !== 'owner') throw new Error('owner schedule mismatch');
+        const progress = data.progress;
+        const nodes = (progress?.nodes || []).map(node => ({
+          key: node.key,
+          roomName: displayName(node.roomName, ''),
+          stageName: displayName(node.stageName, '施工阶段'),
+          label: node.label,
+          color: node.color,
+          timeText: node.timeText,
+          plannedStart: node.plannedStart,
+          plannedEnd: node.plannedEnd,
+        }));
+        this.setData({ schedule: { label: progress?.overall?.label || '未排期', color: progress?.overall?.color || 'gray', nodes } });
+      } catch (error) {
+        if (this.current(generation, token)) this.setData({
+          schedule: null, scheduleOpen: false,
+          scheduleError: [401, 403, 404].includes(error.statusCode) ? '排期暂时不可查看' : '排期读取失败',
+        });
+      } finally {
+        if (this.current(generation, token)) this.setData({ scheduleLoading: false });
+      }
+    },
+    toggleSchedule() {
+      if (this.data.schedule?.nodes.length && this.current(this._generation, this._projectSession))
+        this.setData({ scheduleOpen: !this.data.scheduleOpen });
     },
     async readLiveApplication(projectId, generation, token) {
       try {
@@ -252,9 +275,19 @@ Component({
       if (!this.current(this._generation, this._projectSession) || !this.data.camera || !this.data.project) return;
       this.navigate('/packages/construction/camera/camera?projectId=' + this.data.project.id);
     },
-    openFamilySite() {
-      if (!this.current(this._generation, this._projectSession) || !this.data.project) return;
-      this.navigate('/packages/construction/family/family?projectId=' + this.data.project.id);
+    openFamilyProject(event) {
+      const projectId = String(event.currentTarget.dataset.id || '');
+      if (!this._visible || !/^[1-9]\d*$/.test(projectId)) return;
+      this.navigate('/packages/construction/family/family?projectId=' + encodeURIComponent(projectId));
+    },
+    openFamilySheet() {
+      if (!this.data.project?.progressAccess || !this.current(this._generation, this._projectSession)) return;
+      this.setData({ familyVisible: true });
+    },
+    closeFamilySheet() { this.setData({ familyVisible: false }); },
+    familyInviteShare() {
+      if (!this.data.familyVisible || !this.data.project?.progressAccess || !this.current(this._generation, this._projectSession)) return null;
+      return this.selectComponent('#owner-family-sheet')?.shareInvite();
     },
     ownerReportPath(params) {
       const query = Object.entries(params).map(([key, value]) => key + '=' + encodeURIComponent(value)).join('&');
@@ -262,9 +295,14 @@ Component({
     },
     openReport(event) {
       const { project, report } = this.data;
-      if (!this.current(this._generation, this._projectSession) || !project || !report) return;
+      if (!this.current(this._generation, this._projectSession) || !project?.progressAccess) return;
       const recordId = String(event.currentTarget.dataset.record || '');
-      if (recordId && !report.pending.some(item => item.recordId === recordId)) return;
+      if (!recordId) {
+        this.navigate(this.ownerReportPath({ reportBoard: 1, reportProject: project.id, leadId: project.leadId,
+          ...(report ? { bindingId: report.bindingId } : {}) }));
+        return;
+      }
+      if (!report?.pending.some(item => item.recordId === recordId)) return;
       this.navigate(this.ownerReportPath({ ownerReport: report.reportId, bindingId: report.bindingId, revision: report.revision,
         projectId: project.id, leadId: project.leadId, ...(recordId ? { recordId } : {}) }));
     },

@@ -283,7 +283,8 @@ function classifyBluetoothAdapterOpenFailure(err, context) {
 function readBluetoothEnvironment() {
   var sysInfo = {};
   try {
-    sysInfo = typeof wx.getSystemInfoSync === 'function' ? (wx.getSystemInfoSync() || {}) : {};
+    if (typeof wx.getDeviceInfo === 'function') sysInfo = wx.getDeviceInfo() || {};
+    else if (typeof wx.getSystemInfoSync === 'function') sysInfo = wx.getSystemInfoSync() || {};
   } catch (error) {
     sysInfo = {};
   }
@@ -661,7 +662,7 @@ function startScan(silent = false, scanMs, scanSessionVersion) {
 
   // 前置检查安卓系统定位权限与开关
   try {
-    var sysInfo = wx.getSystemInfoSync();
+    var sysInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : wx.getSystemInfoSync();
     if (sysInfo.platform === 'android') {
       var sysSetting = typeof wx.getSystemSetting === 'function' ? wx.getSystemSetting() : {};
       var appAuth = typeof wx.getAppAuthorizeSetting === 'function' ? wx.getAppAuthorizeSetting() : {};

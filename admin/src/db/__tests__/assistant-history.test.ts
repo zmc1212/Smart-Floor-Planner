@@ -35,7 +35,7 @@ before(async () => {
       users.push(String((await one(tx,sql`insert into app.users(nickname,context_version) values(${prefix+i},1) returning id`))!.id));
       await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${users[i]},${prefix+i})`);
       await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
-        values(${enterprises[i]},true,1000,12000000,1000000000,30,'{"runtime":"langgraph-v1","model":"deepseek-flash","providerKey":"deepseek","tools":true,"imageInput":false,"probeVersion":"synthetic-history-v1"}'::jsonb)`);
+        values(${enterprises[i]},true,1000,12000000,1000000000,30,'{"runtime":"langgraph-v1","model":"deepseek-flash","providerKey":"deepseek","tools":true,"imageInput":false,"enterpriseKnowledgeEnabled":true,"probeVersion":"synthetic-history-v1"}'::jsonb)`);
     }
   });
   actor = { enterpriseId: enterprises[0], principal: { kind: 'user', userId: users[0] }, contextVersion: 1, capabilities: ['assistant.chat.self'] };
@@ -132,7 +132,7 @@ test('AG01/05: empty original recall ends this run without claiming the customer
 });
 test('AG01: two real Worker threshold crossings retain complete recent turns and all original rows', async () => {
   const id=String((await chat().create(randomUUID())).id);
-  for(let i=0;i<16;i++){await seed(id,`问题${i}：`+'厨房柜体只作比较，不能当作购买决定。'.repeat(25));await seed(id,'比较防潮和清洁。'.repeat(15),'assistant');}
+  for(let i=0;i<16;i++){await seed(id,`问题${i}：`+'厨房柜体只作比较，不能当作购买决定。'.repeat(40));await seed(id,'比较防潮和清洁。'.repeat(15),'assistant');}
   for(let i=0;i<2;i++){
     const result=await ask(id,{model:async()=>response()});assert.equal(result.run.status,'succeeded');
     const step=await withTenantTransaction(actor.enterpriseId,tx=>one(tx,sql`select input_summary from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(result.sent.runId)} and kind='agent_model'`));
@@ -164,13 +164,14 @@ test('AG02/07: a new current correction after recall saves once without inheriti
   const text='请记录：书房夜间使用电脑，但不用音箱。',sent=await chat().send(a.id,randomUUID(),{version:1,blocks:[{type:'text',text}]});
   const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
   await processAgentAnswer(lease,{model:async(messages,_tools,turn)=>{
-    if(!turn){assert.doesNotMatch(JSON.stringify(messages),/书房只作不拆墙的比较/);return {...response(),text:'',toolCalls:[{id:'save',name:'record_need',arguments:JSON.stringify({room:'书房',field:'devices',value:'书房夜间使用电脑，但不用音箱',quote:'书房夜间使用电脑，但不用音箱'})}]};}
+    if(!turn){assert.doesNotMatch(JSON.stringify(messages),/书房只作不拆墙的比较/);return {...response(),text:'',toolCalls:[{id:'save',name:'record_need',arguments:JSON.stringify({room:'书房',field:'use',value:'夜间使用电脑',quote:'请记录：书房夜间使用电脑',additionalNeeds:[{room:'书房',field:'devices',value:'但不用音箱',quote:'但不用音箱'}]})}]};}
     return response('记下了书房的设备使用需求。');
   }});
-  assert.equal((await chat().run(String(sent.runId))).status,'succeeded');
+  const run1=await chat().run(String(sent.runId));
+  assert.equal(run1.status,'succeeded');
   const c=await withTenantTransaction(actor.enterpriseId,tx=>one(tx,sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.id}`));
   const memory=(c!.entry_snapshot as {agentMemory:{version:number;facts:Array<{status:string;value:string}>}}).agentMemory;
-  assert.equal(memory.version,1);assert.equal(memory.facts.filter(f=>f.status==='current').length,1);assert.match(memory.facts[0].value,/不用音箱/);
+  assert.equal(memory.version,2);assert.equal(memory.facts.filter(f=>f.status==='current').length,2);assert.ok(memory.facts.some(f=>/不用音箱/.test(f.value)));
 });
 test('AG05: wrong final format after a real source read repairs once without repeating the source tool',async()=>{
   const id=String((await chat().create(randomUUID())).id);let calls=0,key='';
@@ -308,7 +309,7 @@ test('AG05: directed current-need recall repairs historical save wording once wi
     calls++;
     if(!turn)return recall();
     const cited={sourceId:'H'+source.id,quote:safeText(source.content as Parameters<typeof safeText>[0])};
-    if(turn===2){assert.equal(tools.length,0);assert.match(JSON.stringify(messages),/本轮没有新的需求保存回执/);}
+    if(turn===2){assert.equal(tools.length,0);assert.match(JSON.stringify(messages),/空数组表示本轮未保存/);}
     return {...response(),text:JSON.stringify({kind:'synthesis',segments:[{basis:'evidence',
       text:turn===1?'书房夜间用电脑、不用音箱，属于已保存的客户表达。':'当前工作记录中的表达是：书房夜间用电脑，不用音箱。',citations:[cited]}]})};
   }});
@@ -316,7 +317,7 @@ test('AG05: directed current-need recall repairs historical save wording once wi
   const steps=await withTenantTransaction(actor.enterpriseId,tx=>rows(tx,sql`select kind,capability_name,input_summary from app.assistant_run_steps
     where enterprise_id=${actor.enterpriseId} and run_id=${String(result.sent.runId)}`));
   assert.equal(steps.filter(s=>s.capability_name==='recall_history').length,1);
-  assert.ok(steps.some(s=>s.kind==='agent_validation'&&(s.input_summary as {scope?:string}).scope==='current_need_receipt_wording'));
+  assert.ok(steps.some(s=>s.kind==='agent_validation'&&(s.input_summary as {scope?:string}).scope==='current_need_receipt_and_question'));
   assert.ok(!steps.some(s=>s.kind==='agent_need_write'));
   const c=await withTenantTransaction(actor.enterpriseId,tx=>one(tx,sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${id}`));
   assert.equal((c!.entry_snapshot as {agentMemory:{version:number}}).agentMemory.version,1);
@@ -409,12 +410,14 @@ test('AG07: summary candidates cannot use a different consultation cutoff or a d
 
 test('AG02: explicit current correction skips optional summary and persists exactly one source-linked need', async () => {
   const a=await longChat();let summaries=0;
-  const sent=await chat().send(a.id,randomUUID(),{version:1,blocks:[{type:'text',text:'请记录：书房夜间使用电脑，但不用音箱。'}]});
+  const sent=await chat().send(a.id,randomUUID(),{version:1,blocks:[{type:'text',text:'请记录：书房夜间不用音箱。'}]});
   const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
-  await processAgentAnswer(lease,{summary:async()=>{summaries++;return response();},model:async(_m,_t,turn)=>!turn
-    ? {...response(),text:'',toolCalls:[{id:'save',name:'record_need',arguments:JSON.stringify({room:'书房',field:'devices',value:'书房夜间使用电脑，但不用音箱',quote:'书房夜间使用电脑，但不用音箱'})}]}
-    :response('记下了书房的设备使用需求。')});
-  assert.equal((await chat().run(String(sent.runId))).status,'succeeded');assert.equal(summaries,0);
+  await processAgentAnswer(lease,{summary:async()=>{summaries++;return response();},model:async(messages,_t,turn)=>{
+    if(!turn) return {...response(),text:'',toolCalls:[{id:'save',name:'record_need',arguments:JSON.stringify({room:'书房',field:'devices',value:'夜间不用音箱',quote:'请记录：书房夜间不用音箱',additionalNeeds:[]})}]};
+    return response('记下了书房的设备使用需求。');
+  }});
+  const run2=await chat().run(String(sent.runId));
+  assert.equal(run2.status,'succeeded');assert.equal(summaries,0);
   const c=await withTenantTransaction(actor.enterpriseId,tx=>one(tx,sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.id}`));
   assert.equal((c!.entry_snapshot as {agentMemory:{version:number}}).agentMemory.version,1);
 });

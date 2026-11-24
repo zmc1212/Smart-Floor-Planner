@@ -110,7 +110,10 @@ function isLeadUnavailableError(error) {
 }
 
 async function resolveLeadLifecycle(appointment, role) {
-  const staffSurveyRole = ['measurer', 'enterprise_admin'].includes(role);
+  const staffId = getStaffId();
+  const staffSurveyRole = role === 'enterprise_admin'
+    || (role === 'measurer' && (!appointment.measurerId || appointment.measurerId === staffId))
+    || (role === 'designer' && appointment.designerId === staffId && appointment.measurerId === staffId);
   const lifecycleOpen = appointment.status === 'confirmed' || appointment.status === 'expired';
   const emptyProfile = {
     communityName: '',
@@ -625,7 +628,7 @@ Page({
     if (!appointment || !this.data.canComplete || this.data.acting) return;
     wx.showModal({
       title: '确认完成量房',
-      content: '确认家装现场顾问已完成本次上门服务。此操作会结束当前预约。',
+      content: '确认已完成本次上门量房。此操作会结束当前预约。',
       confirmText: '确认完成',
       success: async (result) => {
         if (result.confirm) await this.updateStatus('complete', { version: appointment.version }, '预约已完成');

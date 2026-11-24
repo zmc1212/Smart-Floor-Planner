@@ -4,6 +4,17 @@
   </button>
 </template>
 
+<template name="inspection-summary">
+  <button class="workbench-paper inspection-summary" bindtap="openInspection">
+    <view class="inspection-summary-copy">
+      <text class="workbench-section-title">巡检待办</text>
+      <text class="workbench-meta">{{inspection.count}} 项待到场 · {{inspection.projects}} 个工地</text>
+      <text wx:if="{{inspection.next}}" class="record-title">优先查看 · {{inspection.next}}</text>
+    </view>
+    <view class="workbench-chevron" />
+  </button>
+</template>
+
 <view class="site-workbench">
   <image class="workbench-texture" src="../assets/notebook/capture-v3-paper.png" mode="aspectFill" />
   <view class="book-spine"><view wx:for="{{[10.2,32.9,53.4,83.6]}}" wx:key="*this" class="book-stitch" style="top:{{item}}%"/></view>
@@ -26,7 +37,8 @@
         </view>
         <text wx:if="{{model.hasMoreProjects}}" class="workbench-meta summary-note">以上汇总当前简报中的 {{model.items.length}} 个工地。</text>
         <text wx:if="{{model.unverified}}" class="workbench-meta summary-note">部分工地进度待核实。</text>
-        <view wx:if="{{model.pendingReport}}" class="workbench-paper manager-draft boss-pending">
+        <template wx:if="{{model.inspection}}" is="inspection-summary" data="{{inspection: model.inspection}}" />
+        <view wx:elif="{{model.pendingReport}}" class="workbench-paper manager-draft boss-pending">
           <text class="workbench-fabric">待审核上报</text>
           <view class="record-copy">
             <text class="record-title draft-title">{{model.pendingReport.title}}</text>
@@ -80,11 +92,7 @@
             </view>
 
             <view wx:if="{{model.canCapture}}" class="workbench-section capture-section">
-              <text class="workbench-section-title">现场上报</text>
-              <view class="capture-actions">
-                <button class="workbench-primary" data-action="photo" bindtap="capture"><image src="../assets/notebook/capture-camera.png" mode="aspectFit" />拍照</button>
-                <button class="workbench-primary" data-action="voice" bindtap="capture"><image src="../assets/notebook/capture-mic.png" mode="aspectFit" />说一句</button>
-              </view>
+              <button class="workbench-primary" bindtap="capture" aria-label="现场上报"><image src="../assets/notebook/capture-camera.png" mode="aspectFit" />现场上报</button>
             </view>
             <text wx:else class="workbench-meta capture-paused">当前工地已暂停上报，请联系施工经理。</text>
 
@@ -126,7 +134,18 @@
             </button>
           </block>
           <block wx:elif="{{model.view === 'manager'}}">
-            <view class="workbench-section">
+            <block wx:if="{{model.inspection}}">
+              <button class="workbench-paper inspection-summary inspection-route-entry" bindtap="openInspectionRoute">
+                <view class="inspection-summary-copy">
+                  <text class="workbench-section-title">{{resumeInspection ? '继续巡检' : '现场巡检'}}</text>
+                  <text class="workbench-meta">{{model.inspection.count ? model.inspection.count + ' 项待到场 · ' + model.inspection.projects + ' 个工地' : '目前暂无待到场事项'}}</text>
+                  <text wx:if="{{model.inspection.next}}" class="record-title">优先查看 · {{model.inspection.next}}</text>
+                </view>
+                <view class="workbench-chevron" />
+              </button>
+              <button class="workbench-row workbench-link inspection-review-entry" bindtap="openInspection">待审核上报<view class="workbench-chevron" /></button>
+            </block>
+            <view wx:else class="workbench-section">
               <text class="workbench-fabric">待审核上报</text>
               <view wx:if="{{model.draft}}" class="workbench-paper manager-draft">
                 <view class="draft-source">
@@ -150,7 +169,8 @@
             <button class="workbench-row workbench-link" bindtap="openProject">查看工地<view class="workbench-chevron" /></button>
           </block>
           <block wx:else>
-            <view wx:if="{{model.pendingReport}}" class="workbench-section">
+            <template wx:if="{{model.inspection}}" is="inspection-summary" data="{{inspection: model.inspection}}" />
+            <view wx:elif="{{model.pendingReport}}" class="workbench-section">
               <text class="workbench-fabric">待审核上报</text>
               <view class="workbench-paper manager-draft">
                 <view class="draft-source">
@@ -179,7 +199,7 @@
               <text wx:if="{{!model.changes.length}}" class="workbench-meta workbench-empty">暂无待核对变更</text>
             </view>
           </block>
-          <button class="workbench-row workbench-link {{model.view === 'designer' ? 'designer-report' : ''}}" bindtap="openReports">
+          <button wx:if="{{model.view !== 'worker'}}" class="workbench-row workbench-link {{model.view === 'designer' ? 'designer-report' : ''}}" bindtap="openReports">
             <image wx:if="{{model.view === 'designer'}}" src="../assets/notebook/file.png" mode="aspectFit" /><text class="row-title">工地日报与周报</text><view class="workbench-chevron" />
           </button>
         </block>
@@ -190,7 +210,7 @@
     </view>
   </scroll-view>
 
-  <view wx:if="{{showCalendar}}" class="overlay is-open" catchtouchmove="noop">
+  <view wx:if="{{showCalendar}}" class="overlay is-open" style="z-index:1200" catchtouchmove="noop">
     <view class="sheet calendar-sheet">
       <view class="sheet-tag-row">
         <text class="sheet-fabric">选择日期</text>
@@ -227,7 +247,7 @@
     </view>
   </view>
 
-  <view wx:if="{{showDetail}}" class="overlay is-open" catchtouchmove="noop">
+  <view wx:if="{{showDetail}}" class="overlay is-open" style="z-index:1200" catchtouchmove="noop">
     <view class="sheet detail-sheet">
       <view class="detail-heading">
         <text class="sheet-fabric">上报详情</text>
@@ -241,6 +261,7 @@
             <view class="detail-status-copy">
               <text class="workbench-tag {{detail.statusClass}}">{{detail.statusLabel}}</text>
               <text wx:if="{{detail.approvedByName}}" class="workbench-meta">审核人 {{detail.approvedByName}} · {{detail.approvedAt}}</text>
+              <text wx:if="{{detail.inspectionNote}}" class="workbench-meta">到场核查 · {{detail.inspectionNote}}</text>
               <text wx:elif="{{detail.statusClass === 'pending'}}" class="workbench-meta">等待施工经理、设计师或老板审核</text>
             </view>
             <view class="detail-check {{detail.statusClass}}">✓</view>

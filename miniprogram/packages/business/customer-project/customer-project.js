@@ -329,7 +329,7 @@ Page({
         publishedDesigns,
         stages: buildProjectStages(project),
         heroTitle: project.heroTitle || '',
-        heroSubtitle: '现场顾问与设计方案全记录',
+        heroSubtitle: measurerName ? '现场顾问与设计方案全记录' : '上门量房与设计方案全记录',
         navSubtitle: project.navSubtitle || '',
         serviceStageLabel: project.serviceStageLabel || '',
         terminationType: project.terminationType || null,
@@ -341,7 +341,7 @@ Page({
         showBookingPanel: shouldShowBookingPanel({ ...project, formalFloorPlan, appointment, canRebook, canReschedule }),
         appointmentBadge: measurerName ? '已匹配家装现场顾问' : (project.serviceStageLabel || '服务准备中'),
         bookingHint: canRebook && !appointment
-          ? '选择方便的时间，家装现场顾问会提前与你确认'
+          ? '选择方便的时间，设计师会提前与你确认'
           : (project.nextAction || ''),
         error: '',
       });

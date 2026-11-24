@@ -17,6 +17,7 @@ async function notifyExpiry(appointment: {
   designerId: bigint;
   measurerId: bigint;
   address: string;
+  contactPhone?: string | null;
   timeRange: string;
   updatedAt: Date;
   version: number;
@@ -29,6 +30,7 @@ async function notifyExpiry(appointment: {
       designerId: appointment.designerId,
       measurerId: appointment.measurerId,
       address: appointment.address,
+      contactPhone: appointment.contactPhone,
       startsAt,
       eventKey,
       eventType: 'expired',
@@ -38,6 +40,7 @@ async function notifyExpiry(appointment: {
           enterpriseId: appointment.enterpriseId,
           leadId: appointment.leadId,
           address: appointment.address,
+          contactPhone: appointment.contactPhone,
           startsAt,
           eventType: 'expired',
         })

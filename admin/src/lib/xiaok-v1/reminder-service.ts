@@ -93,6 +93,7 @@ async function reminderFacts(tx: PostgresTransaction, eid: string, project: Row,
         key: node.key, stageId: stageForConstructionKey(node.stageKey)?.stageId ?? null,
         roomId: node.roomId, roomName: node.roomName, plannedStart: node.plannedStart, plannedEnd: node.plannedEnd,
         color: node.color, completion: node.constructionStatus,
+        ...(node.timeKind ? { managementOnly: true } : {}),
       })),
     },
     pending: {

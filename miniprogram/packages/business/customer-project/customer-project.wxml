@@ -17,7 +17,7 @@
       <view class="hero-top-row">
         <view class="hero-text-wrap">
           <text class="hero-title">您的家装顾问</text>
-          <text class="hero-subtitle">现场顾问与设计方案全记录</text>
+          <text class="hero-subtitle">{{heroSubtitle}}</text>
         </view>
         <image class="hero-mascot" src="/images/airy-v1/project-delivery-xiao-k.png" mode="aspectFit" aria-label="正在整理服务档案的小K" />
       </view>
@@ -47,7 +47,7 @@
             <view class="booking-badge">{{appointmentBadge || '服务准备中'}}</view>
           </view>
           <text wx:if="{{appointment && range}}" class="booking-helper">{{range.date}} {{range.time}}{{appointment.address ? ' · ' + appointment.address : ''}}</text>
-          <text wx:else class="booking-helper">{{bookingHint || '选择方便的时间，家装现场顾问会提前与你确认'}}</text>
+          <text wx:else class="booking-helper">{{bookingHint || '选择方便的时间，设计师会提前与你确认'}}</text>
         </view>
       </view>
       <view class="booking-actions">
@@ -64,8 +64,8 @@
     </view>
 
     <view class="service-team {{isTerminated ? 'is-readonly' : ''}}">
-      <text class="group-title">服务小组</text>
-      <view class="personnel-grid">
+      <text class="group-title">{{measurerName ? '服务小组' : '负责设计师'}}</text>
+      <view class="personnel-grid {{measurerName ? '' : 'is-single'}}">
         <view class="person-card is-designer" bindtap="contactDesigner" aria-role="button" aria-label="联系家装设计顾问">
           <view class="person-heading">
             <view class="person-icon-well">
@@ -97,6 +97,7 @@
         </view>
 
         <view
+          wx:if="{{measurerName}}"
           class="person-card is-measurer"
           bindtap="callStaff"
           data-phone="{{measurerPhone}}"

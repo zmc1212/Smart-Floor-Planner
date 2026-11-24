@@ -1,4 +1,4 @@
-<view wx:if="{{!keyboardHidden}}" class="customer-navigation {{floating ? 'customer-floating' : ''}} {{items[selected].key === 'service' ? 'site-navigation' : ''}}">
+<view wx:if="{{!keyboardHidden}}" class="customer-navigation {{floating ? 'customer-floating' : ''}}">
   <view class="tabbar">
     <view wx:for="{{items}}" wx:key="key" class="tab-item tab-key-{{item.key}} {{selected === index ? 'active' : ''}}" data-index="{{index}}" bindtap="switchTab" aria-role="button" aria-label="{{item.text + (item.key === 'service' && reminderBadge ? '，' + reminderBadge + '条未读提醒' : '')}}">
       <view class="tab-icon">

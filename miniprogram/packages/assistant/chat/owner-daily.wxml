@@ -20,8 +20,8 @@
     <text wx:if="{{report.truncated}}" class="followup-caption">本份简报只包含部分工地。</text>
     <text wx:if="{{report.factsOnly}}" class="followup-caption">这份简报只整理了现场记录，还没有工艺建议。</text>
     <view class="followup-actions">
-      <button class="followup-card-action" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">查看完整日报</button>
-      <button class="followup-card-action followup-primary" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="askFollowupReport" disabled="{{reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending}}">问这份报告</button>
+      <button class="followup-card-action chat-button" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="readFollowupReport">查看完整日报</button>
+      <button class="followup-card-action followup-primary chat-button {{(reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending) ? 'is-disabled' : ''}}" data-report="{{report.reportId}}" data-revision="{{report.revision}}" bindtap="askFollowupReport" disabled="{{reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending}}">问这份报告</button>
     </view>
   </view>
 </template>

@@ -19,13 +19,15 @@
 | 老板（企业负责人） | 杨超 | 9 | `13886667288` | `JingyiTest2026!` | `enterprise_admin` | 企业 3 | 项目 5 `manager`（项目经理） |
 | 设计师 | 精艺智家简勇 | 10 | `wx_10_4eea0a637b30` | `JingyiTest2026!` | `designer` | 企业 3 | 项目 5 `designer` |
 | 施工人员 | 精艺施工经理 | 31 | `staff_e3_jingyi_manager` | `JingyiTest2026!` | `construction_staff` | 企业 3 | 项目 5 `worker` |
+| 工人 | 精艺水电工 | 32 | `staff_e3_jingyi_worker` | `JingyiTest2026!` | `construction_staff` | 企业 3 | 项目 5 `worker`，工作标签「水电」，工种「水电」 |
 
-辅助身份（不用于本轮三端验收）：
+辅助身份与账号说明：
 
 | 身份 | 说明 |
 | --- | --- |
 | 业主 高容海（用户 2，手机号 `15997671595`） | 使用微信手机号快捷登录，无密码；已绑定企业 3 与项目 5 的客户可见范围 |
 | 施工经理账号 | staffId 31 同时承担施工人员端与现场施工经理职责，项目成员角色为 `worker` |
+| 一线工人账号 | staffId 32 为带工种的一线工人（水电），用于施工人员端与「阶段分工」的普通工人场景；与 staffId 31 的区别是工作标签和工种，不是新角色 |
 
 ## 3. 凭据处理说明（如实记录）
 
@@ -39,15 +41,28 @@
   `13907170031`（未验证的开发占位号，不可用于短信、拨号或真实微信手机号授权）。
   原因是 `app.construction_miniprogram_access()` 要求关联用户 `phone` 非空，否则返回
   `construction_forbidden`。
-- 三个账号在登录后均可读取项目 5，且 `my_role` 分别为 `manager`、`designer`、`worker`；
+- 工人（id 32）于 2026-11-18 通过后台员工创建接口 `POST /api/staff` 新建：角色
+  `construction_staff`、工种「水电」、测试手机号 `13907170032`（与 13907170031 同批的未验证
+  开发占位号，不可用于短信、拨号或真实微信手机号授权）。创建时 `must_change_password`
+  为 `true`，随后由账号本人经小程序 `PUT /api/miniprogram/account/password` 改为上述测试
+  密码，未直接改库；再以管理员会话 `POST /api/construction/projects/5/member` 加入项目 5，
+  角色 `worker`、`work_label=水电`，项目版本 2→3。验证：密码登录返回 `staffId=32`、
+  `requiresPasswordChange=false`；项目列表仅项目 5、`my_role=worker`、`my_work_label=水电`；
+  详情 `manage=false`、6 个房间；工地交流
+  `GET /api/miniprogram/construction/projects/5/chat` 返回 200、`conversationId=25`。
+  证据见 `tmp/worker-account-20261118/02-create.json`、`03-member.json`、`04-verify.json`。
+- 2026-11-17 的三个账号在登录后均可读取项目 5，且 `my_role` 分别为 `manager`、`designer`、`worker`；
   证据见 `tmp/enterprise3-accounts/login-check.json` 与 `tmp/enterprise3-accounts/relogin-probe.mjs`
   的运行输出。
-- 上述改动只影响企业 3 的这三个测试员工账号；未修改业主、其他员工、项目、报告、提醒或
-  通知配置，未发送真实外部通知。
+- 上述 2026-11-17 的改动只影响这三个测试员工账号；2026-11-18 新增的工人（id 32）只新增
+  员工账号、项目 5 的成员关系与一条成员变更审计（项目版本 2→3）。两者均未修改业主、其他
+  员工、报告、提醒或通知配置，未发送真实外部通知。
 
 ## 4. 使用注意
 
-- 这三个账号用于企业 3 的试点验收与回归，不要用于真实客户沟通或对外演示以外的用途。
+- 这四个账号用于企业 3 的试点验收与回归，不要用于真实客户沟通或对外演示以外的用途。
+- 工人账号可在项目详情「阶段分工」中被分配到具体阶段；当前项目 5 各阶段尚未分配员工，
+  属于项目数据现状，不是账号问题。
 - 若后续需要恢复初始状态，按现有员工重置密码流程重新生成临时密码即可；不要删除账号或
   项目成员关系，否则会破坏已有报告、提醒和聊天归属。
-- 设计师、施工人员走小程序员工登录；老板既可走小程序员工登录，也可登录后台。
+- 设计师、施工人员、工人走小程序员工登录；老板既可走小程序员工登录，也可登录后台。

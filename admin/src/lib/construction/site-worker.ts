@@ -12,6 +12,8 @@ import { recordVersion } from './site-chat';
 import { constructionAccess } from './service';
 import { transcribeCapturedSpeech } from './site-capture-speech';
 import { transcribeLocal } from '@/lib/assistant/speech/local';
+import { readInspectionSuggestion } from './inspection-policy';
+import { readStageSettings } from './stages-store';
 
 type Model = (messages: ModelMessage[]) => Promise<ModelTurnOutput>;
 function ownerAccess(tx: Parameters<typeof runContext>[0], lease: Lease) {
@@ -40,7 +42,7 @@ export async function processSiteRecord(lease: Lease, model?: Model, transcribe 
     const initial = await scoped(async (tx, r, context) => {
       const source = await one(tx, sql`select content from app.assistant_messages where enterprise_id=${lease.enterpriseId} and conversation_id=${String(r.conversation_id)} and id=${String(r.source_message_id)} and author_kind='admin'`);
       if (!source) fail('context_changed');
-      const speech = await one(tx, sql`select transcript from app.assistant_speech_assets where enterprise_id=${lease.enterpriseId}
+      const speech = await one(tx, sql`select id::text,transcript from app.assistant_speech_assets where enterprise_id=${lease.enterpriseId}
         and conversation_id=${String(r.conversation_id)} and message_id=${String(r.source_message_id)} and deleted_at is null`);
       const rooms = await rows(tx, sql`select id::text,name from app.construction_rooms where enterprise_id=${lease.enterpriseId} and project_id=${String(r.project_id)} order by id`);
       const media = await rows(tx, sql`select m.id::text,m.source_hash,m.mime_type,m.data from app.construction_site_attachments x join app.construction_site_media m on m.enterprise_id=x.enterprise_id and m.project_id=x.project_id and m.id=x.media_id
@@ -49,12 +51,17 @@ export async function processSiteRecord(lease: Lease, model?: Model, transcribe 
       // Human review keeps every original photo; the organizer reads at most
       // four to bound image tokens and latency.
       const images = config?.imageInput ? media.slice(0, 4).map(m => ({ type: 'image' as const, mediaId: String(m.id), hash: String(m.source_hash), mimeType: 'image/jpeg' as const, data: (m.data as Buffer).toString('base64') })) : [];
+      const selected = Array.isArray(r.stage_snapshot) ? (r.stage_snapshot as { key: string }[]).map(stage => stage.key) : [];
+      const { stages } = await readStageSettings(tx, lease.enterpriseId);
+      const checkpoints = stages.filter(stage => selected.includes(stage.key)).flatMap(stage => stage.inspectionCheckpoints?.map(item => item.name) || []);
+      const originalText = [safeText(source.content as Parameters<typeof safeText>[0]), speech?.transcript].filter(Boolean).join('\n');
       const messages: ModelMessage[] = [{ role: 'system', content: [{ type: 'text', text: siteDraftPrompt }] }, { role: 'user', content: [
-        { type: 'text', text: JSON.stringify({ rooms, originalText: [safeText(source.content as Parameters<typeof safeText>[0]), speech?.transcript].filter(Boolean).join('\n'), photoCount: media.length,
-          imageInput: !!images.length, instruction: images.length ? '照片仅辅助辨认部位；事实以原话为准。' : '没有提供图片像素，不可描述照片内容。' }) }, ...images] }];
+        { type: 'text', text: JSON.stringify({ rooms, originalText, photoCount: media.length, checkpoints,
+          imageInput: !!images.length, instruction: images.length ? '照片可以辅助辨认部位和判断要怎么人工核查。' : '没有提供图片像素，不可描述照片内容。' }) }, ...images] }];
       const cached = await one(tx, sql`select status,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=1100`);
-      if (cached && ((cached.input_summary as Row)?.promptVersion !== sitePromptVersion || cached.status !== 'succeeded')) fail('provider_outcome_unknown');
-      return { r, rooms, config, messages, cached: cached?.private_checkpoint as ModelTurnOutput | undefined };
+      if (cached && (![sitePromptVersion, 'xiaok-site-record-v2'].includes(String((cached.input_summary as Row)?.promptVersion)) || cached.status !== 'succeeded')) fail('provider_outcome_unknown');
+      const evidence = { mediaIds: images.map(image => image.mediaId), speechId: speech?.transcript ? String(speech.id) : null };
+      return { r, rooms, config, messages, evidence, originalText, cached: cached?.private_checkpoint as ModelTurnOutput | undefined };
     });
     await heartbeat(lease);
     const before = () => scoped(async tx => {
@@ -83,7 +90,10 @@ export async function processSiteRecord(lease: Lease, model?: Model, transcribe 
       await scoped(async tx => { await tx.execute(sql`update app.assistant_run_steps set status='succeeded',provider_attempt_id=${attemptId},private_checkpoint=${JSON.stringify(output)}::jsonb
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=1100`); });
     } else returned = true;
-    const draft = parseSiteDraft(siteDraftOutput(output), initial.rooms.map(r => String(r.id)));
+    const { inspectionMode, inspectionReason, inspectionPriority, ...fields } = JSON.parse(siteDraftOutput(output));
+    const draft = parseSiteDraft(JSON.stringify(fields), initial.rooms.map(r => String(r.id)));
+    const suggestion = (initial.originalText || initial.evidence.mediaIds.length)
+      ? readInspectionSuggestion({ mode: inspectionMode, reason: inspectionReason, priority: inspectionPriority }, initial.evidence) : null;
     // Selecting a returned original explicitly selects its known location. A
     // photo-only retake keeps that business fact; it is not inferred from pixels.
     if (!draft.roomId && initial.r.resubmission_of_id && initial.r.room_id) draft.roomId = String(initial.r.room_id);
@@ -97,7 +107,8 @@ export async function processSiteRecord(lease: Lease, model?: Model, transcribe 
       if (!await ownerAccess(tx, lease) && !await one(tx, sql`select admin_id from app.construction_members where enterprise_id=${lease.enterpriseId} and project_id=${String(r.project_id)} and admin_id=${aid}
         and active and role<>'observer' and (role='manager' or admin_id=${String(r.author_id)}) for share`)) fail('context_changed');
       if (draft.roomId && !await one(tx, sql`select id from app.construction_rooms where enterprise_id=${lease.enterpriseId} and project_id=${String(r.project_id)} and id=${draft.roomId} and name=${String(initial.rooms.find(r => r.id === draft.roomId)?.name)}`)) fail('context_changed');
-      const updated = (await one(tx, sql`update app.construction_site_records set data=${JSON.stringify(draft)}::jsonb,room_id=${draft.roomId},room_name_snapshot=${String(initial.rooms.find(room => room.id === draft.roomId)?.name || '')},status='draft',version=version+1,updated_at=now()
+      const updated = (await one(tx, sql`update app.construction_site_records set data=${JSON.stringify(draft)}::jsonb,room_id=${draft.roomId},room_name_snapshot=${String(initial.rooms.find(room => room.id === draft.roomId)?.name || '')},status='draft',version=version+1,updated_at=now(),
+        inspection_suggestion=${suggestion ? JSON.stringify(suggestion) : null}::jsonb
         where enterprise_id=${lease.enterpriseId} and id=${String(r.id)} returning *`))!;
       await recordVersion(tx, lease.enterpriseId, updated, lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : '', 'organized');
     });

@@ -269,6 +269,10 @@ test('Web handoff gives platform managers selected-enterprise access to consenti
 });
 
 before(async()=>{
+  // Knowledge-enabled runs must read the local pgvector index rather than an
+  // unconfigured managed provider; the missing answer model must stay the only
+  // failure this suite asserts.
+  process.env.ASSISTANT_KNOWLEDGE_PROVIDER = 'local';
   const url=new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['localhost','127.0.0.1'].includes(url.hostname));
   assert.equal(url.port, process.env.XIAOK_ISOLATED_POSTGRES_PORT || '55432');

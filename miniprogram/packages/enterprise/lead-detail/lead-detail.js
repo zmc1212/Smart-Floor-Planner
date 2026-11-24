@@ -451,6 +451,8 @@ Page({
     this.setData({
       lead,
       staffRole,
+      showMeasurerContact: Boolean(lead.measurerId && staffIdOf(lead.measurerId) !== staffIdOf(lead.assignedTo)
+        && !(lead.appointment && lead.appointment.designerHandlesVisit)),
       statusLabel: lead.serviceStageLabel || STATUS_LABELS[lead.status] || lead.status || '新线索',
       nextAction: lead.nextAction || getNextAction(lead.status),
       stageRail: buildStageRail(lead.status),

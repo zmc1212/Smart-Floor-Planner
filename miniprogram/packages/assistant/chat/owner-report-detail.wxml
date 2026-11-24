@@ -2,7 +2,7 @@
 <import src="./report-sections.wxml" />
 <view class="followup-sheet followup-detail-sheet followup-owner-detail">
 <view class="followup-grip"></view>
-<button class="followup-close" bindtap="closeFollowupReport" aria-label="关闭报告"><image src="../assets/x.png"/></button>
+<button class="followup-close chat-button" bindtap="closeFollowupReport" aria-label="关闭报告"><image class="chat-image" src="../assets/x.png"/></button>
 <view class="followup-detail-heading">
 <text class="followup-detail-title">{{followupDetail.takeoverTitle}}</text>
 <text class="followup-project-name">{{followupContext.title}}</text>
@@ -14,25 +14,25 @@
 <view class="followup-section followup-owner-detail-progress">
 <view class="followup-owner-section-head">
 <text class="fabric-label">{{followupDetail.detailProgressLabel}}</text>
-<view class="followup-original-links"><button wx:for="{{project.originalIds}}" wx:key="*this" class="followup-text-action followup-owner-original" data-project="{{project.id}}" data-record="{{item}}" bindtap="readFollowupOriginal" disabled="{{followupOriginalLoading}}">查看原记录{{project.originalIds.length > 1 ? ' ' + item : ''}} ↗</button></view>
+<view class="followup-original-links"><button wx:for="{{project.originalIds}}" wx:key="*this" class="followup-text-action followup-owner-original chat-button {{(followupOriginalLoading) ? 'is-disabled' : ''}}" data-project="{{project.id}}" data-record="{{item}}" bindtap="readFollowupOriginal" disabled="{{followupOriginalLoading}}">查看原记录{{project.originalIds.length > 1 ? ' ' + item : ''}} ↗</button></view>
 </view>
 <text wx:for="{{project.progress}}" wx:key="key" class="followup-line" user-select>{{item.text}}</text>
 <text wx:if="{{!project.progress.length}}" class="followup-line">这一天还没有上传现场进展，等团队更新后我补给你。</text>
 <text wx:if="{{project.recordsTruncated}}" class="followup-caption">本项目记录达到读取上限，未包含全部记录。</text>
 </view>
 <view class="followup-section followup-owner-detail-pending">
-<view class="followup-owner-section-head"><text class="followup-tag">待你确认</text></view>
-<template is="report-pending" data="{{project, followupDetail, followupBusy, followupPending}}"/>
+<view class="followup-owner-section-head"><text class="followup-tag">{{reportBoard ? '待沟通与提醒' : '待你确认'}}</text></view>
+<template is="report-pending" data="{{project, followupDetail, followupBusy, followupPending, reportBoard}}"/>
 </view>
-<view class="followup-section followup-owner-detail-process"><view class="followup-owner-section-head"><text class="fabric-label">工艺关注</text><button wx:if="{{project.knowledgeSources.length}}" class="followup-text-action followup-owner-original" data-project="{{project.id}}" bindtap="openReportSource">查看工艺依据 ↗</button></view><template is="report-standards" data="{{project, followupDetail, followupBusy, followupPending}}"/></view>
+<view class="followup-section followup-owner-detail-process"><view class="followup-owner-section-head"><text class="fabric-label">工艺关注</text><button wx:if="{{project.knowledgeSources.length}}" class="followup-text-action followup-owner-original chat-button" data-project="{{project.id}}" bindtap="openReportSource">查看工艺依据 ↗</button></view><template is="report-standards" data="{{project, followupDetail, followupBusy, followupPending}}"/></view>
 <view class="followup-section followup-owner-detail-arrangements">
 <view class="followup-owner-section-head"><text class="fabric-label">已确认安排</text></view>
 <template is="report-arrangements" data="{{project, followupDetail, followupBusy, followupPending}}"/>
 </view>
 </block>
 <text wx:if="{{followupDetail.truncated}}" class="followup-caption">这份简报只包含部分工地。</text>
-<view class="followup-caption followup-footnote"><text>简报只反映已上传的现场记录，</text><text>不代替现场验收。</text></view>
-<view wx:if="{{followupError || followupPending}}" class="followup-feedback"><text>{{followupPending ? '上次操作结果正在核对。' : followupError}}</text><button wx:if="{{followupPending}}" bindtap="recoverFollowup" disabled="{{followupBusy}}">核对上次操作</button></view>
+<view class="followup-caption followup-footnote"><text class="chat-text">简报只反映已上传的现场记录，</text><text class="chat-text">不代替现场验收。</text></view>
+<view wx:if="{{followupError || followupPending}}" class="followup-feedback"><text>{{followupPending ? '上次操作结果正在核对。' : followupError}}</text><button class="chat-button {{(followupBusy) ? 'is-disabled' : ''}}" wx:if="{{followupPending}}" bindtap="recoverFollowup" disabled="{{followupBusy}}">核对上次操作</button></view>
 </scroll-view>
-<button class="followup-detail-ask followup-primary" bindtap="askFollowupReport" disabled="{{followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending || !followupDetail.available || !followupDetail.ready}}">问这份报告</button>
+<button class="followup-detail-ask followup-primary chat-button {{(followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending || !followupDetail.available || !followupDetail.ready) ? 'is-disabled' : ''}}" bindtap="askFollowupReport" disabled="{{followupChat.reception || reportQuestion.disabled || reportQuestion.busy || reportQuestion.pending || !followupDetail.available || !followupDetail.ready}}">问这份报告</button>
 </view>

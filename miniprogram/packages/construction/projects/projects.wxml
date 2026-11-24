@@ -1,11 +1,15 @@
 <!-- Approved 2026-11-07 cloud-site notebook: list01/detail02; real services and original management sheets. -->
-<view class="construction-page {{detail ? 'has-detail' : ''}}">
+<import src="./schedule.wxml" />
+<view class="construction-page {{detail && !scheduleOpen ? 'has-detail' : ''}}">
   <view class="book-spine"><view wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this" class="book-stitch" style="top:{{88 + item * 130}}px"/></view>
-  <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png"/></button><text class="book-nav-title">{{detail ? '我的工地' : '云工地'}}</text></view>
+  <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png"/></button><text class="book-nav-title">{{scheduleOpen ? '施工计划' : detail ? '我的工地' : '云工地'}}</text></view>
   <view class="content">
     <view wx:if="{{pending}}" class="feedback"><text>上次提交结果待核对，请核对同一次操作。</text><button class="outline" loading="{{busy}}" disabled="{{busy}}" bindtap="sendPending">核对上次提交</button></view>
     <view wx:if="{{loading}}" class="state">正在读取工地…</view>
     <view wx:elif="{{error}}" class="state"><text>{{error}}</text><button class="primary" bindtap="load">重新读取</button><button class="outline" bindtap="openIdentities">切换身份</button></view>
+    <block wx:elif="{{scheduleOpen && detail.progress.management}}">
+      <template is="schedule-plan" data="{{detail, busy, pending, focusNode}}" />
+    </block>
     <block wx:elif="{{detail}}">
       <view class="detail-heading"><view class="detail-title"><text class="page-title">{{detail.project.name}}</text><text class="stage-tag">{{detail.project.statusLabel}}</text></view><view class="detail-subtitle"><text class="helper">当前身份：{{detail.roleLabel}}</text><button wx:if="{{detail.manage}}" class="book-link management-entry" bindtap="openManagement" disabled="{{busy || pending}}">工地管理 ↗</button></view></view>
       <view class="paper progress-paper"><text class="fabric">当前阶段</text><text class="stage-name">{{detail.project.stageName}}</text><text wx:if="{{detail.project.progress_note}}" class="body-text">{{detail.project.progress_note}}</text><view wx:if="{{detail.manage}}" class="progress-tools"><button class="outline" disabled="{{busy || pending || detail.project.status !== 'active'}}" bindtap="openProgress">更新阶段</button></view></view>
@@ -25,10 +29,11 @@
       </view>
       <view wx:if="{{detail.progress}}" class="paper schedule-paper">
         <view class="section-heading"><text class="fabric">计划进度{{detail.progress.available ? ' · V' + detail.progress.version : ''}}</text><text class="tone-label tone-{{detail.progress.overall.color}}">{{detail.progress.overall.label}}</text></view>
-        <text class="helper">提前 {{detail.progress.counts.green}} · 正常 {{detail.progress.counts.yellow}} · 落后 {{detail.progress.counts.red}} · 待核实 {{detail.progress.counts.gray}}</text>
+        <button wx:if="{{detail.progress.management}}" class="text-action" bindtap="openSchedule" disabled="{{busy || pending}}">管理计划 ›</button>
+        <text wx:if="{{!detail.progress.management.milestones.length}}" class="helper">提前 {{detail.progress.counts.green}} · 正常 {{detail.progress.counts.yellow}} · 落后 {{detail.progress.counts.red}} · 待核实 {{detail.progress.counts.gray}}</text>
         <view wx:for="{{detail.progress.nodes}}" wx:key="key" id="schedule-{{item.key}}" class="issue-row {{focusNode === item.key ? 'is-focused' : ''}}" data-key="{{item.key}}">
           <view class="issue-head"><text class="label">{{item.title}}</text><text class="tone-label tone-{{item.color}}">{{item.label}}</text></view>
-          <text class="helper">计划 {{item.dateText}}</text>
+          <text class="helper">{{item.timeText || '计划 ' + item.dateText}}</text>
           <text class="helper">{{item.reason}}</text>
         </view>
         <text wx:if="{{!detail.progress.nodes.length}}" class="helper">{{detail.progress.text}}</text>
@@ -94,7 +99,7 @@
       <view class="detail-footer"><button class="primary detail-cta" bindtap="openChat" disabled="{{busy || pending || detail.project.status === 'archived'}}"><image class="book-icon" src="../assets/notebook/chat-white.png"/>进入工地交流</button></view>
     </block>
     <block wx:else>
-      <view class="projects-header"><text class="page-title">我的工地</text><text class="helper">{{owner ? '企业工地' : '施工团队'}} · {{items.length}}个项目</text><image class="projects-art" src="../assets/notebook/xiaok-projects.png" mode="aspectFit" aria-hidden="true"/><button wx:if="{{canBrief}}" class="book-link brief-link" disabled="{{pending}}" bindtap="openBrief">项目简报 ↗</button><button wx:if="{{!owner}}" class="book-link weekly-link" bindtap="openWeeklyReport">本周周报 ↗</button></view>
+      <view class="projects-header {{owner ? 'brief-only' : ''}}"><text class="page-title">我的工地</text><text class="helper">{{owner ? '企业工地' : '施工团队'}} · {{items.length}}个项目</text><image class="projects-art" src="../assets/notebook/xiaok-projects.png" mode="aspectFit" aria-hidden="true"/><view class="projects-links"><button wx:if="{{!owner}}" class="book-link" bindtap="openWeeklyReport">本周周报 ↗</button><button wx:if="{{canBrief}}" class="book-link" disabled="{{pending}}" bindtap="openBrief">项目简报 ↗</button></view></view>
       <view wx:if="{{workbenchLoading || workbench.length || workbenchError}}" class="paper workbench-paper">
         <view class="section-heading"><text class="fabric">我的待办</text><text class="helper">{{workbenchTotal}}条 · 来自你负责的工地</text><button class="text-action" bindtap="load" disabled="{{loading}}">刷新</button></view>
         <text wx:if="{{workbenchLoading}}" class="helper">正在读取待办…</text>
@@ -114,8 +119,11 @@
   </view>
   <view wx:if="{{sheet}}" class="overlay {{sheetOpen ? 'is-open' : ''}}" bindtap="closeSheet" catchtouchmove="stop">
     <view class="sheet" catchtap="stop">
-      <view class="section-heading"><text class="section-title">{{sheet === 'manage' ? '工地管理' : sheet === 'stages' ? '阶段分工' : sheet === 'members' ? '工地成员' : sheet === 'progress' ? '更新施工阶段' : sheet === 'member' ? '添加工地成员' : stageName + ' · 阶段分工'}}</text><button class="text-action sheet-close" bindtap="closeSheet">关闭</button></view>
-      <scroll-view scroll-y class="sheet-body">
+      <view class="section-heading"><text class="section-title">{{sheet === 'schedule' ? scheduleForm.title : sheet === 'manage' ? '工地管理' : sheet === 'stages' ? '阶段分工' : sheet === 'members' ? '工地成员' : sheet === 'progress' ? '更新施工阶段' : sheet === 'member' ? '添加工地成员' : stageName + ' · 阶段分工'}}</text><button class="text-action sheet-close" bindtap="closeSheet">关闭</button></view>
+      <block wx:if="{{sheet === 'schedule'}}">
+        <template is="schedule-editor" data="{{detail, scheduleForm, pending, busy}}" />
+      </block>
+      <scroll-view wx:else scroll-y class="sheet-body">
         <block wx:if="{{sheet === 'manage'}}"><view class="management-options"><button bindtap="openProgress" disabled="{{busy || pending || detail.project.status !== 'active'}}">更新施工阶段<text>›</text></button><button bindtap="openStageList">阶段分工<text>›</text></button><button bindtap="openMembers">工地成员<text>›</text></button></view></block>
         <block wx:elif="{{sheet === 'stages'}}"><button class="outline" bindtap="openMembers">查看工地成员</button><view wx:for="{{detail.stages}}" wx:key="key" class="stage-row"><view><text class="label">{{item.name}}</text><text class="helper">{{item.assignedText}}</text></view><button wx:if="{{detail.manage && !pending}}" class="text-action" data-key="{{item.key}}" bindtap="openAssignment">分配</button></view></block>
         <block wx:elif="{{sheet === 'members'}}"><button wx:if="{{detail.manage && !pending}}" class="outline" bindtap="openMember">添加成员</button><view wx:for="{{detail.members}}" wx:key="admin_id" class="stage-row"><view><text class="label">{{item.display_name}} · {{item.roleLabel}}</text><text class="helper">{{item.available ? (item.work_label || '分工待安排') : '已停用 / 移出'}}</text></view><button wx:if="{{item.canRemove && !pending}}" class="text-action" data-id="{{item.admin_id}}" bindtap="removeMember">移出</button></view></block>

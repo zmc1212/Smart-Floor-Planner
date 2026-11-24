@@ -94,7 +94,7 @@ class FollowupController {
     this.visible = false; this.epoch++; this.unschedule(this.timer); this.set(initialFollowups());
   }
   leave() { this.rememberHistory(); this.historyReentry = null; this.selected = ''; this.epoch++; this.set({ ...initialHistory(), followupActive: false, followupContext: null, followupDetail: null, followupOriginal: null, followupReports: [] }); }
-  async show({ autoOpen = false, report = null, projectId = '' } = {}) {
+  async show({ autoOpen = false, report = null, projectId = '', board = false, bindingId = '' } = {}) {
     if (this.session && this.session !== this.identity()) { this.selected = ''; this.operation = null;
       this.settingsReentry = null;
       this.planReentry = null;
@@ -102,6 +102,21 @@ class FollowupController {
       if (this.client.pending.session !== this.identity()) this.client.pending.clear(); this.set(initialFollowups()); }
     this.session = this.identity(); this.visible = true;
     if (!this.session) return;
+    if (board) {
+      const epoch = ++this.epoch;
+      this.set({ followupActive: true, followupLoading: true, followupError: '' });
+      if (!bindingId) {
+        await this.loadList();
+        if (!this.current(epoch)) return;
+        const available = this.state.followupBindings.filter(b => b.status !== 'deleted');
+        const match = available.find(b => projectId && b.projects?.some(p => p.id === projectId))
+          || (available.length === 1 ? available[0] : null);
+        bindingId = match?.bindingId || '';
+      }
+      if (bindingId) await this.select(bindingId, projectId, { readReports: false });
+      else this.set({ followupLoading: false, followupContext: null });
+      return;
+    }
     if (report) {
       const epoch = ++this.epoch;
       this.selected = report.bindingId;
@@ -216,7 +231,7 @@ class FollowupController {
     } catch (e) { if (this.current(epoch)) this.failure(e); }
     finally { if (this.current(epoch)) this.set({ followupListLoading: false }); }
   }
-  async select(bindingId, projectId = '') {
+  async select(bindingId, projectId = '', { readReports = true } = {}) {
     if (this.state.followupBusy || this.state.followupPending || !this.visible) return;
     if (this.selected !== String(bindingId)) { this.historyReentry = null; this.historyPages = 1; this.set(initialHistory()); }
     const epoch = ++this.epoch; this.selected = String(bindingId);
@@ -227,7 +242,8 @@ class FollowupController {
     try {
       const headers = await this.headers();
       const query = projectId ? { projectId } : {};
-      const [context, reports] = await Promise.all([this.client.read(BASE + '/' + bindingId, query, headers), this.client.read(BASE + '/' + bindingId + '/reports', query, headers)]);
+      const [context, reports] = await Promise.all([this.client.read(BASE + '/' + bindingId, query, headers),
+        readReports ? this.client.read(BASE + '/' + bindingId + '/reports', query, headers) : { items: [], nextCursor: null }]);
       if (!this.current(epoch)) return;
       this.set({ followupContext: context, followupReports: reports.items.map(r => reportForView(r, context, projectId)), followupCursor: reports.nextCursor,
         followupPending: !!this.operation });
@@ -291,8 +307,7 @@ class FollowupController {
   }
   recover() { if (this.operation) return this.write(this.operation.slot, this.operation.path, this.operation.body, this.operation.kind); }
   retryBody(r) { return this.write(`body:${r.reportId}`, `${BASE}/${this.selected}/reports/${r.reportId}/retry`, { revision: r.revision }, 'body'); }
-  renderedReport() {
-    const r = this.state.followupDetail;
+  renderedReport(r = this.state.followupDetail) {
     if (!r || !r.available || !r.ready || r.readAt || !r.readToken || !['delivered','muted'].includes(r.deliveryState) || this.state.followupBusy || this.state.followupPending) return;
     const bid = r.bindingId || this.selected;
     return this.write(`followup:read:${bid}:${r.reportId}`, `${BASE}/${bid}/reports/${r.reportId}/acknowledge`, { revision: r.revision, readToken: r.readToken }, 'read');
@@ -341,9 +356,16 @@ class FollowupRecordMedia extends SiteRecordMedia {
       { siteRecord: { available: true, id: original.id, version: original.version, assets: original.media.map(m => m.id) } },
     ]);
   }
+  loadReportPhotos(bindingId, report, photos) {
+    this.location = { bindingId, reportId: report.reportId, revision: report.revision,
+      projects: Object.fromEntries(photos.map(photo => [photo.recordId, photo.projectId])) };
+    return this.load([bindingId, report.reportId, report.revision, 'preview'].join(':'), photos.map(photo => ({
+      siteRecord: { available: true, id: photo.recordId, version: photo.version, assets: [photo.mediaId] },
+    })));
+  }
   url(w) {
     const l = this.location;
-    return `/miniprogram/assistant/followups/${l.bindingId}/reports/${l.reportId}/projects/${l.projectId}/records/${w.recordId}/media/${w.mediaId}?revision=${l.revision}`;
+    return `/miniprogram/assistant/followups/${l.bindingId}/reports/${l.reportId}/projects/${l.projectId || l.projects[w.recordId]}/records/${w.recordId}/media/${w.mediaId}?revision=${l.revision}`;
   }
 }
 module.exports = { FollowupController, FollowupRecordMedia, initialFollowups, reportForView, dateLabel };

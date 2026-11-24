@@ -174,7 +174,7 @@ test('rebooking is allowed after expiry or cancel when survey is not done', () =
   assert.equal(canRebookAppointment({
     leadStatus: 'new',
     assignmentStatus: 'assignment_pending',
-  }), false, 'no rebooking when assignment is still pending');
+  }), true, 'booking can complete an outstanding designer assignment');
   assert.equal(canRebookAppointment({
     leadStatus: 'new',
     assignmentStatus: 'assigned',
@@ -240,14 +240,14 @@ test('customer home exposes one next action from the shared service stage', () =
   assert.deepEqual(resolveCustomerHomeAction({
     leadStatus: 'measuring',
     assignmentStatus: 'assigned',
-    measurerId: '1',
+    measurerId: null,
   }), {
     kind: 'book',
     label: '预约量房',
     stageKey: 'measurer_assigned',
-    stageLabel: '已匹配家装现场顾问',
+    stageLabel: '已匹配设计师',
     nextAction: '预约上门量房时间',
-    appointmentSummary: '已匹配家装设计顾问和家装现场顾问，可预约量房时间',
+    appointmentSummary: '已匹配设计师，可预约量房时间',
     canReschedule: false,
     canRebook: true,
   });
@@ -256,19 +256,19 @@ test('customer home exposes one next action from the shared service stage', () =
     leadStatus: 'new',
     assignmentStatus: 'assignment_pending',
   }), {
-    kind: 'wait_designer',
-    label: '等待派单',
+    kind: 'book',
+    label: '预约量房',
     stageKey: 'assignment_pending',
     stageLabel: '待派单',
-    nextAction: '服务匹配完成后即可预约量房',
-    appointmentSummary: '正在为您匹配家装设计顾问和家装现场顾问',
+    nextAction: '预约时将为你安排设计师',
+    appointmentSummary: '预约时将为你安排设计师',
     canReschedule: false,
-    canRebook: false,
+    canRebook: true,
   });
 
   assert.equal(resolveCustomerHomeAction({
     leadStatus: 'new',
-  }).appointmentSummary, '正在为您匹配家装设计顾问和家装现场顾问');
+  }).appointmentSummary, '预约时将为你安排设计师');
 
   assert.equal(resolveCustomerHomeAction({
     leadStatus: 'designing',
@@ -296,7 +296,7 @@ test('customer home exposes one next action from the shared service stage', () =
   assert.equal(pendingConfirm.kind, 'view_project');
   assert.equal(pendingConfirm.canReschedule, false);
   assert.equal(pendingConfirm.canRebook, false);
-  assert.equal(pendingConfirm.appointmentSummary, '家装现场顾问正在量房');
+  assert.equal(pendingConfirm.appointmentSummary, '正在上门量房');
 });
 
 test('operational appointment prefers an active confirmed rebooking over an older expired row', () => {

@@ -16,16 +16,10 @@ export function getLeadAssignmentActions(
   role: string,
   actorId: bigint | null
 ): LeadAssignmentActions {
-  if (!actorId || lead.archivedAt || lead.status === 'closed') {
-    return { canAssignDesigner: false, canAssignMeasurer: false };
-  }
-  if (MANAGER_ROLES.has(role)) {
-    return { canAssignDesigner: true, canAssignMeasurer: true };
-  }
-  if (role === 'designer' && lead.assignedTo === actorId) {
-    return { canAssignDesigner: false, canAssignMeasurer: true };
-  }
-  return { canAssignDesigner: false, canAssignMeasurer: false };
+  return {
+    canAssignDesigner: Boolean(actorId && !lead.archivedAt && lead.status !== 'closed' && MANAGER_ROLES.has(role)),
+    canAssignMeasurer: false,
+  };
 }
 
 export function canAccessLeadForStaffAssign(
@@ -55,7 +49,7 @@ export function assertCanAssignLeadStaff(input: {
     });
   }
   if (input.measurerId && !actions.canAssignMeasurer) {
-    throw Object.assign(new Error('无权分配或更换家装现场顾问'), {
+    throw Object.assign(new Error('线索统一分配给设计师'), {
       status: 403,
       code: 'assign_measurer_forbidden',
     });

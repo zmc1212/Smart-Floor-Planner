@@ -27,12 +27,17 @@
           <view class="stage-heading">
             <view class="fabric stage-fabric">阶段</view>
             <text class="stage-title">施工阶段（可多选）</text>
-            <text class="stage-source">来自企业施工节点配置</text>
           </view>
           <view class="stage-chips">
             <view wx:for="{{stageChips}}" wx:key="key" class="stage-chip {{item.selected ? 'selected' : ''}}" data-key="{{item.key}}" bindtap="toggleStage">{{item.name}}</view>
           </view>
-          <text class="helper">可多选，按本次上报实际涉及的施工阶段选择</text>
+          <text class="helper">可多选 · 来自企业施工节点配置</text>
+          <block wx:if="{{checkpoints.length}}">
+            <text class="stage-title checkpoint-title">必须到场审核的工序（选填）</text>
+            <view class="stage-chips">
+              <button wx:for="{{checkpoints}}" wx:key="choiceId" class="stage-chip {{item.selected ? 'selected' : ''}}" data-id="{{item.choiceId}}" bindtap="toggleCheckpoint">{{item.name}}</button>
+            </view>
+          </block>
         </view>
 
         <view class="paper photo-paper">
@@ -78,7 +83,8 @@
           <button wx:if="{{queue.length}}" class="outline" bindtap="retryUpload" disabled="{{sending}}">重试上传</button>
         </view>
         <view wx:if="{{queue.length}}" class="queue-row">
-          <text>{{sending ? '正在提交…' : '待提交 ' + queue.length + ' 条…'}}</text>
+          <text>{{sending ? '正在提交…' : checkpointChanged ? '必到工序已调整' : '待提交 ' + queue.length + ' 条…'}}</text>
+          <button wx:if="{{checkpointChanged}}" class="outline" bindtap="replaceCheckpoint" disabled="{{sending}}">重新选择工序</button>
         </view>
         <text class="submit-helper">提交后进入待审核，由施工经理、设计师或老板审核通过</text>
       </block>

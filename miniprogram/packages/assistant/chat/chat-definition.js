@@ -15,6 +15,8 @@ const { ownerLiveAuthorizationPath } = require('../../../utils/owner-live-author
 const { PlanChatController, initialPlans } = require('../lib/plans');
 const { SpeechController } = require('../lib/speech');
 const { FloorplanContextController, initialContext } = require('../lib/floorplan-context');
+const { MeasureBookingController, initialMeasureBooking } = require('../lib/measure-booking');
+const { fetchProtectedImage, floorPlanCacheKey } = require('../../../utils/protectedImageCache');
 const { FollowupController, FollowupRecordMedia, initialFollowups } = require('../lib/followups');
 const { initialEnterprise, enterpriseMethods } = require('../../../utils/assistant-followup-enterprise');
 const { settingsPageMethods } = require('../../../utils/assistant-followup-settings');
@@ -22,6 +24,8 @@ const { historyPageMethods } = require('../../../utils/assistant-report-history'
 const { planPageMethods } = require('../../../utils/assistant-report-plan');
 const { FollowupChat, emptyFollowupChat, followupChatMethods } = require('../lib/followup-chat');
 const { ReportQuestionController, reportQuestionMethods, emptyReportQuestion } = require('../lib/report-context');
+const { initialBoard, reportBoardMethods } = require('./report-board');
+const { manageWechatSubscription } = require('./wechat-subscription');
 const { initialOwnerReminder, ownerReminderMethods } = require('./owner-reminders');
 const { inputCandidates } = require('../lib/stage-chat-experience');
 const { ownerSiteContext } = require('../lib/owner-site-context');
@@ -54,8 +58,9 @@ module.exports = () => ({
 	...planPageMethods,
 	...ownerReminderMethods,
 	...followupChatMethods,
-	...require('./wechat-subscription'),
+	manageWechatSubscription,
 	...reportQuestionMethods,
+	...reportBoardMethods,
 	...replyActionsMethods,
 	...messageActionsMethods,
 	...promotionMethods,
@@ -65,10 +70,11 @@ module.exports = () => ({
 		...initialPublic(), reportQuestion: emptyReportQuestion(),
 		...initialLive(),
 		...initialPlans(),
+		...initialBoard(),
 		...initialReplyActions(),
 		...initialMessageActions(),
 		expandedAnswerProcessId: '',
-		...initialContext(),
+		...initialContext(), ...initialMeasureBooking(), contextPlanPaths: {}, floorplanSheetMode: 'is-list',
 		...initialFollowups(), ...initialEnterprise(), followupChat: emptyFollowupChat(), followupScrollTarget: '', professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
 		viewportHeight: 844, keyboardHeight: 0, inputFocused: false, bottomInset: 34, sheet: '', sheetOpen: false,
 		embedded: false, scrollTarget: '', replyScrollTop: 0, showReplyEnd: false, reconnectingChat: false,
@@ -154,6 +160,7 @@ module.exports = () => ({
 					if (patch.fatal || patch.needsLogin) {
 						if (this.liveConsent) this.liveConsent.clear();
 						if (this.floorplans) this.floorplans.clear();
+		if (this.measureBooking) this.measureBooking.clear();
 						this.siteRecords.clear();
 						this.recommendations.clear(); this.setData({ portfolioReplyId: '' });
 						this.resetDesignerCards();
@@ -177,6 +184,7 @@ module.exports = () => ({
 					}
 					if (patch.conversation === null) { if (this.liveConsent) this.liveConsent.clear(); if (this.floorplans) this.floorplans.clear(); this.recommendations.clear(); this.setData({ portfolioReplyId: '' }); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
 					if (patch.conversation?.id && this.floorplans && this._shown && this.floorplans.id !== String(patch.conversation.id)) this.floorplans.show(String(patch.conversation.id));
+					if (patch.conversation?.id && this.measureBooking && this.measureBooking.id && this.measureBooking.id !== String(patch.conversation.id)) this.measureBooking.clear();
 					if (patch.conversation !== undefined && !this.data.followupActive) this.syncReportQuestion();
 					if (patch.messages || patch.conversation || patch.generating===false) void this.loadStageFollowQuestions();
 					const next = patch.messages;
@@ -192,10 +200,12 @@ module.exports = () => ({
 		});
 		this.floorplans = new FloorplanContextController({ client: this.controller.client, identity: sessionToken,
 			emit: patch => { if (this._alive) this.setData(patch); } });
+		this.measureBooking = new MeasureBookingController({ client: this.controller.client, identity: sessionToken,
+			emit: patch => { if (this._alive) this.setData(patch); } });
 		this.followups = new FollowupController({ client: this.controller.client, identity: sessionToken,
 			headers: async () => {
-				if (this._ownerReport) return { 'X-Assistant-Entry': this._ownerReportToken };
-				if (this._options.followup === '1') return {};
+				if (this._ownerReport || this._boardScope?.leadId) return { 'X-Assistant-Entry': this._ownerReportToken };
+				if (this._options.followup === '1' || this._options.reportBoard === '1') return {};
 				const entry = await this.controller.ensureEntry(); return entry ? { 'X-Assistant-Entry': entry.entryToken } : {};
 			},
 			emit: patch => {
@@ -208,7 +218,7 @@ module.exports = () => ({
 						else { this.controller.visible = true; this.setData({ followupManageOpen: false, followupHistoryOpen: false }); this.controller.refresh({ forceEntry: false, background: true }); }
 					}
 					if (patch.followupReports || patch.followupActive !== undefined) this.observeFollowupCards();
-					if (patch.followupContext && patch.followupActive !== false) this.followupChatController?.open(patch.followupContext);
+					if (patch.followupContext && patch.followupActive !== false && !this.data.reportBoard) this.followupChatController?.open(patch.followupContext);
 					if (patch.followupContext === null || patch.followupActive === false) this.followupChatController?.hide();
 					if (patch.followupDetail && !patch.followupDetail.readAt) wx.nextTick(() => { if (this._alive && this._shown) this.followups.renderedReport(); });
 					if (patch.followupOriginal === null && this.followupMedia) this.followupMedia.clear();
@@ -250,12 +260,17 @@ module.exports = () => ({
 		if (!this._alive || !this._shown || await this.showPromotionEntry()) return;
 		const currentIdentity = app.globalData.bootstrap?.current?.context || app.globalData.userInfo || {};
 		const selectedMode = app.globalData.bootstrap?.current?.mode || currentIdentity.mode;
+		if (this._options.reportBoard === '1') return this.showReportBoard(currentIdentity, selectedMode, sessionToken());
 		if (this._ownerReport) {
 			if (!selectedMode || selectedMode === 'customer') {
 				await this.readOwnerSiteReport();
 				if (this._alive && this._shown && !this._ownerReportAsked && this._options.ask === '1' && this._options.prompt) {
 					this._ownerReportAsked = true;
 					await this.askOwnerReport(this._options.prompt);
+				}
+				if (this._options.focusReport === '1' && !this._ownerReportAsked && await this.readyOwnerReport()) {
+					this._ownerReportAsked = true;
+					await this.askFollowupReport({ currentTarget: { dataset: {} } });
 				}
 			}
 			else this.setData({ ownerSiteReport: true, loading: false, followupActive: true, followupError: '当前身份无法查看这份日报' });
@@ -355,9 +370,10 @@ module.exports = () => ({
 		wx.switchTab({ url: '/pages/index/index' });
 	},
 
-	onHide() { if (nativePreview.hiddenByPreview(this)) return; this.closeMessageMenu(); this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this._replyScroll?.suspend(); this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+	onHide() { if (nativePreview.hiddenByPreview(this)) return; this.closeMessageMenu(); this.hideReportBoard(); this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this._replyScroll?.suspend(); this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); if (this._measureLocationChoosing) { this._measureLocationChoosing = false; } else this.closeSheet(); clearTimeout(this._keyboardScrollTimer); this._keyboardScrollTimer = null; this.setData({ speechBusy: false, keyboardHeight: 0, inputFocused: false, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
 	onUnload() {
-		this._alive = false; this._replyScroll?.reset(); clearTimeout(this._sheetTimer);
+		this.hideReportBoard();
+		this._alive = false; this._replyScroll?.reset(); clearTimeout(this._sheetTimer); clearTimeout(this._keyboardScrollTimer);
 		clearTimeout(this._copyAnswerTimer); clearTimeout(this._historySearchTimer);
 		this.stopOwnerReminderRefresh();
 		if (this.liveConsent) this.liveConsent.clear();
@@ -366,6 +382,7 @@ module.exports = () => ({
 		clearTimeout(this._followupObserveTimer); if (this.followupMedia) this.followupMedia.clear();
 		if (this.followups) this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect();
 		if (this.floorplans) this.floorplans.clear();
+		if (this.measureBooking) this.measureBooking.clear();
 		if (this.speechController) this.speechController.hide();
 		if (this.location) this.location.clear();
 		this.controller.dispose();
@@ -377,9 +394,16 @@ module.exports = () => ({
 		if (this.plans) this.plans.clear();
 		if (this.media) this.media.dispose();
 	},
-	onResize() { this.closeMessageMenu(); if (!this.data.keyboardHeight) this.measureWindow(); },
+	onResize() { this.closeMessageMenu(); if (!this.data.keyboardHeight && !this.data.inputFocused) this.measureWindow(); },
 	measureWindow() {
 		const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+		const previous = this._windowInfo;
+		// iOS can report the keyboard-shrunk window before keyboardChange runs.
+		// Reusing that height and then subtracting keyboardHeight collapses the
+		// page and makes the composer jump. A same-screen shrink is the keyboard.
+		if (previous && previous.screenHeight === info.screenHeight && previous.windowWidth === info.windowWidth
+			&& info.windowHeight < previous.windowHeight) return;
+		this._windowInfo = { screenHeight: info.screenHeight, windowWidth: info.windowWidth, windowHeight: info.windowHeight };
 		let capsule;
 		try { capsule = wx.getMenuButtonBoundingClientRect(); } catch (_) { capsule = null; }
 		// Center the two-line brand beside the native capsule, never through it.
@@ -399,12 +423,27 @@ module.exports = () => ({
 		if (this.data.embedded && tab) tab.setData({ keyboardHidden: !!this.data.keyboardHeight || !!this.data.sheet });
 	},
 	keyboardChange(event) {
-		const keyboardHeight = Math.max(0, Number(event.detail.height) || 0);
-		if (!keyboardHeight) this._inputMatch = null;
-		this.setData({ keyboardHeight, ...(keyboardHeight ? { ownerReminderPrompt: null }
-			: this.data.keyboardHeight ? { inputFocused: false, inputCandidates: [], stageInputCursor: -1 } : {}) }, () => this._replyScroll?.request());
+		if (!this._shown) return;
+		const reported = Math.max(0, Math.round(Number(event.detail.height) || 0));
+		const current = this.data.keyboardHeight;
+		if (reported === current) return;
+		// iOS emits a burst of one- or two-pixel height events while the keyboard
+		// animates. Reflowing for every sample moves the composer back and forth.
+		if (reported && current && Math.abs(reported - current) <= 2) return;
+		if (!reported) this._inputMatch = null;
+		this.setData({ keyboardHeight: reported, ...(reported ? { ownerReminderPrompt: null }
+			: { inputFocused: false, inputCandidates: [], stageInputCursor: -1 }) }, () => this._replyScroll?.request());
 		this.syncKeyboardTab();
-		if (!this._replyScroll?.turn && (this.data.messages.length || this.data.pendingText)) this.scrollBottom();
+		this.queueKeyboardScroll();
+	},
+	queueKeyboardScroll() {
+		clearTimeout(this._keyboardScrollTimer);
+		if (this._replyScroll?.turn || !this.data.messages.length && !this.data.pendingText) return;
+		this._keyboardScrollTimer = setTimeout(() => {
+			this._keyboardScrollTimer = null;
+			if (!this._alive || !this._shown || !this.data.keyboardHeight || this._replyScroll?.turn) return;
+			this.scrollBottom();
+		}, 80);
 	},
 	focusInput(event) {
 		const entering = !this.data.inputFocused;
@@ -518,11 +557,17 @@ module.exports = () => ({
 			reason = String(result.content).trim();
 		}
 		if (await this.plans.decide(String(id), action, reason)) {
+			if (this.data.sheet === 'reportDecision') {
+				if (!['preview','details'].includes(action)) await this.refreshReportBoard();
+				return;
+			}
 			if (action !== 'preview') await this.controller.refresh();
 			this.scrollBottom();
 		}
 	},
-	async retryPlan() { if (await this.plans.retry()) await this.controller.refresh(); },
+	async retryPlan() {
+		if (await this.plans.retry()) return this.data.sheet === 'reportDecision' ? this.refreshReportBoard() : this.controller.refresh();
+	},
 	previewPlan(e) { return this.plans.preview(String(e.currentTarget.dataset.id)); },
 	cancelSiteWatch(e) { return this.controller.cancelSiteWatch(e.currentTarget.dataset.message); },
 	previewSiteRecord(e) { const d = e.currentTarget.dataset; return this.siteRecords.preview(String(d.record), Number(d.version), String(d.media)); },
@@ -537,20 +582,71 @@ module.exports = () => ({
 		if (this.data.contextBusy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.readOnly) return;
 		const id = this.controller.conversationId || await this.controller.handoffConversation();
 		if (!id || !this._alive || !this._shown) return;
-		this.setData({ contextBrowseOnly: false }); this.openSheet('floorplan');
+		this.setData({ contextBrowseOnly: false, contextPlanPaths: {}, contextDetailPath: '', contextDetailImageState: '', floorplanSheetMode: 'is-list' }); this.openSheet('floorplan');
 		await this.floorplans.show(id);
+		await this.loadFloorplanThumbs();
+	},
+	async loadFloorplanThumbs() {
+		const items = this.data.contextItems || [];
+		const paths = { ...this.data.contextPlanPaths };
+		await Promise.all(items.map(async item => {
+			if (paths[item.leadId] || !item.previewEndpoint) return;
+			try {
+				const path = await fetchProtectedImage(item.previewEndpoint,
+					floorPlanCacheKey(item.leadId, { id: item.id, updatedAt: item.updatedAt || item.layoutHash }));
+				if (path) paths[item.leadId] = path;
+			} catch (error) {
+				// The paper placeholder stays; a missing thumbnail never blocks selection.
+			}
+		}));
+		if (this._alive && this._shown) this.setData({ contextPlanPaths: paths });
 	},
 	async browseFloorplan() {
 		if (this.data.contextBusy) return;
 		await this.openFloorplanPicker();
 		this.setData({ contextBrowseOnly: true });
-		if (this.floorplans.selected && this.data.sheet === 'floorplan') await this.floorplans.detail(this.floorplans.selected);
+		if (this.floorplans.selected && this.data.sheet === 'floorplan' && await this.floorplans.detail(this.floorplans.selected)) {
+			this.setData({ floorplanSheetMode: 'is-detail' });
+			await this.loadFloorplanImage();
+		}
 	},
-	viewFloorplan(event) {
+	async loadFloorplanImage() {
+		const detail = this.data.contextDetail;
+		if (!detail || !detail.previewEndpoint) {
+			this.setData({ contextDetailImageState: detail ? 'error' : '' });
+			return false;
+		}
+		this.setData({ contextDetailImageState: 'loading' });
+		try {
+			const path = await fetchProtectedImage(detail.previewEndpoint,
+				floorPlanCacheKey(detail.leadId, { id: detail.floorPlanId, updatedAt: detail.updatedAt || detail.layoutHash }));
+			if (this._alive && this._shown && this.data.contextDetail && this.data.contextDetail.floorPlanId === detail.floorPlanId) {
+				this.setData({ contextDetailPath: path || '', contextDetailImageState: path ? 'loaded' : 'error' });
+			}
+			return !!path;
+		} catch (error) {
+			if (this._alive && this._shown) this.setData({ contextDetailImageState: 'error' });
+			return false;
+		}
+	},
+	async retryFloorplanImage() { return this.loadFloorplanImage(); },
+	async previewFloorplan() {
+		const detail = this.data.contextDetail;
+		if (!detail) return;
+		let path = this.data.contextDetailPath;
+		if (!path) path = await this.loadFloorplanImage() ? this.data.contextDetailPath : '';
+		if (!path) {
+			wx.showToast({ title: '户型图暂时无法打开', icon: 'none' });
+			return;
+		}
+		wx.previewImage({ current: path, urls: [path] });
+	},
+	async viewFloorplan(event) {
 		const plan = this.data.contextItems[Number(event.currentTarget.dataset.index)];
-		if (plan) return this.floorplans.detail(plan);
+		if (!plan) return;
+		if (await this.floorplans.detail(plan)) { this.setData({ floorplanSheetMode: 'is-detail' }); await this.loadFloorplanImage(); }
 	},
-	floorplanList() { this.setData({ contextDetail: null }); },
+	floorplanList() { this.setData({ contextDetail: null, contextDetailPath: '', contextDetailImageState: '', floorplanSheetMode: 'is-list' }); },
 	async chooseFloorplan(event) {
 		const index = event.currentTarget.dataset.index;
 		const plan = index === 'detail' ? this.data.contextDetail : index === 'none' ? null : this.data.contextItems[Number(index)];
@@ -560,10 +656,6 @@ module.exports = () => ({
 	async reloadFloorplanContext() {
 		if (this.floorplans.id) return this.floorplans.retry();
 		return this.openFloorplanPicker();
-	},
-	openFullArchive() {
-		const plan = this.data.contextDetail;
-		if (plan) wx.navigateTo({ url: '/packages/business/customer-project/customer-project?leadId=' + encodeURIComponent(plan.leadId) });
 	},
 	login() { goToLogin(); },
 	scanServiceCode() {
@@ -674,10 +766,13 @@ module.exports = () => ({
 	closeSheet() {
 		clearTimeout(this._sheetTimer);
 		if (this.data.sheet === 'messageShare') this.setData({ messageShare: null, messageShareBusy: false, messageShareError: '' });
+		const closingMeasureKeyboard = this.data.sheet === 'measure' && this.data.keyboardHeight;
 		const closingInteraction = ['history', 'answerFeedback', 'answerMore'].includes(this.data.sheet);
 		if (closingInteraction && this.data.interactionKeyboard) wx.hideKeyboard();
 		if (this.data.sheet === 'history') this.resetHistorySearch();
+		if (closingMeasureKeyboard) wx.hideKeyboard();
 		const closingReminder = this.data.sheet === 'ownerReminder';
+		if (this.data.sheet === 'reportDecision') { this.plans?.clear(); this.setData({ reportBoardDecision: '' }); }
 		if (closingReminder) this._ownerReminderTarget = null;
 		if (this.data.sheet === 'publicSite' && this.publicSites) this.publicSites.closeDetail();
 		this.controller.citationRequest = (this.controller.citationRequest || 0) + 1;
@@ -687,7 +782,12 @@ module.exports = () => ({
 		this.controller.set({ citation: null });
 		this.setData({ sheetOpen: false });
 		this._sheetTimer = setTimeout(() => {
-			if (this._alive) { this.setData({ sheet: '', ...(closingReminder ? initialOwnerReminder() : {}), ...(closingInteraction ? { interactionKeyboard: 0, replyTarget: '', feedbackNote: '', feedbackError: '' } : {}) }); this.syncKeyboardTab(); }
+			if (this._alive) {
+				this.setData({ sheet: '', ...(closingReminder ? initialOwnerReminder() : {}),
+					...(closingInteraction ? { interactionKeyboard: 0, replyTarget: '', feedbackNote: '', feedbackError: '' } : {}),
+					...(closingMeasureKeyboard ? { keyboardHeight: 0 } : {}) });
+				this.syncKeyboardTab();
+			}
 		}, 260);
 	},
 	swallow() {},
@@ -730,8 +830,7 @@ module.exports = () => ({
 			if (current()) this.setData({ followupLoading: false, followupError: '这份日报暂时无法打开' });
 		}
 	},
-	async askOwnerReport(prompt) {
-		if (!prompt) return;
+	async readyOwnerReport() {
 		const entry = this.followupChatController;
 		const ready = () => {
 			const state = entry?.state;
@@ -739,11 +838,15 @@ module.exports = () => ({
 				&& this.data.followupContext && this.reportQuestions?.canChange();
 		};
 		for (let i = 0; i < 40; i++) {
-			if (!this._alive || !this._shown) return;
+			if (!this._alive || !this._shown) return false;
 			if (ready()) break;
 			await new Promise(resolve => setTimeout(resolve, 100));
 		}
-		if (!this._alive || !this._shown || !ready()) return;
+		return this._alive && this._shown && ready();
+	},
+	async askOwnerReport(prompt) {
+		if (!prompt || !await this.readyOwnerReport()) return;
+		const entry = this.followupChatController;
 		delete this._options.prompt; delete this._options.ask;
 		let text = prompt;
 		try { text = decodeURIComponent(prompt); } catch (_) { /* Keep the supplied question when it is already plain text. */ }
@@ -793,7 +896,18 @@ module.exports = () => ({
 	},
 	maybeShowMeasureCard(messages) {
 		if (this.data.staffTab || this.data.professionalFollowup || this.data.followupActive || this.data.readOnly
-			|| this.data.siteContext || this.data.measureCardDismissed || this.data.measureCardVisible) return;
+			|| this.data.siteContext || this.data.measureCardVisible) return;
+		const offerAt = String(this.data.conversation?.measureOfferAt || '');
+		if (this.data.conversation?.measureOffer && (!offerAt || offerAt !== this._measureOfferDismissedAt)) {
+			const id = String(this.data.conversation.id || '');
+			if (this.measureBooking && id && !this.data.measureAppointment && this._measureOfferLoadedFor !== id) {
+				this._measureOfferLoadedFor = id;
+				this.measureBooking.show(id);
+			}
+			this.setData({ measureCardVisible: true, measureCardDismissed: false });
+			return;
+		}
+		if (this.data.measureCardDismissed) return;
 		if (!Array.isArray(messages) || !messages.length) return;
 		const latest = messages[messages.length - 1];
 		if (!latest || latest.authorKind !== 'assistant') return;
@@ -803,12 +917,73 @@ module.exports = () => ({
 
 	async bookMeasure() {
 		if (this.data.handoffBusy || this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
-		this.setData({ measureCardVisible: false });
-		await this.openHandoff();
+		return this.openMeasureBooking();
 	},
 
 	dismissMeasure() {
+		this._measureOfferDismissedAt = String(this.data.conversation?.measureOfferAt || '');
 		this.setData({ measureCardVisible: false, measureCardDismissed: true });
+	},
+
+	async openMeasureBooking() {
+		if (this.data.readOnly || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.contextBusy) return;
+		const id = this.controller.conversationId || await this.controller.handoffConversation();
+		if (!id || !this._alive || !this._shown) return;
+		this._measureOfferLoadedFor = String(id);
+		this.setData({ measureBookingLoading: true });
+		this.openSheet('measure');
+		await this.measureBooking.show(id);
+	},
+	closeMeasureBooking() { this.closeSheet(); },
+	selectMeasureDate(event) { return this.measureBooking.selectDate(String(event.currentTarget.dataset.date || '')); },
+	selectMeasureSlot(event) { return this.measureBooking.selectSlot(event.currentTarget.dataset.slot); },
+	toggleMeasureSlots() { this.measureBooking.toggleSlots(); },
+	selectMeasureProject(event) { return this.measureBooking.selectProject(String(event.currentTarget.dataset.leadId || '')); },
+	inputMeasureAddress(event) { return this.measureBooking.inputAddress(event.detail.value); },
+	editMeasureContact() {
+		return this.measureBooking.editContact(phone => new Promise(resolve => wx.showModal({
+			title: '修改联系电话',
+			content: phone,
+			editable: true,
+			placeholderText: '填写本次预约的手机号',
+			success: result => resolve(result.confirm ? result.content : undefined),
+			fail: () => resolve(undefined),
+		})));
+	},
+	chooseMeasureLocation() {
+		// wx.chooseLocation 会压入原生地图页并触发本页 onHide；onHide 里的
+		// closeSheet() 会把预约量房面板关掉，选完点回来卡片就消失了。
+		// 用一次性标记让这一次 onHide 保留面板，返回后地点直接回填。
+		this._measureLocationChoosing = true;
+		wx.chooseLocation({
+			success: result => {
+				const name = String(result.name || result.address || '').trim();
+				const address = String(result.address || name || '').trim();
+				this.measureBooking.setLocation({
+					locationName: name.slice(0, 200),
+					latitude: result.latitude,
+					longitude: result.longitude,
+					coordinateSystem: 'gcj02',
+					address,
+				});
+			},
+			complete: () => { this._measureLocationChoosing = false; },
+		});
+	},
+	async submitMeasureBooking() {
+		if (await this.measureBooking.submit()) {
+			this.closeSheet();
+			this.setData({ measureCardVisible: true, measureCardDismissed: false });
+		}
+	},
+	retryMeasureBooking() { return this.measureBooking.retry(); },
+	viewMeasureAppointment() {
+		const appointment = this.data.measureAppointment;
+		if (!appointment || !appointment.id || !appointment.leadId) return;
+		wx.navigateTo({
+			url: '/packages/enterprise/appointment-detail/appointment-detail?mode=customer&leadId='
+				+ encodeURIComponent(appointment.leadId) + '&appointmentId=' + encodeURIComponent(appointment.id),
+		});
 	},
 
 	async openHandoff() {
@@ -906,6 +1081,8 @@ module.exports = () => ({
 		if (this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
 		chatResume.clear();
 		delete this._options.conversationId;
+		this._measureOfferDismissedAt = '';
+		this._measureOfferLoadedFor = '';
 		this.setData({ measureCardVisible: false, measureCardDismissed: false });
 		this.followups.leave(); this.closeSheet();
 		await this.controller.newConversation();

@@ -4,6 +4,7 @@ const api = require('../utils/api.js');
 
 test('API environment selection returns only the explicitly selected base URL', () => {
   assert.deepEqual(api.getBaseUrls('local'), ['http://192.168.10.32:3006/api']);
+  assert.deepEqual(api.getBaseUrls('localLoopback'), ['http://127.0.0.1:3006/api']);
   assert.deepEqual(api.getBaseUrls('production'), ['https://smartfloor.zlyun168.com/api']);
   assert.deepEqual(api.getBaseUrls(), ['https://smartfloor.zlyun168.com/api']);
 });
@@ -19,7 +20,8 @@ test('API environment selection rejects unknown environments', () => {
 test('DevTools can select the development API while explicit selection takes precedence', () => {
   const previous = global.wx;
   global.wx = {
-    getSystemInfoSync: () => ({ platform: 'devtools' }),
+    getDeviceInfo: () => ({ platform: 'devtools' }),
+    getSystemInfoSync: () => assert.fail('Modern DevTools should not use getSystemInfoSync'),
     getStorageSync: (key) => (key === 'sfp:apiEnvironmentOverride' ? 'local' : ''),
   };
   try {

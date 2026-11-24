@@ -19,6 +19,7 @@ import { customerPlanHttp } from '@/lib/construction/plan-http';
 import { parseWebCitationId } from '../agent/web-evidence';
 import { LocationService } from '../location/service';
 import { FloorplanContextService } from '../media/floorplan-context';
+import { AssistantMeasureBookingService } from '../booking/appointment';
 import { ReportContextService } from '@/lib/construction/report-context';
 import { followupHttp } from '@/lib/construction/followup-http';
 import { longTermHttp } from '../memory/http';
@@ -45,6 +46,24 @@ export async function assistantHttp(request: Request, path: string[]) {
         if (path[2] === 'report-topic' && (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length)) fail('invalid_message', 422);
         const requestKey = key(request.headers.get('Idempotency-Key'));
         data = path[2] === 'report-topic' ? await service.topic(requestKey) : await service.select(requestKey, body);
+      } else fail('assistant_resource_not_found', 404);
+      return NextResponse.json({ success: true, data, requestId }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+    if (path[0] === 'conversations' && path[2] === 'measure-booking') {
+      const cid = id(path[1]), params = new URL(request.url).searchParams;
+      const service = new AssistantMeasureBookingService(await locate(identity, 'conversation', cid), cid, {
+        phone: identity.phone,
+        name: identity.nickname,
+      });
+      let data: unknown;
+      if (request.method === 'GET' && path.length === 3 && !params.size) data = await service.read();
+      else if (request.method === 'GET' && path.length === 4 && path[3] === 'availability') {
+        if ([...params.keys()].some(key => !['date', 'leadId'].includes(key)) || params.size < 1 || params.size > 2) fail('invalid_message', 422);
+        data = await service.availability({ date: params.get('date'), leadId: params.get('leadId') || undefined });
+      } else if (request.method === 'POST' && path.length === 3 && !params.size) {
+        const raw = await request.text(); if (raw.length > 2048) fail('invalid_message', 413);
+        let body: unknown; try { body = JSON.parse(raw); } catch { return fail('invalid_message', 422); }
+        data = await service.book(key(request.headers.get('Idempotency-Key')), body);
       } else fail('assistant_resource_not_found', 404);
       return NextResponse.json({ success: true, data, requestId }, { headers: { 'Cache-Control': 'no-store' } });
     }

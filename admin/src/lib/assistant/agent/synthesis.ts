@@ -354,6 +354,13 @@ function selectedFullQuote(citation:Record<string,unknown>,sources:SynthesisSour
   if(source.fullTextCitable!==true||source.kind==='history'||source.text.trim().length<4||source.text.length>400)fail('invalid_model_citation',502);
   return {sourceId:source.sourceId,quote:source.text};
 }
+/** Stable business-read key for a persisted step. The tool receipt, the source
+ * rebuild at final validation and any recovery path must derive the same key;
+ * otherwise the citation ids selected from the prompt cannot resolve. */
+export function businessSourceResultKey(runId: string, stepSeq: number) {
+  const seq = Number(stepSeq) - 1200;
+  return `${runId}:${Math.floor(seq / 10)}:${seq % 10}`;
+}
 export function businessSynthesisSource(resultKey: string, snapshot: BusinessSnapshot): SynthesisSource {
   const names = { materials: '本咨询原话、正式户型与已发布现场资料', construction: '本人项目实际节点与已发布记录',
     followups: '本咨询事项及团队回传', appointments: '本人量房预约', schemes: '本人已发布方案', floorplans: '本人正式户型' };

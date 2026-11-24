@@ -1,0 +1,52 @@
+<view class="construction-page inspection-page">
+  <view class="book-spine" aria-hidden="true">
+    <view class="book-stitch" style="top:84px" /><view class="book-stitch" style="top:37%" />
+    <view class="book-stitch" style="top:65%" /><view class="book-stitch" style="bottom:28px" />
+  </view>
+  <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px">
+    <button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png" mode="aspectFit" /></button>
+    <text class="book-nav-title">巡检待办</text>
+  </view>
+  <view class="content">
+    <view wx:if="{{!stationOnly}}" class="inspection-tabs">
+      <button class="{{view === 'todo' ? 'tab-active' : ''}}" data-view="todo" bindtap="switchView">待办</button>
+      <button class="{{view === 'map' ? 'tab-active' : ''}}" data-view="map" bindtap="switchView">地图</button>
+    </view>
+    <view wx:if="{{loading}}" class="state" role="status">正在读取巡检事项…</view>
+    <view wx:elif="{{error}}" class="state" role="alert"><text>{{error}}</text><button class="outline" bindtap="retry">重新读取</button></view>
+    <block wx:elif="{{view === 'todo'}}">
+      <view wx:if="{{!groups.length}}" class="state">
+        <text>{{onsiteOnly ? '本站暂无待到场事项。' : '今天暂无上报和未审核事项。'}}</text>
+        <button wx:if="{{onsiteOnly}}" class="outline" bindtap="back">返回巡检路线</button>
+      </view>
+      <view wx:for="{{groups}}" wx:for-item="group" wx:key="id" class="paper inspection-group">
+        <text class="inspection-heading">{{group.name}}</text>
+        <button wx:for="{{group.items}}" wx:key="recordId" class="inspection-record" data-record="{{item.recordId}}" data-project="{{item.projectId}}" bindtap="openRecord">
+          <view class="inspection-title-line">
+            <text class="inspection-title">{{item.title}}</text><text class="tag {{item.inspection.requiresOnsite && item.status.code === 'pending' ? 'visit-tag' : ''}}">
+              {{item.status.code === 'pending' && item.projectStatus === 'active' ? item.modeLabel : item.projectStatus === 'paused' && item.status.code === 'pending' ? '工地已暂停' : item.status.label}}
+            </text>
+          </view>
+          <text class="inspection-meta">{{item.meta}}</text>
+          <text wx:if="{{item.status.code === 'pending' && (item.inspection.reason || item.inspection.priority || !item.today)}}" class="inspection-reason">
+            {{item.inspection.priority ? '优先处理 · ' : ''}}{{item.today ? '' : '往期待审 · '}}{{item.inspection.reason}}
+          </text>
+        </button>
+      </view>
+      <text wx:if="{{moreError}}" class="inspection-meta" role="alert">{{moreError}}</text>
+      <button wx:if="{{cursor}}" class="outline" bindtap="nextPage" loading="{{loadingMore}}" disabled="{{loadingMore}}">继续读取上报</button>
+    </block>
+    <block wx:else>
+      <view wx:if="{{!stops.length}}" class="state">目前没有待到场的工地。</view>
+      <view wx:else class="paper inspection-group">
+        <text class="inspection-heading">待巡检工地</text>
+        <view wx:for="{{stops}}" wx:key="projectId" class="stage-row">
+          <view><text class="inspection-title">{{item.name}}</text><text class="inspection-meta">{{item.recordIds.length}} 项待到场 · {{item.pin ? '位置已确认' : '待补位置'}}</text></view>
+          <button wx:if="{{item.canSetPin}}" class="text-action" data-project="{{item.projectId}}" bindtap="setPin" disabled="{{!!pinBusy}}" loading="{{pinBusy === item.projectId}}">{{item.pin ? '更新位置' : '确认位置'}}</button>
+        </view>
+        <button class="primary route-button" bindtap="openMap" disabled="{{!!pinBusy}}">打开巡检地图</button>
+      </view>
+      <view wx:if="{{notice}}" class="state" role="status">{{notice}}</view>
+    </block>
+  </view>
+</view>

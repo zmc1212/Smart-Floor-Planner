@@ -1,12 +1,15 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { samePublicRef, type PublicContent, type PublicContextRef } from '@/lib/construction/public-contract';
+import { configuredPublicSiteGuide, publicGuideQuestion } from '@/lib/construction/public-guide';
+import { publishedPublicMaterial } from '@/lib/construction/public-read';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { questionQuote } from '../core/conversation-interactions';
 import { AssistantError, fail, fingerprint, safeText, type Evidence, type KnowledgeRetriever, type MessageContent, type TextModelGateway } from '../contracts';
 import { KnowledgeSearchUnavailable, retrieveKnowledge } from '../knowledge/retrieval';
 import { answerMessages, insufficientAnswer, parseSelection } from '../knowledge/answer';
-import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, heartbeat, markProviderStarted, recoverKnowledgeAnswer, runContext, type Lease } from './job-queue';
+import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, heartbeat, markProviderStarted, recoverKnowledgeAnswer, requeuePreDispatchModelFailure, runContext, type Lease } from './job-queue';
 import { isStageChatQuestion, stageChatForConversation } from '@/lib/xiaok-v1/stage-chat-service';
 import { classifyStageIntent } from '@/lib/xiaok-v1/stage-router';
 import { specialistProtocol } from '../specialists/registry';
@@ -26,8 +29,7 @@ import { reportCoordinationProtocol } from '../agent/report-question-plan';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { processNativeRagAnswer } from '../fastgpt/rag-worker';
-import { processAgentV2Answer } from '../fastgpt/agent-v2/worker';
-import { fastGPTAgentV2Protocol, nativeAgentRuntimeBinding, nativeExecutorConfigurationIssue } from '../fastgpt/agent-v2/config';
+import { nativeAgentRuntimeBinding, nativeExecutorConfigurationIssue } from '../fastgpt/agent-v2/config';
 import { publicHistoryScope } from '../agent/history';
 import { companyPracticeRequested, explicitHumanHandoffRequested, knowledgeOriginalRequested } from '../agent/read-tool-input';
 import { discoveryIntent } from '../core/discovery';
@@ -35,6 +37,23 @@ import { profileFieldLabels, profileRecallKind, renovationLeadId, renovationProf
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
 const requirementRecapRequested = (text: string) => /回顾|总结.*(?:需求|想法)|(?:需求|想法).*总结|整理一下|记了哪些想法|记住了什么/.test(text);
+
+function completePublicGuideOpening(lease: Lease, ref: PublicContextRef) {
+  return completeGuidance(lease, async (tx, { conversation }) => {
+    const active = (conversation.entry_snapshot as Row).activePublicSite as PublicContextRef | undefined;
+    if (!samePublicRef(active, ref)) fail('context_changed');
+    const settings = await one(tx, sql`select guidance_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
+    const guide = configuredPublicSiteGuide(settings?.guidance_config);
+    if (!guide.enabled) fail('context_changed');
+    const material = await publishedPublicMaterial(tx, lease.enterpriseId, ref.siteId, ref.versionId);
+    if (!material) fail('public_site_unavailable', 404);
+    await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
+      values(${lease.enterpriseId},${lease.runId},1003,'agent_public_context','succeeded',
+      ${JSON.stringify([{ ...ref, contentHash: String(material.version.content_hash) }])}::jsonb,
+      ${JSON.stringify({ protocol: 'public-site-guide-v1', current: ref })}::jsonb)`);
+    return publicGuideQuestion(guide, material.version.content as PublicContent);
+  }, 'construction.public.guide');
+}
 
 async function tryRenovationProfileRecap(lease: Lease, context: Awaited<ReturnType<typeof runContext>>) {
   if (lease.actor.principal.kind !== 'user' || context.conversation.purpose !== 'customer_consultation'
@@ -125,6 +144,10 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
       await regenerateAnswer(lease, () => { returned = true; });
       return;
     }
+    if (context.run.purpose === 'public.site.intro' && policy.publicSiteGuideOpening) {
+      await completePublicGuideOpening(lease, policy.publicSiteGuideOpening as PublicContextRef);
+      return;
+    }
     if (await tryRenovationProfileRecap(lease, context)) return;
     // Let a configured consultation interpret the current message through its
     // saved runtime before stage-template vocabulary can intercept it.
@@ -171,7 +194,6 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     // unknown protocol fails closed instead of entering another orchestrator.
     const agentRuntime = (policy.agentRuntime as Row | undefined)?.protocol !== undefined ? policy.agentRuntime as Row : undefined;
     if (agentRuntime) {
-      if (agentRuntime.protocol === fastGPTAgentV2Protocol) { await processAgentV2Answer(lease); return; }
       if (agentRuntime.protocol === xiaokNativeExecutorProtocol) {
         if (!await tryRequirementGuidance(lease, context)) await processNativeAgentAnswer(lease);
         return;
@@ -304,6 +326,7 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
       : e instanceof AssistantError ? e.code : stage === 'model' ? 'model_unavailable' : 'retrieval_unavailable');
     const details = e instanceof KnowledgeSearchUnavailable ? { retrieval: e.diagnostic }
       : recovery ? { modelFailure: recovery.failure, fallbackBlocked: recovery.blocked ?? null } : undefined;
+    if (await requeuePreDispatchModelFailure(lease, code, details)) return;
     try{await failRun(lease,code,returned || paymentRejected,details);}catch(error){if(!(error instanceof AssistantError && error.code==='context_changed'))throw error;}
   }
 }

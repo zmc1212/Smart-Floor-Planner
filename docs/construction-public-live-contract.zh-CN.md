@@ -42,6 +42,8 @@ C03-05 只接受当前播放器的进度和解码错误。继续观看或续期�
 - 公开播放器下方提供整行原生「分享给朋友」按钮。当前公开元数据核对通过后，按钮及微信菜单使用获审的公开名称、独立静态封面和只带 `enterpriseId`、`key` 的目标路径。媒体连接、播放和暂停期间复验资格，资格失效会收起分享入口。好友点卡片从原路由建立自己的匿名观看会话，撤回后的旧卡片沿用停播反馈。[批准的分享设计与打包映射](../design-references/cloud-site-redesign-20261107/public-live-share-v1/README.md)
 - 批准源见 `design-references/xiaok-p4b-public-sites-v1/README.md`。业主待办与详情沿用 `owner-authorization-task-v1/01-owner-site-pending-v001.png`、`02-owner-live-authorization-v001.png`，C03 沿用 Agent 版 C03-04/C03-05 v001。853×1844 映射 390×844，真实预览为精确 16:9 等比容纳。工地行和导航用小程序原生控件，授权纸页和控件与真实视频在同一 WebView，复用既有样式、字体与获权媒体。
 
+围观引导复用 C03 播放页和 C01 原咨询。`GET /api/miniprogram/assistant/conversations/:cid/public-sites/:siteId/guide?versionId=…&liveKey=…&liveVersionId=…` 复验本人会话、获审的材料版本，以及同一项目独立版本的直播授权，返回已填充的首问或 `null`。来源失效、机位版本错误和项目不匹配都不返回首问。原 `POST .../:siteId/context` 持久化挂载的公开材料，并在本人会话排队交付同一句首问。交付后重进只显示已保存的气泡。首问无需模型。首个完成的回复消费这次引导，模型沿用现有 Agent 和来源规则，最多追问一次，或结束引导。开关、首问、追问方向和收尾在 `/assistant-knowledge` →「围观引导」配置。接口与存储见[管理后台模块](./admin-system-modules.zh-CN.md)。
+
 ## API与数据
 
 | 调用者 | 入口 |

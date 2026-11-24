@@ -3,7 +3,8 @@ import { object, text } from './contracts';
 import { factFields, type NeedFact } from '@/lib/assistant/agent/memory';
 
 export type NeedFollowUp = { field: NeedFact['field']; room: string; question: string };
-export type ConstructionStage = { key: string; name: string; visitReminder: boolean; visitReason: string; watchPoints: string; followUps?: NeedFollowUp[] };
+export type InspectionCheckpoint = { key: string; name: string };
+export type ConstructionStage = { key: string; name: string; visitReminder: boolean; visitReason: string; watchPoints: string; followUps?: NeedFollowUp[]; inspectionCheckpoints?: InspectionCheckpoint[] };
 export type StageContact = { name: string; phone: string };
 export function assignmentInput(staffIds: unknown, primaryStaffId: unknown) {
   if (!Array.isArray(staffIds) || staffIds.length > 30) fail('invalid_construction', 422);
@@ -25,15 +26,26 @@ export function stageKey(raw: unknown) {
 export function stagesInput(raw: unknown): ConstructionStage[] {
   if (!Array.isArray(raw) || !raw.length || raw.length > 30) fail('invalid_construction', 422);
   const stages = raw.map(item => {
-    const v = object(item, ['key', 'name', 'visitReminder', 'visitReason', 'watchPoints', 'followUps']);
+    const v = object(item, ['key', 'name', 'visitReminder', 'visitReason', 'watchPoints', 'followUps', 'inspectionCheckpoints']);
     if (typeof v.visitReminder !== 'boolean') fail('invalid_construction', 422);
     const followUps = v.followUps === undefined ? undefined : followUpsInput(v.followUps);
     return { key: stageKey(v.key), name: text(v.name, 30), visitReminder: v.visitReminder,
       visitReason: text(v.visitReason ?? '', 500, v.visitReminder), watchPoints: text(v.watchPoints ?? '', 2000, v.visitReminder),
-      ...(followUps === undefined ? {} : { followUps }) };
+      ...(followUps === undefined ? {} : { followUps }),
+      ...(v.inspectionCheckpoints === undefined ? {} : { inspectionCheckpoints: checkpointInputs(v.inspectionCheckpoints) }) };
   });
   if (new Set(stages.map(s => s.key)).size !== stages.length || new Set(stages.map(s => s.name)).size !== stages.length) fail('invalid_construction', 422);
   return stages;
+}
+function checkpointInputs(value: unknown) {
+  if (!Array.isArray(value) || value.length > 15) fail('invalid_construction', 422);
+  const checkpoints = value.map(item => {
+    const row = object(item, ['key', 'name']);
+    return { key: stageKey(row.key), name: text(row.name, 60) };
+  });
+  if (new Set(checkpoints.map(item => item.key)).size !== checkpoints.length
+    || new Set(checkpoints.map(item => item.name)).size !== checkpoints.length) fail('invalid_construction', 422);
+  return checkpoints;
 }
 function followUpsInput(raw: unknown): NeedFollowUp[] {
   if (!Array.isArray(raw) || raw.length > 3) fail('invalid_construction', 422);

@@ -12,7 +12,6 @@ import { readContentEntry, contentEntrySource, contentChannel, contentGreeting, 
 import { acquisitionEntryView } from '../acquisition/config';
 import { readAcquisitionSettings } from '../acquisition/settings';
 import { latestCustomerReportContext } from '@/lib/construction/report-reference';
-import { fastGPTAgentV2Presentation } from '../fastgpt/agent-v2/config';
 import { developmentReviewEnabled } from '../agent/review-runtime';
 import { getJwtSecret } from '@/lib/jwt-secret';
 
@@ -22,9 +21,15 @@ export async function customerIdentity(request: Request) {
   const payload = await verifyMiniProgramToken(request.headers.get('authorization')?.slice(7) || '');
   if (!payload || !context.user.openid) fail('identity_context_invalid', 401);
   if (context.mode !== 'customer') fail('assistant_capability_forbidden', 403);
-  return { userId: context.user._id, contextVersion: payload.contextVersion, enterpriseId: context.enterpriseId };
+  return {
+    userId: context.user._id,
+    contextVersion: payload.contextVersion,
+    enterpriseId: context.enterpriseId,
+    phone: context.user.phone,
+    nickname: context.user.nickname,
+  };
 }
-type Identity = Awaited<ReturnType<typeof customerIdentity>>;
+type Identity = Pick<Awaited<ReturnType<typeof customerIdentity>>, 'userId' | 'contextVersion' | 'enterpriseId'>;
 export function actorFor(identity: Identity, enterpriseId: string, entry?: Record<string, unknown>): ActorContext {
   return { enterpriseId, principal: { kind: 'user', userId: identity.userId }, contextVersion: identity.contextVersion,
     customerServiceRequired: true, capabilities: ['assistant.chat.self'], entry };
@@ -172,7 +177,6 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
   });
   const guidance = configuredGuidance(settings?.guidance_config);
   const guidanceVersion = Number(settings?.version || 1);
-  const agentV2 = fastGPTAgentV2Presentation(enterpriseId);
   const entryToken = await new SignJWT({ enterpriseId, contextVersion: identity.contextVersion,
     basis: { ...basis, ...(staffProfileLeadId ? { staffProfileLeadId } : {}) }, guidanceVersion }).setProtectedHeader({ alg: 'HS256' })
     .setSubject(identity.userId).setAudience('assistant-entry').setIssuedAt().setExpirationTime('15m').sign(entrySecret());
@@ -185,7 +189,6 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
     ...(acquisition ? { acquisition } : {}),
     guidanceOpening: contentEntry ? contentGreeting(basis.kind==='reference_content'?reference:null) : acquisition?.opening || guidanceOpening(guidance),
     guidanceEnabled: contentEntry ? false : guidance.enabled, guidance: contentEntry ? null : guidanceView({ ...guidance, chatFirst: true }, []),
-    ...(agentV2 ? { ...(agentV2.welcome ? { welcome: agentV2.welcome } : {}), presetQuestions: agentV2.presets } : {}),
     ...(contentEntry&&reference&&basis.kind==='reference_content'?{referenceEntry:body.referenceEntry}:{}) };
 }
 export async function fromEntry(identity: Identity, token: unknown, staffProfileNotice = false) {

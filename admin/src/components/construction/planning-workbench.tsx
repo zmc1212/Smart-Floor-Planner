@@ -2,16 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
-import { Alert, Button, Drawer, Form, Input, Modal, Select, Space, Switch, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Checkbox, DatePicker, Drawer, Form, Input, Modal, Radio, Select, Space, Switch, Tabs, Tag, Typography } from 'antd';
+import dayjs from 'dayjs';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { PublicationWorkbench } from './publication-workbench';
 import { CameraPanel } from './camera-panel';
 import { ServiceOrderPanel } from './service-order-panel';
+import { milestoneCompletionDate, SchedulePanel, type ScheduleEditorKind } from './schedule-panel';
 import { notify } from '@/components/admin/operation-feedback';
-import { constructionRequest, ConstructionRequestError, errorText, labels, followUpFieldLabels, type ConstructionLead, type Detail, type Pending, type Project, type Staff, type Stage, type StageSettings } from './client';
+import type { MilestoneChange } from '@/lib/construction/schedule-milestones';
+import { constructionRequest, ConstructionRequestError, errorText, labels, followUpFieldLabels, type ConstructionLead, type Detail, type Milestone, type Pending, type Project, type Staff, type Stage, type StageSettings } from './client';
 
 const options = (keys: string[]) => keys.map(value => ({ value, label: labels[value] }));
-type Editor = { kind: 'create' | 'project' | 'member' | 'room' | 'stages' | 'contact' | 'progress'; stage?: Stage; roomId?: string };
+type ScheduleEditor = { kind: ScheduleEditorKind; version: number; milestone?: Milestone };
+type Editor = { kind: 'create' | 'project' | 'member' | 'room' | 'stages' | 'contact' | 'progress' | 'schedule';
+  stage?: Stage; roomId?: string; schedule?: ScheduleEditor };
 export function PlanningWorkbench() {
   const { user, isLoading } = useCurrentUser();
   const identity = user?._id ? `${user._id}:${user.enterpriseId?._id || 'unselected'}` : '';
@@ -70,16 +75,24 @@ function Workbench({ identity }: { identity: string }) {
   const send = async (operation: Pending) => {
     setBusy(true);
     try {
-      const result = await constructionRequest<{ id: string; version: number; scope?: string }>(operation.path, { method: operation.method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.key }, body: JSON.stringify(operation.body) });
+      const result = await constructionRequest<{ id: string; version: number; scope?: string; scheduleId?: string }>(operation.path, { method: operation.method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operation.key }, body: JSON.stringify(operation.body) });
+      if (operation.path.endsWith('/schedule') && (result.scope !== 'schedule' || !result.scheduleId || result.id !== operation.path.split('/')[1])) {
+        throw new ConstructionRequestError(true, '排期回执缺少操作标识，请核对同一次操作。');
+      }
       if (!result.id || !Number.isInteger(result.version)) throw new ConstructionRequestError(true, '回执缺少操作标识，请核对同一次操作。');
       if (!alive.current) return;
-      sessionStorage.removeItem(storageKey); setPending(null); setEditor(null); notify.success('施工资料已保存');
+      sessionStorage.removeItem(storageKey); setPending(null); setEditor(null);
+      notify.success(result.scope === 'schedule' ? '施工计划已保存' : '施工资料已保存');
       const pid = result.scope === 'stages' ? selected : result.id;
       setSelected(pid); await load(pid);
     } catch (e) {
       if (!alive.current) return;
       if (e instanceof ConstructionRequestError && !e.uncertain) { sessionStorage.removeItem(storageKey); setPending(null); }
       notify.error('操作未完成', { description: errorText(e) });
+      if (operation.path.endsWith('/schedule') && e instanceof ConstructionRequestError && !e.uncertain) {
+        if ([401, 403, 404].includes(e.statusCode ?? 0)) setEditor(null);
+        if (e.statusCode === 409 || [401, 403, 404].includes(e.statusCode ?? 0)) await load(selected);
+      }
     } finally { if (alive.current) setBusy(false); }
   };
   const open = (kind: Editor['kind'], stage?: Stage) => {
@@ -95,6 +108,20 @@ function Workbench({ identity }: { identity: string }) {
     setFormKey(key => key + 1);
     setEditor({ kind, stage });
   };
+  const schedule = editor?.schedule;
+  const currentMilestone = detail?.progress?.management?.milestones.find(row => row.key === schedule?.milestone?.key);
+  const scheduleStale = !!schedule && schedule.version !== detail?.progress?.version;
+  const openSchedule = (kind: ScheduleEditorKind, milestone?: Milestone) => {
+    if (!detail?.progress?.management || (!detail.manage && kind !== 'view')) return;
+    setInitial({
+      outcome: 'ongoing',
+      estimate: milestone?.estimate ? [dayjs(milestone.estimate.start), dayjs(milestone.estimate.end)] : undefined,
+      date: milestone?.agreedDate ? dayjs(milestone.agreedDate) : undefined,
+      note: milestone?.note || '',
+    });
+    setFormKey(key => key + 1);
+    setEditor({ kind: 'schedule', schedule: { kind, milestone, version: detail.progress.version } });
+  };
   const submit = async () => {
     if (!editor || pending) return;
     try {
@@ -102,6 +129,19 @@ function Workbench({ identity }: { identity: string }) {
       let body: Record<string, unknown>, path = 'projects', method = 'POST';
       if (kind === 'stages') { path = 'stages'; method = 'PATCH'; body = { expectedVersion: settings.version, stages: values.stages }; }
       else if (kind === 'create') body = { leadId: values.leadId, managerId: values.managerId, name: values.name, rooms: String(values.rooms || '').split(/\n/).map(s => s.trim()).filter(Boolean) };
+      else if (kind === 'schedule') {
+        if (schedule?.kind === 'view') { setEditor(null); return; }
+        if (!detail?.manage || detail.project.status !== 'active' || !schedule || scheduleStale) return;
+        const key = schedule.milestone?.key;
+        let change: MilestoneChange;
+        if (schedule.kind === 'template') change = { kind: 'template' };
+        else if (!key) return;
+        else if (schedule.kind === 'agreement') change = { kind: 'agreement', key, date: values.date.format('YYYY-MM-DD'), reason: values.reason || '', confirmedOffline: true };
+        else change = { kind: 'followup', key, outcome: values.outcome, note: values.note || '',
+          estimate: values.estimate ? { start: values.estimate[0].format('YYYY-MM-DD'), end: values.estimate[1].format('YYYY-MM-DD') } : null };
+        path += '/' + detail.project.id + '/schedule';
+        body = { expectedVersion: schedule.version, change };
+      }
       else {
         if (!detail) return;
         path += '/' + detail.project.id; body = { expectedVersion: detail.project.version };
@@ -135,6 +175,7 @@ function Workbench({ identity }: { identity: string }) {
       {detail && <Tabs destroyOnHidden items={[
         { key: 'stages', label: '节点与到场提醒', children: <Space direction="vertical" size={20} style={{ width: '100%' }}>
           <Alert type="info" showIcon message={'当前实际节点：' + (detail.stages.find(s => s.key === detail.project.current_stage_key)?.name || '尚未标记')} description={detail.project.progress_note || '由项目经理据现场实际进度更新。'} action={detail.manage && <Button disabled={disabled || detail.project.status !== 'active'} onClick={() => open('progress')}>更新实际节点</Button>} />
+          {detail.progress && <SchedulePanel progress={detail.progress} disabled={disabled || !detail.manage || detail.project.status !== 'active'} open={openSchedule} />}
           <ProTable<Stage> rowKey="key" dataSource={detail.stages} search={false} options={false} pagination={false} headerTitle="施工节点与本项目联系人" columns={[
             { title: '节点', render: (_, s, i) => `${i+1}. ${s.name}` }, { title: '到场提醒', render: (_, s) => s.visitReminder ? '开启' : '关闭' },
             { title: '提醒内容 / 现场重点', render: (_, s) => <Space direction="vertical" size={4}><Typography.Text>{s.visitReason || '—'}</Typography.Text><Typography.Text type="secondary" style={{ whiteSpace: 'pre-wrap' }}>{s.watchPoints}</Typography.Text></Space> },
@@ -155,8 +196,49 @@ function Workbench({ identity }: { identity: string }) {
         { key: 'video', label: '工地视频', children: <CameraPanel key={identity+':'+selected} projectId={selected} /> },
       ]} />}
     </Drawer>
-    <Modal zIndex={1200} title={editor ? ({ create: '建立施工项目', project: '项目设置', member: '设置项目成员', room: '项目房间', stages: '配置施工节点', contact: `${editor.stage?.name} · 联系管家电话`, progress: '更新实际施工节点' }[editor.kind]) : ''} width={editor?.kind === 'stages' ? 760 : 520} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }} open={!!editor} onCancel={() => { if (!busy) setEditor(null); }} onOk={() => void submit()} confirmLoading={busy} okButtonProps={{ disabled: !!pending }} okText="保存" forceRender>
-      <Form key={formKey} form={form} layout="vertical" disabled={disabled} preserve={false} initialValues={initial}>
+    <Modal zIndex={1200} title={editor ? ({ create: '建立施工项目', project: '项目设置', member: '设置项目成员', room: '项目房间', stages: '配置施工节点', contact: `${editor.stage?.name} · 联系管家电话`, progress: '更新实际施工节点',
+      schedule: schedule?.kind === 'template' ? '套用阶段模板' : schedule?.kind === 'agreement' ? (schedule.milestone?.agreedDate ? '登记改期' : '登记约定日期') : schedule?.kind === 'view' ? '节点进展' : '跟进节点' }[editor.kind]) : ''} width={editor?.kind === 'stages' ? 760 : 520} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }} open={!!editor} onCancel={() => { if (!busy) setEditor(null); }} onOk={() => void submit()} confirmLoading={busy} okButtonProps={{ disabled: !!pending || scheduleStale && schedule?.kind !== 'view' || (!!schedule && schedule.kind !== 'view' && (!detail?.manage || detail.project.status !== 'active')) }} okText={schedule?.kind === 'template' ? '套用模板' : schedule?.kind === 'view' ? '关闭' : schedule?.kind === 'agreement' ? '登记已确认日期' : schedule ? '保存跟进' : '保存'} forceRender>
+      {schedule && pending && <Alert showIcon type="warning" message="上次提交结果待核对" action={<Button loading={busy} onClick={() => void send(pending)}>核对上次提交</Button>} />}
+      {scheduleStale && schedule?.kind !== 'view' && <Alert showIcon type="warning" style={{ marginBottom: 16 }} message={currentMilestone ? '当前计划 · ' + currentMilestone.timeText : '施工计划已有更新'}
+        action={detail?.manage && detail.progress?.management && (schedule?.kind === 'template' || currentMilestone?.valid && !currentMilestone.completedAt) && <Button disabled={busy || !!pending} onClick={() => {
+          form.setFieldValue('confirmedOffline', false);
+          setEditor({ kind: 'schedule', schedule: { kind: schedule!.kind, milestone: currentMilestone, version: detail.progress.version } });
+        }}>已核对最新计划</Button>} />}
+      <Form key={formKey} form={form} layout="vertical" disabled={disabled} preserve={false} initialValues={initial}
+        onValuesChange={values => { if (schedule?.kind === 'agreement' && Object.hasOwn(values, 'date')) form.setFieldValue('confirmedOffline', false); }}>
+        {schedule?.kind === 'template' && <Space direction="vertical">
+          <Typography.Text strong>标准整装</Typography.Text>
+          {detail?.progress?.management?.template.map(row => <Typography.Text key={row.key}>{row.name}</Typography.Text>)}
+        </Space>}
+        {schedule?.kind === 'view' && schedule.milestone && <Space direction="vertical">
+          <Typography.Text strong>{schedule.milestone.name}</Typography.Text>
+          <Typography.Text>{schedule.milestone.completedAt ? '完成于 ' + milestoneCompletionDate(schedule.milestone.completedAt) : schedule.milestone.label}</Typography.Text>
+          {schedule.milestone.note && <Typography.Text>{schedule.milestone.note}</Typography.Text>}
+        </Space>}
+        {schedule?.kind === 'followup' && schedule.milestone && <>
+          <Typography.Paragraph strong>{schedule.milestone.name} · {schedule.milestone.timeText}</Typography.Paragraph>
+          {!!schedule.milestone.overdueDays && <Alert type="warning" showIcon message={`超出预计 ${schedule.milestone.overdueDays} 天 · 待核实`} style={{ marginBottom: 16 }} />}
+          <Form.Item name="outcome" label="现场情况" extra={schedule.milestone.canConfirmCompletion ? undefined : '已完成需有真实阶段记录，请先核对实际节点。'}>
+            <Radio.Group options={[{ label: '已完成', value: 'completed', disabled: !schedule.milestone.canConfirmCompletion }, { label: '仍在施工', value: 'ongoing' }]} optionType="button" />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(a, b) => a.outcome !== b.outcome}>
+            {({ getFieldValue }) => getFieldValue('outcome') !== 'completed' && <Form.Item name="estimate" label="新的预计完成时间">
+              <DatePicker.RangePicker style={{ width: '100%' }} />
+            </Form.Item>}
+          </Form.Item>
+          <Form.Item name="note" label="说明（选填）"><Input.TextArea maxLength={500} rows={2} /></Form.Item>
+        </>}
+        {schedule?.kind === 'agreement' && schedule.milestone && <>
+          <Typography.Paragraph strong>{schedule.milestone.name}</Typography.Paragraph>
+          <Typography.Paragraph>原约定 · {schedule.milestone.agreedDate || '尚未登记'}</Typography.Paragraph>
+          <Form.Item name="date" label="双方确认的日期" rules={[{ required: true, message: '请选择日期' }]}><DatePicker style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="reason" label={schedule.milestone.agreedDate ? '改期原因' : '说明（选填）'} rules={[{ required: !!schedule.milestone.agreedDate, whitespace: true, message: '请填写改期原因' }]}>
+            <Input.TextArea maxLength={500} rows={2} />
+          </Form.Item>
+          <Form.Item name="confirmedOffline" valuePropName="checked" rules={[{ validator: (_, value) => value === true ? Promise.resolve() : Promise.reject(new Error('请先与业主线下确认日期')) }]}>
+            <Checkbox>已与业主线下确认该日期</Checkbox>
+          </Form.Item>
+        </>}
         {editor?.kind === 'stages' && <>
           <Alert type="info" showIcon message="默认10个节点，可增删、调整名称和顺序。开启到场提醒须填写原因与现场重点。需求补问独立配置，实际进入节点时最多问一个缺项，已有或问过的需求不重复问；客户可稍后再聊。" style={{ marginBottom: 20 }} />
           <Form.List name="stages">{(fields, { add, remove, move }) => <Space direction="vertical" size={20} style={{ width: '100%' }}>
@@ -167,6 +249,17 @@ function Workbench({ identity }: { identity: string }) {
               <Form.Item name={[field.name, 'visitReminder']} label="小K主动提醒客户到场" valuePropName="checked"><Switch /></Form.Item>
               <Form.Item name={[field.name, 'visitReason']} label="到场提醒内容"><Input.TextArea maxLength={500} rows={2} /></Form.Item>
               <Form.Item name={[field.name, 'watchPoints']} label="到现场重点看什么"><Input.TextArea maxLength={2000} rows={3} /></Form.Item>
+              <Typography.Text strong>必须到场审核的工序</Typography.Text>
+              <Form.List name={[field.name, 'inspectionCheckpoints']}>{(checkpoints, { add: addCheckpoint, remove: removeCheckpoint }) => <Space direction="vertical" size={8} style={{ width: '100%', marginBottom: 16 }}>
+                {checkpoints.map(checkpoint => <Space key={checkpoint.key} align="baseline">
+                  <Form.Item name={[checkpoint.name, 'key']} hidden><Input /></Form.Item>
+                  <Form.Item name={[checkpoint.name, 'name']} rules={[{ required: true, whitespace: true, message: '填写工序名称' }]}>
+                    <Input aria-label="必须到场的工序名称" placeholder="工序名称" maxLength={60} />
+                  </Form.Item>
+                  <Button size="small" danger disabled={disabled} onClick={() => removeCheckpoint(checkpoint.name)}>移除</Button>
+                </Space>)}
+                <Button size="small" disabled={disabled || checkpoints.length >= 15} onClick={() => addCheckpoint({ key: 'inspection-' + crypto.randomUUID(), name: '' })}>添加必到工序</Button>
+              </Space>}</Form.List>
               <Typography.Text strong>需求补问（可选，按顺序选择一个缺项）</Typography.Text>
               <Form.List name={[field.name, 'followUps']}>{(prompts, { add: addPrompt, remove: removePrompt }) => <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 {prompts.map(prompt => <div key={prompt.key}>

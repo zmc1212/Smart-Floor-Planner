@@ -49,7 +49,7 @@
     &::after { border: 0; }
   }
   .answer-process-toggle { width: 100%; align-items: flex-end; overflow: visible; }
-  .answer-process-toggle[disabled] { opacity: 1; background: transparent; color: inherit; }
+  .answer-process-toggle.is-disabled { opacity: 1; background: transparent; color: inherit; }
   .answer-process-header {
     display: flex;
     gap: 14rpx;
@@ -75,7 +75,7 @@
     box-sizing: border-box;
     border: 2rpx solid currentColor;
     border-radius: 4rpx;
-    > view {
+    > .chat-group {
       width: 13rpx;
       height: 2rpx;
       background: currentColor;

@@ -9,6 +9,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
+import { projectSchedule } from '@/lib/construction/site-schedule';
 import { SiteChatService } from '@/lib/construction/site-chat';
 import { PlanCustomerService, deliverPlans, projectPlans } from '@/lib/construction/site-plans';
 import { projectSiteIssues, readSiteIssue } from '@/lib/construction/site-issues';
@@ -306,4 +307,91 @@ test('a project with no designer leaves the shared need unassigned instead of in
   const v2 = (await boss.read(other)).versions as Row;
   await assert.rejects(boss.send(other, { text: `开始整改事项${item.issueId}：安排处理`, mediaIds: [], versions: v2 }, randomUUID()),
     (error: Row) => String(error.code) === 'site_review_required');
+});
+
+test('stage template, node follow-up and recorded delivery dates share one version across Web and Mini identities', async () => {
+  const customerLead = await withTenantTransaction(eids[0], tx => one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+    values(${eids[0]},${uids[0]},'合成阶段模板业主','13900000004','natural') returning id`));
+  const staffId = await withPlatformTransaction(async tx => {
+    const user = (await one(tx, sql`insert into app.users(nickname,phone,context_version)
+      values(${prefix + '-mini-manager'},'13900000005',1) returning id`))!;
+    uids.push(String(user.id));
+    await tx.execute(sql`update app.admin_users set user_id=${String(user.id)} where id=${members[2]}`);
+    return String(user.id);
+  });
+  const projectId = String((await act('create', { leadId: String(customerLead!.id), name: '合成阶段排期工地', managerId: members[2], rooms: [] })).id);
+  const manager = new ConstructionService({ enterpriseId: eids[0], adminId: members[2], miniProgramUserId: staffId, miniProgramContextVersion: 1 });
+  const web = (expectedVersion: number, change: Row) => act('saveSchedule', { projectId, expectedVersion, change });
+  const mini = (expectedVersion: number, change: Row, requestKey = randomUUID()) =>
+    manager.execute('saveSchedule', { projectId, expectedVersion, change }, requestKey);
+  const inspect = () => owner.execute('schedule', { projectId });
+  const readPublic = () => withTenantTransaction(eids[0], async tx => {
+    const project = (await one(tx, sql`select * from app.construction_projects where enterprise_id=${eids[0]} and id=${projectId}`))!;
+    return projectSchedule(tx, eids[0], project, { customerId: uids[0] });
+  });
+  const setStage = async (stageKey: string) => {
+    const project = (await owner.execute('detail', { projectId })).project as Row;
+    await act('progress', { projectId, expectedVersion: project.version, stageKey, note: '', sendReminder: false });
+  };
+  const rejects = (code: string) => (error: Row) => error.code === code;
+  const previousAllowlist = process.env.NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS;
+  process.env.NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS = eids[0];
+  try {
+    assert.equal((await web(0, { kind: 'template' })).version, 1);
+    const templates = (await manager.execute('schedule', { projectId })).management as Row;
+    assert.deepEqual((templates.milestones as Row[]).map(node => node.name), ['开工', '水电验收', '泥木完成', '安装收尾', '竣工交付']);
+    assert.equal((await readPublic()).available, false);
+    assert.equal((await mini(1, { kind: 'template' })).version, 1);
+    const followup = { kind: 'followup', key: 'milestone_utilities', outcome: 'ongoing', note: '仅供经理核对',
+      estimate: { start: day(-3), end: day(-1) } };
+    await assert.rejects(mini(1, { ...followup, estimate: { start: day(1), end: day(0) } }), rejects('invalid_construction'));
+    await assert.rejects(mini(1, { ...followup, outcome: 'completed' }), rejects('construction_completion_evidence_required'));
+    const operation = randomUUID();
+    const forecast = await mini(1, followup, operation);
+    assert.deepEqual(await mini(1, followup, operation), forecast);
+    assert.equal(forecast.version, 2);
+    const loadedMilestones = ((await inspect()).management as Row).milestones as Row[];
+    assert.equal(loadedMilestones.find(n => n.key === followup.key)?.overdueDays, 1);
+    const publicForecast = await readPublic();
+    assert.equal(publicForecast.nodes[0].timeText, '时间待确认');
+    assert.equal(publicForecast.overall.color, 'gray');
+    assert.doesNotMatch(JSON.stringify(publicForecast), /仅供经理核对|management/);
+    await assert.rejects(web(1, { kind: 'template' }), rejects('version_conflict'));
+    const agreement = { kind: 'agreement', key: 'milestone_handover', date: day(10), reason: '' };
+    await assert.rejects(web(2, agreement), rejects('construction_agreement_confirmation_required'));
+    assert.equal((await web(2, { ...agreement, confirmedOffline: true })).version, 3);
+    const adjusted = { ...agreement, date: day(12), confirmedOffline: true, reason: '合成样例已线下沟通' };
+    assert.equal((await mini(3, adjusted)).version, 4);
+    const published = await readPublic();
+    assert.equal(published.nodes.find(n => n.timeKind === 'agreement')!.plannedEnd, day(12));
+    assert.doesNotMatch(JSON.stringify(published), /合成样例已线下沟通|pending_customer/);
+    const original = await withTenantTransaction(eids[0], tx => one(tx, sql`select payload from app.domain_event_outbox
+      where enterprise_id=${eids[0]} and type='construction.schedule.published.v1' and aggregate_id=${projectId} and aggregate_version=3`));
+    const originalAgreement = ((original!.payload as Row).milestones as Row[]).find(n => n.kind === 'handover')?.agreement as Row;
+    assert.equal(originalAgreement.date, day(10));
+
+    const foreign = new ConstructionService({ enterpriseId: eids[1], adminId: aids[1] });
+    await assert.rejects(foreign.execute('saveSchedule', { projectId, expectedVersion: 4, change: { kind: 'template' } }, randomUUID()), rejects('construction_not_found'));
+    await setStage('utilities');
+    await setStage('masonry_carpentry');
+    assert.equal((await mini(4, { ...followup, outcome: 'completed' })).version, 5);
+    assert.equal((await inspect()).version, 5);
+    assert.equal(((await inspect()).nodes as Row[]).find(n => n.key === followup.key)!.constructionStatus, 'completed');
+    await setStage('utilities');
+    assert.notEqual(((await inspect()).nodes as Row[]).find(n => n.key === followup.key)!.constructionStatus, 'completed');
+
+    const appendMember = async (adminId: string, role: string, active: boolean) => {
+      const detail = await owner.execute('detail', { projectId });
+      await act('member', { projectId, adminId, role, active, expectedVersion: (detail.project as Row).version, workLabel: '' });
+    };
+    await appendMember(aids[0], 'manager', true);
+    await appendMember(members[2], 'worker', true);
+    await assert.rejects(mini(5, { kind: 'template' }), rejects('construction_forbidden'));
+    assert.equal((await manager.execute('schedule', { projectId })).management, undefined);
+    await appendMember(members[2], 'worker', false);
+    await assert.rejects(manager.execute('schedule', { projectId }), rejects('construction_not_found'));
+  } finally {
+    if (previousAllowlist === undefined) delete process.env.NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS;
+    else process.env.NATIVE_WORKFLOW_COLLABORATION_ENTERPRISE_IDS = previousAllowlist;
+  }
 });

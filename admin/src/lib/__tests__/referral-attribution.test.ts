@@ -57,10 +57,13 @@ test('pending referral sources are opaque, authenticated, and time limited', () 
     })?.expired,
     true
   );
-  assert.equal(
-    openPendingReferralSource(`${token.slice(0, -1)}x`, { now }),
-    null
-  );
+  // Flip a significant base64url character. Changing only the final character
+  // can alter padding bits alone, leaving the decoded signature bytes intact.
+  const tamperAt = 4 + Math.floor((token.length - 4) / 2);
+  const tampered = token.slice(0, tamperAt)
+    + (token[tamperAt] === 'A' ? 'B' : 'A')
+    + token.slice(tamperAt + 1);
+  assert.equal(openPendingReferralSource(tampered, { now }), null);
 });
 
 test('pending staff activity sources are opaque and open through the claim union', () => {

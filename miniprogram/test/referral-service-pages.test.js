@@ -113,7 +113,7 @@ test('enterprise join codes present owner dual codes and employee personal promo
   assert.match(js, /邀请你加入\$\{enterpriseName\}推广团队/);
   assert.match(js, /onboarding\/onboarding\?token=/);
   assert.match(js, /hideShareMenu/);
-  assert.equal(json.enableShareAppMessage, true);
+  assert.equal(json.enableShareAppMessage, undefined);
   assert.doesNotMatch(wxml, /出示员工活动码|免费设计服务|让客户扫码领取|推荐网络 → 企业双码/);
   assert.match(js, /\/miniprogram\/enterprise-join-codes/);
   assert.match(js, /enterprise-join-codes\/\$\{encodeURIComponent\(codeType\)\}\/image/);

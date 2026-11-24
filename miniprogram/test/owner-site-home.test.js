@@ -1,11 +1,29 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
 const api = require('../utils/api');
 
 let definition;
 global.Component = value => { definition = value; };
 require('../packages/construction/owner-home/owner-home');
 delete global.Component;
+let indexPage;
+global.Page = value => { indexPage = value; };
+require('../pages/index/index');
+delete global.Page;
+
+test('the owner site keeps the report and confirmation actions inside its vertical scroll area', () => {
+  const markup = readFileSync(require.resolve('../packages/construction/owner-home/owner-home.wxml'), 'utf8');
+  const scrollView = markup.match(/<scroll-view\b[^>]*\bscroll-y\b[^>]*>([\s\S]*?)<\/scroll-view>/);
+  assert.ok(scrollView);
+  assert.match(scrollView[1], /class="site-paper site-pending"/);
+  assert.match(scrollView[1], /bindtap="openReport"/);
+  assert.ok(scrollView[1].indexOf('site-camera') < scrollView[1].indexOf('site-pending'));
+  assert.ok(scrollView[1].indexOf('site-pending') < scrollView[1].indexOf('site-report-heading'));
+  assert.ok(scrollView[1].indexOf('site-report-heading') < scrollView[1].indexOf('site-utility'));
+  assert.doesNotMatch(scrollView[1], /class="site-nav"/);
+  assert.match(markup, /family-sheet wx:if="\{\{familyVisible\}\}"/);
+});
 
 test('switching sites clears the earlier photo and opens only the selected camera and exact report', async t => {
   const originalRequest = api.request;
@@ -23,7 +41,7 @@ test('switching sites clears the earlier photo and opens only the selected camer
     if (endpoint.endsWith('/1/cover')) return oldCover;
     if (endpoint.endsWith('/2/cover')) return { data: { camera: { name: '门口机位', cover: { jpeg: 'new', capturedAt: '2026-11-17T08:30:00Z' } } } };
     const id = endpoint.split('/').at(-1);
-    return { data: { project: { id, name: '测试专用工地 ' + id, leadId: id + '0' }, report } };
+    return { data: { project: { id, name: '测试专用工地 ' + id, leadId: id + '0', progressAccess: true }, report } };
   };
   const component = { ...definition.methods, data: { ...definition.data }, _visible: true,
     setData(patch) { Object.assign(this.data, patch); } };
@@ -36,15 +54,17 @@ test('switching sites clears the earlier photo and opens only the selected camer
   assert.equal(component.data.camera.dateLabel, '11月17日 16:30');
   assert.equal(component.data.report.dateLabel, '11月17日');
   component.openCamera();
+  component.openReport({ currentTarget: { dataset: {} } });
   component.openReport({ currentTarget: { dataset: { record: '62' } } });
   component.openReport({ currentTarget: { dataset: { record: '99' } } });
   assert.deepEqual(opened, [
     '/packages/construction/camera/camera?projectId=2',
+    '/packages/assistant/chat/chat?reportBoard=1&reportProject=2&leadId=20&bindingId=40',
     '/packages/assistant/chat/chat?ownerReport=301&bindingId=40&revision=2&projectId=2&leadId=20&recordId=62',
   ]);
   session.token = 'different-owner';
   component.openCamera();
-  assert.equal(opened.length, 2);
+  assert.equal(opened.length, 3);
   definition.pageLifetimes.hide.call(component);
   assert.equal(component.data.camera, null);
   assert.equal(component.data.report, null);
@@ -86,4 +106,109 @@ test('the live task opens the current project and version, including after it be
   component.openLiveApplication();
   const target = '/packages/construction/live-authorization/live-authorization?projectId=2&liveId=70&versionId=81';
   assert.deepEqual(opened, [target, target]);
+});
+
+test('an old family entry reads the exact authorized project and collapses its published schedule', async t => {
+  const originalRequest = api.request;
+  global.getApp = () => ({ globalData: { token: 'owner' } });
+  global.wx = { getStorageSync: () => '' };
+  t.after(() => { api.request = originalRequest; delete global.getApp; delete global.wx; });
+  api.request = async endpoint => {
+    if (endpoint.endsWith('/owner-sites')) return { data: { items: [{ id: '2', name: '工地2' }] } };
+    if (endpoint.endsWith('/19')) return { data: { project: { id: '19', name: '工地19 · 13100000000', stageName: '水电', progressAccess: true } } };
+    if (endpoint.endsWith('/19/progress')) return { data: { projectId: '19', access: 'owner', progress: {
+      overall: { label: '正常', color: 'green' },
+      nodes: [{ key: 'water', roomName: '2栋502 · (131****0000)', stageName: '水电', reason: '内部资料', label: '正常' }],
+    } } };
+    return { data: {} };
+  };
+  const events = [];
+  const component = { ...definition.methods, data: { ...definition.data, requestedFamilyProjectId: '19' }, _visible: true,
+    triggerEvent(name) { events.push(name); }, setData(patch) { Object.assign(this.data, patch); } };
+  await component.load();
+  assert.deepEqual(events, ['familyentryconsumed']);
+  assert.deepEqual(component.data.projects, [{ id: '2', name: '工地2' }, { id: '19', name: '工地19' }]);
+  assert.equal(component.data.selectedIndex, 1);
+  assert.equal(component.data.familyVisible, true);
+  assert.equal(component.data.scheduleOpen, false);
+  assert.equal(component.data.schedule.nodes[0].roomName, '2栋502');
+  assert.equal(component.data.schedule.nodes[0].reason, undefined);
+  component.toggleSchedule();
+  assert.equal(component.data.scheduleOpen, true);
+  component.closeFamilySheet();
+  assert.equal(component.data.familyVisible, false);
+});
+
+test('an invited family account reopens the shared site from the Site tab without another scan', async t => {
+  const originalRequest = api.request, opened = [];
+  global.getApp = () => ({ globalData: { token: 'family' } });
+  global.wx = { getStorageSync: () => '', navigateTo: ({ url, complete }) => { opened.push(url); complete(); } };
+  t.after(() => { api.request = originalRequest; delete global.getApp; delete global.wx; });
+  api.request = async endpoint => {
+    if (endpoint === '/miniprogram/construction/owner-sites') return { data: { items: [] } };
+    if (endpoint === '/miniprogram/construction/customer-projects') return { data: [
+      { id: '19', name: '精艺智家云工地 · 13100000000', leadId: '9', role: 'family' },
+      { id: '20', name: '自己名下的工地', leadId: '10', role: 'owner' },
+    ] };
+    throw new Error('unexpected request ' + endpoint);
+  };
+  const component = { ...definition.methods, data: { ...definition.data }, _visible: true,
+    setData(patch) { Object.assign(this.data, patch); } };
+  await component.load();
+  assert.equal(component.data.loading, false);
+  assert.equal(component.data.project, null);
+  assert.deepEqual(component.data.familyProjects, [{ id: '19', name: '精艺智家云工地' }]);
+  component.openFamilyProject({ currentTarget: { dataset: { id: '19' } } });
+  assert.deepEqual(opened, ['/packages/construction/family/family?projectId=19']);
+});
+
+test('refresh distinguishes a failed shared-site read from an empty account and preserves owner access', async t => {
+  const originalRequest = api.request;
+  global.getApp = () => ({ globalData: { token: 'customer' } });
+  global.wx = { getStorageSync: () => '' };
+  t.after(() => { api.request = originalRequest; delete global.getApp; delete global.wx; });
+
+  const ownerSite = { id: '20', name: '测试工地', progressAccess: false };
+  let linked = false;
+  let sharedAvailable = false;
+  api.request = async endpoint => {
+    if (endpoint.endsWith('/owner-sites')) return { data: { items: linked ? [ownerSite] : [] } };
+    if (endpoint.endsWith('/customer-projects')) {
+      if (!sharedAvailable) throw Object.assign(new Error('unavailable'), { statusCode: 503 });
+      return { data: [] };
+    }
+    if (endpoint.endsWith('/owner-sites/20')) return { data: { project: ownerSite } };
+    if (endpoint.endsWith('/owner-sites/20/cover')) return { data: { camera: null } };
+    throw new Error('unexpected request ' + endpoint);
+  };
+
+  const component = { ...definition.methods, data: { ...definition.data }, _visible: true,
+    setData(patch) { Object.assign(this.data, patch); } };
+  await component.load();
+  assert.equal(component.data.error, '工地暂时无法读取');
+  assert.equal(component.data.needsLogin, false);
+
+  sharedAvailable = true;
+  await component.retryProject();
+  assert.equal(component.data.loading, false);
+  assert.equal(component.data.error, '');
+  assert.equal(component.data.project, null);
+  assert.deepEqual(component.data.familyProjects, []);
+
+  linked = true;
+  sharedAvailable = false;
+  await component.retryProject();
+  assert.equal(component.data.error, '');
+  assert.deepEqual(component.data.project, ownerSite);
+});
+
+test('only the family button on the owner Site tab delegates the private share card', () => {
+  const share = { title: '家人一起看工地进度', path: '/packages/construction/family/family?projectId=19&invite=private-card' };
+  const page = { data: { roleWorkbenchRole: 'customer', customerTab: 'service' },
+    selectComponent: id => id === '#owner-site-home' ? { familyInviteShare: () => share } : null };
+  const action = { from: 'button', target: { dataset: { shareType: 'owner-family' } } };
+  assert.equal(indexPage.onShareAppMessage.call(page, action), share);
+  assert.equal(indexPage.onShareAppMessage.call(page, { from: 'menu' }).path, '/pages/index/index');
+  page.data.customerTab = 'xiaok';
+  assert.equal(indexPage.onShareAppMessage.call(page, action).path, '/pages/index/index');
 });

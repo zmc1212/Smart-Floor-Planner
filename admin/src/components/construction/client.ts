@@ -4,10 +4,19 @@ export const labels: Record<string, string> = { active: '进行中', paused: '�
 export type Project = { id: string; lead_id?: string; name: string; status: string; customer_access: boolean; version: number; current_stage_key: string | null; progress_note: string };
 export type Staff = { id: string; display_name: string; role: string; construction_trades: string[] };
 export type ConstructionLead = { id: string; name: string; community_name: string | null };
-export type Stage = { key: string; name: string; visitReminder: boolean; visitReason: string; watchPoints: string; followUps?: NeedFollowUp[] };
+export type Stage = { key: string; name: string; visitReminder: boolean; visitReason: string; watchPoints: string; followUps?: NeedFollowUp[]; inspectionCheckpoints?: { key: string; name: string }[] };
 export const followUpFieldLabels: Record<NeedFollowUp['field'], string> = { housing: '房屋情况', household: '居住成员', style: '风格', budget: '预算意向', timeline: '时间意向', daylight: '房间采光', desk: '房间办公', storage: '房间收纳', use: '房间用途', devices: '房间设备', other: '房间其他需求' };
 export type StageSettings = { stages: Stage[]; version: number; owner: boolean };
-export type Detail = { project: Project; owner: boolean; manage: boolean; rooms: Array<{ id: string; name: string }>; stages: Stage[]; settingsVersion: number; staff: Staff[]; assignments: Array<{ stage_key: string; admin_id: string; is_primary: boolean; display_name: string; staff_status: string }>; members: Array<{ admin_id: string; role: string; active: boolean; work_label: string; display_name: string; staff_status: string }>; audits: Array<{ action: string; created_at: string }> };
+export type Milestone = {
+  key: string; name: string; kind: 'start' | 'phase' | 'handover'; valid: boolean; label: string; timeText: string;
+  estimate: { start: string; end: string } | null; agreedDate: string; completedAt: string | null;
+  overdueDays: number; canConfirmCompletion: boolean; note: string; agreementReason: string;
+};
+export type ScheduleProgress = {
+  version: number; summary: string;
+  management?: { template: Array<{ key: string; name: string }>; milestones: Milestone[] };
+};
+export type Detail = { project: Project; owner: boolean; manage: boolean; rooms: Array<{ id: string; name: string }>; stages: Stage[]; settingsVersion: number; staff: Staff[]; assignments: Array<{ stage_key: string; admin_id: string; is_primary: boolean; display_name: string; staff_status: string }>; members: Array<{ admin_id: string; role: string; active: boolean; work_label: string; display_name: string; staff_status: string }>; audits: Array<{ action: string; created_at: string }>; progress: ScheduleProgress };
 export type Pending = { path: string; method: string; body: object; key: string };
 const messages: Record<string, string> = {
   camera_sd_clock_unavailable:'暂时无法核对设备时间或本地连续录像，请联系管理员检查设备连接与SD卡。',
@@ -41,6 +50,9 @@ const messages: Record<string, string> = {
   construction_staff_unavailable: '请选择本企业在职员工。', construction_member_required: '请先将员工加入本工地，再分配阶段。', construction_lead_unavailable: '客户线索不存在或不属于本企业，请返回客户线索重新选择。',
   construction_lead_inactive: '客户线索已归档或结案，请先恢复或重新激活后再建立工地。', construction_customer_required: '该线索尚未关联小程序客户账号，请完成客户关联后再建立工地。',
   construction_project_inactive: '项目已暂停或归档，不能确认新的安排。', construction_customer_unavailable: '客户关联或访问范围已变化，请刷新核对。',
+  construction_agreement_confirmation_required: '请先与业主线下确认日期，再登记。',
+  construction_completion_evidence_required: '请先核对并更新工地的实际施工节点。',
+  construction_milestone_completed: '该节点已完成，请查看最新记录。',
   construction_manager_required: '项目至少保留一位有效项目经理。',
   construction_stage_in_use: '该节点仍是项目的当前节点，请先调整项目节点再删除。', construction_stage_unavailable: '节点配置已有变化，请刷新后选择。',
   invalid_construction_phone: '请同时填写联系人和有效电话，或同时清空。', construction_reminder_disabled: '该节点尚未开启到场提醒，请先配置提醒内容。',

@@ -22,6 +22,14 @@ function errorText(e) {
     media_limit: '本工地图片数量已达当前上限，请联系负责人。', media_invalid: '照片格式不支持或压缩后仍超过4MB，请重拍或选择更小的照片。',
     speech_limit: '本项目录音数量已达当前上限，请联系负责人。原材料仍留在手机。', speech_audio_invalid: '录音格式无法读取，请保留原材料并重新录制。',
     construction_media_unavailable: '照片已不可访问，请重新读取。', idempotency_conflict: '本次操作内容不一致，请重新读取。',
+    inspection_checkpoint_changed: '企业已调整必到工序，请重新选择。',
+    inspection_pin_missing: '工地入口位置还未确认，请联系项目负责人补位置。',
+    inspection_location_unavailable: '暂时无法定位，请开启位置权限后重试。',
+    inspection_location_accuracy: '定位精度不足，请到开阔处重新定位。',
+    inspection_location_outside: '当前位置与工地入口相距超过 200 米，请到场后重试。',
+    inspection_proof_required: '此事项需通过到场定位后审核。',
+    inspection_proof_expired: '到场定位已失效，请重新定位后审核。',
+    inspection_context_changed: '上报或工地位置有变化，请重新读取后审核。',
   })[code] || (e && e.statusCode === 403 ? '当前身份已无此工地权限，请返回工地列表。' : e && e.statusCode === 404 ? '工地或原材料已不可访问，请返回列表。' : '暂时未能完成，请保留内容后重试。');
 }
 function statSize(filePath) {
@@ -74,9 +82,11 @@ function decorate(item) {
   const generating = r.status === 'organizing' && ACTIVE.includes(r.run_status);
   const failed = r.status === 'organizing' && !generating;
   const labels = { organizing: generating ? '正在整理' : '整理未完成', draft: r.resubmission_of_id ? '待复审' : '待核对', published: '已发布', withdrawn: '已撤回', changes_requested: r.resubmittedRecordId ? '已补交' : '待补拍' };
+  const inspections = { required: '必须到场', onsite: r.inspection?.source === 'staff' ? '需到场' : '建议到场', remote: '可线上审核', manual: '待人工判断' };
   return { ...item, text: (item.message.content.blocks || []).map(b => b.text || b.fallbackText || '').join('\n'),
     time: siteMessageTime(item.message.created_at),
-    record: { ...r, data, generating, failed, label: labels[r.status], canPublish: r.canPublish === undefined ? r.canEdit : r.canPublish, updatedLabel: r.updated_at && !Number.isNaN(updated.getTime()) ? updated.toLocaleString('zh-CN', { hour12: false }) : '',
+    record: { ...r, data, generating, failed, label: labels[r.status], inspectionLabel: inspections[r.inspection?.mode],
+      canPublish: r.canPublish === undefined ? r.canEdit : r.canPublish, updatedLabel: r.updated_at && !Number.isNaN(updated.getTime()) ? updated.toLocaleString('zh-CN', { hour12: false }) : '',
       canRetry: failed && (['failed', 'cancelled'].includes(r.run_status) || !!r.captured && !r.run_id) && !r.pending_cost,
       scopeLabel: r.audience === 'customer' ? '项目成员和本项目业主可查看' : '仅本项目成员可查看',
       rows: [{ label: '施工部位', value: r.room_name_snapshot || '待核对' },
@@ -99,7 +109,8 @@ class SiteClient {
   async show(projectId) {
     this.clean(); this.session = this.identity(); this.projectId = projectId; this.visible = true; const epoch = ++this.epoch;
     this.base = '/miniprogram/construction/projects/' + projectId + '/chat';
-    this.storageKey = 'site:pending:' + this.session.key + ':' + projectId; this.draftKey = 'site:draft:' + this.session.key + ':' + projectId;
+    const context = this.session.key + ':' + projectId + (this.reviewOnly ? ':review:' + this.recordId : '');
+    this.storageKey = 'site:pending:' + context; this.draftKey = 'site:draft:' + context;
     const saved = this.storage.get(this.draftKey) || {};
     this.set({ loading: true, busy: false, write: false, fatal: false, error: '', conflict: null, items: [], mediaPaths: {}, sheet: '', pendingRetakeCount: 0, pendingRetakeTarget: '', draft: saved.text || '', attachments: saved.attachments || [], resubmit: saved.resubmit || null, pending: this.storage.get(this.storageKey) || null });
     await this.load(false, epoch);
@@ -122,7 +133,10 @@ class SiteClient {
     try {
       const query = older ? '?beforeSeq=' + this.state.nextCursor + '&limit=30' : '?limit=' + Math.min(100, Math.max(30, this.state.items.length));
       const focus = (this.issueId ? '&issueId=' + this.issueId : '') + (!older && this.recordId ? '&recordId=' + this.recordId : '');
-      const r = await this.request(this.base + query + focus, 'GET', {}, { suppressUnauthorized: true });
+      const path = this.reviewOnly
+        ? '/miniprogram/construction/inspection/projects/' + this.projectId + '/records/' + this.recordId
+        : this.base + query + focus;
+      const r = await this.request(path, 'GET', {}, { suppressUnauthorized: true });
       if (!valid()) return;
       const { versions, ...data } = r.data, fresh = data.items.map(decorate);
       // Previously loaded history is refreshed as well: edits/revocations cannot remain as stale cards.
@@ -235,7 +249,9 @@ class SiteClient {
   addPhoto(file) { if (!this.state.write || this.state.pending || this.state.busy || this.state.attachments.length >= 4) return; return this.perform({ kind: 'upload', key: key(), filePath: file }); }
   removePhoto(id) { if (this.state.busy || this.state.pending || !this.state.attachments.includes(String(id))) return; return this.perform({ kind: 'photo-remove', key: key(), path: '/media/' + id + '/remove', body: {} }); }
   mutate(record, action, body = {}) {
-    if (!record || this.state.pending || this.state.busy || !record.canEdit) return;
+    if (!record || this.state.pending || this.state.busy) return;
+    const allowed = { publish: record.canPublish, request_changes: record.canRequestChanges, inspection_triage: record.canTriageInspection };
+    if (!(action in allowed ? allowed[action] : record.canEdit)) return;
     return this.perform({ kind: action, path: '/records/' + record.id + '/' + action, key: key(), body: { ...body, expectedVersion: record.version } });
   }
   async versionPhotos(versions, epoch = this.epoch) {

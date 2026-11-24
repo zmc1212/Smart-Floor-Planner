@@ -194,7 +194,8 @@ test('independent advice narrows the entire task, repairs once and preserves rea
   let calls = 0;
   await processAgentAnswer(lease, { model: async (messages, tools, turn, dispatch) => {
     calls++;
-    assert.ok(dispatch?.every(tool => isKnowledgeTool(tool.name) || ['search_knowledge', 'final_response'].includes(tool.name)));
+    assert.ok(dispatch?.every(tool => isKnowledgeTool(tool.name) || ['search_knowledge', 'final_response'].includes(tool.name)),
+      `turn ${turn}: ${JSON.stringify(dispatch?.map(tool => tool.name))}`);
     assert.doesNotMatch(JSON.stringify(messages), /已记录书房收纳需求|请记下：书房需要收纳/);
     if (!turn) {
       assert.ok(tools.some(tool => tool.name === 'knowledge_search'));

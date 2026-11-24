@@ -72,11 +72,9 @@ function withWx(overrides, run) {
   }
 }
 
-test('app.json declares scope.bluetooth so WeChat can prompt for BLE on HarmonyOS', () => {
+test('Bluetooth authorization uses the runtime scope without declaring it in app.json', () => {
   const appConfig = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
-  const bluetooth = appConfig.permission && appConfig.permission['scope.bluetooth'];
-  assert.ok(bluetooth && bluetooth.desc);
-  assert.match(bluetooth.desc, /测距仪/);
+  assert.equal(appConfig.permission?.['scope.bluetooth'], undefined);
 });
 
 test('already-open adapter is treated as ready instead of asking to turn Bluetooth on', () => {

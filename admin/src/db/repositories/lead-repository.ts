@@ -179,7 +179,6 @@ export class LeadRepository {
           filters.push(sql`not ${hasFormalCompletedPlan}`);
           break;
         case 'measurer_assigned':
-          filters.push(isNotNull(leads.measurerId));
           filters.push(eq(leads.assignmentStatus, 'assigned'));
           filters.push(sql`not ${hasConfirmedFuture}`);
           filters.push(sql`not ${hasExpiredOrPastConfirmed}`);

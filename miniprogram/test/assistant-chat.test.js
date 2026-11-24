@@ -1,9 +1,18 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
 const { AssistantClient, entryInput, messagesForView } = require('../packages/assistant/lib/client');
 const { markdownForBlock } = require('../packages/assistant/lib/message-markdown');
 const { ChatController } = require('../packages/assistant/lib/chat');
 const { canAccessRoute } = require('../utils/identity-navigation');
+
+test('both XiaoK entry styles directly import the focused archive controls', () => {
+  const chat = path.join(__dirname, '../packages/assistant/chat');
+  for (const entry of ['chat.less', 'chat-panel.less']) {
+    assert.match(readFileSync(path.join(chat, entry), 'utf8'), /^@import ['"]\.\/floorplan-context\.less['"];/m);
+  }
+});
 
 function deferred() {
   let resolve, reject;
@@ -1790,7 +1799,6 @@ test('a definite server rejection keeps the draft and does not become a disconne
   assert.equal(f.controller.state.pendingText, '');
   assert.equal(f.db.items.length, 1);
 });
-
 test('owner message menu repositions without covering a short selected bubble', () => {
   const { messageMenuLayout } = require('../packages/assistant/chat/message-actions');
   const viewport = { top: 88, bottom: 760 };

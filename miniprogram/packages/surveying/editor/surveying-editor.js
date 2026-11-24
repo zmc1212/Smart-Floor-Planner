@@ -533,7 +533,7 @@ Page({
   },
 
   onLoad(options) {
-    const sysInfo = wx.getSystemInfoSync();
+    const sysInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     const menuButtonInfo = wx.getMenuButtonBoundingClientRect();
     const context = app.globalData.surveyingEditorContext || {};
     const screenHeight = sysInfo.screenHeight || sysInfo.windowHeight || 0;

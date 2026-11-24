@@ -233,7 +233,7 @@ Component({
         staffNavigation,
         staffFloating: staffNavigation && list[index]?.key !== 'xiaok',
         twoTabs: staffNavigation && list.filter(item => item.visible).length === 2,
-        suppressed: list.length === 0 || customerNavigation,
+        suppressed: list.length === 0 || customerNavigation || Boolean(globalData.siteWorkbenchSheetOpen),
         compactMeasureTab: list.some((item) => item.center) && list.filter((item) => item.visible).length === 4,
         selected: index >= 0 && list[index].visible ? index : hasWorkbenchTab ? -1 : this.data.selected,
         keyboardHidden: hasWorkbenchTab && current === '/pages/index/index' && staffView === 'xiaok' && this.data.keyboardHidden,

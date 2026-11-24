@@ -3,6 +3,7 @@ import { prepareStageWorkflowTool } from '@/lib/xiaok-v1/stage-dialogue-workflow
 import { isMainWechat, isWechatConsultation } from '../wechat/subject';
 import { mainDialogueTools, reportToolName, stageToolName } from '@/lib/xiaok-v1/main-dialogue-tools';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
+import { AppointmentRepository } from '@/db/repositories';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
@@ -21,7 +22,7 @@ import { nativeAgentRuntimeBinding, nativeExecutorConfigurationIssue } from '../
 import { resolveSuggestions, resumeSuggestionGeneration, suggestionGenerationStep, suggestionPrompt,
   type SuggestionResolution } from '../fastgpt/agent-v2/suggestions';
 import { agentCapabilityFingerprint, agentConfig } from './config';
-import { businessToolDefinitions, parseBusinessQuery, type BusinessSnapshot } from './business-tools';
+import { businessToolDefinitions, measureOfferTool, parseBusinessQuery, type BusinessSnapshot } from './business-tools';
 import { materialTool, parseMaterialQuery, queryMaterials } from './materials';
 import { guardAnswerCommitments } from './context';
 import { runRenovationAgent, type AgentCheckpoint } from './runtime';
@@ -48,6 +49,7 @@ import { webAnswerQuoteSpans, webEvidence, webSynthesisSources } from './web-evi
 import { publishedPublicMaterial, type PublicMaterialFailure } from '@/lib/construction/public-read';
 import { publicContextAvailable, type PublicContextRef } from '@/lib/construction/public-projections';
 import { samePublicRef, type PublicContent } from '@/lib/construction/public-contract';
+import { publicGuidePrompt, type PublicSiteGuideTurn } from '@/lib/construction/public-guide';
 import { defaultPublicIntroConstraints, defaultPublicIntroInput, publicIntroFacts, publicIntroPrompt,
   validatePublicIntro } from '@/lib/construction/public-intro';
 import { openingScene, sceneForOpeningPurpose } from '../fastgpt/agent-v2/openings';
@@ -57,7 +59,7 @@ import { privateMemoryScope } from '../memory/scope';
 import { routedConsultationSpecialist, specialistConsultationTools, specialistPolicy } from '../specialists/consultation';
 import { bindSpecialistInput, specialistModel, specialistProtocol } from '../specialists/registry';
 import { reportContext } from '@/lib/construction/report-reference';
-import { businessSynthesisSources, parseSynthesis, specialistParameterUncertainty, specialistQuantityRejection, splitSpecialistParagraphs, synthesisRepairIssue, type SynthesisSource } from './synthesis';
+import { businessSourceResultKey, businessSynthesisSources, parseSynthesis, specialistParameterUncertainty, specialistQuantityRejection, splitSpecialistParagraphs, synthesisRepairIssue, type SynthesisSource } from './synthesis';
 import type { SynthesisReviewContext } from './synthesis-review';
 import { parameterEndorsementFeedback, unverifiedParameterEndorsements } from './parameter-provenance';
 
@@ -698,6 +700,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const { context, messages, citations, publicRefs: inheritedPublicRefs, businessContextActive, publicSite } =
       await nativeConversation(lease, [], xiaokNativeExecutorProtocol);
     const policy = initial.run.policy_snapshot as Row;
+    const guideTurn = policy.publicSiteGuideTurn as PublicSiteGuideTurn | undefined;
     const delegationContext = await withTenantTransaction(lease.enterpriseId, async tx => {
       const { conversation, run } = await runContext(tx, lease);
       if (isWechatConsultation(lease.actor) || policy.delegationToolProtocol !== delegationToolProtocol && policy.specialist !== specialistProtocol) return null;
@@ -721,7 +724,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     // ambiguous follow-up belongs to that thread. The public snapshot stays out
     // of this turn's answer context unless the customer names the public site
     // again; the site remains selected and query_business remains available.
-    const includePublicSite = !businessContextActive
+    const includePublicSite = Boolean(guideTurn) || !businessContextActive
       || explicitPublicSiteReference(messages.at(-1)?.content || '');
     const answerPublicSite = includePublicSite ? nativePublicSiteSelection(publicSite.active, publicSite.source, publicSite.reason) : null;
     const answerPublicRef = answerPublicSite?.ref ?? null;
@@ -1003,6 +1006,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       ...(roomProgress ? [{ ...businessRead, parameters: { type: 'object', properties: {
         domain: { type: 'string', enum: ['construction'] }, room: { type: 'string', enum: [roomProgress] },
       }, required: ['domain', 'room'], additionalProperties: false } }] : [businessRead]),
+      measureOfferTool,
       ...(materialRead ? [materialRead] : []),
       ...publicResearchTools([webSearchTool], true, true),
       designerRecommendationTool, publicSitesRecommendationTool,
@@ -1039,6 +1043,13 @@ export async function processNativeAgentAnswer(lease: Lease) {
         catch { return { code: 'invalid_tool_input', feedback: readContext?.leadId
           ? 'query_business需要{"domain":"appointments|schemes|floorplans|construction"}；房屋身份由服务端从当前咨询注入，不要传leadId或其他身份字段。'
           : 'query_business需要{"domain":"appointments|schemes|floorplans|construction","leadId":"..."}；leadId为空字符串表示列本人档案。' }; }
+      }
+      if (name === 'offer_measure_booking') {
+        try {
+          const value = JSON.parse(args) as unknown;
+          if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value as object).length)
+            throw new Error('arguments');
+        } catch { return { code: 'invalid_tool_input', feedback: 'offer_measure_booking无需参数；仅提交{}。' }; }
       }
       if (name === 'query_materials') {
         try { parseMaterialQuery(bindReadToolInput(name, JSON.parse(args), readContext)); }
@@ -1114,6 +1125,29 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if (roomProgress && query.currentProject?.room !== roomProgress) fail('assistant_capability_forbidden', 403);
         return { content: JSON.stringify(modelBusinessReceipt(await business(query, ++sequence))) };
       }
+      if (name === 'offer_measure_booking') {
+        const value = JSON.parse(args) as unknown;
+        if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value as object).length)
+          fail('invalid_message', 422);
+        return withTenantTransaction(lease.enterpriseId, async tx => {
+          const { conversation } = await runContext(tx, lease);
+          if (conversation.purpose !== 'customer_consultation' || conversation.status !== 'open' || conversation.mode !== 'ai')
+            fail('conversation_read_only', 409);
+          if ((conversation.entry_snapshot as Row | null)?.activePublicSite) fail('assistant_capability_forbidden', 403);
+          if (lease.actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
+          const current = await new AppointmentRepository(tx).findCurrentForCustomer(
+            BigInt(lease.enterpriseId), BigInt(lease.actor.principal.userId));
+          if (current) return { content: JSON.stringify({ status: 'already_booked', appointmentId: String(current.id),
+            instructions: '客户已有进行中的量房预约，本次不展示预约卡。只按真实记录说明，不要重复预约或承诺新时间。' }) };
+          const at = new Date().toISOString();
+          await tx.execute(sql`update app.assistant_conversations
+            set entry_snapshot=jsonb_set(entry_snapshot,'{measureOffer}',${JSON.stringify({ at, runId: lease.runId })}::jsonb),
+              version=version+1,updated_at=now()
+            where enterprise_id=${lease.enterpriseId} and id=${String(conversation.id)}`);
+          return { content: JSON.stringify({ status: 'offered', at,
+            instructions: '预约卡已展示给客户。不要声称已预约、已确定档期或已安排上门；请客户在卡片里选择时间并填写地址后自行提交。' }) };
+        });
+      }
       if (name === 'query_materials') {
         if (!drawingRequested) fail('assistant_capability_forbidden', 403);
         const query = parseMaterialQuery(bindReadToolInput(name, JSON.parse(args), readContext));
@@ -1128,7 +1162,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs)
             values(${lease.enterpriseId},${lease.runId},${step},'agent_tool','query_materials',1,'succeeded',
               ${JSON.stringify(snapshot)}::jsonb,${JSON.stringify(snapshot.data.sources.map(item => ({ ref: item.ref, hash: item.hash })))}::jsonb)`);
-          const resultKey = `${lease.runId}:${Math.floor(step / 10)}:${step % 10}`;
+          const resultKey = businessSourceResultKey(lease.runId, step);
           context.snapshots.push(snapshot);
           context.sources.push(...businessSynthesisSources(resultKey, snapshot));
           return { content: JSON.stringify({ resultKey, ...snapshot,
@@ -1290,6 +1324,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const systemContent: Array<{ type: 'text'; text: string }> = [
       { type: 'text', text: nativeExecutorPrompt(knowledgeEnabled, !!delegationTool, customerConsultation) },
       ...nativeReplySiteText({ publicSiteText: answerPublicSite?.text, businessContextActive: businessContextActive && !!publicSite.active, includePublicSite })];
+    if (guideTurn && answerPublicRef) systemContent.push({ type: 'text', text: publicGuidePrompt(guideTurn) });
     if (stageWorkflow && experience?.prompt) systemContent.push({type:'text',text:stageText(experience.prompt,stageDefinition(stageWorkflow.agent.stageId)!.name,experience.variables)});
     if (preview) systemContent.push({type:'text',text:'本次是'+stageDefinition(preview.stageId)!.name+'阶段的管理员调试。没有关联业主的真实工地，涉及项目实况时说明依据。'});
     if (stageWorkflow && isWechatConsultation(lease.actor)) systemContent.push({ type: 'text',

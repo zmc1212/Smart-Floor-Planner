@@ -1,6 +1,7 @@
 import type { AppointmentRecord } from '@/db/repositories';
 import { httpError } from '@/lib/http-error';
 import { formatAppointmentTimeRangeIso } from '@/lib/lead-service-stage';
+import { normalizeCustomerPhone } from '@/lib/customer-phone';
 
 export function parseAppointmentId(value: unknown, label: string) {
   const text = String(value || '').trim();
@@ -25,6 +26,15 @@ export function parseAppointmentAddress(value: unknown) {
   const address = typeof value === 'string' ? value.trim() : '';
   if (!address || address.length > 300) throw httpError('请填写不超过 300 字的上门地址', 400);
   return address;
+}
+
+export function parseAppointmentContactPhone(value: unknown) {
+  if (value === undefined) return undefined;
+  const phone = typeof value === 'string' && /^[+\d\s-]+$/.test(value) ? normalizeCustomerPhone(value) : '';
+  if (!/^1[3-9]\d{9}$/.test(phone)) {
+    throw Object.assign(httpError('请输入有效的手机号', 422), { code: 'appointment_phone_invalid' });
+  }
+  return phone;
 }
 
 export const LEAD_COMMUNITY_NAME_MAX = 160;
@@ -92,12 +102,10 @@ export function appointmentToDto(
     updatedByUserId: record.updatedByUserId?.toString() ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-    // Only the authenticated measurer's calendar supplies this optional
-    // contact. Other appointment callers keep the existing appointment-only
-    // payload and their current privacy boundary.
+    // Only callers that have authorized access to the customer's contact supply it.
     ...(customerContact ? {
       customerName: customerContact.name || '客户',
-      customerPhone: customerContact.phone || '',
+      customerPhone: record.contactPhone || customerContact.phone || '',
     } : {}),
   };
 }

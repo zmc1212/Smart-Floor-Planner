@@ -41,7 +41,7 @@ English mirror: [cloud-construction-video-plan.md](./cloud-construction-video-pl
 - **权限：** enterprise_admin及所选企业admin/super_admin管理配置/授权，平台管理者无需入职或项目成员身份；经理绑定/抓拍/获准控制，成员观看。业主仅看本人显式授权项目，抓拍/历史与PTZ分别默认关闭；与报告受众、公开直播授权独立。
 - **媒体/设备安全：** 保留单次入口、独立H5会话、租约/代次/CSRF和传输中撤权。云录像归原绑定/校准区间；SD仅读绑定/启用后可信窗口，不读前工地画面；稳定身份不含注册时间戳，旧窗口按绑定一次性归并，重注册不重置历史。未知时钟拒绝，未知开流不重发；持久STOP、共享观看租约和原设备能力守卫不省略。观看退出不等于关闭持续录制。
 - **保存/恢复：** 延长策略不能复活已删媒体；云删除以物理404/410及WVP索引消失为准，抓拍按有效策略过期/清除私有字节。保留原容量、15秒探针新鲜度及回滞保护，显式off和外部计划不被覆盖。实际云片段上限3600秒，旧5分钟/1..30天提案不是当前能力。
-- **批准界面：** Mini/H5 外观沿 11-07 [云工地手账 03/04 及共享状态](../design-references/cloud-site-redesign-20261107/README.md)，保留 11-03 业主档案入口与 Admin Ant/refactor 合同。加载、错误重试与撤权沿原语义；直播静音自动播放，回放选择仍不自动播放。见[还原台账](miniprogram-design-restoration-ledger.zh-CN.md)与[冻结行为§1.4、1.9、1.11](archive/cloud-construction-video-plan-before-simplification-20261105.zh-CN.md)。
+- **批准界面：** Mini/H5 外观沿 11-07 [云工地手账 03/04 及共享状态](../design-references/cloud-site-redesign-20261107/README.md)，保留 11-03 业主档案入口与 Admin Ant/refactor 合同。加载、错误重试与撤权沿原语义；直播静音自动播放（首触/WeixinJSBridgeReady 重试，3 秒无画面提示），回放选择仍不自动播放。见[还原台账](miniprogram-design-restoration-ledger.zh-CN.md)与[冻结行为§1.4、1.9、1.11](archive/cloud-construction-video-plan-before-simplification-20261105.zh-CN.md)。
 
 ## 4. 按四项功能验收
 

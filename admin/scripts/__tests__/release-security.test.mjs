@@ -21,12 +21,23 @@ test('compose shares one worker health file and keeps database credentials overr
 
 test('docker ignore and runtime image exclude keys, env files, uploads and test scripts', () => {
   const ignore = read('.dockerignore');
-  for (const pattern of ['keys', '*.pem', '.env*', 'uploads', '**/*.test.ts', '**/__tests__', 'scripts/**/*acceptance*']) {
+  for (const pattern of ['keys', '*.pem', '.env*', 'uploads', '**/*.test.ts', '**/__tests__', 'scripts/**/*.test.mjs']) {
     assert.ok(ignore.includes(pattern), pattern);
   }
   const dockerfile = read('Dockerfile');
   assert.match(dockerfile, /RUN rm -f \.env \.env\.local \.env\.production/);
   assert.doesNotMatch(dockerfile, /COPY .*\.env/);
+});
+
+test('runtime image copies only staged scripts after removing the traced scripts directory', () => {
+  const dockerfile = read('Dockerfile');
+  const [builder, runner] = dockerfile.split(/^FROM .+ AS runner\r?$/m);
+  const staging = builder.match(/RUN mkdir -p \/app\/runtime-scripts[\s\S]+?\/app\/runtime-scripts\//)?.[0] ?? '';
+  assert.match(builder, /^RUN rm -rf \/app\/\.next\/standalone\/scripts\r?$/m);
+  assert.match(staging, /\/app\/scripts\/postgres-migrate\.mjs/);
+  assert.doesNotMatch(staging, /(?:acceptance|postgres-contract-tests)/);
+  assert.match(runner, /^COPY --from=builder \/app\/runtime-scripts \.\/scripts\r?$/m);
+  assert.doesNotMatch(runner, /^COPY --from=builder \/app\/scripts(?:\/|\s)/m);
 });
 
 test('local standalone artifact contains no env, key, upload or test files', { skip: !existsSync(path.join(root, '.next/standalone')) }, () => {

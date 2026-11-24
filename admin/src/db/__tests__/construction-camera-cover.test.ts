@@ -7,11 +7,13 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { one } from '@/db/repositories/assistant-repository';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import type { ConstructionActor } from '@/lib/construction/contracts';
-import { CameraService } from '@/lib/construction/camera/service';
+import { CameraService, cameraCookie, createCameraEntry, exchangeCameraEntry } from '@/lib/construction/camera/service';
+import { customerCameraActor } from '@/lib/construction/camera/access';
 import { saveCameraCustomerGrant } from '@/lib/construction/camera/customer-grants';
 import { coverIntervalHours, saveCoverInterval } from '@/lib/construction/camera/cover-defaults';
 import { captureDueOwnerCovers, ownerSiteCover } from '@/lib/construction/camera/owner-cover';
-import { staffCameraHttp } from '@/lib/construction/camera/http';
+import { sessionCameraHttp, staffCameraHttp } from '@/lib/construction/camera/http';
+import { familyAggregateId, familyGrantAggregate, familyGrantType } from '@/lib/construction/family-access';
 import { WvpClient } from '@/lib/construction/camera/wvp';
 import { deleteConstructionData } from '@/db/repositories/construction-cleanup';
 
@@ -20,13 +22,21 @@ let owner: ConstructionActor, manager: ConstructionActor, member: ConstructionAc
 let calls: string[] = [], failDevice = '';
 class Upstream extends WvpClient {
   constructor() { super({ origin: 'http://wvp.test', mediaOrigin: 'http://media.test', username: 'fixture', password: 'fixture' }); }
-  async snapshot(deviceId: string) { calls.push(deviceId); if (deviceId === failDevice) throw Error('offline'); return jpeg; }
+  async play(deviceId: string) {
+    calls.push('live:' + deviceId);
+    return { app: 'rtp', stream: 'cover-fixture' };
+  }
+  async snapshot(deviceId: string) { calls.push('snapshot:' + deviceId); if (deviceId === failDevice) throw Error('offline'); return jpeg; }
 }
 const upstream = new Upstream();
 const actor = (n: number) => ({ enterpriseId: eids[0], adminId: aids[n] });
 const stored = (bid: string) => withTenantTransaction(eids[0], tx => one(tx, sql`select state,data,width,height,captured_at,scheduled_at,request_key
   from app.construction_camera_snapshots where binding_id=${bid}`));
 const identity = () => ({ userId: uids[0], contextVersion: 1 });
+const coverHttp = (bindingId: string, session?: string) =>
+  sessionCameraHttp(new Request('http://localhost/api/construction-camera/cover/' + bindingId, {
+    headers: session ? { cookie: cameraCookie + '=' + session } : {},
+  }), ['cover', bindingId]);
 const cameraHttp = (actor: ConstructionActor, method: string, tail: string, body?: unknown) => staffCameraHttp(
   new Request('http://localhost/api/construction/video/projects/' + pids[0] + '/' + tail, {
     method, headers: body === undefined ? {} : { 'content-type': 'application/json' },
@@ -79,6 +89,8 @@ after(async () => {
     for (const eid of eids) {
       await tx.execute(sql`update app.construction_camera_recording_policies set enabled=false,state='stopped' where enterprise_id=${eid}`);
       await deleteConstructionData(tx, BigInt(eid));
+      await tx.execute(sql`delete from app.domain_event_outbox
+        where enterprise_id=${eid} and type=${familyGrantType} and correlation_id=${prefix}`);
       await tx.execute(sql`delete from app.leads where enterprise_id=${eid}`);
       await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`);
       await tx.execute(sql`delete from app.enterprises where id=${eid}`);
@@ -104,12 +116,66 @@ test('owner saves a bounded interval; other roles, stale versions and foreign te
 test('the displayed camera claims one interval slot and no other binding is woken', async () => {
   failDevice = ''; calls = [];
   assert.equal((await captureDueOwnerCovers(upstream)).captured, 1);
-  assert.deepEqual(calls, [devices[0]]);
+  assert.deepEqual(calls, ['live:' + devices[0], 'snapshot:' + devices[0]]);
   const good = (await stored(bids[0]))!;
   assert.equal(good.state, 'ready'); assert.equal(await stored(bids[1]), undefined);
   assert.equal(Number(good.width), 64); assert.ok(good.captured_at); assert.equal(good.request_key, 'owner-cover');
   assert.equal((await captureDueOwnerCovers(upstream)).captured, 0);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
+});
+
+test('private player covers use the selected active binding and current viewing rights', async () => {
+  const foreign = await withTenantTransaction(eids[1], async tx => {
+    const camera = await one(tx, sql`insert into app.construction_cameras(enterprise_id,device_id,channel_id,name)
+      values(${eids[1]},'94020000001320000991','94020000001320000992','合成跨租户摄像头') returning id`);
+    return String((await one(tx, sql`insert into app.construction_camera_bindings(enterprise_id,project_id,camera_id)
+      values(${eids[1]},${pids[1]},${String(camera!.id)}) returning id`))!.id);
+  });
+  const ownerGrant = await saveCameraCustomerGrant(owner, pids[0], {
+    userId: uids[0], enabled: true, captureEnabled: false, ptzEnabled: false, expectedVersion: 1,
+  });
+  const ownerActor = await customerCameraActor(identity(), pids[0]);
+  const ownerEntry = await createCameraEntry(ownerActor, pids[0]);
+  const staffEntry = await createCameraEntry(member, pids[0]);
+  const exchange = async (url: string) => (await exchangeCameraEntry(new URLSearchParams(new URL(url).hash.slice(1)).get('entry')!)).session;
+  const ownerSession = await exchange(ownerEntry.url), staffSession = await exchange(staffEntry.url);
+  await withTenantTransaction(eids[0], tx => tx.execute(sql`insert into app.construction_camera_snapshots
+    (enterprise_id,project_id,binding_id,actor_id,request_key,state,data,width,height,captured_at)
+    values(${eids[0]},${pids[0]},${bids[1]},${manager.adminId},'cover-test-manual','ready',${jpeg},64,48,now())`));
+
+  const scheduled = await coverHttp(bids[0], ownerSession);
+  assert.equal(scheduled.status, 200);
+  assert.equal(scheduled.headers.get('cache-control'), 'no-store');
+  assert.equal(scheduled.headers.get('content-type'), 'image/jpeg');
+  assert.ok(Number.isFinite(Date.parse(scheduled.headers.get('x-camera-captured-at') || '')));
+  assert.equal((await sharp(Buffer.from(await scheduled.arrayBuffer())).metadata()).width, 64);
+  assert.equal((await coverHttp(bids[0])).status, 401);
+  assert.equal((await coverHttp(foreign, staffSession)).status, 404);
+  assert.equal((await coverHttp(bids[1], ownerSession)).status, 204);
+  const manual = await coverHttp(bids[1], staffSession);
+  assert.equal(manual.status, 200);
+  assert.equal((await sharp(Buffer.from(await manual.arrayBuffer())).metadata()).width, 64);
+
+  await withTenantTransaction(eids[0], tx => tx.execute(sql`insert into app.domain_event_outbox
+    (enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+    values(${eids[0]},${familyGrantType},${familyGrantAggregate},${familyAggregateId(pids[0], uids[1])},1,
+      ${JSON.stringify({ kind: 'user', userId: uids[0] })}::jsonb,${prefix},
+      ${JSON.stringify({ projectId: pids[0], viewerId: uids[1], ownerId: uids[0], allowed: true })}::jsonb)`));
+  const family = await customerCameraActor({ userId: uids[1], contextVersion: 1 }, pids[0]);
+  const familySession = await exchange((await createCameraEntry(family, pids[0])).url);
+  assert.equal((await coverHttp(bids[0], familySession)).status, 403);
+
+  await saveCameraCustomerGrant(owner, pids[0], {
+    userId: uids[0], enabled: false, captureEnabled: false, ptzEnabled: false, expectedVersion: Number(ownerGrant.version),
+  });
+  assert.equal((await coverHttp(bids[0], ownerSession)).status, 404);
+  assert.equal((await coverHttp(bids[0], staffSession)).status, 200);
+  await withTenantTransaction(eids[0], tx => tx.execute(sql`update app.construction_camera_snapshots
+    set captured_at=now()-interval '25 hours' where binding_id=${bids[1]}`));
+  assert.equal((await coverHttp(bids[1], staffSession)).status, 204);
+  await saveCameraCustomerGrant(owner, pids[0], {
+    userId: uids[0], enabled: true, captureEnabled: true, ptzEnabled: false, expectedVersion: Number(ownerGrant.version) + 1,
+  });
 });
 
 test('a failed slot is kept until the next interval, and the home falls back only when no frame exists', async () => {
@@ -122,10 +188,10 @@ test('a failed slot is kept until the next interval, and the home falls back onl
   await withTenantTransaction(eids[0], tx => tx.execute(sql`delete from app.construction_camera_snapshots where binding_id=${bids[0]}`));
   failDevice = devices[0];
   assert.equal((await captureDueOwnerCovers(upstream)).captured, 0);
-  assert.equal(calls.length, 1);
+  assert.deepEqual(calls, ['live:' + devices[0], 'snapshot:' + devices[0]]);
   assert.equal((await stored(bids[0]))!.state, 'failed');
   assert.equal((await captureDueOwnerCovers(upstream)).captured, 0);
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   let fallbackCalls = 0;
   const fallback = await ownerSiteCover(identity(), pids[0], async () => { fallbackCalls++; return jpeg; });
   assert.equal(fallbackCalls, 1);

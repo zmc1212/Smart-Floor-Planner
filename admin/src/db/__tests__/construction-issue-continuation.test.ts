@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { one, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
@@ -35,6 +36,7 @@ const member = async (aid: string, active: boolean, role = 'designer') => owner.
 }, randomUUID());
 
 before(async () => {
+  loadEnvConfig(process.cwd());
   const target = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.equal(target.port, '55432'); assert.equal(target.pathname, '/xiaok_embedding_eval');
   await withPlatformTransaction(async tx => {

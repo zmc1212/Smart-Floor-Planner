@@ -1,26 +1,31 @@
-// One offline font shared by both pages. Brotli is uploadable; .woff2 is not.
+// The two portfolio pages load their offline font from one on-demand subpackage.
 let loading;
 function loadStudioFont() {
   if (typeof wx === 'undefined' || typeof wx.loadFontFace !== 'function'
-    || typeof wx.getFileSystemManager !== 'function' || typeof wx.arrayBufferToBase64 !== 'function') return Promise.resolve(false);
+    || typeof wx.getFileSystemManager !== 'function' || typeof wx.arrayBufferToBase64 !== 'function'
+    || typeof require.async !== 'function') return Promise.resolve(false);
   if (loading) return loading;
   loading = new Promise(resolve => {
     let done = false;
     const finish = loaded => { if (done) return; done = true; clearTimeout(timer); resolve(loaded); };
     const timer = setTimeout(() => finish(false), 6000);
     try {
-      wx.getFileSystemManager().readCompressedFile({
-        filePath: 'packages/assistant/assets/studio-serif.woff2.br', compressionAlgorithm: 'br',
-        success: ({ data }) => {
-          if (done) return;
-          try {
-            wx.loadFontFace({ global: true, family: 'Studio Serif',
-              source: 'url("data:font/woff2;base64,' + wx.arrayBufferToBase64(data) + '")', desc: { weight: '900', style: 'normal' },
-              success: () => finish(true), fail: () => finish(false) });
-          } catch (_) { finish(false); }
-        },
-        fail: () => finish(false),
-      });
+      require.async('../../portfolio-font/font-file.js').then(filePath => {
+        if (done) return;
+        wx.getFileSystemManager().readCompressedFile({
+          filePath,
+          compressionAlgorithm: 'br',
+          success: ({ data }) => {
+            if (done) return;
+            try {
+              wx.loadFontFace({ global: true, family: 'Studio Serif',
+                source: 'url("data:font/woff2;base64,' + wx.arrayBufferToBase64(data) + '")', desc: { weight: '900', style: 'normal' },
+                success: () => finish(true), fail: () => finish(false) });
+            } catch (_) { finish(false); }
+          },
+          fail: () => finish(false),
+        });
+      }).catch(() => finish(false));
     } catch (_) { finish(false); }
   });
   loading = loading.then(loaded => { if (!loaded) loading = null; return loaded; });

@@ -41,6 +41,8 @@ export async function customerPublicHttp(request: Request, actor: ActorContext, 
     return publicJson(await service.detach(key(request.headers.get('Idempotency-Key'))));
   }
   const siteId = id(path[0]);
+  if (path[1] === 'guide' && path.length === 2 && request.method === 'GET' && params.size === 3)
+    return publicJson(await service.guide(siteId, id(params.get('versionId')), params.get('liveKey') || '', id(params.get('liveVersionId'))));
   if (path.length === 1 && request.method === 'GET' && [...params.keys()].every(k => k === 'versionId')) return publicJson(await service.consent(siteId, id(params.get('versionId'))));
   if (path[1] === 'media' && path.length === 3 && request.method === 'GET' && [...params.keys()].every(k => k === 'versionId')) return media(await service.ownerMedia(siteId, id(params.get('versionId')), id(path[2])));
   if (path.length === 2 && request.method === 'POST' && !params.size) {

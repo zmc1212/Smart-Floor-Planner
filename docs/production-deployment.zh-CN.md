@@ -12,9 +12,26 @@
 
 应用回滚时按需用 `/datas/smartfloor/backups/pre-20261124-001.XWQRoOLN` 下的受保护基线恢复运行时配置。重建 `20261120-001` 时恢复保留的家人邀请码热修文件。微信小程序正式版仍待发布。
 
+## 2026-11-19 预约量房发布
+
+正式 Admin、抢单 Worker 和小 K Worker 当时更新至 `20261119-004`，镜像 config digest 为 `sha256:69413a9e738cfc440f542443dddc81eaca9b12baca4c7c17b294245f7aa6a9a5`。服务器复用上次上传中三个字节一致的镜像层并重组发布包。发布包 `sfp-admin-release-20261119-004.zip` 的 SHA-256 为 `b15b59f1f01e06e7f72ca033bcdd57cf78d6562ca574b3c93c9e32f53e1e5791`。上一应用版本为 `20261119-002`。[发布回执](../tmp/designer-booking-release-20261119/production-finish-004.log)
+
+`20261119-003` 首次发布应用 `0143_measurement_appointment_contact` 后，抢单 Worker 的 `FOR UPDATE OF` 因表名带 schema 而失败。应用回滚至 `002` 后保留新增字段。`004` 改用线索表别名锁定，迁移账本保持 140 条，`measurement_appointments.contact_phone` 为可空 `text`，PostgreSQL 数据卷标识一致。发布前备份 `smart_floor_planner-20261119T132408Z-pre-20261119-004.dump` 共 38,093,357 字节，校验通过。后台登录、两个 Worker 健康检查及未登录访问预约接口返回 `401` 均通过。临时 SSH 公钥已移除，重新登录验证被拒绝。[回滚记录](../tmp/designer-booking-release-20261119/production-deploy.log)、[服务器验证](../tmp/designer-booking-release-20261119/production-server-004.log)、[公网验证](../tmp/designer-booking-release-20261119/production-public-004.json)。
+
+微信开发版 `20261119.3` 已上传，真机预览使用正式 API。正式版待微信公众平台提审和发布。[上传回执](../tmp/designer-booking-release-20261119/wechat-upload.log)。
+
+## 2026-11-20 云工地家人流程热修（20261120-001 可写层）
+
+`20261120-001` 于 2026-11-20 发布（`git_commit bc834f43`、dirty 工作区全量发布、构建于 13:40:34，含迁移 0141–0143 与预迁移备份 `smart_floor_planner-20261120T055935Z-pre-20261120-001.dump`）。发布后在 `20261120-001` 可写层做过两处容器内热修（`.next/server/chunks/_0k7vy46cjrv0a._.js`），等效仓库修复已在中英模块文档记录，下次镜像发版自然覆盖：
+
+1. 家人邀请码分支路径长度判断 `4===I.length` 修正为 `3===I.length`：`4` 导致 `GET /api/miniprogram/construction/projects/:id/family-invite-code?env=` 永不命中、落入员工门禁返回 403 `construction_forbidden`，业主扫码出码始终失败。
+2. 移除施工客户流程 6 处 `actor.mode === 'customer'` 分支前置（accept、customer-projects、family-invite-code、video、progress/family-viewers/family-invite，及德摩根形式下的 owner-sites 守卫）：这些流程按底层 userId 鉴权（业主门禁、家人绑定在服务内部），同一用户任意身份模式可见数据一致；修复后带员工/推荐人身份的账号不再被登录默认 staff 上下文挡在家人流程之外。
+
+修复经 staff token 探针验证（accept 由 `construction_not_found` 变为分支命中后的 `construction_invite_invalid`，customer-projects 返回 200），真机家人扫码接受邀请并只读查看进度与直播通过。诊断脚本与证据：`tmp/family-invite-code-repro-20261120/`。
+
 ## 2026-11-18 装修画像发布
 
-正式 Admin、线索 Worker 和小 K Worker 当时更新至 `20261118-003`，镜像 config digest 为 `sha256:996b7e77b8d70684c06dada4678c2717ab9514f08625e7eed4d95a424ce01887`。本版沿 `002` 补房屋提取修正，并保留其普通咨询路由修复。没有新迁移，账本保持 135 条，具体哈希随包保存在 `SOURCE_BINDING.json`。数据库 HTTP 健康、两个 Worker、管理员登录冒烟及获准测试业户画像回读均通过。`003` 四轮定向验证前后的 11 个运行时文件及试验输入哈希一致，较早 `002` 的 11 轮及房屋投影失败独立保留。[发布与验证](../tmp/staff-profile-housing-correction-20261118/production-verification.json)。
+正式 Admin、线索 Worker 和小K Worker 已更新至 `20261118-003`，镜像 config digest 为 `sha256:996b7e77b8d70684c06dada4678c2717ab9514f08625e7eed4d95a424ce01887`。本版沿 `002` 补房屋提取修正，并保留其普通咨询路由修复。没有新迁移，账本保持 135 条，具体哈希随包保存在 `SOURCE_BINDING.json`。数据库 HTTP 健康、两个 Worker、管理员登录冒烟及获准测试业户画像回读均通过。`003` 四轮定向验证前后的 11 个运行时文件及试验输入哈希一致，较早 `002` 的 11 轮及房屋投影失败独立保留。[发布与验证](../tmp/staff-profile-housing-correction-20261118/production-verification.json)。
 
 标准发布流程已验证发布前 custom 备份 `/datas/smartfloor/backups/postgresql/smart_floor_planner-20261117T185039Z-pre-20261118-003.dump`（37,015,839 字节）的 SHA-256 和归档目录，PostgreSQL 数据卷身份前后一致。服务器回执位于 `deploy-state/first-reply-20261118-003/`。此前 `001` 的迁移失败、事务回滚和旧画像表/生命周期函数归属对齐为现有 `sfp_migrator` 的记录仍保存在 `deploy-state/staff-profile-20261118-001/`，强制 RLS 和 `sfp_app` 数据权限在该批已核对。[当前发布日志](../tmp/staff-profile-housing-correction-20261118/production-deploy.log)、[原迁移回执](../tmp/staff-profile-release-20261118/production-backup-and-health.txt)。
 
@@ -22,7 +39,13 @@
 
 **2026-11-18 Worker 上报范围发布 20261118-004（已部署）。** 按用户授权以 `20261118-003` 为基线，仅叠加工人工作台上报范围接口（`from`/`to`）、本人历史上报与今日汇总、最多 9 张照片与施工阶段快照、经理/设计师/老板审核权限，生成并部署 `20261118-004`。发布包 `sfp-admin-release-20261118-004.zip`（SHA-256 `77a11c352bdbabbaa27149aafab74d101331e25726f9749538a532894b952e94`），镜像 `zmc1212/sfp-admin:20261118-004`（`sha256:e9cb56e4f5dd070d0b9a66c0aab2a0b82e87d76b3ce699d3d9dadf5d5f70e500`）。`auto_deploy.sh deploy` 在迁移前生成 custom 备份 `smart_floor_planner-20261118T060611Z-pre-20261118-004.dump`（37,314,865 字节）；迁移账本 135→136，新增 `0140_construction_worker_reports`（`created_at=1797235200000`），`stage_snapshot` 列与 `position <= 8` 约束已回读。`current-version`/`current-image` 现为 `004`，`previous-version`/`previous-image` 为 `003`。Admin、线索 Worker、小K Worker 均为 004（小K Worker 使用同一 `SFP_RUNTIME_ENV_FILE` 手动同步），PostgreSQL 数据卷身份前后一致，`/api/health`、登录与核心路径冒烟通过。线上 `GET /api/miniprogram/construction/workbench?projectId=5&from=2026-11-18&to=2026-11-18` 对员工 31、员工 32 与设计师 10 返回 200；宽范围返回 2 条历史；反向区间、超过 92 天和缺少 `to` 仍返回 422。小程序 `20261118.1` 无需重新上传。[验证证据](../tmp/worker-reports-20261118/production-verification.json)。
 
-**2026-11-18 工地视频 H5 自动播放热更新（限定）。** 按用户选择只替换运行容器内的 H5 静态文件，不重建镜像。正式 Admin `smart-floor-planner-admin` 的 `/app/public/construction-camera/player.js` 已换为在线上旧版基础上仅追加直播静音自动播放、首次触摸/WeixinJSBridgeReady 重试、3 秒无画面提示和切换播放方式重连的版本，SHA-256 `37e3c883d71de950ab2fa43b37c1746e7c25bc5f0d60e5be2c8f341f13a42dec`。替换前 `player.js/index.html/style.css` 已备份到 `/datas/smartfloor/backups/camera-h5-hotfix-20261118/`（原 player.js `f0899641f03f4beb2ce39199c1491713e5bb1b5e68564953cbb7208367dc32ae`），后两者未替换；线上回读 200、`Cache-Control: no-store` 且新标识存在。回退：`docker cp /datas/smartfloor/backups/camera-h5-hotfix-20261118/player.js smart-floor-planner-admin:/app/public/construction-camera/player.js`。该热更新只存在于运行容器；004 发布重建 Admin 后已按原文件重新注入（`37e3c883d71de950ab2fa43b37c1746e7c25bc5f0d60e5be2c8f341f13a42dec`）并回读一致，备份目录新增 `player-hotfix-37e3.js`，仓库版本仍待提交接续。真机自动播放策略仍未验。[热更新证据](../tmp/camera-h5-hotfix-20261118/assessment.json)
+**当前工地视频抓拍封面（2026-11-20，已部署）。** 本次将 `index.html`、`player.js` 和 `style.css` 安装到正式 `20261119-004` 的 `smart-floor-planner-admin` 可写层。正式企业 1 和 3 的视频会话经 `127.0.0.1:33418` 上的 `sfp-construction-camera-current` 使用共享会话处理器读取 `GET /api/construction-camera/cover/:bindingId`。线上网关绑定文件 SHA-256 为 `527928a7cee4c69f748d50cd46776761c735c8a0149176abf8eeef33a0665dfb`。后续镜像需纳入仓库中的播放器和网关代码。公网三份资源哈希一致，均返回 `no-store`。正式企业 3 的测试工地通过员工入口取到北京时间 12:00:15 的 JPEG，匿名读取返回 401。临时 SSH 密钥已撤销，重新登录被拒。安卓微信进页封面和一次点击播放待真机核验。[H5 发布](../tmp/camera-android-autoplay-20261120/production-release/publish-h5-2026-11-20T04-01-21-834Z.json) · [公网核验](../tmp/camera-android-autoplay-20261120/production-release/public-verification.json) · [鉴权封面](../tmp/camera-android-autoplay-20261120/production-release/private-after.json)
+
+最初两轮定时抓拍在 4G 起流阶段触发 WVP 的 3 秒截图超时，摄像头随后仍生成了照片。已按原始文件与槽位配对，使用实际拍摄时间恢复两张封面。新版调度先经 WVP 的直播入口等待共享视频流，再获取抓拍。该取图流程已在线上测试机位取到新 JPEG，隔离库调度检查通过，下一轮线上定时触发待观察。[WVP 超时](../tmp/camera-android-autoplay-20261120/production-release/capture-error-2026-11-20T04-02-35-922Z.json) · [实机取图](../tmp/camera-android-autoplay-20261120/production-release/trace-warmed-camera-capture-2026-11-20T04-04-47-390Z.json) · [网关发布](../tmp/camera-android-autoplay-20261120/production-release/promote-warmed-capture-2026-11-20T04-08-02-538Z.json)
+
+回滚前对照发布回执核对现行哈希。用 `/datas/smartfloor/backups/camera-cover-hotfix-20261120.Cr8r8RoU` 中的三份 `previous-*` 文件原子恢复 H5，沿用目标文件的属主和权限。将 `gateway.previous.cjs` 恢复到 `/datas/smartfloor/camera-gateway/gateway.cjs` 后重启 `sfp-construction-camera-current`。如仅回退定时抓拍流程，可恢复同目录的 `gateway-route.cjs`。恢复后核对网关健康、公网资源哈希和匿名拒绝。前版仅修复自动播放的热更新在安卓微信实测仍要求手势。[前版发布回执](../tmp/camera-autoplay-20261120/production/publish-2026-11-20T03-05-16-818Z.json)
+
+**2026-11-23 项目 5 合成调试机位（已部署）。** 正式后台保持 20261120-001。视频网关配合原 HTTPS 摄像头 include 接入项目 5 的业主封面、机位列表和入场三个精确路径，白名单只含企业 3 项目 5 的业主用户 2。内部源 `sfp-camera-debug:8080` 运行本地镜像 `sfp-camera-debug:20261123-003`，在私有视频网络提供合成 H.264 画面和同一段素材提取的 JPEG 封面。WVP 和实体设备记录沿用原流程。部署前后 SQL 回读一致，项目 5 的实体绑定为 0，项目 6 为机位 1、绑定 6。回滚按顺序恢复备份的 `nginx-before.conf` 并验证、重载 Nginx，停止新网关，将保留的 `sfp-construction-camera-before-project5-20261123` 恢复原名及运行，最后停止专用源容器。备份配置及网关包位于 `/datas/smartfloor/backups/project5-debug-20261123.HFQle7CD/`。[发布回执](../tmp/project5-debug-camera-synthetic/release/deploy-output.txt) 13:45 上线的封面子版本可独立回滚。停止当前网关，使用 `gateway-before.cjs` 恢复挂载文件。停止并改名当前合成源，将保留的 `sfp-camera-debug-before-cover-20261123` 改回 `sfp-camera-debug` 并启动，再启动网关。封面回滚文件位于 `/datas/smartfloor/backups/project5-cover-20261123.EL8cAlky/`。[封面发布回执](../tmp/project5-debug-camera-cover/deploy-output.txt)
 
 <!-- cloud-camera-cloud-mini-integration -->
 **私有SD时间接入：限定Implemented。** 新增sfp-wvp-sd-clock-20261106组件，复用原镜像/只读WVP日志，白名单/token私有配置位于/datas/sfp-wvp-sd-clock-20261106/；仅127.0.0.1:28083、UID10001/cap_drop/全只读挂载/无Docker socket、unless-stopped。经原WVP观察新DeviceStatus时间，原28容器、二进制/站点/配置保持。配置0400并私有备份；应用用CAMERA_SD_CLOCK_ORIGIN/TOKEN显式选择，不回退服务器时间。Mini仅列当前注册身份/时间可信窗口，缓存开播再核身份/时差。真实Mini宿主/H5 SD查询/播放/重进/故障重试/STOP通过，私有媒体/义务0；自有3417/3418/四端口转发/unit库/公钥已清理，保留副本/共享3017/D/SSH。新SQL/组件/站点备份与新SSH登录拒绝已验。[实证](../tmp/cloud-camera-mini-sd-20261106/assessment.json)。无正式业务/小程序发布，不冒称完整恢复/物理微信/PTZ/重连通过。
@@ -192,24 +215,24 @@ Compose 只把 PostgreSQL 映射到宿主机 `127.0.0.1:5432`；容器间走私�
 
 ## 构建发布包
 
-质量门禁前，脚本先检查 Docker 引擎并执行 `npm run db:check`。Docker Desktop
-必须就绪，`DATABASE_URL` 指向的本地数据库必须可连接且已迁移。本地 `5432`
-端口报 `ECONNREFUSED` 表示数据库未接受连接，并非 ESLint 失败。启动已有的
-本地 PostgreSQL 服务或容器，必要时执行 `npm run db:migrate` 应用待执行的本地
-迁移，再运行 `release.bat`。不要把合同测试指向生产数据库。预检失败会终止发布，
-不会跳过测试或自动迁移数据库。
-
-在 Windows 的 `admin` 目录执行：
+在 Windows 的 `admin` 目录执行 `release.bat` 进行日常打包。脚本检查 Docker，
+运行 ESLint、量房画布和 AI 测试，再使用 Docker 缓存构建 Next.js 生产镜像。
+默认流程无需连接本地 PostgreSQL。
 
 ```powershell
-release.bat
+.\release.bat
 ```
 
-脚本按顺序执行 ESLint、量房画布测试、AI 测试、PostgreSQL 合同测试、Next.js 生产构建、无缓存 Docker 构建，然后生成当天递增版本，如 `20260901-001`。也可显式指定：
+完整发布验收使用 `.\release.bat -Full`，额外执行 `npm run db:check`、隔离
+PostgreSQL 合同测试、宿主机 Next.js 构建和无缓存 Docker 构建。开发库需可连接。
+合同测试使用已迁移、空闲的 `127.0.0.1:55432/xiaok_embedding_eval`，从
+`tmp/xiaok-vector/connection.private.json` 读取应用账号与所有者连接。也可通过
+Shell 中指向隔离库的 `DATABASE_URL` 提供应用连接。隔离库预检的连接超时为
+5 秒，单次查询超时为 10 秒。预检或测试失败会在镜像打包前停止。请在开发环境
+恢复数据库或隧道，需要迁移时单独执行。
 
-```powershell
-release.bat -Version 20260901-001
-```
+热修复仍可用 `.\release.bat -Fast` 跳过本地 lint 和测试，Docker 仍执行生产构建。
+各模式默认生成当天递增的 `YYYYMMDD-NNN` 版本，也可用 `-Version 20260901-001` 指定。
 
 产物为：
 
@@ -219,7 +242,8 @@ admin/release/sfp-admin-release-20260901-001.zip.sha256
 admin/release/auto_deploy.sh
 ```
 
-ZIP 内含带相同 tag 与 OCI version label 的 Docker 镜像、Compose、迁移、构建信息以及两级 SHA-256 清单，不含生产环境文件。
+ZIP 内含带相同 tag 与 OCI version label 的 Docker 镜像、Compose、迁移、构建信息以及两级 SHA-256 清单。
+`BUILD_INFO` 记录 `release_mode`（`standard`、`full`、`fast`）和 `postgresql_contract_tests`（`passed` 或 `not_run`）。ZIP 不含生产环境文件。
 
 ## 一键发布
 
@@ -254,6 +278,10 @@ Compose 预检会显式启用 `migration` profile，确保仅在该 profile 下�
 迁移容器直接使用已校验发布镜像内置的 Drizzle 文件，不再依赖发布目录的
 宿主机 bind mount，避免版本目录提升后挂载路径失效。
 
+阶段 Agent 的工作流定义随 `native_workflow_store` 卷持久保存，默认挂载到 Admin 的 `/app/tmp/native-workflow-store`。Worker 通过 Admin 的内部任务接口读取同一版本。自定义 `NATIVE_WORKFLOW_STORE_DIR` 时沿用其持久挂载。恢复工作流时同时使用对应的卷备份和 PostgreSQL 备份。小 K Worker 重建后以当前进程的预检和轮询上报健康，平台关闭时仍以正常空闲状态运行。
+
+发布基线跟踪已上线的 `0141`–`0143` 原字节和顺序。阶段 Agent 与回答操作升级在这三条后执行 `0144`–`0147`。
+
 任何备份、迁移、启动或检查失败都会返回非零状态。若新应用已经切换但检查失败，脚本会尝试恢复发布前的应用镜像；数据库迁移不会逆转。未通过的版本不会成为 `current`。
 
 ## 实时请求日志
@@ -277,10 +305,6 @@ sudo tail -n 100 -F /var/log/nginx/access.log /var/log/nginx/error.log
 ```bash
 curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://smartfloor.zlyun168.com/api/health
 ```
-
-阶段 Agent 的工作流定义随 `native_workflow_store` 卷持久保存，默认挂载到 Admin 的 `/app/tmp/native-workflow-store`。Worker 通过 Admin 的内部任务接口读取同一版本。自定义 `NATIVE_WORKFLOW_STORE_DIR` 时沿用其持久挂载。恢复工作流时同时使用对应的卷备份和 PostgreSQL 备份。小 K Worker 重建后以当前进程的预检和轮询上报健康，平台关闭时仍以正常空闲状态运行。
-
-发布基线跟踪已上线的 `0141`–`0143` 原字节和顺序。阶段 Agent 升级在这三条之后执行 `0144`–`0146`。
 
 Nginx 在请求处理结束时记录访问。如果看不到探测请求，核对对应域名与 location 是否有
 `access_log off`、独立日志路径、条件记录或 `buffer` / `flush` 缓冲。需要记录全部请求时，

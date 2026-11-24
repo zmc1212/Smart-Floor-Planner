@@ -216,7 +216,7 @@ export async function reconcileSdPlaybacks(upstream=cameraWvp(),playbackId?:stri
         // instead of paying that wake-up again. Switching to another segment
         // starts a newer playback and releases this one immediately, because
         // the device uplink cannot carry two SD playbacks at once.
-        if(await one(tx,sql`select 1 from app.construction_camera_sd_playbacks where id=${String(p.id)} and created_at>now()-interval '30 seconds'
+        if(await one(tx,sql`select 1 from app.construction_camera_sd_playbacks where id=${String(p.id)} and state='starting' and created_at>now()-interval '30 seconds'
           and not exists(select 1 from app.construction_camera_sd_playbacks n where n.enterprise_id=${eid} and n.id<>${String(p.id)}
             and n.state<>'stopped' and n.created_at>${p.created_at as Date})`))return null;
         // Commit revocation and STOP intent before the provider operation. An

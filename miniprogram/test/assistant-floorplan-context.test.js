@@ -3,6 +3,17 @@ const assert = require('node:assert/strict');
 const { AssistantClient } = require('../packages/assistant/lib/client');
 const { FloorplanContextController } = require('../packages/assistant/lib/floorplan-context');
 const plan = { id: '12', leadId: '10', name: '合成旧房', layoutHash: 'a'.repeat(64), rooms: [] };
+const detail = {
+  ...plan, floorPlanId: plan.id, name: '合成旧房', text: '正式户型只读记录',
+  rooms: [{
+    id: 'k', name: '厨房', floorName: '一层', ceilingHeightMm: 2800,
+    walls: [{ id: 'ab', lengthMm: 4000 }, { id: 'bc', lengthMm: 3000 }],
+    openings: [{ id: 'w', type: 'window', widthMm: 1200, heightMm: 1500, sillHeightMm: 900 }],
+    wallCount: 4, readableWallCount: 2, openingCount: 1, omittedWalls: 0, omittedOpenings: 0,
+  }],
+  totalRooms: 1, omittedRooms: 0,
+  previewEndpoint: '/miniprogram/customer-projects/10/formal-floor-plan/preview',
+};
 function fixture(intercept) {
   let identity = 'owner-a';
   const calls = [], view = {};
@@ -18,10 +29,16 @@ function fixture(intercept) {
   return { controller, calls, view, identity: value => { identity = value; } };
 }
 test('browsing remains read only; explicit selection and clearing are scoped durable service operations', async () => {
-  const f = fixture(call => call.method === 'GET' && call.body.leadId ? { success: true, data: { ...plan, floorPlanId: plan.id, text: '正式户型只读记录' } } : null);
+  const f = fixture(call => call.method === 'GET' && call.body.leadId ? { success: true, data: detail } : null);
   await f.controller.show('8');
   await f.controller.detail(plan);
   assert.equal(f.view.selectedFloorplan, null);
+  assert.equal(f.view.contextDetail.rooms[0].indexLabel, '01');
+  assert.equal(f.view.contextDetail.rooms[0].ceilingLabel, '层高 2800');
+  assert.deepEqual(f.view.contextDetail.rooms[0].openingLines, ['窗 · 宽 1200 · 高 1500 · 窗台高 900']);
+  assert.equal(f.view.contextDetail.roomCountLabel, '1 个空间');
+  assert.equal(f.view.contextDetail.rooms[0].partialWalls, true);
+  assert.equal(f.view.contextDetail.previewEndpoint, detail.previewEndpoint);
   assert.equal(f.calls.filter(c => c.method === 'POST').length, 0);
   assert.equal(await f.controller.select(plan), true);
   assert.equal(f.view.selectedFloorplan.floorPlanId, '12');

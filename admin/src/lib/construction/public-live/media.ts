@@ -273,12 +273,15 @@ export async function reconcileLiveProxies(upstream=publicLiveUpstream()) {
   }
   return {stopped};
 }
-export async function publicLiveDetail(eid:string,key:string) {
+export async function publicLivePublication(tx: PostgresTransaction, eid: string, key: string) {
   id(eid);liveKey(key);
+  const row = await one(tx, sql`select id,current_version_id from app.construction_public_live where enterprise_id=${eid} and public_key=${key}`);
+  if (!row) fail('public_live_unavailable', 404);
+  return authorize(tx, eid, String(row.id), String(row.current_version_id), { kind: 'public' });
+}
+export async function publicLiveDetail(eid:string,key:string) {
   return withTenantTransaction(eid,async tx=>{
-    const l=await one(tx,sql`select id,current_version_id from app.construction_public_live where enterprise_id=${eid} and public_key=${key}`);
-    if(!l)fail('public_live_unavailable',404);
-    const s=await authorize(tx,eid,String(l.id),String(l.current_version_id),{kind:'public'});
+    const s=await publicLivePublication(tx,eid,key);
     const dto=liveDto(s.live,s.version);
     return {key:dto.key,versionId:dto.versionId,revision:dto.revision,name:dto.name,alias:dto.alias,audience:dto.audience,scope:dto.scope,status:'approved'};
   });

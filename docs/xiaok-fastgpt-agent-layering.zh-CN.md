@@ -1,5 +1,7 @@
 # 小K Agent 分层与 FastGPT 工具网关契约（设计提案）
 
+> **历史记录（2026-11-19）**：FastGPT Agent V2 运行时（`runtime.ts`/`worker.ts`/`skills.ts`、`/agent-v2-tool/*` 桥及 V2 验收/开通脚本）已按用户指示删除，客户回复与公开开场仅由小K原生执行器执行。本文保留原设计与验收记录，仅作历史证据，不代表当前实现。
+
 状态：**两步代码已实施；`site.public` 已在 1454 试点激活（appId `6af27edb3a245855a926e011`）并通过真实端到端校验**。
 
 - 2026-11-10 网关：新增 `recommend_designers`（零参数、公开署名优先在服务内解析、落 `agent_designer_result` step、卡片仅由投影产生）；网关单测 5 项通过。

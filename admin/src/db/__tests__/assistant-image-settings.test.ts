@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
+import { loadEnvConfig } from '@next/env';
 import { sql } from 'drizzle-orm';
 import { SignJWT } from 'jose';
 import { NextRequest } from 'next/server';
@@ -15,7 +16,7 @@ import type { ActorContext } from '@/lib/assistant/contracts';
 import { ConversationService } from '@/lib/assistant/core/conversation';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { AssistantMediaService } from '@/lib/assistant/media/service';
-import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
+import { savePlatformLlmConfig } from '@/lib/platform-llm-config';
 import { closePostgresPool } from '@/lib/postgresql';
 import { lockAssistantAcceptance } from '../../../scripts/assistant-acceptance-safety.mjs';
 
@@ -25,12 +26,15 @@ const admins: { id: string; role: string; enterpriseId: string | null }[] = [];
 const baseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 const model = 'deepseek-v4.1-flash-1017';
 let release: Awaited<ReturnType<typeof lockAssistantAcceptance>> | undefined;
-let previousModel: Awaited<ReturnType<typeof getPlatformLlmRuntimeConfig>> | undefined;
+let previousLlmConfig: unknown;
 let userId: string;
 
 before(async () => {
+  loadEnvConfig(process.cwd());
   release = await lockAssistantAcceptance(process.env.DATABASE_URL);
-  previousModel = await getPlatformLlmRuntimeConfig();
+  // Snapshot the raw JSON so an isolated clone carrying credentials encrypted
+  // with another environment's key can still be restored verbatim.
+  previousLlmConfig = (await withPlatformTransaction(tx => one(tx, sql`select llm_config as config from app.platform_configs where key='default'`)))?.config ?? null;
   await savePlatformLlmConfig({ enabled: true, providerKey: 'dashscope', baseUrl, model, apiKey: 'synthetic-test-only' });
   await withPlatformTransaction(async tx => {
     for (const index of [0, 1]) {
@@ -63,7 +67,10 @@ after(async () => {
       if (userId) await tx.execute(sql`delete from app.users where id=${userId}`);
     });
   } finally {
-    try { if (previousModel) await savePlatformLlmConfig(previousModel); }
+    try {
+      await withPlatformTransaction(tx => tx.execute(sql`update app.platform_configs
+        set llm_config=${previousLlmConfig === null ? null : JSON.stringify(previousLlmConfig)}::jsonb where key='default'`));
+    }
     finally { await closePostgresPool(); await release(); }
   }
 });

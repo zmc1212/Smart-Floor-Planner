@@ -35,6 +35,7 @@ Native 预读沿本轮授权与原文目录。独立引用标记只解析本轮�
 - 现场上报及版本变更、需求、共享/方案、事项回复/整改/复核、已保存的联网原文和到期沿现有 Outbox 入队。Worker 复验获权原件并经 R2 读取和审计，事务提交处理回执、状态和原咨询消息。事件及任务/事件唯一键、租户级事务锁、到期重试和五次失败死信支持重放和重启。人工继续入队新一轮核对。
 - 房间进度依据对应房间及工种当前对客发布的记录和照片。设计师答复须由当前获权角色提交并由负责人回传原咨询。带原事项关联的已发布整改照片进入待复核。正式方案变更、同意和问题解决仍由原业务服务处理。
 - 首次到期写站内提醒，仍逾期且有当前项目授权时向负责人站内升级。排队、消息已持久化、明确已读及业务确认分别留痕。团队仍可在 AI 不可用时用原业务入口人工处理。
+- 回答在供应商响应已确定、用量可观察且原预留保留对账时，可经原 `retry` 接口显式重排；引用、格式、范围及不支持量数等校验失败与检索中断适用同一规则。尚未发起任何供应商调用前的 `model_unavailable` 自动延迟 5 秒重排一次；已发起后的未知结果仍按对账处理，不自动重放。
 - 应用迁移 `0123` 后使用 `NATIVE_WORKFLOW_DELEGATION_ENABLED=1` 和明确的 `NATIVE_WORKFLOW_DELEGATION_ENTERPRISE_IDS` 白名单。业主端 `GET|POST|PATCH /api/miniprogram/assistant/conversations/:id/long-term` 分别读取、从本人原话人工写入、确认站内已读。写入校验版本和幂等键。沿用原页面布局和站内投递。
 
 真实 PostgreSQL 与替身模型通过10组业务及生命周期检查。R1–R4 定向136项、托管 RAG 替身12项通过。Stable 在390×844的原 C01 完成查看、暂停与持久重进。百炼 `qwen3.7-flash` 固定两组通过，Responses 保存工具与结构化召回为 run96–99。真实托管知识库仍缺工作空间及专用凭据，应用联网服务本轮不可用。实际语音、真机与生产未验。
@@ -94,6 +95,8 @@ Mini `site-capture.js`先把临时文件复制至自有`USER_DATA_PATH/site-capt
 
 另保留[续验前置失败](../tmp/site-speech-dev-20261107/continuation-setup-failure.json)及[空输入驱动失败](../tmp/site-speech-dev-20261107/continuation-empty-input-failure/continuation.json)。最终复核确认Stable CLI拒绝空字符串input，改用其支持的原生input事件，保存前核对字段已清空，再回读更正结果。
 <!-- /site-speech-development -->
+
+**2026-11-18 工人 SaaS 上报补充（本地开发，已实现/有限）：** 新增独立 `packages/construction/report/report`，拍照/说一句不再跳工地交流。自由上报可带最多 9 张照片、1 段原音、文字和 `stageKeys`；`stageKeys` 必须是当前企业阶段配置中的唯一 key（最多 10 个），服务端生成 `app.construction_site_records.stage_snapshot` 名称快照。迁移 `0140_construction_worker_reports.sql` 将附图 position 放宽到 0–8、增加阶段快照列和历史索引；小K整理最多读取前 4 张照片，人工审核仍看全部原件。工人工作台 `GET /api/miniprogram/construction/workbench?projectId=&from=&to=` 只返回当前工地、当前员工本人的上报、`todaySummary` 和阶段选项；默认今天，支持昨天/近7天/日历（≤92 天），显示待审核/审核通过/需补充/已撤回。审核通过复用既有 `publish`（经理/设计师/老板任一），退回复用 `request_changes`；设计师只能内部审核，经理/老板可对客公开，继续保留版本、媒体可用性和 `approved_by`/`returned_by` 审计。上报页复用 `SiteCapture` 的本地草稿、幂等 key 和 `/operations/:key` 核对。Stable 开发者工具 390×844 已核验工人双 Tab、范围筛选、日历、上报路由与阶段控件、详情，以及老板审核后变为「审核通过」（[原生证据](../tmp/worker-saas-native-20261118/native.json)）；真实拍照/录音、提交、真机和其他视口仍待验。
 <!-- /site-capture-current -->
 
 <!-- xiaok-site-language-current -->

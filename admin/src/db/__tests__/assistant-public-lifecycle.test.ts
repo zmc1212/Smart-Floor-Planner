@@ -12,6 +12,7 @@ import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConversationService, appendMessage, newRun } from '@/lib/assistant/core/conversation';
 import { claimJob, completeRun, failRun, markProviderStarted, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import { processAssistantRun } from '@/lib/assistant/application/worker';
 import { processNativeAgentAnswer, nativeReadContract, nativeRunReadContract, xiaokNativeExecutorProtocol,
   nativeExecutorPromptVersion } from '@/lib/assistant/agent/native-executor';
 import { nativeConversation } from '@/lib/assistant/fastgpt/rag-session';
@@ -574,29 +575,21 @@ test('a saved model result is not committed after withdrawal, and the model is n
   assert.equal((await assistantMessages(site.conversationId)).length, 0);
 });
 
-test('a saved public opening keeps its own dependency and disappears after withdrawal', async () => {
+test('a configured opening is model-free, keeps its dependency and disappears after withdrawal', async () => {
   const site = await publishedSite(prefix + '-intro');
   const notice = await publicNotice(site.conversationId, site);
   const runId = await introRun(site.conversationId, notice);
   const lease = await claimJob({ enterpriseId, runId });
   assert.ok(lease);
-  const opening = '这是西陵区一套正在做水电阶段的公开工地，当前有业主授权的公开服务记录，想了解这个阶段的施工，可以直接问我。';
-  const originalFetch = globalThis.fetch, originalModel = process.env.ASSISTANT_TEXT_MODEL,
-    originalThinking = process.env.ASSISTANT_TEXT_DISABLE_THINKING;
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
   try {
-    // The real binding check compares against these deployment switches; this
-    // synthetic transport keeps its own probe and never contacts a provider.
-    delete process.env.ASSISTANT_TEXT_MODEL;
-    delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;
-    globalThis.fetch = (async () => Response.json({ choices: [{ message: { content: opening }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 5, completion_tokens: 6 } })) as typeof fetch;
-    await processNativeAgentAnswer(lease as Lease);
+    globalThis.fetch = async () => { providerCalls++; throw Error('A configured opening needs no provider'); };
+    await processAssistantRun(lease);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalModel === undefined) delete process.env.ASSISTANT_TEXT_MODEL; else process.env.ASSISTANT_TEXT_MODEL = originalModel;
-    if (originalThinking === undefined) delete process.env.ASSISTANT_TEXT_DISABLE_THINKING;
-    else process.env.ASSISTANT_TEXT_DISABLE_THINKING = originalThinking;
   }
+  assert.equal(providerCalls, 0);
   const run = await service.run(runId);
   assert.equal(run.status, 'succeeded', String(run.errorCode ?? ''));
   const dependency = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select source_refs
@@ -611,14 +604,15 @@ test('a saved public opening keeps its own dependency and disappears after withd
   const introId = String(stored[0].id);
   const before = (await service.messages(site.conversationId)).items.find(item => String(item.id) === introId)!;
   assert.equal(before.available, true);
-  assert.match(JSON.stringify(before.content), /西陵区/);
+  const opening = safeText(before.content as MessageContent);
+  assert.match(opening, /你想看看现场进展，还是想对照自己家的装修？$/);
   // The opening does not add a second public chip: its notice already owns it.
   assert.equal(before.publicReferences ?? null, null);
   await withdrawn(site);
   const after = (await service.messages(site.conversationId)).items.find(item => String(item.id) === introId)!;
   assert.equal(after.available, false, 'A withdrawn source must invalidate the saved opening');
   assert.equal(JSON.stringify(after.content).includes('source_unavailable'), true);
-  assert.equal(JSON.stringify(after.content).includes('西陵区'), false);
+  assert.equal(JSON.stringify(after.content).includes(opening), false);
 });
 
 test('a legacy opening proves its source only through its own trigger event', async () => {

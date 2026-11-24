@@ -176,6 +176,8 @@ export async function proxy(request: NextRequest) {
   if (
     pathname === '/api/health' ||
     pathname === '/construction-camera' ||
+    pathname === '/inspection-map' ||
+    pathname.startsWith('/inspection-map/') ||
     pathname.startsWith('/construction-camera/') ||
     pathname === '/api/construction-camera' ||
     pathname.startsWith('/api/construction-camera/') ||

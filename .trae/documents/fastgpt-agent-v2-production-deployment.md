@@ -1,5 +1,7 @@
 # FastGPT Agent V2 生产上线计划（按评审修订）
 
+> **历史记录（2026-11-19）**：FastGPT Agent V2 运行时（`runtime.ts`/`worker.ts`/`skills.ts`、`/agent-v2-tool/*` 桥及 V2 验收/开通脚本）已按用户指示删除，客户回复与公开开场仅由小K原生执行器执行。本文保留原设计与验收记录，仅作历史证据，不代表当前实现。
+
 ## Context
 
 原计划方向保留：桥在 Admin、每企业独立 FastGPT 应用与 `bridgeKey`、只迁应用/工具/模型/配置、家客来继续掌握权限与知识来源、先灰度再扩到全部企业。
@@ -55,7 +57,7 @@
 - **旧能力回退**：`knowledgeAppId`/`stageAppId` 可缺省；Agent 回答和阶段报告按能力显式选择执行器，未配置旧工作流时走原模型路径，不再因为存在 workflows 文件隐式接管。
 - **开场注册**：`openings` 支持 `enterprises` 数组，每家企业独立场景与 App。
 
-验收证据（`tmp/xiaok-agentv2-d2-20261110/acceptance.json`）：
+验收证据（`tmp/xiaok-agentv2-d2-20261110/acceptance.json`，已随 V2 于 2026-11-19 清理删除）：
 
 | 观察项 | 结果 |
 |---|---|

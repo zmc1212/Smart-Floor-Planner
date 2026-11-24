@@ -146,7 +146,7 @@
               ></view>
             </view>
             <view wx:else class="lead-plan-empty">
-              <image src="{{item.statusIcon}}" mode="aspectFit" />
+              <image class="lead-plan-empty-icon" src="{{item.statusIcon}}" mode="aspectFit" />
               <text>{{item.planPreview.label}}</text>
             </view>
           </view>

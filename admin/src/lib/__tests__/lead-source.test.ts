@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   LEAD_COMMISSION_SOURCES,
-  isTwoRoleCommissionSource,
+  isStaffCommissionSource,
   shouldSnapshotLeadCommissions,
 } from '@/lib/lead-source';
 
@@ -12,10 +12,10 @@ test('manual entry uses the two-role commission snapshot, not a referrer row', (
     'staff_activity',
     'manual_entry',
   ]);
-  assert.equal(isTwoRoleCommissionSource('manual_entry'), true);
-  assert.equal(isTwoRoleCommissionSource('staff_activity'), true);
-  assert.equal(isTwoRoleCommissionSource('referrer_network'), false);
-  assert.equal(isTwoRoleCommissionSource('MiniProgram'), false);
+  assert.equal(isStaffCommissionSource('manual_entry'), true);
+  assert.equal(isStaffCommissionSource('staff_activity'), true);
+  assert.equal(isStaffCommissionSource('referrer_network'), false);
+  assert.equal(isStaffCommissionSource('MiniProgram'), false);
 });
 
 test('conversion snapshots commissions for manual entry even before a measurer is filled', () => {

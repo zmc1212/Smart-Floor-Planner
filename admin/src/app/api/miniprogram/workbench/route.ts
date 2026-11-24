@@ -140,12 +140,11 @@ export async function GET(request: Request) {
 
       if (role === 'designer') {
         const scope = { staffId, staffVisibility: 'assigned' as const };
-        const measurerScope = { staffId, staffVisibility: 'measurer' as const };
         const adminUsers = new AdminUserRepository(transaction);
         const [leadList, statusCounts, surveyList, expiredUnbooked, opsDashboard, selfStaff] = await Promise.all([
           leads.list({ ...scope, page: 1, limit: 6, orderBy: 'updatedAt' }),
           leads.countStatuses(scope, ['new', 'contacted', 'measuring', 'measured', 'assigned', 'designing', 'quoting']),
-          leads.list({ ...measurerScope, page: 1, limit: 20, orderBy: 'updatedAt' }),
+          leads.list({ ...scope, page: 1, limit: 20, orderBy: 'updatedAt' }),
           appointments.listExpiredUnbooked(enterpriseId, 20),
           loadOpsDashboard(transaction, {
             enterpriseId,
@@ -177,17 +176,30 @@ export async function GET(request: Request) {
             archivedUser: null,
             convertedUser: null,
           }, 'rebook', publishedCountFor(row.lead.id)));
-        const surveyTasks = surveyList.rows
-          .filter((lead) => ['new', 'measuring'].includes(lead.status || 'new'))
-          .map((lead) => leadItem(lead, 'survey', publishedCountFor(lead.id)));
-        const surveyIds = new Set(surveyTasks.map((item) => item.leadId));
         const expiredIds = new Set(ownExpired.map((item) => item.leadId));
+        const surveyTasks = surveyList.rows
+          .filter(lead => !expiredIds.has(lead.id.toString()) && ['new', 'contacted', 'measuring'].includes(lead.status || 'new'))
+          .filter(lead => lead.appointment?.status === 'confirmed'
+            ? lead.appointment.measurerId === staffId
+            : !lead.measurerId || lead.measurerId === staffId)
+          .map(lead => {
+            const publishedDesignCount = publishedCountFor(lead.id);
+            if (lead.appointment?.status === 'confirmed') {
+              return {
+                ...appointmentItem(lead.appointment, lead, { publishedDesignCount }),
+                updatedAt: lead.updatedAt,
+              };
+            }
+            return leadItem(lead, 'survey', publishedDesignCount);
+          });
+        const surveyIds = new Set(surveyTasks.map((item) => item.leadId));
         const followUps = [
           ...ownExpired,
+          ...surveyTasks,
           ...leadList.rows
-            .filter((lead) => !expiredIds.has(lead.id.toString()))
+            .filter((lead) => !expiredIds.has(lead.id.toString()) && !surveyIds.has(lead.id.toString()))
             .filter((lead) => !['converted', 'closed'].includes(lead.status || 'new'))
-            .map((lead) => leadItem(lead, surveyIds.has(lead.id.toString()) ? 'survey' : 'lead', publishedCountFor(lead.id))),
+            .map((lead) => leadItem(lead, 'lead', publishedCountFor(lead.id))),
         ].sort(compareDesignerWorkbenchItems);
         const activeCount = Object.values(statusCounts).reduce((sum, value) => sum + value, 0);
         const profileTodo = selfStaff
@@ -206,7 +218,7 @@ export async function GET(request: Request) {
           summary: [
             { key: 'expired', label: '过期未重约', value: ownExpired.length, detail: '需要重新预约上门', tone: 'orange' },
             { key: 'active', label: '待推进客户', value: activeCount, detail: '仅本人负责', tone: 'green' },
-            { key: 'measuring', label: '待量房交接', value: Number(statusCounts.measuring || 0) + surveyTasks.length, detail: '可立即量房或等待正式量房', tone: 'blue' },
+            { key: 'measuring', label: '待量房', value: surveyTasks.length, detail: '本人负责的上门与量房任务', tone: 'blue' },
           ],
           primaryItems,
           tasks: [...ownExpired, ...surveyTasks],

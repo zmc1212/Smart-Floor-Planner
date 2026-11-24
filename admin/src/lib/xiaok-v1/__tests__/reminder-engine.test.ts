@@ -42,6 +42,17 @@ test('a missing plan never produces precise due or stage-ending reminders', () =
   assert.deepEqual(drafts.map(item => item.triggerType), ['stage_entered', 'stage_entered', 'stage_entered', 'stage_entered']);
 });
 
+test('an expired milestone estimate goes to the manager without escalating the whole project', () => {
+  const scenario = facts();
+  const [node] = scenario.schedule.nodes;
+  scenario.schedule.nodes = [{ ...node, plannedEnd: '2026-11-13', managementOnly: true }];
+  const drafts = buildReminderDrafts(scenario, { ...policy, bossEscalationDays: 0 }, now);
+  const planReminders = drafts.filter(item => item.relatedTaskId?.startsWith(node.key));
+  assert.deepEqual(planReminders.map(item => [item.triggerType, item.targetRole]), [['plan_node_overdue', 'manager']]);
+  scenario.schedule.nodes[0].plannedEnd = '2026-11-14';
+  assert.ok(buildReminderDrafts(scenario, policy, now).every(item => !item.relatedTaskId?.startsWith(node.key)));
+});
+
 test('no record means unknown, not stalled', () => {
   assert.ok(!buildReminderDrafts(facts({ lastRecordAt: null }), policy, now).some(item => item.triggerType === 'data_stale'));
   const stale = buildReminderDrafts(facts({ lastRecordAt: '2026-11-01T12:00:00+08:00' }), policy, now);

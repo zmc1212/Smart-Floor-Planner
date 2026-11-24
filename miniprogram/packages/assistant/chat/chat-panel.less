@@ -1,11 +1,14 @@
 /* The root chat shares the designer recommendation card layout and typography. */
 /* Approved11 tag and control calibration stays in this entry's compile graph. */
 @import "./chat.less";
+@standalone-chat: false;
 @import "./guest-login.less";
 @import "./chat-interactions.less";
 @import "./message-actions-font.less";
 @import "./message-actions.less";
 @import './answer-citation.less';
+/* Keep a direct dependency so the async home panel recompiles the archive row. */
+@import "./floorplan-context.less";
 /* Approved04 report/source/run updates share the root panel compilation. */
 /* followup09 approved heading glyphs */
 /* Approved10 shared plan stylesheet entry. */

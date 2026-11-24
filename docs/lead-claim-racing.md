@@ -6,7 +6,8 @@ Status: `Implemented`
 
 - Admin `/lead-pool` lets designers claim leads and lets enterprise owners monitor or assign manually; `/assignment-settings` maintains rules, capacity, and performance views.
 - Mini Program `packages/enterprise/lead-claim-pool/lead-claim-pool` returns masked leads only to active designers in the signed enterprise. Full lead detail becomes available only after a successful claim. The designer workbench shows the current claim count and entry.
-- Referrer leads, Admin manual-entry leads, measurer activity-code leads, and enterprise-owner activity-code leads use the claim/racing path. A designer's own activity code still binds that designer directly. Measurer pre-assignment remains in the intake transaction; an owner presenter is stored as promoter only and is not bound as designer or measurer.
+- Referrer leads, Admin manual-entry leads, measurer activity-code leads, and enterprise-owner activity-code leads use the claim/racing path for one responsible designer in `assignedTo`. A designer's own activity code binds that designer directly. Other presenters stay in `promoterId`. New leads leave `measurerId` empty. Enterprise managers can replace the designer through `assign-staff`.
+- A scheduled measurement retains the assigned designer or assigns an available designer for the selected slot. Booking resolves any open claim window in the same transaction as the appointment. The designer handles the visit, and the existing appointment overlap constraint applies to that person. Historical lead assignees, distinct two-person appointment records, and existing commission snapshots remain readable.
 
 ## Versioned settings, capacity, and racing
 
@@ -19,8 +20,8 @@ Status: `Implemented`
 ## Concurrency, deadlines, and closure
 
 - `POST /api/leads/[id]/claim` uses server time, a hashed idempotency key, and `FOR UPDATE`. The same designer's retry returns the original success; concurrent designers produce one winner and `409 lead_already_claimed` for the rest.
-- A claim cannot win at or after `expiresAt`, even if the worker has not scanned it. The request resolves overdue assignment transactionally as a fallback. Enterprise-owner manual assignment can end an open window at any time.
-- A dedicated worker scans every two seconds with `FOR UPDATE SKIP LOCKED` and an enterprise transaction lock. No eligible designer returns the lead to `assignment_pending/designer_unavailable`, preserving the existing retry and owner in-app notification behavior.
+- A claim cannot win at or after `expiresAt`, even before the worker scans it. The request resolves overdue assignment transactionally as a fallback. An enterprise manager's manual assignment or a successful scheduled measurement can resolve an open window early. These writers serialize on the lead row.
+- A dedicated worker scans every two seconds with `FOR UPDATE OF due_lead SKIP LOCKED` and an enterprise transaction lock. The due scan locks the joined lead rows through the unqualified table alias. With no eligible designer, the lead returns to `assignment_pending/designer_unavailable`, preserving the existing retry and owner in-app notification behavior.
 - A designer may close their own lead with a normal lost reason. Enterprise owners may close any lead and use invalid/duplicate/mistaken-entry categories. `other` requires a note. Signing, lost closure, or archiving immediately cancels an open claim window. Reopen restores the pre-closure stage but never restores cancelled appointments; another active attribution returns a conflict. Archive remains a visibility-only concept.
 
 ## APIs and tenant boundary

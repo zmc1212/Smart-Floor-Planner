@@ -38,6 +38,11 @@ const errors = {
   version_conflict: '工地资料已有更新，请刷新核对后重新提交。', idempotency_conflict: '本次操作与原提交不一致，请核对原请求。',
   invalid_construction: '请核对员工、节点与填写内容。', construction_unavailable: '工地服务暂不可用，请稍后核对。',
 };
+Object.assign(errors, {
+  construction_agreement_confirmation_required: '请先与业主线下确认日期，再登记。',
+  construction_completion_evidence_required: '请先核对并更新工地的实际施工节点。',
+  construction_milestone_completed: '该节点已完成，请查看最新记录。',
+});
 function errorText(error) { return errors[error && error.error] || (error && error.statusCode === 401 ? '登录已失效，请重新登录。' : '暂未完成，请检查网络后重试。'); }
 function decorateProject(p, stages) {
   return { ...p, stageName: (stages.find(s => s.key === p.current_stage_key) || {}).name || '尚未标记',
@@ -57,7 +62,16 @@ function decorateProgress(progress) {
   if (!progress) return null;
   return { ...progress,
     nodes: (progress.nodes || []).map(node => ({ ...node, title: [node.roomName, node.stageName].filter(Boolean).join(' · '),
-      dateText: node.plannedStart + ' 至 ' + node.plannedEnd })),
+      dateText: node.timeText || node.plannedStart + ' 至 ' + node.plannedEnd })),
+    ...(progress.management ? { management: { ...progress.management,
+      milestones: progress.management.milestones.map(node => {
+        const date = node.completedAt ? new Date(+new Date(node.completedAt) + 8 * 3600000) : null;
+        const completedText = date ? (date.getUTCMonth() + 1) + '月' + date.getUTCDate() + '日完成' : '';
+        return { ...node, completedText, overdueText: node.overdueDays ? '超出预计 ' + node.overdueDays + ' 天 · 待核实' : '',
+          actionText: node.kind === 'handover' ? (node.agreedDate ? '登记改期' : '登记约定')
+            : node.overdueDays ? '跟进' : node.estimate ? '调整预计' : '填写预计' };
+      }),
+    } } : {}),
     gapTexts: (progress.gaps || []).map(gap => gap.label) };
 }
 function decorateDetail(value) {

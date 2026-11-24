@@ -9,6 +9,7 @@ export const ENTERPRISE_ONBOARDING_PAGE =
   'packages/business/onboarding/onboarding';
 export const ENTERPRISE_REGISTRATION_PAGE =
   'packages/business/enterprise-register/enterprise-register';
+export const FAMILY_INVITE_PAGE = 'packages/construction/family/family';
 
 export type { MiniProgramCodeEnvironment } from '@/lib/mini-program-code-environment';
 
@@ -95,34 +96,44 @@ async function createMiniProgramCode(
   token: string,
   options: MiniProgramCodeOptions = {}
 ) {
+  return createMiniProgramCodeForScene(path, token.slice(3), options);
+}
+
+async function createMiniProgramCodeForScene(
+  path: string,
+  scene: string,
+  options: MiniProgramCodeOptions = {},
+  config: { sceneForEveryEnvironment?: boolean } = {}
+) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const envVersion = options.envVersion ?? resolveMiniProgramCodeEnvironment();
   const accessToken = await getWechatAccessToken({ fetchImpl });
-  const isRelease = envVersion === 'release';
   const page = path.split('?')[0];
-  const scene = token.slice(3);
-  if (!isRelease && !/^[A-Za-z0-9_-]{32}$/.test(scene)) {
+  // `getwxacodeunlimit` accepts `env_version` for release, trial and develop,
+  // so a short scene can address the exact build that generated the code.
+  const useScene = config.sceneForEveryEnvironment === true || envVersion !== 'release';
+  if (useScene && !/^[A-Za-z0-9_.-]{1,32}$/.test(scene)) {
     throw new Error('Mini Program code token cannot be encoded into scene');
   }
   const response = await fetchImpl(
-    `https://api.weixin.qq.com/wxa/${isRelease ? 'getwxacode' : 'getwxacodeunlimit'}?access_token=${encodeURIComponent(accessToken)}`,
+    `https://api.weixin.qq.com/wxa/${useScene ? 'getwxacodeunlimit' : 'getwxacode'}?access_token=${encodeURIComponent(accessToken)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(
-        isRelease
+        useScene
           ? {
-              path,
+              scene,
+              page,
+              check_path: false,
+              env_version: envVersion,
               width: 430,
               auto_color: false,
               line_color: { r: 8, g: 137, b: 57 },
               is_hyaline: false,
             }
           : {
-              scene,
-              page,
-              check_path: false,
-              env_version: envVersion,
+              path,
               width: 430,
               auto_color: false,
               line_color: { r: 8, g: 137, b: 57 },
@@ -199,6 +210,26 @@ export async function createEnterpriseOnboardingCode(
   options: MiniProgramCodeOptions = {}
 ) {
   return createMiniProgramCode(buildEnterpriseOnboardingPath(token), token, options);
+}
+
+/**
+ * Family invitations are shared as Mini Program codes because a forwarded card
+ * opens the released build. The code carries the signed 28-character scene and
+ * `env_version`, so the family member opens the same build that generated it:
+ * the development build for developers, the trial build for testers, and the
+ * released build for everyone else.
+ */
+export async function createFamilyInviteCode(
+  code: string,
+  options: MiniProgramCodeOptions = {}
+) {
+  const envVersion = options.envVersion ?? resolveMiniProgramCodeEnvironment();
+  return createMiniProgramCodeForScene(
+    FAMILY_INVITE_PAGE,
+    code,
+    { ...options, envVersion },
+    { sceneForEveryEnvironment: true }
+  );
 }
 
 export async function createEnterpriseRegistrationCode(

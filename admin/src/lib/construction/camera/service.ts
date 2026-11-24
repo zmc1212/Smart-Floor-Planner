@@ -6,13 +6,15 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, key } from '@/lib/assistant/contracts';
 import { constructionAccess } from '../service';
 import { object, text, version, type ConstructionActor } from '../contracts';
-import { cameraWvp, gbId, type WvpClient } from './wvp';
+import { cameraWvp, gbId, type CameraStream, type WvpClient } from './wvp';
 import {currentStorageHealth} from './storage';
 import {guardLiveWriter} from './writer-policy';
 import {authorizeSdMedia,reconcileSdPlaybacks} from './sd';
 import {retentionDefault,nodeRetentionDays} from './retention-defaults';
 import {coverIntervalHours} from './cover-defaults';
+import { cameraCoverJpeg, storedCameraCover } from './owner-cover';
 import { cameraAccess, cameraActorRef, isCameraCustomer, type CameraActor } from './access';
+import { debugSignalBinding, debugSignalStream } from './debug-source';
 import { currentCameraCustomerGrant } from './customer-grants';
 import { privateSnapshot, retainedSnapshot, snapshotRetentionJoins } from './snapshot-retention';
 export { cameraAccess } from './access';
@@ -148,7 +150,7 @@ export async function listCameraProject(actor: CameraActor, pid: string) {
   const result = await withTenantTransaction(eid, async tx => {
     const access = await cameraAccess(tx, actor, pid), defaults = await retentionDefault(tx, eid);
     const coverDefault = !isCameraCustomer(actor) && access.owner ? await coverIntervalHours(tx, eid) : null;
-    const items = await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,coalesce(r.retention_days,${defaults.retentionDays}) retention_days,r.retention_override_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at,r.recording_mode,r.sd_last_error,r.sd_checked_at from app.construction_camera_bindings b
+    const items: Row[] = access.debugCamera ? [access.debugCamera.item] : await rows(tx, sql`select b.id as binding_id,c.id,c.name,c.version,c.ptz_enabled,r.enabled recording_enabled,coalesce(r.retention_days,${defaults.retentionDays}) retention_days,r.retention_override_days,r.version recording_version,r.state recording_state,r.last_error recording_error,r.last_segment_at,r.recording_mode,r.sd_last_error,r.sd_checked_at from app.construction_camera_bindings b
       join app.construction_cameras c on c.enterprise_id=b.enterprise_id and c.id=b.camera_id
       left join app.construction_camera_recording_policies r on r.enterprise_id=b.enterprise_id and r.binding_id=b.id
       where b.enterprise_id=${eid} and b.project_id=${pid} and b.ended_at is null and c.enabled order by c.id`);
@@ -190,6 +192,8 @@ export async function cameraSession(tx: PostgresTransaction, token: string, csrf
     and closed_at is null and expires_at>now() and absolute_expires_at>now() for update`);
   if (!s || (csrf !== undefined && digest(csrf) !== s.csrf_hash)) fail('camera_session_expired', 401);
   const access = await cameraAccess(tx, s.actor as CameraActor, String(s.project_id));
+  if (access.debugCamera && s.binding_id != null && String(s.binding_id) !== access.debugCamera.item.binding_id)
+    fail('camera_binding_unavailable', 404);
   return { ...s, recording_id:s.recording_id, sd_playback_id:s.sd_playback_id, binding_id: s.binding_id, stream_id: s.stream_id, stream_app: s.stream_app,
     play_version: s.play_version, view_expires_at: s.view_expires_at,
     access, actor: s.actor as CameraActor, eid, hash, pid: String(s.project_id) };
@@ -199,6 +203,23 @@ export async function sessionState(token: string) {
   const s = await withTenantTransaction(eid, tx => cameraSession(tx, token));
   return listCameraProject(s.actor, s.pid);
 }
+export async function sessionCameraCover(token: string, bindingId: string) {
+  const { eid } = parseCameraToken(token);
+  return withTenantTransaction(eid, async tx => {
+    const s = await cameraSession(tx, token);
+    if (s.access.liveOnly) fail('camera_forbidden', 403);
+    await binding(tx, eid, s.pid, bindingId);
+    const canViewSnapshots = !isCameraCustomer(s.actor) || s.access.canCapture;
+    const cover = await storedCameraCover(tx, eid, s.pid, bindingId, canViewSnapshots);
+    if (!cover) return null;
+    const data = Buffer.from(cover.data as Buffer);
+    return {
+      capturedAt: new Date(String(cover.captured_at)).toISOString(),
+      jpeg: cover.scheduled ? data : (await cameraCoverJpeg(data)).data,
+    };
+  });
+}
+
 export async function sessionHeartbeat(token: string, csrf: string, stop = false, upstream?:WvpClient) {
   const { eid, hash } = parseCameraToken(token);
   const result=await withTenantTransaction(eid, async tx => {
@@ -211,28 +232,43 @@ export async function sessionHeartbeat(token: string, csrf: string, stop = false
   if(stop&&result.playbackId)await reconcileSdPlaybacks(upstream,result.playbackId);
   return {stopped:stop};
 }
-export async function startCameraView(token: string, csrf: string, bindingId: string, upstream = cameraWvp()) {
+export async function startCameraView(token: string, csrf: string, bindingId: string, upstream?: WvpClient) {
   const { eid, hash } = parseCameraToken(token);
   const intent = await withTenantTransaction(eid, async tx => {
-    const s = await cameraSession(tx, token, csrf), c = await binding(tx, eid, s.pid, bindingId);
-    const n = await one(tx, sql`update app.construction_camera_sessions set binding_id=${bindingId},recording_id=null,sd_playback_id=null,play_version=play_version+1,stream_id=null,view_expires_at=null where token_hash=${hash} returning play_version`);
+    const s = await cameraSession(tx, token, csrf);
+    const debugCamera = s.access.debugCamera;
+    if (debugCamera ? bindingId !== debugCamera.item.binding_id : bindingId === debugSignalBinding)
+      fail('camera_binding_unavailable', 404);
+    const c = debugCamera?.syntheticOrigin ? null : await binding(tx, eid, s.pid, bindingId);
+    const n = await one(tx, sql`update app.construction_camera_sessions set binding_id=${c ? bindingId : null},recording_id=null,sd_playback_id=null,play_version=play_version+1,stream_id=null,view_expires_at=null where token_hash=${hash} returning play_version`);
     return { c, generation: Number(n!.play_version) };
   });
-  const stream = await upstream.play(String(intent.c.device_id), String(intent.c.channel_id));
-  await guardLiveWriter(eid,bindingId,stream,upstream);
+  let stream: CameraStream = debugSignalStream;
+  if (intent.c) {
+    const provider = upstream ?? cameraWvp();
+    stream = await provider.play(String(intent.c.device_id), String(intent.c.channel_id));
+    await guardLiveWriter(eid, bindingId, stream, provider);
+  }
   await withTenantTransaction(eid, async tx => {
-    const s = await cameraSession(tx, token, csrf); await binding(tx, eid, s.pid, bindingId);
+    const s = await cameraSession(tx, token, csrf);
+    if (intent.c) await binding(tx, eid, s.pid, bindingId);
     if (Number(s.play_version) !== intent.generation) fail('camera_play_superseded', 409);
     await tx.execute(sql`update app.construction_camera_sessions set stream_app=${stream.app},stream_id=${stream.stream},view_expires_at=now()+interval '60 seconds' where token_hash=${hash}`);
   });
   return { generation: intent.generation, flv: `/camera-media/${intent.generation}/live.flv`, hls: `/camera-media/${intent.generation}/hls.m3u8` };
 }
-export async function authorizeCameraMedia(token: string, generation: number) {
+export async function authorizeCameraMedia(token: string, generation: number): Promise<CameraStream & { syntheticOrigin?: string }> {
   const { eid } = parseCameraToken(token);
   return withTenantTransaction(eid, async tx => {
     const s = await cameraSession(tx, token);
     if (s.access.liveOnly && (s.recording_id || s.sd_playback_id)) fail('camera_forbidden', 403);
-    if (s.recording_id || !s.binding_id || !s.stream_id || Number(s.play_version) !== generation || new Date(String(s.view_expires_at)).getTime() <= Date.now()) fail('camera_view_expired', 401);
+    if (s.recording_id || !s.stream_id || Number(s.play_version) !== generation || new Date(String(s.view_expires_at)).getTime() <= Date.now()) fail('camera_view_expired', 401);
+    const syntheticOrigin = s.access.debugCamera?.syntheticOrigin;
+    if (syntheticOrigin) {
+      if (s.binding_id || s.stream_app !== debugSignalStream.app || s.stream_id !== debugSignalStream.stream) fail('camera_view_expired', 401);
+      return { ...debugSignalStream, syntheticOrigin };
+    }
+    if (!s.binding_id) fail('camera_view_expired', 401);
     if(s.sd_playback_id)return authorizeSdMedia(tx,s);
     await binding(tx, eid, s.pid, String(s.binding_id));
     return { app: String(s.stream_app), stream: String(s.stream_id) };

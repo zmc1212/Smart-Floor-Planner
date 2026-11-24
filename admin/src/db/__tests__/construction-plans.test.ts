@@ -3,12 +3,12 @@ import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { sql } from 'drizzle-orm';
-import { one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
 import { SiteChatService } from '@/lib/construction/site-chat';
-import { PlanCustomerService, planCommand, readPlan, deliverPlans } from '@/lib/construction/site-plans';
+import { PlanCustomerService, planCommand, readPlan, deliverPlans, reportOwnerDecisions } from '@/lib/construction/site-plans';
 import { queryNeedIssues } from '@/lib/construction/need-issues';
 import { siteWatchInterceptor } from '@/lib/construction/site-watches';
 import { ConversationService } from '@/lib/assistant/core/conversation';
@@ -31,6 +31,8 @@ const say = (text: string) => privateChat.send(cid, randomUUID(), {version:1,blo
 const raw = () => `发布方案事项${issueId}\n标题：书房插座调整\n差异：由单人桌改为双人桌，增设一组插座，按本图纸位置复核。\n费用变化：+500.00元\n工期变化：+2天`;
 const upload = async (staff = designer) => String((await staff.upload(pid,randomUUID(),await sharp({create:{width:64,height:48,channels:3,background:'#cef4e5'}}).png().toBuffer())).id);
 const view = (versionId: string) => customer.read(versionId);
+const reportDecisions = (cutoff = new Date()) => withTenantTransaction(eids[0], tx =>
+  reportOwnerDecisions(new AssistantRepository(tx, { ...privateChat.actor, capabilities: ['assistant.followup.self'] }), pid, cutoff));
 const publish = async (staff = designer) => String((await command(staff,raw(),[await upload(staff)])).planId);
 const decide = async (versionId: string, action: string, reason?: string) => customer.decide(versionId, action,
   {expectedRevision:(await view(versionId)).revision,...(reason?{reason}:{})},randomUUID());
@@ -77,6 +79,8 @@ test('enterprise publication needs an actual issuer-owned drawing and authorized
   const key=randomUUID(),mid=await upload(),body={text:raw(),mediaIds:[mid],versions:(await designer.read(pid)).versions};
   const result=await designer.send(pid,body,key);first=String(result.planId);assert.ok(first&&first!=='undefined');assert.deepEqual(await designer.send(pid,body,key),result);
   const p=await view(first);assert.equal(p.number,1);assert.equal(p.previousVersionId,null);assert.equal(p.mediaId,mid);assert.equal(p.status,'pending_customer');
+  assert.deepEqual((await reportDecisions()).map(item => [item.id, item.conversationId, item.canDecide]), [[first, cid, true]]);
+  assert.deepEqual(await reportDecisions(new Date(0)), []);
   assert.ok((await customer.media(first)).data.length);await deliverPlans();await deliverPlans();
   const messages=await privateChat.messages(cid,undefined,100);assert.equal(messages.items.filter(m=>m.planDecision?.id===first).length,1);
 });
@@ -94,6 +98,7 @@ test('exact approval is idempotent after a lost response, does not close issue o
   await decide(second,'preview');const p=await view(second),body={expectedRevision:p.revision},key=randomUUID();
   const result=await customer.decide(second,'approve',body,key);assert.equal(result.status,'approved');assert.deepEqual(await customer.decide(second,'approve',body,key),result);
   assert.equal((await view(second)).status,'approved');
+  assert.deepEqual((await reportDecisions()).map(item => [item.id, item.status, item.canDecide]), [[second, 'approved', false]]);
   const approvedRead=await withTenantTransaction(eids[0],tx=>queryNeedIssues(tx,privateChat.actor,cid));
   assert.ok(approvedRead.data.some(p=>p.kind==='formal_plan'&&p.status==='approved'));
   assert.match(approvedRead.displayText,/当前查询不包含工程验收、付款或结算凭据，不能据此确认这些状态/);

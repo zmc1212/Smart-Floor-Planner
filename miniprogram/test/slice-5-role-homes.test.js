@@ -29,7 +29,7 @@ test('customer service home shows one featured stage and a single next action', 
   assert.match(source('app.less'), /\.sfp-icon-action__icon\s*\{[\s\S]*width:\s*28rpx;[\s\S]*height:\s*28rpx;/);
   const workbenchStyles = source('components/role-workbench/role-workbench.less');
   assert.match(workbenchStyles, /\.item-cta\s*\{[\s\S]*gap:\s*8rpx;/);
-  assert.match(workbenchStyles, /\.item-cta image\s*\{[\s\S]*width:\s*28rpx;[\s\S]*height:\s*28rpx;/);
+  assert.match(workbenchStyles, /\.item-cta \.sfp-icon-action__icon\s*\{[\s\S]*width:\s*28rpx;[\s\S]*height:\s*28rpx;/);
   assert.doesNotMatch(workbench, /title: '免费设计与量房'/);
 });
 
@@ -346,12 +346,11 @@ test('enterprise owner operations dashboard restores the approved regular busine
   assert.match(operationsStyles, /\.operations-hero-kpi-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(4/);
   assert.match(operationsStyles, /\.operations-hero-kpi-value\s*\{[\s\S]*font-size:\s*44rpx/);
   assert.match(operationsStyles, /\.operations-hero-kpi-value\.is-compact\s*\{[\s\S]*font-size:\s*36rpx/);
-  assert.match(operationsStyles, /\.operations-hero-kpi-value text \+ text\s*\{[\s\S]*font-size:\s*26rpx/);
-  assert.doesNotMatch(operationsStyles, /\.operations-hero-kpi-value text:last-child/);
+  assert.match(operationsStyles, /\.operations-hero-kpi-value \.operations-hero-kpi-unit\s*\{[\s\S]*font-size:\s*26rpx/);
   assert.match(operationsStyles, /\.operations-trend-card\s*\{[\s\S]*min-height:\s*306rpx/);
   assert.match(operationsStyles, /\.enterprise-operations-hero\s*\{[\s\S]*min-height:\s*414rpx/);
   assert.match(operationsStyles, /\.operations-period-chip-row\s*\{[\s\S]*margin-top:\s*22rpx/);
-  assert.match(operationsStyles, /\.operations-period-chip-row \.period-chip text\s*\{[\s\S]*font-size:\s*28rpx/);
+  assert.match(operationsStyles, /\.operations-period-chip-row \.period-chip \.period-chip-label\s*\{[\s\S]*font-size:\s*28rpx/);
   assert.match(styles, /\.staff-data-period-row\s*\{[\s\S]*?margin:\s*22rpx 0 0/);
   assert.match(styles, /\.staff-data-period-row\s*\{[\s\S]*?position:\s*relative/);
   assert.match(operationsStyles, /\.enterprise-operations-board\s*\{[\s\S]*min-height:\s*288rpx/);
@@ -360,7 +359,7 @@ test('enterprise owner operations dashboard restores the approved regular busine
   assert.match(operationsStyles, /\.operations-stage\s*\{[\s\S]*border:\s*0/);
   assert.match(operationsStyles, /\.operations-stage-icon\s*\{[\s\S]*width:\s*88rpx/);
   assert.match(operationsStyles, /\.operations-stage-label\s*\{[\s\S]*font-size:\s*28rpx/);
-  assert.match(operationsStyles, /\.operations-board-kicker text\s*\{[\s\S]*font-size:\s*34rpx/);
+  assert.match(operationsStyles, /\.operations-board-kicker \.operations-board-label\s*\{[\s\S]*font-size:\s*34rpx/);
   assert.doesNotMatch(styles, /operations-board-art|operations-route-node|operations-stage-progress|operations-stage-completedSurveys::before/);
   assert.match(styles, /\.operations-efficiency-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2/);
   assert.match(operationsStyles, /\.operations-efficiency-grid\s*\{[\s\S]*gap:\s*18rpx/);

@@ -1,5 +1,7 @@
 # 小K FastGPT Agent V2 集成开发计划（专项提案）
 
+> **历史记录（2026-11-19）**：FastGPT Agent V2 运行时（`runtime.ts`/`worker.ts`/`skills.ts`、`/agent-v2-tool/*` 桥及 V2 验收/开通脚本）已按用户指示删除，客户回复与公开开场仅由小K原生执行器执行。本文保留原设计与验收记录，仅作历史证据，不代表当前实现。
+
 > 状态：F0/F1/F2/F3 已在开发环境实施并按 bounded 范围验收（2026-11-09）；开发渠道已切到付费`deepseek-v4.1-flash`。按用户 2026-11-09 方向完成三项质量修复：对客业务快照隐藏记录/版本、业务快照与带引用答案组合交付、本轮检索有证据但模型漏引用时`missing_citation` fail-closed。F1/F2/F3确定性回归 compose-02/03通过；定向真实模型 compose-01 八轮中五轮通过、两轮模型引用失败保留、一轮驱动误报。默认与生产未切换。
 > 本文件不改变
 > [`docs/xiaok-renovation-agent-development-plan.md`](./xiaok-renovation-agent-development-plan.md)
@@ -92,9 +94,9 @@
 
 **F3 状态（2026-11-09）：实现完成，bounded 验收完成；仅技能内容与运行绑定，不新增工具或权限。** 新增项目自有版本化 SOP 目录 `agent-v2/skills.ts`（包版本 `v1`，含施工阶段提醒、验收要点、量房预约、项目进度、日周报追问 5 个技能）；私有运行文件以 `skills:{version:'v1',enabled:[...]}` 选择，随运行绑定一起固定，未配置或 `enabled:[]` 即停用，未知版本/ID、重复或非字符串项 `context_changed` fail-closed。启用技能只作为一条前置 `system` 消息进入模型请求，明确声明不授予任何工具、权限或业务动作；事实、来源和动作仍只来自授权工具，不新增工具、检索路径、沙箱、网络或文件访问；选择记入 run step 1006 和供应商审计。f3-03（runs 11119–11128）以确定性模拟传输经真实 18310 桥、服务/DB 和持久化通过：4 个 PPT 工艺问分别引用第17/18/19/21页；第 5 问只交付授权预约快照且模型草稿承诺未交付；承诺守卫、供应商失败、绑定 lead/非法 domain/归档 lead/他客拒绝、撤权隐藏/恢复、停用/空/部分选择、绑定/票据/桥密钥隔离均按约定。f3-01/02 为驱动断言错误（提示词按技能标题展示，驱动断言技能 ID），原批保留。f3-compose-02（runs 11195–11201）在最终交付逻辑上复跑通过：4 个工艺问引用第17/18/19/21页；第 5 问只交付授权预约快照且模型草稿承诺未交付；承诺守卫、供应商失败、绑定 lead/非法 domain/归档 lead/他客拒绝、撤权隐藏/恢复、技能选择均按约定。技能仅对 1454 启用；2026-11-09 起企业1454开发环境已默认选中 Agent V2（见下）；默认 Worker/路由/schema/UI、其他企业与生产均未切换。
 
-**真实模型渠道切换（2026-11-09）：主链路窄验收通过，F1–F3 真实模型质量矩阵未重跑。** 按用户指示把开发 FastGPT 渠道与模型文档由 `deepseek-v4.1-flash-1017` 切到 `deepseek-v4.1-flash`（aiproxy 渠道10与 `ai_models` 文档 `6af16527093915ea6cf38425` 同步改名；应用按模型文档 ID 引用，无需改 App）。切换后主应用 `6af16527093915ea6cf38496` 与建议应用 `6af178bd093915ea6cf38c11` 直连均返回200。项目侧 run11129（`agent-v2-model-switch-smoke.mts`）经真实 Worker、18310 桥、服务/DB 通过：模型自主调用 `search_enterprise`，交付412字回答并保存第17/18/21页引用，引用可打开；答案 tokens 4435/337、建议 tokens 1654/31、query_embedding 40 均为 observed；企业设置、平台模型、桥与锁全部恢复。smoke-switch-01 为驱动断言错误（发送前误断言队列为1），修正后另批运行，未重采样答案。本批不重跑 F1 第5问、F2 建议质量、F3 技能质量，也不宣称这些真实模型臂通过；渠道密钥曾在切换命令输出中回显，用于共享或可记录环境前须轮换。证据 `tmp/xiaok-fastgpt-agentv2-model-switch-20261109/`。
+**真实模型渠道切换（2026-11-09）：主链路窄验收通过，F1–F3 真实模型质量矩阵未重跑。** 按用户指示把开发 FastGPT 渠道与模型文档由 `deepseek-v4.1-flash-1017` 切到 `deepseek-v4.1-flash`（aiproxy 渠道10与 `ai_models` 文档 `6af16527093915ea6cf38425` 同步改名；应用按模型文档 ID 引用，无需改 App）。切换后主应用 `6af16527093915ea6cf38496` 与建议应用 `6af178bd093915ea6cf38c11` 直连均返回200。项目侧 run11129（`agent-v2-model-switch-smoke.mts`）经真实 Worker、18310 桥、服务/DB 通过：模型自主调用 `search_enterprise`，交付412字回答并保存第17/18/21页引用，引用可打开；答案 tokens 4435/337、建议 tokens 1654/31、query_embedding 40 均为 observed；企业设置、平台模型、桥与锁全部恢复。smoke-switch-01 为驱动断言错误（发送前误断言队列为1），修正后另批运行，未重采样答案。本批不重跑 F1 第5问、F2 建议质量、F3 技能质量，也不宣称这些真实模型臂通过；渠道密钥曾在切换命令输出中回显，用于共享或可记录环境前须轮换。证据目录已随 V2 于 2026-11-19 清理删除。
 
-**F1–F3 真实模型矩阵（2026-11-09，rm-01）：13 轮完成，8 轮通过，4 轮质量失败如实保留。** 切换后 `deepseek-v4.1-flash` 经真实 Worker、18310 桥、服务/DB 执行固定矩阵：F1 预约问答×2、绑定 lead 空结果、代客动作×2；F3 四个 PPT 工艺问各×2（第2问第2次接在同一会话验证建议缓存失效）；F2 复用每轮交付后的建议生成/读回、欢迎语与 3 条预设。通过项：预约两轮均只交付授权快照（2条，无内部 ID/版本/ISO 时间），空结果如实，代客动作第1次未承诺；F3 五轮交付带引用工艺答案，覆盖第17/18/19/21页；12/12 交付轮的建议均由模型生成，读回与 step 1007 一致，后续答案使建议缓存切换。失败保留：`f1-commitment-t2` 模型返回不可用答案（`invalid_model_answer`，无交付、无 usage）；`f3-q1-t2`、`f3-q3-t2` 在工艺问中同时查询施工/已发布方案，交付文本被业务快照整体覆盖，引用0并暴露“记录/版本”内部字段；`f3-q4-t1` 检索到 5 条证据但模型未写 CITE，引用0。根因指向业务快照覆盖策略与模型工具/引用选择波动；本批未改提示词或交付策略、未重采样。批次状态另因驱动脚本用 `assert.equal` 比较数组（结构相同非同一引用）失败，已改为 `assert.deepEqual`；该断言在 13 轮之后、撤权检查之前抛出，故另以 `agent-v2-real-matrix-postchecks.mts` 复用 `f3-q1-t1` 真实引用补检：撤权后答案与引用隐藏、恢复后可读，他客 404、跨租户拒绝，锁释放。企业与平台设置、桥、锁均已恢复。证据 `tmp/xiaok-fastgpt-agentv2-model-switch-20261109/real-matrix-rm-01/`。
+**F1–F3 真实模型矩阵（2026-11-09，rm-01）：13 轮完成，8 轮通过，4 轮质量失败如实保留。** 切换后 `deepseek-v4.1-flash` 经真实 Worker、18310 桥、服务/DB 执行固定矩阵：F1 预约问答×2、绑定 lead 空结果、代客动作×2；F3 四个 PPT 工艺问各×2（第2问第2次接在同一会话验证建议缓存失效）；F2 复用每轮交付后的建议生成/读回、欢迎语与 3 条预设。通过项：预约两轮均只交付授权快照（2条，无内部 ID/版本/ISO 时间），空结果如实，代客动作第1次未承诺；F3 五轮交付带引用工艺答案，覆盖第17/18/19/21页；12/12 交付轮的建议均由模型生成，读回与 step 1007 一致，后续答案使建议缓存切换。失败保留：`f1-commitment-t2` 模型返回不可用答案（`invalid_model_answer`，无交付、无 usage）；`f3-q1-t2`、`f3-q3-t2` 在工艺问中同时查询施工/已发布方案，交付文本被业务快照整体覆盖，引用0并暴露“记录/版本”内部字段；`f3-q4-t1` 检索到 5 条证据但模型未写 CITE，引用0。根因指向业务快照覆盖策略与模型工具/引用选择波动；本批未改提示词或交付策略、未重采样。批次状态另因驱动脚本用 `assert.equal` 比较数组（结构相同非同一引用）失败，已改为 `assert.deepEqual`；该断言在 13 轮之后、撤权检查之前抛出，故另以 `agent-v2-real-matrix-postchecks.mts` 复用 `f3-q1-t1` 真实引用补检：撤权后答案与引用隐藏、恢复后可读，他客 404、跨租户拒绝，锁释放。企业与平台设置、桥、锁均已恢复。证据目录已随 V2 于 2026-11-19 清理删除。
 
 **三项质量修复与定向真实模型复验（2026-11-09，compose-01/compose-02/03）：** 按用户方向依次完成：①施工快照对客文本不再展示记录/版本/内部 ID，方案与户型快照同步去掉内部 ID（`customer.ts`、`business-tools.ts`）；②业务快照不再整体覆盖带引用答案，改用 `composeAgentV2Delivery`：有有效引用则模型正文+`项目记录（授权快照，以此为准）`+逐字快照，无引用/空草稿/承诺被拒则只交付快照；③本轮检索有证据但模型无 CITE 且无快照时 `missing_citation` fail-closed，不自动重试已派发供应商。确定性回归 F1 compose-03、F2 compose-02、F3 compose-02 全过；只读快照探针 `snapshot-display-compose-02` 覆盖 8 条方案/2 条施工记录无内部 ID。定向真实模型 compose-01（8 轮）通过 f1-q5-t1 11205、f1-empty-bound 11206、f1-commitment-t2 11207、f3-q1-t1 11208、f3-q1-t2 11209；f3-q3-t2 11211 交付 619 字并引用 PPT19/合成演练文档，旧驱动正则把普通词“图纸版本”误判为内部字段，改正则后对存档答案复核（postchecks `storedAnswerInternalFieldsHidden=3`）无内部字段；真实失败保留 f3-q2-t2 11210 与 f3-q4-t1 11212，均为 `invalid_model_citation`、无交付：前者未在本轮调用 `search_enterprise` 却引用上一轮 K3825（目录仅含本轮证据），后者检索 5 条证据后写了未知 CITE。两项未重采样、未自动重试。本批真实模型引用轮未查询业务，因此“模型正文+快照”组合路径由 F1 确定性 11215 与单元测试 5/5 证明，不宣称真实模型组合臂通过。
 
@@ -140,30 +142,30 @@
 
 ## 10. 证据
 
-- A/B 背景：[内置臂评估](../tmp/xiaok-agentv2-ab-20261109/builtin/assessment.json)、[FastGPT Agent V2 运行](../tmp/xiaok-agentv2-ab-20261109/fastgpt-runs.json)、[工具调用归一化](../tmp/xiaok-agentv2-ab-20261109/fastgpt-normalized.json)、[临时应用脱敏快照](../tmp/xiaok-agentv2-ab-20261109/fastgpt-app-snapshot.json)
-- F0 验收：`tmp/xiaok-fastgpt-agentv2-f0-20261109/`
+- A/B 背景证据（`tmp/xiaok-agentv2-ab-20261109/`：内置臂评估、FastGPT Agent V2 运行、工具调用归一化、临时应用脱敏快照）已随 V2 于 2026-11-19 清理删除。
+- F0 验收（证据目录已随 V2 于 2026-11-19 清理删除）：
   - f0-03 四问/未知/撤权/重试（runs 11076–11082），回退11083失败保留
   - f0-04 FastGPT臂403外部配额，保留
   - f0-05/06/07/09 内置qwen校验拒绝，保留
   - f0-08 回退运行11090成功（`agentRuntime:null`）；批次因驱动日志缺陷标failed，证据有效
-- F1 验收：`tmp/xiaok-fastgpt-agentv2-f1-20261109/`
+- F1 验收（证据目录已随 V2 于 2026-11-19 清理删除）：
   - f1-03 确定性模拟传输（runs 11096–11106）通过；f1-01/02 驱动断言错误保留
   - compose-03（runs 11213–11226）在最终组合逻辑上全过；混合组合 11215、漏引用 fail-closed 11216、快照兜底 11217
-- F2 验收：`tmp/xiaok-fastgpt-agentv2-f2-20261109/`
+- F2 验收（证据目录已随 V2 于 2026-11-19 清理删除）：
   - f2-02 确定性模拟传输（runs 11112–11116）通过；f2-01 驱动上下文版本缺陷保留
   - compose-01（11175–11178）在 11178 暴露上一轮知识误判并 fail-closed，原批保留；compose-02（runs 11179–11183）通过
   - 建议应用 `6af178bd093915ea6cf38c11`（无工具/无数据集）；绑定运行时 `runtime.private.json`，未改 F1 运行时
-- F3 验收：`tmp/xiaok-fastgpt-agentv2-f3-20261109/`
+- F3 验收（证据目录已随 V2 于 2026-11-19 清理删除）：
   - f3-03 确定性模拟传输（runs 11119–11128）通过；f3-01/02 驱动断言错误保留
   - compose-02（runs 11195–11201）在最终交付逻辑上复跑通过
   - 绑定运行时 `runtime.private.json`（`skills v1`，无建议应用）；f3-01 原运行文件保留为 `runtime.private.f3-01.json`
-- 模型切换与真实模型窄验收：`tmp/xiaok-fastgpt-agentv2-model-switch-20261109/`
+- 模型切换与真实模型窄验收（证据目录已随 V2 于 2026-11-19 清理删除）：
   - run11129 真实 `deepseek-v4.1-flash` 经 Worker/18310桥/DB 成功，引用第17/18/21页；smoke-switch-01 驱动断言错误保留
   - 模型文档 `6af16527093915ea6cf38425`、渠道10、主/建议应用 ID 与切换前后值见 `switch-record.json`；F0–F3 原运行文件未改
   - F1–F3 真实模型矩阵 rm-01：`real-matrix-rm-01/assessment.json`（13轮，8通过；`f1-commitment-t2` invalid_model_answer；`f3-q1-t2`/`f3-q3-t2` 业务快照覆盖工艺答案、`f3-q4-t1` 漏引用；未重采样）；`postchecks.json` 撤权隐藏/恢复、他客404、跨租户拒绝通过；驱动断言已修正为 `deepEqual`
   - 三项质量修复后定向真实模型 `real-matrix-compose-01/`：8轮，11205/11206/11207/11208/11209 通过；11211 驱动正则误报“图纸版本”，`postchecks.json` 对存档答案复核无内部字段；11210/11212 `invalid_model_citation` 保留且未重采样；`postchecks.json` 撤权/他客/跨租户通过
   - 对客快照只读探针：`snapshot-display-compose-02/assessment.json`（8 条方案/2 条施工记录，无内部 ID）
-  - 追问引用目录：F1 确定性 `tmp/xiaok-fastgpt-agentv2-f1-20261109/acceptance-compose-05/`（`priorCitationReused` seed11235→11236，零检索复用旧引用；批次通过）；真实多轮 11249 复用 K3824/K3825
+  - 追问引用目录：F1 确定性批次 acceptance-compose-05（证据已随 V2 于 2026-11-19 清理删除；`priorCitationReused` seed11235→11236，零检索复用旧引用；批次通过）；真实多轮 11249 复用 K3824/K3825
   - 自然多轮：`natural-multiturn-natural-01/assessment.json`（runs11248–11251，单会话5轮；11248/11249/11250 通过，11251 服务成功但未检索、通用知识回答保留，第5轮未执行）
   - 企业1454开发默认：`default-switch-01/record.json`（`.env.local`绑定、企业知识开关policy_version52、常驻开发隧道PID14780、探针2487–2489；2487/2488按原样保留）；其他企业与生产未切换
 - 现有 FastGPT 边界：[unified-worker.ts](../admin/src/lib/assistant/fastgpt/unified-worker.ts)、[native-rag.ts](../admin/src/lib/assistant/fastgpt/native-rag.ts)、[runtime.ts](../admin/src/lib/assistant/fastgpt/runtime.ts)
