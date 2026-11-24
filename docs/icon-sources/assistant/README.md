@@ -1,5 +1,7 @@
 # XiaoK consultation assets
 
+- C01 approved notebook welcome calibration (2026-11-24): independent PNG glyphs under `miniprogram/packages/assistant/assets/welcome-notebook/` match the approved clock, three topic symbols, writing cue, composer and docked footer controls. The mascot and large sage use the original standalone chat PNGs. The warm paper grain and small sage sprig come from two OpenAI Images API outputs normalized to transparent PNGs. [Source PNGs, editable glyphs, prompts and mapping](../../../design-references/xiaok-chat-redesign-20261029-v1/tab-context-v1/welcome-fidelity-v001/asset-mapping.json).
+
 - The [approved message action menu](../../../design-references/xiaok-message-actions-20261124-v1/01-message-actions.png) uses the five outline drawings from the approved composition. They are drawn independently as transparent 76×76 PNGs in `miniprogram/packages/assistant/assets/message-actions/` and placed in 19px boxes. `message-actions-font.less` embeds a 2,876-byte WOFF2 with the ten approved Noto Sans SC Medium glyphs, named XiaoK Menu Sans in the subset. The [SIL OFL notice](../../../miniprogram/packages/assistant/assets/message-actions/NotoSansSC-OFL.txt) accompanies the font. [Native optical measurements](../../../tmp/xiaok-message-menu-fidelity-20261124/visual-ledger.json).
 
 <!-- site-capture-icons -->
