@@ -458,9 +458,12 @@ class ChatController {
 
   applyRun(run) {
     const status = run && run.status;
+    const phaseLabel = status === 'queued' || status === 'running'
+      ? ({ preparing: '正在准备回答…', enterprise_knowledge: '正在查阅企业工艺…',
+        public_search: '正在查找公开资料…', public_read: '正在核对公开资料…', writing: '正在整理回答…' })[run.answerPhase] : '';
     this.set({ run, generating: ACTIVE.includes(status), uncertainRun: status === 'indeterminate' && run.usageReconciled !== true,
       retryable: !!(run && run.retryable),
-      runLabel: ({ queued: '小K正在查找企业装修资料…', running: '小K正在整理回答…',
+      runLabel: phaseLabel || ({ queued: '小K正在准备回答…', running: '小K正在整理回答…',
         cancelled: '已停止回答', failed: '这次回答没有完成',
         indeterminate: '回答结果正在核实，暂时不能重复生成。' })[status] || '',
     });

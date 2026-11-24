@@ -1,0 +1,45 @@
+<template name="answer-process">
+  <view class="answer-process {{expanded ? 'answer-process-open' : ''}}">
+    <button class="answer-process-toggle" data-message="{{messageId}}" bindtap="toggleAnswerProcess"
+      disabled="{{!process.steps.length && !process.sources.length}}"
+      aria-label="{{(expanded ? '收起' : '展开') + '回答过程，' + process.elapsedLabel}}">
+      <view class="answer-process-header">
+        <view class="answer-process-list-icon" aria-hidden="true"><view/></view>
+        <text class="answer-process-title">回答过程</text>
+        <text class="answer-process-time">{{process.elapsedLabel}}</text>
+        <view wx:if="{{process.steps.length || process.sources.length}}" class="answer-process-arrow" aria-hidden="true"/>
+      </view>
+    </button>
+    <view wx:if="{{expanded}}" class="answer-process-details">
+      <view wx:if="{{process.steps.length}}" class="answer-process-steps">
+        <view wx:for="{{process.steps}}" wx:key="id" wx:for-item="step" class="answer-process-step">
+          <view class="answer-process-check" aria-hidden="true"/>
+          <text>{{step.label}}</text>
+        </view>
+      </view>
+      <view wx:if="{{process.sources.length}}" class="answer-process-sources">
+        <text class="answer-process-source-label">参考来源</text>
+        <button wx:for="{{process.sources}}" wx:key="id" wx:for-item="source"
+          class="answer-process-source" data-id="{{source.id}}" bindtap="openCitation">
+          <view wx:if="{{source.kind === 'web'}}" class="answer-process-globe" aria-hidden="true"/>
+          <image wx:else class="answer-process-book" src="../assets/book-open.png" mode="aspectFit" aria-hidden="true"/>
+          <view class="answer-process-source-text">
+            <text class="answer-process-source-title">{{source.title}}</text>
+            <text class="answer-process-source-detail">{{source.detail}}</text>
+          </view>
+          <view class="answer-process-arrow" aria-hidden="true"/>
+        </button>
+      </view>
+    </view>
+  </view>
+</template>
+
+<template name="answer-process-running">
+  <view class="answer-process answer-process-running">
+    <view class="answer-process-header">
+      <view class="answer-process-list-icon" aria-hidden="true"><view/></view>
+      <text class="answer-process-current" role="status">{{label}}</text>
+      <button class="answer-process-stop" bindtap="stop" disabled="{{busy || pendingAction}}">停止回答</button>
+    </view>
+  </view>
+</template>

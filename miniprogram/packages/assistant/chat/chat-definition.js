@@ -60,6 +60,7 @@ module.exports = () => ({
 		...initialLive(),
 		...initialPlans(),
 		...initialReplyActions(),
+		expandedAnswerProcessId: '',
 		...initialContext(),
 		...initialFollowups(), ...initialEnterprise(), followupChat: emptyFollowupChat(), followupScrollTarget: '', professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
 		viewportHeight: 844, keyboardHeight: 0, inputFocused: false, bottomInset: 34, sheet: '', sheetOpen: false,
@@ -109,6 +110,7 @@ module.exports = () => ({
 					this.speechController.hide();
 				}
 				if (patch.conversation === null || patch.conversation?.id && patch.conversation.id !== this.data.conversation?.id) {
+					patch.expandedAnswerProcessId = '';
 					patch.replyVersionChoice = {};
 					patch.replyAudioId = '';
 					patch.replyAudioState = '';
@@ -124,6 +126,7 @@ module.exports = () => ({
 					}
 				}
 				if (patch.fatal || patch.needsLogin || patch.conversation===null) {
+					patch.expandedAnswerProcessId = '';
 					this._inputMatch = null;
 					Object.assign(patch, { stageExperience: null, inputCandidates: [], stageInputCursor: -1, followQuestions: [], followMessageId: '' });
 					this._followReceipt='';
@@ -207,6 +210,7 @@ module.exports = () => ({
 	},
 
 	async onShow() {
+		if (this.data.expandedAnswerProcessId) this.setData({ expandedAnswerProcessId: '' });
 		if (!this.liveConsent) this.liveConsent = new LiveConsentController({ identity: sessionToken,
 			openPreview: (cid, receipt) => new Promise((resolve, reject) => wx.navigateTo({
 				url: '/packages/construction/camera/camera?conversationId=' + encodeURIComponent(cid)
@@ -876,6 +880,12 @@ module.exports = () => ({
 	},
 	olderMessages() { return this.controller.olderMessages(); },
 	stop() { return this.controller.action('cancel'); },
+	toggleAnswerProcess(event) {
+		const messageId = String(event.currentTarget.dataset.message);
+		const process = this.data.messages.find(message => message.id === messageId)?.answerProcess;
+		if (!process || !(process.steps.length || process.sources.length)) return;
+		this.setData({ expandedAnswerProcessId: this.data.expandedAnswerProcessId === messageId ? '' : messageId });
+	},
 	retryRun() { return this.controller.action('retry'); },
 	confirmAction() { return this.controller.action(this.data.pendingAction); },
 	archive() {

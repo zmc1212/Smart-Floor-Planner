@@ -8,6 +8,7 @@ import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assi
 import { fail, fingerprint, key, principalKey, requireCapability, safeText, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
 import { bindSpeechToMessage } from '../speech/link';
 import { speechConfigurationHash } from '../speech/local';
+import { answerProcesses, answerProgress, projectAnswerProcess, showsAnswerProcess } from './answer-process';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection, webCitationProjection } from '../knowledge/sources';
 import { fastGPTPreviewConfiguration, fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { fastGPTRagConfiguration, fastGPTRagProtocol } from '../fastgpt/rag-config';
@@ -468,7 +469,8 @@ export class ConversationService {
               and p.customer_user_id=${this.actor.principal.userId} and p.shared and l.archived_at is null and l.status<>'closed'
           limit 1`));
       const stageConfig = c.mode==='ai' && !contentEntry && !reportContext(entry).selection ? await currentConversationExperience(repo.tx,this.actor,c) : null;
-      return { ...conversationDto(c, await currentRequirementProposalPending(repo, c, settings)), stageExperience:stageConfig ? {lexicon:stageConfig.guideEnabled ? stageConfig.lexicon : [],followUp:stageConfig.followUp,attachments:stageConfig.attachments} : null, ownerAvailable, guidance:contentEntry?null:guidance, latestRun: latest ? runDto(latest) : null,
+      const latestRun = latest ? { ...runDto(latest), ...await answerProgress(repo.tx, this.actor, c, latest) } : null;
+      return { ...conversationDto(c, await currentRequirementProposalPending(repo, c, settings)), stageExperience:stageConfig ? {lexicon:stageConfig.guideEnabled ? stageConfig.lexicon : [],followUp:stageConfig.followUp,attachments:stageConfig.attachments} : null, ownerAvailable, guidance:contentEntry?null:guidance, latestRun,
         regenerateMessageId,
         ...(hasRequirementSummary ? { hasRequirementSummary: true } : {}),
         reportContext: await reportContextView(repo.tx, this.actor, c),
@@ -500,16 +502,21 @@ export class ConversationService {
         ? await discoveryReplies(repo.tx, this.actor.enterpriseId, conversationId,
           result.filter(message => message.author_kind === 'assistant').map(message => String(message.id))) : null;
       const feedback = await loadReplyFeedback(repo, c, result);
+      const processes = showsAnswerProcess(this.actor, c)
+        ? await answerProcesses(repo.tx, this.actor.enterpriseId, conversationId, result) : null;
       const items=[];
       for (const message of result) {
         const projected = await projectMessage(repo.tx, this.actor, c, message);
         const intent = projected.available && discovery?.get(projected.id)?.intent;
+        const readable = this.actor.principal.kind === 'user' && readableReply(c, message, projected);
+        const process = projected.available && replyText(projected.content) && !projected.designerRecommendation
+          ? processes?.get(projected.id) : undefined;
         items.push({
           ...projected,
           ...(intent && (intent.sites || intent.works) ? { discovery: intent } : {}),
           ...(editableQuestion(repo, c, message, projected) ? { editableQuestion: true } : {}),
-          ...(this.actor.principal.kind === 'user' && readableReply(c, message, projected)
-            ? { replyActions: replyControls(message, projected, feedback.get(projected.id) ?? null) } : {}),
+          ...(readable ? { replyActions: replyControls(message, projected, feedback.get(projected.id) ?? null) } : {}),
+          ...(process ? { answerProcess: projectAnswerProcess(process, projected.citations) } : {}),
         });
       }
       const newest = after !== undefined ? String(result.at(-1)?.seq ?? after) : String(result[0]?.seq ?? latest);
@@ -533,11 +540,13 @@ export class ConversationService {
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and id=${item.id}`);
         if (!message) continue;
         const projected = await projectMessage(repo.tx, this.actor, c, message, checked);
+        const readable = readableReply(c, message, projected);
         items.push({
           ...projected,
           ...(projected.available && item.discovery ? { discovery: item.discovery } : {}),
           ...(editableQuestion(repo, c, message, projected) ? { editableQuestion: true } : {}),
-          ...(item.replyActions && readableReply(c, message, projected) ? { replyActions: item.replyActions } : {}),
+          ...(item.replyActions && readable ? { replyActions: item.replyActions } : {}),
+          ...(item.answerProcess && projected.available ? { answerProcess: projectAnswerProcess(item.answerProcess, projected.citations) } : {}),
         });
       }
       return { ...history, items };
@@ -717,7 +726,7 @@ export class ConversationService {
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${runId}`);
       if (!r) fail('assistant_resource_not_found', 404);
       const c = await repo.conversation(String(r.conversation_id));
-      if (!action) return runDto(r);
+      if (!action) return { ...runDto(r), ...await answerProgress(repo.tx, this.actor, c, r) };
       return idempotent(repo.tx, this.actor, action + ':' + runId, requestKey!, {}, async () => {
         if (action === 'cancel') {
           await cancelRuns(repo.tx, this.actor, String(c.id), runId);

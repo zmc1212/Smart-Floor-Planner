@@ -1,5 +1,7 @@
 # 后台系统当前功能清单
 
+**C01 回答过程投影（本地已实现）。** `GET /api/miniprogram/assistant/runs/:id` 和会话详情的 `latestRun` 提供进行中的 `answerPhase`，从获权普通咨询的运行和检索状态映射为准备、查阅企业工艺、查找或核对公开资料、整理回答。历史消息及增量读取的 `answerProcess` 关联同一条成功答复，返回运行起止时间计算的秒数、已完成的检索步骤和当前可读引用。来源标题、页码及站点沿用原引用授权与重验。运行检查点属于服务端审计数据。现有租户、参与人、来源撤回及运行取消合同继续适用。
+
 **C01 回答交互（本地）。** 小程序用签名入口访问 `GET /api/miniprogram/assistant/conversations?search=…` 搜索当前可访问的咨询标题与正文，服务在投影片段前检查参与者与来源权限。定位使用授权消息 ID。`PATCH …/conversations/:id/messages/:messageId/feedback` 以幂等键保存或撤回本人的评价、原因及补充说明。`0147_assistant_answer_feedback` 增加租户 RLS 与复合消息外键，原会话留存清理同时删除评价及说明。
 
 `POST …/messages/:messageId/regenerate` 只接收最近一条有模型成功凭据、未产生业务动作的纯文本答复。复用原有计量模型、持久任务、失败重试和停止，`reply.regenerate` 执行时关闭工具，新版本通过 `reply_to_message_id` 关联原回答并复核其访问权限。`GET …/messages/:messageId/audio` 本机合成获权正文，下载前再次复核并返回不可缓存的 WAV。`ASSISTANT_TTS_PROVIDER=local-windows` 使用 Microsoft Huihui Desktop，`local-espeak-ng` 使用 `ASSISTANT_TTS_EXECUTABLE` 指定的绝对路径。已配置引擎时可朗读不超过 1,200 字符的回答。[小程序批准稿](../design-references/xiaok-answer-actions-20261124-v1/README.md) · [C01 入口](./miniprogram-system-modules.zh-CN.md)。

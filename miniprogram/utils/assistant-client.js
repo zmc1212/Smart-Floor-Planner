@@ -307,12 +307,23 @@ function messagesForView(items, formatAssistantText) {
   return (items || []).map(item => {
     // WXML uses the projected blocks. Keep the raw content in the controller
     // so it isn't serialized twice or sent to the view after withdrawal.
-    const { content, ...metadata } = item;
+    const { content, answerProcess, ...metadata } = item;
     const available = item.available !== false;
     const blocks = content?.blocks || [];
     const citations = available ? item.citations || [] : [];
+    const process = available && item.authorKind === 'assistant'
+      && Number.isSafeInteger(answerProcess?.elapsedSeconds) && answerProcess.elapsedSeconds >= 0
+      ? {
+        elapsedLabel: answerProcess.elapsedSeconds ? answerProcess.elapsedSeconds + ' 秒' : '不足 1 秒',
+        steps: (answerProcess.steps || []).flatMap(id => {
+          const label = { enterprise_knowledge: '查阅企业工艺', public_search: '查找公开资料', public_read: '核对公开资料' }[id];
+          return typeof label === 'string' ? [{ id, label }] : [];
+        }),
+        sources: (answerProcess.sources || []).filter(source => citations.some(citation => citation.id === source.id && citation.available)),
+      } : null;
     return {
       ...metadata,
+      answerProcess: process,
       isUser: item.authorKind === 'user',
       constructionClosure: constructionClosureForView(item),
       planDecision: available && item.planDecision && latestPlan.get(item.planDecision.id) === item ? item.planDecision : null,
@@ -329,7 +340,7 @@ function messagesForView(items, formatAssistantText) {
         /^\d+$/.test(String(c.projectId)) && typeof c.stageKey === 'string'
       ).map(c => ({ projectId: String(c.projectId), stageKey: c.stageKey, projectName: String(c.projectName || '') })),
       suggestDesigner: available && item.authorKind === 'assistant' && blocks.some(b => b.text === '这部分需要设计师结合本次情况继续沟通。你愿意的话，可以请设计师接着聊。'),
-      // A known citation already has a tappable source chip below the bubble.
+      // A known citation has an action in the process panel or below the bubble.
       // Keep fallback text for unmatched/future blocks instead of hiding content.
       blocks: blocks.filter(block =>
         (available || block.type === 'notice')
