@@ -51,7 +51,7 @@ test('an uncited explanation now accompanies an authoritative snapshot when noth
   const composed = composeNativeDelivery('您家的施工记录里写着当前在软装阶段。', '项目记录快照内容', 0, false);
   assert.equal(composed.modelIncluded, true);
   assert.match(composed.text, /您家的施工记录里写着当前在软装阶段。/);
-  assert.match(composed.text, /项目记录（授权快照，以此为准）\n项目记录快照内容$/);
+  assert.match(composed.text, /## 项目记录\n\n项目记录快照内容$/);
   // Retrieved-but-uncited knowledge still cannot ride along with a snapshot.
   assert.equal(composeNativeDelivery('先排版再铺贴。', '项目记录快照内容', 0, true).modelIncluded, false);
   assert.equal(composeNativeDelivery('', '项目记录快照内容', 0, false).modelIncluded, false);

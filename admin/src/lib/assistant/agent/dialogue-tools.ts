@@ -46,7 +46,7 @@ export type DialogueToolRuntime = {
 
 export const citationId = (chunkId: string) => 'K' + chunkId;
 export const quoteOf = (text: string) => Array.from(text).length > 600 ? Array.from(text).slice(0, 600).join('') : text;
-export const snapshotHeading = '项目记录（授权快照，以此为准）';
+export const snapshotHeading = '## 项目记录';
 
 /** The model-visible projection of a `query_business` receipt. `resultKey` is
  * the snapshot version hash the server revalidates against; it is never a
@@ -162,7 +162,7 @@ export function dialogueBusinessQuery(rt: DialogueToolRuntime) {
           // The receipt is persisted with the step (keyed by the caller's own
           // domain/lead pair) so an interrupted run reuses it verbatim.
           const receipt: DialogueToolReceipt = { status: selected ? 'ready' : 'empty',
-            sourceStatus: selected ? 'retrieved_and_verified' : 'no_match', resultKey: snapshot.version, text: snapshot.displayText };
+            sourceStatus: selected ? 'retrieved_and_verified' : 'no_match', resultKey: snapshot.version, text: snapshot.replyText ?? snapshot.displayText };
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
             values(${lease.enterpriseId},${lease.runId},${1400 + sequence},'agent_tool','query_business',1,'succeeded',
               ${JSON.stringify(snapshot)}::jsonb,

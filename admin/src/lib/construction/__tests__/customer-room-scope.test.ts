@@ -14,7 +14,9 @@ function fixture(options: Fixture) {
     const q = dialect.sqlToQuery(query);
     queries.push(q);
     // publishedSiteRecord joins the project and lead for the current customer.
-    if (/from app\.construction_site_records r\s+join app\.construction_projects/.test(q.sql)) return { rows: options.records };
+    if (/from app\.construction_site_records r\s+join app\.construction_projects/.test(q.sql)) {
+      return { rows: options.records.filter(record => record.id === q.params[1]) };
+    }
     if (/from app\.construction_projects p join app\.leads l/.test(q.sql)) return { rows: options.projects };
     if (/from app\.construction_rooms/.test(q.sql)) {
       const name = q.params.find(param => typeof param === 'string' && ['卫生间', '厨房', '主卧'].includes(param));
@@ -43,10 +45,29 @@ test('a room query returns only that room record and never mixes the other room'
   assert.equal((read.data[0].records as Row[]).length, 1);
   assert.match((read.data[0].records as Row[])[0].roomName as string, /卫生间/);
   assert.ok(!read.lines.join('\n').includes('厨房'));
+  assert.match(read.replyText!, /### 合成项目的现场记录\n\n- \*\*卫生间 · 现场进展\*\*/);
+  assert.doesNotMatch(read.replyText!, /厨房|服务端正式状态|版本/);
   const recordQuery = queries.find(query => /from app\.construction_site_records where/.test(query.sql))!;
   assert.match(recordQuery.sql, /room_id=\$\d+/);
   assert.ok(recordQuery.params.includes('3'));
   assert.ok(!recordQuery.params.includes('2'));
+});
+
+test('construction reply groups published updates while leaving evidence and unfinished work intact', async () => {
+  const bathroom = published('12', '卫生间', '线管敷设约 60%');
+  Object.assign(bathroom.data as Row, { pending: '封槽', coordination: '和师傅核对插座', note: '本条为草稿，未发布。开关位置仍待核对。' });
+  const { tx } = fixture({ projects: [project], rooms: [], recordIds: [{ id: '11' }, { id: '12' }],
+    records: [published('11', '玄关', '已穿线'), bathroom] });
+  const read = await constructionRead(tx, '1454', '7', '9');
+  assert.match(read.lines.join('\n'), /服务端正式状态：已核对发布（版本 1）/);
+  const text = read.replyText!;
+  assert.equal(text.match(/的现场记录/g)?.length, 1);
+  assert.match(text, /- \*\*玄关.*\n  \*\*进展\*\* 已穿线/);
+  assert.match(text, /- \*\*卫生间.*\n  \*\*进展\*\* 线管敷设约 60%/);
+  assert.match(text, /\*\*还要做\*\* 封槽/);
+  assert.match(text, /\*\*待确认\*\* 和师傅核对插座/);
+  assert.match(text, /开关位置仍待核对/);
+  assert.doesNotMatch(text, /服务端正式状态|版本|草稿|未发布/);
 });
 
 test('the same room name in another project cannot be mixed into this answer', async () => {

@@ -94,6 +94,11 @@ const publicSitesRecommendationTool: ModelTool = {
   parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
 };
 
+const customerReplyStyle = '直接回答本轮问题。简单确认或单点澄清用一两句自然话说清楚。'
+  + '长答按内容分小标题，每个要点连同补充说明写成一段。'
+  + '并列事项用一层 Markdown 项目符号，顺序步骤用编号，适量加粗要点开头。'
+  + '同一要点下确有多个独立的核对项时，再用一级无序子列表。';
+
 export function nativeExecutorPrompt(knowledgeEnabled: boolean, delegation = false, customerConsultation = false) {
   const proseStyle = customerConsultation
     ? '用中文自然地回答。'
@@ -144,7 +149,7 @@ export function composeNativeDelivery(modelText: string, snapshotText: string, r
     if (!(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
     return { text: snapshotText, modelIncluded: false };
   }
-  return { text: `${modelText}\n\n${snapshotHeading}\n${snapshotText}`, modelIncluded: true };
+  return { text: `${modelText}\n\n${snapshotHeading}\n\n${snapshotText}`, modelIncluded: true };
 }
 
 /** The history-rebuild original must say exactly what was delivered. A
@@ -1324,6 +1329,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const systemContent: Array<{ type: 'text'; text: string }> = [
       { type: 'text', text: nativeExecutorPrompt(knowledgeEnabled, !!delegationTool, customerConsultation) },
       ...nativeReplySiteText({ publicSiteText: answerPublicSite?.text, businessContextActive: businessContextActive && !!publicSite.active, includePublicSite })];
+    if (customerConsultation && !streamReply) systemContent.push({ type: 'text', text: customerReplyStyle });
     if (guideTurn && answerPublicRef) systemContent.push({ type: 'text', text: publicGuidePrompt(guideTurn) });
     if (stageWorkflow && experience?.prompt) systemContent.push({type:'text',text:stageText(experience.prompt,stageDefinition(stageWorkflow.agent.stageId)!.name,experience.variables)});
     if (preview) systemContent.push({type:'text',text:'本次是'+stageDefinition(preview.stageId)!.name+'阶段的管理员调试。没有关联业主的真实工地，涉及项目实况时说明依据。'});
@@ -1440,12 +1446,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // this same turn come from what the run actually failed to retrieve.
         finalTurnGuidance: () => {
           const guidance: string[] = [];
-          if (customerConsultation) {
-            guidance.push('直接回答本轮问题。简单确认或单点澄清用一两句自然话说清楚。'
-              + '长答按内容分小标题，每个要点连同补充说明写成一段。'
-              + '并列事项用一层 Markdown 项目符号，顺序步骤用编号，适量加粗要点开头。'
-              + '同一要点下确有多个独立的核对项时，再用一级无序子列表。');
-          }
+          if (customerConsultation && streamReply) guidance.push(customerReplyStyle);
           if (specialist?.editionQuestion && !context.sources.some(source => source.web?.standard
             && ['status_catalog', 'withdrawal_notice'].includes(source.web.standard.kind)))
             guidance.push('本轮没有取得同编号同版本的现行状态目录或废止公告：不要写“现行/有效/仍有效”，只能报告发布、实施日期和条文；现行状态写明本次无法确认。');
@@ -1488,7 +1489,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     if (!rawFinalText || !rawFinalText.trim()) fail('invalid_model_answer', 502);
     for (const key of ['knowledge', 'snapshots', 'sources'] as const)
       (context[key] as unknown[]) = [...new Map((context[key] as unknown[]).map(v => [fingerprint(v), v])).values()];
-    const snapshotText = delivered.map(s => s.displayText).join('\n');
+    const snapshotText = delivered.map(s => s.replyText ?? s.displayText).join('\n\n');
     // The citation requirement follows evidence this run actually handed to
     // the model. A long web original may leave the catalog empty (no complete
     // citable clause) while the model still read it; that draft is not an

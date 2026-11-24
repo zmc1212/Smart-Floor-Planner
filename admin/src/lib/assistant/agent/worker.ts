@@ -2525,11 +2525,16 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               const query = isReportAnswerSnapshot(report) && report.query.domain === 'construction'
                 ? { ...requested, leadId: report.query.leadId, projectId: report.reportReference.selection.projectId }
                 : { ...requested, leadId: boundLead || requested.leadId };
+              const toolResult = (snapshot: BusinessSnapshot) => {
+                const { replyText, ...source } = snapshot;
+                return { content: JSON.stringify({ resultKey, ...source, displayText: replyText ?? source.displayText,
+                  synthesisSources: businessSynthesisSources(resultKey, snapshot) }) };
+              };
               const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
               if (cached) {
                 const snapshot = cached.private_checkpoint as BusinessSnapshot;
                 if (fingerprint(snapshot.query) !== fingerprint(query) || !await businessSnapshotAvailable(tx, lease.enterpriseId, snapshot)) fail('context_changed');
-                return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot) }) };
+                return toolResult(snapshot);
               }
               const snapshot = await queryBusiness(tx, lease.actor, query, String(context.conversation.id));
               if (query.domain === 'construction' && !query.currentProject && !initial.stageReminderScope) {
@@ -2539,7 +2544,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool','query_business',1,'succeeded',${JSON.stringify(snapshot)}::jsonb)
                 on conflict(enterprise_id,run_id,step_seq) do nothing`);
-              return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot) }) };
+              return toolResult(snapshot);
             });
           }
           if (name === 'search_knowledge' || ragTool) {
@@ -2977,7 +2982,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (isReportAnswerSnapshot(step.private_checkpoint)) fail('invalid_model_answer', 502);
       return step.private_checkpoint as BusinessSnapshot;
     }) : null;
-    const modelText = references ? NO_REFERENCE : business ? business.displayText
+    const modelText = references ? NO_REFERENCE : business ? business.replyText ?? business.displayText
       : parseAgentReply(result.output?.text || '', { ...(specialist ? { acceptanceQuotes: [] } : {}), delegationReply: !!initial.r5 });
     if (photoObservation) assertUncitedEngineeringQuantities(modelText);
     // The image turn keeps the verified kind/text tool contract. A labelled

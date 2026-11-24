@@ -4,7 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, type ActorContext } from '@/lib/assistant/contracts';
 import { currentStage, readStageSettings, stageContact } from './stages-store';
 import { publishedSiteRecord, siteRecordProjection } from './site-publications';
-import { publishedSiteRecordText, type SiteDraft } from './site-contract';
+import { publishedSiteRecordsReply, publishedSiteRecordText, type SiteDraft } from './site-contract';
 import { currentStageEvent } from './stage-events';
 import { collaborationEnabled } from './collaboration-scope';
 import { projectSiteIssues } from './site-issues';
@@ -34,7 +34,7 @@ export async function ownerProjectIssueStatus(tx: PostgresTransaction, eid: stri
 export async function constructionRead(tx: PostgresTransaction, eid: string, uid: string, leadId: string, currentProject?: { room: string; recordLimit?: number }, onlyProjectId?: string) {
   const available = await customerProjects(tx, eid, uid, leadId, false, onlyProjectId);
   const projects = currentProject ? available.filter(p => p.status === 'active') : available;
-  const data: Row[] = [], lines: string[] = [];
+  const data: Row[] = [], sections: Array<string | { evidence: string[]; reply: string }> = [];
   if (currentProject && projects.length !== 1) return { data, lines: [projects.length
     ? '这个房屋有多个可读的施工项目，请先确认要查哪一个。'
     : '这个房屋目前没有可查看的在施工项目。'] };
@@ -58,20 +58,23 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
     const records = currentProject && !room.length ? [] : await rows(tx, sql`select id::text from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId}
       and status='published' and audience='customer' ${room.length ? sql`and room_id=${String(room[0].id)}` : sql``}
       order by published_at desc,id desc limit ${currentProject?.recordLimit ?? 10}`);
-    const published = [];
+    const published: Array<{ id: string; version: number; roomName: string; data: SiteDraft }> = [];
     for (const candidate of records) {
       const r = await publishedSiteRecord(tx, eid, uid, String(candidate.id));
       if (r) {
-        published.push({ id: String(r.id), version: Number(r.published_version), roomName: String(r.room_name_snapshot), data: r.data });
-        lines.push(`团队已核对发布的现场记录（${String(p.name)}；不代表正式验收/费用或工期批准）：\n${publishedSiteRecordText(r.data as SiteDraft, String(r.room_name_snapshot), Number(r.published_version))}`);
+        published.push({ id: String(r.id), version: Number(r.published_version), roomName: String(r.room_name_snapshot), data: r.data as SiteDraft });
       }
     }
+    if (published.length) sections.push({
+      evidence: published.map(record => `团队已核对发布的现场记录（${String(p.name)}；不代表正式验收/费用或工期批准）：\n${publishedSiteRecordText(record.data, record.roomName, record.version)}`),
+      reply: publishedSiteRecordsReply(String(p.name), published),
+    });
     const project = data[data.length - 1];
     project.records = published;
     if (currentProject) {
-      lines.unshift(stage ? `团队标记的当前节点：${stage.name}。${roomName ? '' : String(p.progress_note || '')}`
+      sections.unshift(stage ? `团队标记的当前节点：${stage.name}。${roomName ? '' : String(p.progress_note || '')}`
         : '团队尚未标记实际施工节点。');
-      if (roomName && !published.length) lines.push(`本次未查到「${roomName}」已向你发布的现场记录。`);
+      if (roomName && !published.length) sections.push(`本次未查到「${roomName}」已向你发布的现场记录。`);
       continue;
     }
     if (collaborationEnabled(eid) && p.status === 'active') {
@@ -84,35 +87,42 @@ export async function constructionRead(tx: PostgresTransaction, eid: string, uid
           if (schedule.gaps.some(gap => gap.nodeKey === node.key && ['stage_unavailable', 'room_unavailable'].includes(gap.kind))) continue;
           const location = node.roomName ? `${node.roomName} · ` : '';
           if (node.timeKind) {
-            lines.push(`已发布施工计划：${location}${node.stageName}，${node.timeText}。`);
+            sections.push(`已发布施工计划：${location}${node.stageName}，${node.timeText}。`);
             continue;
           }
           const start = publishedPlanDate(node.plannedStart);
           const range = node.plannedEnd === node.plannedStart ? start : `${start} 至 ${publishedPlanDate(node.plannedEnd)}`;
-          lines.push(`已发布施工计划：${location}${node.stageName}，计划时间 ${range}。`);
+          sections.push(`已发布施工计划：${location}${node.stageName}，计划时间 ${range}。`);
         }
       } else {
-        if (schedule.available) lines.push(schedule.text);
+        if (schedule.available) sections.push(schedule.text);
         const issues = await ownerProjectIssueStatus(tx, eid, uid, String(p.id));
         project.issues = issues;
-        for (const issue of issues) lines.push(`${issue.roomName}事项${issue.issueId} · ${issue.classificationLabel}。`);
+        for (const issue of issues) sections.push({
+          evidence: [`${issue.roomName}事项${issue.issueId} · ${issue.classificationLabel}。`],
+          reply: `${issue.roomName}有一条工地事项，${issue.classificationLabel}。`,
+        });
       }
     }
     if (onlyProjectId) {
-      if (p.status !== 'active') lines.push(`项目当前状态：${p.status === 'paused' ? '已暂停' : '已归档'}。`);
-      lines.push(stage ? `团队当前标记的施工阶段：${stage.name}。${String(p.progress_note || '')}` : '团队尚未标记实际施工节点。');
+      if (p.status !== 'active') sections.push(`项目当前状态：${p.status === 'paused' ? '已暂停' : '已归档'}。`);
+      sections.push(stage ? `团队当前标记的施工阶段：${stage.name}。${String(p.progress_note || '')}` : '团队尚未标记实际施工节点。');
       continue;
     }
-    lines.push(`「${String(p.name)}」：${p.status === 'active' ? '进行中' : p.status === 'paused' ? '已暂停' : '已归档'}。`);
-    if (!stage) { lines.push('团队尚未标记实际施工节点，暂时无法确定当前阶段的施工联系人。'); continue; }
-    lines.push(`团队标记的当前节点：${stage.name}。${String(p.progress_note || '')}`);
-    if (p.status !== 'active') { lines.push('项目当前未开放到场联系，请等团队恢复服务。'); continue; }
-    if (stage.visitReminder) lines.push(stage.visitReason);
-    if (stage.watchPoints) lines.push('到现场重点看：\n' + stage.watchPoints);
-    lines.push(contact ? `当前阶段联系人：${contact.name}。到场时间请点击“联系管家”，直接与当前阶段施工人员电话沟通。`
-      : '当前阶段联系电话尚未配置，请等项目团队补充后再联系。');
+    sections.push(`「${String(p.name)}」：${p.status === 'active' ? '进行中' : p.status === 'paused' ? '已暂停' : '已归档'}。`);
+    if (!stage) { sections.push('团队尚未标记实际施工节点，暂时无法确定当前阶段的施工联系人。'); continue; }
+    sections.push({ evidence: [`团队标记的当前节点：${stage.name}。${String(p.progress_note || '')}`],
+      reply: `项目团队已更新到${stage.name}阶段。${String(p.progress_note || '')}` });
+    if (p.status !== 'active') { sections.push('项目当前未开放到场联系，请等团队恢复服务。'); continue; }
+    if (stage.visitReminder) sections.push(stage.visitReason);
+    if (stage.watchPoints) sections.push('到现场重点看：\n' + stage.watchPoints);
+    sections.push({ evidence: [contact ? `当前阶段联系人：${contact.name}。到场时间请点击“联系管家”，直接与当前阶段施工人员电话沟通。`
+      : '当前阶段联系电话尚未配置，请等项目团队补充后再联系。'], reply: contact
+      ? `想去现场，可以点「联系管家」打电话给${contact.name}确认时间。`
+      : '想去现场，可以请项目团队帮你确认到场时间。' });
   }
-  return { data, lines };
+  return { data, lines: sections.flatMap(section => typeof section === 'string' ? [section] : section.evidence),
+    replyText: sections.map(section => typeof section === 'string' ? section : section.reply).filter(Boolean).join('\n\n') };
 }
 /** Current scope of an existing server-owned follow-up. This does not make its
  * old question/evidence available: callers must still compare exact revisions. */

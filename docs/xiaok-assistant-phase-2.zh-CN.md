@@ -4,6 +4,8 @@
 
 **C01 正文流式。** 原生图复用 `finish_context` 分开工具收集和最终正文回合，业主咨询在最终正文回合引导模型用自然段回答简单确认。长答按阶段或主题分标题，默认一层要点，适量加粗关键词。补充说明写在原条目内，多条独立子项才用一级无序子列表，有明确先后的操作用编号。客户流只发布通过校验的段落。推理字段与原始工具数据留在服务端，每个正文前缀绑定当前租约及查阅过的证据。最终验证、取消、用量和历史落库沿用原合同。OpenAI 兼容的 Chat Completions 在终止事件中取得用量。报告追问沿用结构化终稿和整份正文审核，审核通过后由客户端展开。[LangGraph 流模式](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/streaming.mdx) · [OpenAI 流式事件](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events/) · [百炼流式协议](https://help.aliyun.com/zh/model-studio/stream)。
 
+C01 由获权施工快照生成业主可读的 Markdown。原生执行器交给模型的施工查询回执与交付正文使用同一份分组说明，原记录状态、版本和正文继续用于权限、事实和撤回复核。C01 咨询带报告引用时，原生执行器仍可能查询实时施工。隔离实问首轮带入截止后记录，第二轮的来源试改在用完回合后拦下了整条答复。离线回放定位到无依据施工参数和 Markdown 标题序号共同触发量数校验。本次交付覆盖回复展示。[首轮实问](../tmp/xiaok-owner-reply-20261124/run-45896f3c/report.json) · [第二轮实问](../tmp/xiaok-owner-reply-20261124/run-a3fe51a5/report.json) · [原稿回放](../tmp/xiaok-owner-reply-20261124/draft-diagnosis.json)。
+
 **普通咨询路由（Implemented，正式版本 `20261118-003`）。** 已配置的客户普通咨询先进入本轮快照保存的原执行器，由现有 LangGraph、Native 或 RAG 执行器沿原授权和证据管线处理当前问题。旧阶段回退复用需求引导已有的提问/陈述区分，含「准备」的装修意向陈述保留普通咨询。房屋提取去掉单独的「面积」触发词，颜色偏好不再覆盖房屋信息。定向路由及引导 28/28、需求服务兼容 24/24 通过。获准正式测试业户在 `002` 完成 11 轮自然聊天，覆盖厨房/卫生间问题、更正、回顾及真实阶段读取，该批暴露房屋投影错误。`003` 的 4 轮定向聊天和管理员回读确认房屋、居住、风格和时间正确，全程无需确认或共享。后台房间汇总仍为 Limited：私聊回顾记住的洗碗机未进入当前仅显示卫生间的单来源字段。原生页面发送仍未验证。本次复用项目已有 Agent 执行与上游动态 Agent 模式。[LangGraph 工作流和 Agent 模式](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents)、[正式实证与原始失败](../tmp/staff-profile-housing-correction-20261118/production-verification.json)。
 
 **I6.16 已发布清单候选（Limited）。** Workflow revision 4 显式选择 `waterproof-specialist@2`。清单取本轮引文并绑定发布摘要，托管检索和公开规范现行性分别留状态。混合咨询的模型终稿被拒后，原 C01 仍按授权展示独立登记回执。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。

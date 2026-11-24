@@ -52,7 +52,7 @@ export function parseDesignerQuery(raw: unknown): DesignerQuery {
   return { query: value.query.trim() };
 }
 export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string; currentProject?: { room: string; recordLimit?: number }; projectId?: string };
-export type BusinessSnapshot = { query: BusinessQuery; customerId?: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference; reportAnswerGrounding?: 'report-answer-grounding-v1'; reportSourceProjection?: 'report-parent-context-v1' } | MaterialSnapshot | NeedIssueSnapshot | SharedSiteProgressSnapshot;
+export type BusinessSnapshot = ({ query: BusinessQuery; customerId?: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string; contextConversationId?: string; reportReference?: ReportBusinessReference; reportAnswerGrounding?: 'report-answer-grounding-v1'; reportSourceProjection?: 'report-parent-context-v1' } | MaterialSnapshot | NeedIssueSnapshot | SharedSiteProgressSnapshot) & { replyText?: string };
 export function parseBusinessQuery(raw: unknown, currentProject = false): BusinessQuery {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('invalid_message', 422);
   if (currentProject) {
@@ -86,12 +86,13 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
   const leads = await rows(tx, sql`select id,community_name,primary_floor_plan_id from app.leads where enterprise_id=${actor.enterpriseId}
     and customer_user_id=${customerId} and archived_at is null ${query.leadId ? sql`and id=${query.leadId}` : sql``} order by id desc limit 10`);
   if (query.leadId && !leads.length) fail('assistant_resource_not_found', 404);
-  const data: unknown[] = [], lines: string[] = [];
+  const data: unknown[] = [], lines: string[] = [], replies: string[] = [];
   for (const lead of leads) {
     const label = String(lead.community_name || '服务档案');
     if (query.domain === 'construction') {
       const result = await constructionRead(tx, actor.enterpriseId, customerId, String(lead.id), query.currentProject, query.projectId);
       data.push(...result.data); lines.push(...result.lines);
+      replies.push(result.replyText ?? result.lines.join('\n'));
     } else if (query.domain === 'appointments') {
       const appointments = await new AppointmentRepository(tx).listByLead(BigInt(actor.enterpriseId), BigInt(String(lead.id)));
       for (const a of appointments.slice(-10)) {
@@ -120,6 +121,7 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
   }
   const name = { appointments: '预约', schemes: '已发布方案', floorplans: '已完成正式户型', construction: '已关联施工项目及实际节点' }[query.domain];
   return { query, customerId, leadIds: leads.map(l => String(l.id)), version: fingerprint(query.currentProject ? { data, lines } : data), data,
+    ...(replies.some(Boolean) ? { replyText: replies.filter(Boolean).join('\n\n') } : {}),
     displayText: lines.length ? lines.join('\n') : `目前没有查到你在本企业的${name}记录。`, queriedAt: new Date().toISOString() };
 }
 export async function businessSnapshotAvailable(tx: PostgresTransaction, enterpriseId: string, snapshot: BusinessSnapshot, actor?: ActorContext) {
