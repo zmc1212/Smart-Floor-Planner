@@ -12,11 +12,19 @@ import { resolveStageProject } from './stage-chat-service';
 import { stageIdForConstructionKey, stageDefinition } from './stages';
 import { readStageAgent } from './stage-workflow-settings';
 import { invokeBoundStageWorkflow } from './stage-workflow-invocation';
+import { authorizedWechatStage, isWechatConsultation } from '@/lib/assistant/wechat/subject';
 
 type Context = { conversationId: string; leadId?: string | null; question: string; eligible: boolean; preview?: EnterpriseStageAgent };
 type Scope = { projectId: string; stageKey: string; agentVersion: number };
 
 async function activeScope(tx: PostgresTransaction, actor: ActorContext, context: Context) {
+  if (isWechatConsultation(actor)) {
+    const stage = await authorizedWechatStage(tx, actor);
+    const agent = await readStageAgent(tx, actor.enterpriseId, stage);
+    if (!agent?.enabled) fail('context_changed');
+    return { agent, stageKey: stageDefinition(stage)!.constructionKeys[0],
+      projectId: 'channel:' + actor.entry!.channelId, agentVersion: agent.version };
+  }
   if (!context.eligible) return null;
   const enterprise = actor.enterpriseId;
   if (actor.principal.kind === 'admin' && context.preview) {

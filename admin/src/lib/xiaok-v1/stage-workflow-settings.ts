@@ -130,6 +130,10 @@ export async function saveStageAgent(enterpriseId: string, adminId: string, raw:
   if (input.expectedEnterpriseId !== enterpriseId) fail('settings_enterprise_changed');
   return withTenantTransaction(enterpriseId, async tx => {
     await authorizeKnowledgeManager(tx, enterpriseId, adminId);
+    if (!input.enabled) {
+      const { closeStageWechatChannel } = await import('@/lib/assistant/wechat/channels');
+      await closeStageWechatChannel(tx, enterpriseId, input.stageId);
+    }
     // Allow a manager to stop a binding even when its template store is unavailable.
     const current = await one<EnterpriseStageAgent>(tx, sql`select ${projection} from app.assistant_stage_agents
       where enterprise_id=${enterpriseId} and stage_id=${input.stageId} for update`);

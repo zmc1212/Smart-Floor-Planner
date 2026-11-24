@@ -89,13 +89,15 @@ export function knowledgeReadPending(question: string, messages: ModelMessage[],
 }
 
 export const readToolInputProtocol = 'read-input-v2';
-const validators = new Map<string, { tool: ModelTool; parse: (input: unknown) => unknown }>([
-  ['search_web', { tool: webSearchTool, parse: parseWebQuery }],
-  ['read_web', { tool: readWebTool, parse: parsePublicRead }],
-  ['query_materials', { tool: materialTool, parse: parseMaterialQuery }],
-  ['query_business', { tool: businessToolDefinitions.find(tool => tool.name === 'query_business')!, parse: parseBusinessQuery }],
-  ['recommend_designers', { tool: businessToolDefinitions.find(tool => tool.name === 'recommend_designers')!, parse: parseDesignerQuery }],
-  ['recall_history', { tool: historyTool, parse: parseHistoryQuery }],
+// Channel and workflow routes load the same Agent graph through different entry points.
+// Resolve tool exports at use time, after all their modules have initialized.
+const validators = new Map<string, () => { tool: ModelTool; parse: (input: unknown) => unknown }>([
+  ['search_web', () => ({ tool: webSearchTool, parse: parseWebQuery })],
+  ['read_web', () => ({ tool: readWebTool, parse: parsePublicRead })],
+  ['query_materials', () => ({ tool: materialTool, parse: parseMaterialQuery })],
+  ['query_business', () => ({ tool: businessToolDefinitions.find(tool => tool.name === 'query_business')!, parse: parseBusinessQuery })],
+  ['recommend_designers', () => ({ tool: businessToolDefinitions.find(tool => tool.name === 'recommend_designers')!, parse: parseDesignerQuery })],
+  ['recall_history', () => ({ tool: historyTool, parse: parseHistoryQuery })],
 ]);
 
 export const readToolContextProtocol = 'conversation-read-v1';
@@ -167,7 +169,7 @@ function inputIssues(parameters: ModelTool['parameters'], input: unknown): Input
 /** Reuse strict application parsers. No database/provider call or value repair. */
 export function readToolInputIssue(name: string, args: string, context?: ReadToolContext, ownerScope = false, archiveAllowed = true,
   projectStatusRead = false): { code: string; feedback: string } | null {
-  const validator = validators.get(name);
+  const validator = validators.get(name)?.();
   if (!validator) return null;
   const scopedMaterials = ownerScope && name === 'query_materials';
   const boundTool = readToolsForContext([validator.tool], context)[0];

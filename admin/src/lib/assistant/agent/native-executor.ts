@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { prepareStageWorkflowTool } from '@/lib/xiaok-v1/stage-dialogue-workflow';
+import { isWechatConsultation } from '../wechat/subject';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
@@ -698,7 +699,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const policy = initial.run.policy_snapshot as Row;
     const delegationContext = await withTenantTransaction(lease.enterpriseId, async tx => {
       const { conversation, run } = await runContext(tx, lease);
-      if (policy.delegationToolProtocol !== delegationToolProtocol && policy.specialist !== specialistProtocol) return null;
+      if (isWechatConsultation(lease.actor) || policy.delegationToolProtocol !== delegationToolProtocol && policy.specialist !== specialistProtocol) return null;
       const source = await one(tx, sql`select * from app.assistant_messages where enterprise_id=${lease.enterpriseId}
         and conversation_id=${String(conversation.id)} and id=${String(run.trigger_message_id)} and author_kind='user'`);
       if (!source) fail('context_changed');
@@ -1011,7 +1012,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       ],
     }), specialist.progressRequested) : tools.filter(tool => {
       if (tool.name==='search_web' && experience?.searchWeb===false || tool.name==='read_web' && experience?.readWeb===false) return false;
-      return !preview || ['search_enterprise','search_web','read_web','run_stage_workflow'].includes(tool.name);
+      return (!preview && !isWechatConsultation(lease.actor)) || ['search_enterprise','search_web','read_web','run_stage_workflow'].includes(tool.name);
     });
     const validateTool = (name: string, args: string): { code: string; feedback: string } | null => {
       if (!modelTools.some(tool=>tool.name===name)) return { code:'assistant_capability_forbidden', feedback:'当前阶段没有启用这项工具。' };
@@ -1274,6 +1275,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
       ...nativeReplySiteText({ publicSiteText: answerPublicSite?.text, businessContextActive: businessContextActive && !!publicSite.active, includePublicSite })];
     if (stageWorkflow && experience?.prompt) systemContent.push({type:'text',text:stageText(experience.prompt,stageDefinition(stageWorkflow.agent.stageId)!.name,experience.variables)});
     if (preview) systemContent.push({type:'text',text:'本次是'+stageDefinition(preview.stageId)!.name+'阶段的管理员调试。没有关联业主的真实工地，涉及项目实况时说明依据。'});
+    if (stageWorkflow && isWechatConsultation(lease.actor)) systemContent.push({ type: 'text',
+      text: `当前是微信 ClawBot 中的${stageDefinition(stageWorkflow.agent.stageId)!.name}阶段咨询。这个会话只提供阶段咨询，未关联业主项目。` });
     const systemMessage: ModelMessage = { role: 'system', content: systemContent };
     if (publisherRead || saved.webs.some(isPublisherRead)) {
       const originals = context.sources.filter(source => source.web?.standard?.id === standard?.standard.id

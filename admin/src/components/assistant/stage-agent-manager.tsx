@@ -10,6 +10,7 @@ import { notify } from '@/components/admin/operation-feedback';
 import { assistantError, assistantRequest, formatTime } from './client';
 import { draftIssue, makeDraft, stagePayload, StageStudioFields, type StudioDraft } from './stage-studio-fields';
 import { StageStudioChat } from './stage-studio-chat';
+import { StageWechatChannel } from './stage-wechat-channel';
 import './stage-studio.css';
 
 export function StageAgentManager({ canPublish }: { canPublish: boolean }) {
@@ -202,6 +203,7 @@ export function StageAgentManager({ canPublish }: { canPublish: boolean }) {
           <p>
             {stageDefinition(stage)?.name}阶段{saved.version ? ' · 最近保存 v' + saved.version : ''}
           </p>
+          <StageWechatChannel key={settings.enterpriseId + ':' + stage} enterprise={settings.enterpriseId} stage={stage} enabled={saved.enabled} />
         </section>
       )}
       <div

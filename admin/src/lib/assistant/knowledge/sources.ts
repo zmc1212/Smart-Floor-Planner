@@ -43,7 +43,7 @@ export async function createPreviewPolicy(tx:PostgresTransaction,enterpriseId:st
 export function sourceScope(actor:ActorContext,c:Row,historical=false,projectId?:string) {
   const published = sql`v.published_at is not null and (d.published_version_id=v.id
     or (${historical} and d.scope='enterprise'))`;
-  const scope = sql`(d.scope='enterprise' or (d.scope='project' and d.project_id=${projectId ?? null}
+  const scope = actor.entry?.kind === 'wechat_personal' ? sql`d.scope='enterprise'` : sql`(d.scope='enterprise' or (d.scope='project' and d.project_id=${projectId ?? null}
     and exists(select 1 from app.construction_projects kp where kp.enterprise_id=d.enterprise_id
       and kp.id=d.project_id and kp.status='active')))`;
   if(actor.principal.kind==='user') return sql`${scope} and d.status='active' and d.audience='customer_public' and ${published}`;

@@ -4,6 +4,7 @@ import { fail, type ActorContext } from '@/lib/assistant/contracts';
 import { authorizeKnowledgeManager } from '@/lib/assistant/knowledge/manager';
 import { assistantDailyLimitsEnabled } from '@/lib/assistant/core/daily-limits';
 import { currentCustomerService } from './customer-service';
+import { authorizedWechatStage, isWechatConsultation } from '@/lib/assistant/wechat/subject';
 
 export type Row = Record<string, unknown>;
 type RowLock = 'update' | 'share';
@@ -76,6 +77,7 @@ export class AssistantRepository {
     // Only trusted background assembly supplies delivery; it has no Mini login
     // session. conversation() still checks live ownership on every operation.
     if (a.capabilities.includes('assistant.followup.delivery')) return;
+    if (isWechatConsultation(a)) await authorizedWechatStage(this.tx, a);
     const user = await one(this.tx, sql`select app.assistant_identity_is_current(${a.principal.userId}::bigint,${a.contextVersion}::integer) as valid`);
     if (!user?.valid) fail('identity_context_invalid', 401);
   }

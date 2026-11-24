@@ -1009,6 +1009,13 @@
       "when": 1797840000000,
       "tag": "0147_assistant_answer_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1797926400000,
+      "tag": "0148_assistant_wechat_channels",
+      "breakpoints": true
     }
   ]
 }

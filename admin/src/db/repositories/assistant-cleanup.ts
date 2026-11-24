@@ -11,6 +11,7 @@ export const assistantCleanupTables = [
   'assistant_message_citations', 'assistant_cost_reviews', 'assistant_requirement_summaries', 'assistant_renovation_profiles', 'assistant_media', 'assistant_speech_assets',
   'assistant_knowledge_batch_items','assistant_knowledge_batches','assistant_knowledge_evaluations','assistant_knowledge_cases',
   'assistant_model_task_items','assistant_model_tasks','assistant_managed_knowledge_imports','assistant_managed_knowledge_libraries',
+  'assistant_wechat_events', 'assistant_wechat_channels',
 ] as const;
 export async function assistantCounts(tx: PostgresTransaction, enterpriseId: bigint) {
   const result = [];
@@ -18,7 +19,9 @@ export async function assistantCounts(tx: PostgresTransaction, enterpriseId: big
   const modelTasks=(await rows(tx,sql`select to_regclass('app.assistant_model_tasks') is not null as ready`))[0].ready;
   const managed=(await rows(tx,sql`select to_regclass('app.assistant_managed_knowledge_imports') is not null as ready`))[0].ready;
   const profiles = (await rows(tx, sql`select to_regclass('app.assistant_renovation_profiles') is not null as ready`))[0].ready;
+  const wechat = (await rows(tx, sql`select to_regclass('app.assistant_wechat_channels') is not null as ready`))[0].ready;
   for (const table of assistantCleanupTables) {
+    if (!wechat && table.startsWith('assistant_wechat_')) continue;
     if (!managed && table.startsWith('assistant_managed_knowledge_')) continue;
     if(!batches&&['assistant_knowledge_batch_items','assistant_knowledge_batches'].includes(table))continue;
     if(!modelTasks&&['assistant_model_task_items','assistant_model_tasks'].includes(table))continue;
@@ -31,6 +34,10 @@ export async function assistantCounts(tx: PostgresTransaction, enterpriseId: big
 }
 export async function deleteAssistantData(tx: PostgresTransaction, enterpriseId: bigint) {
   const counts = await assistantCounts(tx, enterpriseId);
+  if (counts.some(c => c.table === 'assistant_wechat_channels')) {
+    await tx.execute(sql`delete from app.assistant_wechat_events where enterprise_id=${enterpriseId}`);
+    await tx.execute(sql`delete from app.assistant_wechat_channels where enterprise_id=${enterpriseId}`);
+  }
   if (counts.some(c=>c.table==='assistant_managed_knowledge_libraries' && c.count>0)) {
     const managed = await rows(tx,sql`select i.job_id from app.assistant_managed_knowledge_imports i
       join app.assistant_managed_knowledge_libraries l on l.enterprise_id=i.enterprise_id

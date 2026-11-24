@@ -1,4 +1,4 @@
-import { bigint, boolean, customType, date, integer, jsonb, pgSchema, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, date, integer, jsonb, pgSchema, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 export * from './assistant-knowledge-schema';
 
 // SQL migrations 0058–0069 own tenant FKs, manager/handoff identity guards, RLS and partial unique indexes.
@@ -38,6 +38,40 @@ export const assistantStageAgents = app.table('assistant_stage_agents', {
   editHistory: jsonb('edit_history').notNull().default([]),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, table => [primaryKey({ columns: [table.enterpriseId, table.stageId] })]);
+
+export const assistantWechatChannels = app.table('assistant_wechat_channels', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  enterpriseId: bigint('enterprise_id', { mode: 'bigint' }).notNull(),
+  stageId: text('stage_id').notNull(),
+  status: text('status').notNull(),
+  loginState: text('login_state'),
+  qrSecret: text('qr_secret'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  apiOrigin: text('api_origin').notNull(),
+  botId: text('bot_id'),
+  peerId: text('peer_id'),
+  botSecret: text('bot_secret'),
+  userId: bigint('user_id', { mode: 'bigint' }),
+  conversationId: bigint('conversation_id', { mode: 'bigint' }),
+  cursorValue: text('cursor_value').notNull().default(''),
+  pollAfter: timestamp('poll_after', { withTimezone: true }).notNull().defaultNow(),
+  leaseId: uuid('lease_id'),
+  lastPollAt: timestamp('last_poll_at', { withTimezone: true }),
+  lastReplyAt: timestamp('last_reply_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const assistantWechatEvents = app.table('assistant_wechat_events', {
+  id: bigint('id', { mode: 'bigint' }).primaryKey().generatedAlwaysAsIdentity(),
+  enterpriseId: bigint('enterprise_id', { mode: 'bigint' }).notNull(),
+  channelId: uuid('channel_id').notNull(),
+  eventKey: text('event_key').notNull(),
+  textValue: text('text_value'),
+  contextSecret: text('context_secret'),
+  runId: bigint('run_id', { mode: 'bigint' }),
+  status: text('status').notNull().default('received'),
+});
 
 export const assistantSpeechAssets = app.table('assistant_speech_assets', {
   ...base(), conversationId: bigint('conversation_id', { mode: 'bigint' }).notNull(), projectId: bigint('project_id', { mode: 'bigint' }),

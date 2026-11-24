@@ -16,6 +16,7 @@ import { fastGPTRagConfiguration, fastGPTRagProtocol } from '../fastgpt/rag-conf
 import { fastGPTAgentV2Configuration, fastGPTAgentV2Presentation, fastGPTAgentV2Protocol } from '../fastgpt/agent-v2/config';
 import { openingScene, sceneForOpeningPurpose } from '../fastgpt/agent-v2/openings';
 import { stagePreviewDraft, type EnterpriseStageAgent } from '@/lib/xiaok-v1/stage-workflow-settings';
+import { isWechatConsultation } from '../wechat/subject';
 import type { StageId } from '@/lib/xiaok-v1/stages';
 import { currentConversationExperience, currentConversationStageScope, stageSuggestionAvailable } from '@/lib/xiaok-v1/stage-dialogue-workflow';
 import { storedSuggestionQuestions } from '../fastgpt/agent-v2/suggestions';
@@ -216,9 +217,9 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const triggerContent = rag || agentV2 || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
   const textOnlyTrigger = (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text');
-  if (stagePreview && (!nativeExecutor || !agent || !textOnlyTrigger)) fail('stage_preview_unavailable',503);
+  if ((stagePreview || isWechatConsultation(actor)) && (!nativeExecutor || !agent || !textOnlyTrigger)) fail('stage_preview_unavailable',503);
   const nativeConfigurationIssue = nativeExecutor && agent && textOnlyTrigger ? nativeExecutorConfigurationIssue(agent) : null;
-  if (nativeConfigurationIssue && (stagePreview || purpose !== 'reply')) fail(nativeConfigurationIssue, 503);
+  if (nativeConfigurationIssue && (stagePreview || isWechatConsultation(actor) || purpose !== 'reply')) fail(nativeConfigurationIssue, 503);
   const agentRuntime = agentV2 && (openingReady || enterpriseKnowledgeEnabled(settings.agent_config)) && textOnlyTrigger
     ? { protocol: fastGPTAgentV2Protocol, binding: agentV2.binding }
     : nativeExecutor && textOnlyTrigger && !nativeConfigurationIssue
@@ -302,7 +303,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(speech ? { localSpeech: { protocol: 'local-speech-v1', configurationHash: speechBinding } } : {}),
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),
       ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),
-      ...(agent && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && ['reply', 'specialist.workflow'].includes(purpose)
+      ...(agent && !isWechatConsultation(actor) && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && ['reply', 'specialist.workflow'].includes(purpose)
         ? { homeSourceBudget: homeSourceBudgetProtocol, siteObservationReferral: siteObservationReferralProtocol,
           drawingChecklistRead: drawingChecklistReadProtocol, homeSourceView: homeSourceViewProtocol,
           ownerQuestionScope: ownerQuestionScopeProtocol, ownerArchiveRead: ownerArchiveReadProtocol,
@@ -310,7 +311,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
           ...(!reviewRuntime && agentRuntime?.protocol !== fastGPTAgentV2Protocol && !nativeRag && !agent.structuredFinal && specialistPolicy(actor.enterpriseId, agent)
             ? { specialist: specialistPolicy(actor.enterpriseId, agent) } : {}),
           ...(agent.providerKey === 'dashscope' && agent.model === 'qwen3.8-flash' ? { ownerCitationCarrier: ownerCitationCarrierProtocol } : {}) } : {}),
-      ...(agent && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId)
+      ...(agent && !isWechatConsultation(actor) && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId)
         ? { longTermMemory: true, ...(agent.tools && agentRuntime?.protocol !== fastGPTAgentV2Protocol ? { delegationToolProtocol } : {}) } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
@@ -367,7 +368,7 @@ export class ConversationService {
         ? await stagePreviewDraft(repo.tx,this.actor.enterpriseId,this.actor.principal.adminId,stageDraft) : undefined;
       const previewScope = stagePreview ? { audience: 'customer_public', draftVersionIds: [] } : previewPolicyInput;
       const entry: Row=preview?{preview:await createPreviewPolicy(repo.tx,this.actor.enterpriseId,previewScope),...(stagePreview ? {stagePreview} : {})}
-        : agentConfig(settings!.agent_config) ? developmentReviewEntry(this.actor.enterpriseId, baseEntry) : baseEntry;
+        : !isWechatConsultation(this.actor) && agentConfig(settings!.agent_config) ? developmentReviewEntry(this.actor.enterpriseId, baseEntry) : baseEntry;
       if (!preview && entry.guidanceVersion !== undefined) {
         if (entry.guidanceVersion !== Number(settings!.version)) fail('entry_context_invalid', 409);
         entry.guidance = configuredGuidance(settings!.guidance_config);
@@ -673,7 +674,7 @@ export class ConversationService {
           return message;
         };
         if (this.actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
-          && delegationsEnabled(this.actor.enterpriseId) && delegationCommand(safeText(safe))) {
+          && !isWechatConsultation(this.actor) && delegationsEnabled(this.actor.enterpriseId) && delegationCommand(safeText(safe))) {
           const message = await append();
           await applyDelegationCommand(repo.tx, this.actor, c, message);
           return { conversationId, messageId: String(message.id), runId: null, status: 'succeeded', nextPollMs: null };
@@ -716,7 +717,7 @@ export class ConversationService {
         const message = intercepted || await append();
         await recordDelegationOwnerInput(repo.tx, this.actor, c, message);
         await saveAutomaticRequirements(repo, conversationId, String(message.id));
-        if (this.actor.principal.kind === 'user' && requestsDesigner(safe.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'))) {
+        if (this.actor.principal.kind === 'user' && !isWechatConsultation(this.actor) && requestsDesigner(safe.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'))) {
           if((c.entry_snapshot as Row)?.requirementReviewMode===true && (c.entry_snapshot as Row)?.requirementWorkflow==='langgraph') {
             const proposal=await stageHandoffProposal(repo,c,settings!,'request');
             const event=await one(repo.tx,sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)

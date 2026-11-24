@@ -174,6 +174,25 @@ async function runLoop() {
   }
 }
 
+// A waiting Weixin long poll must not hold up regular model jobs, reminders or reports.
+async function runWechatLoop() {
+  const channelEndpoint = new URL(endpoint);
+  if (!channelEndpoint.pathname.endsWith('/jobs/run')) return;
+  channelEndpoint.pathname = channelEndpoint.pathname.replace(/\/run$/, '/wechat');
+  while (!stopping) {
+    let active = false;
+    if (health.safetyGate?.status === 'open') {
+      try {
+        const response = await fetch(channelEndpoint, { method: 'POST', headers: { 'x-cron-secret': secret },
+          signal: AbortSignal.timeout(120000) });
+        if (response.ok) active = (await response.json()).active === true;
+        else { await response.body?.cancel(); console.error('[assistant-worker] wechat_endpoint_unavailable', response.status); }
+      } catch { console.error('[assistant-worker] wechat_endpoint_unreachable'); }
+    }
+    if (!stopping) await delay(active ? 1100 : 5000);
+  }
+}
+
 // A recreated worker must report its own preflight and tick. A recent reply
 // from the previous container can still be present on the shared volume.
 await saveHealth();
@@ -195,6 +214,6 @@ if (!secret?.trim()) {
     await saveHealth();
     // Installed but maybe idle: runLoop waits on the gate and re-checks it
     // before every tick, so an admin start/stop needs no container restart.
-    await runLoop();
+    await Promise.all([runLoop(), runWechatLoop()]);
   }
 }
