@@ -521,6 +521,18 @@ Use a Conventional Commit English subject: `feat:`, `fix:`, `refactor:`,
 `docs:`, `chore:`, or `test:`. Keep it concise and limited to the related
 staged change; split unrelated work.
 
+### Production SSH Authorization
+
+- For an authorized deployment to the production server, verify the target
+  using the production deployment contract. If SSH access needs approval,
+  generate a dedicated temporary Ed25519 identity and immediately give the
+  user a complete Bash command to paste into the logged-in Xshell session.
+  Name the exact server and account. The command installs the restricted
+  public key idempotently, preserves existing keys, and prints a success marker.
+- Keep the private key local and keep actual key material out of project files.
+  After verifying the release, remove only this temporary authorization and
+  confirm a fresh connection using its identity is denied.
+
 ### Repository Hygiene
 
 - `admin/.next` is regenerable, Git-ignored build output and must stay bounded.
