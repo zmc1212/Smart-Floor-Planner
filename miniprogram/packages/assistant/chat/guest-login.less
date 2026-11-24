@@ -1,0 +1,103 @@
+/* Signed-out note from the approved welcome layout, shared by both chat entries. */
+.notebook-chat {
+  .guest-login-note {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16rpx;
+    margin: 16rpx 28rpx 0 70rpx;
+    padding: 21rpx 34rpx 21rpx 38rpx;
+    border: 1rpx solid #fff9ee;
+    background-color: #fbf6e9;
+    background-image: repeating-linear-gradient(133deg, #99723b0a 0 1rpx, transparent 1rpx 7rpx),
+      radial-gradient(ellipse at 24% 20%, #fffaf0, transparent 76%);
+    box-shadow: 0 6rpx 14rpx #8d784532;
+  }
+  .guest-login-note::before {
+    content: '';
+    position: absolute;
+    top: -3rpx;
+    left: -10rpx;
+    width: 62rpx;
+    height: 22rpx;
+    transform: rotate(-39deg);
+    background: linear-gradient(110deg, #eddbb9c9, #dec299bd);
+    box-shadow: 0 2rpx 3rpx #9c825536;
+    pointer-events: none;
+  }
+  .guest-login-note::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: -4rpx;
+    left: 0;
+    height: 6rpx;
+    clip-path: polygon(0 0, 100% 0, 100% 46%, 94% 88%, 90% 48%, 85% 86%, 77% 40%, 71% 96%, 62% 49%, 53% 82%, 42% 41%, 35% 85%, 27% 52%, 17% 94%, 10% 48%, 5% 86%, 0 54%);
+    background: #fbf6e9;
+    pointer-events: none;
+  }
+  .guest-login-note + .conversation-scroll .new-conversation-content {
+    padding-top: 16rpx;
+  }
+  .guest-login-copy {
+    min-width: 0;
+    line-height: 1.35;
+  }
+  .guest-login-title, .guest-login-helper {
+    display: block;
+  }
+  .guest-login-title {
+    font-size: 31rpx;
+    font-weight: 600;
+  }
+  .guest-login-helper {
+    margin-top: 4rpx;
+    color: #365e4a;
+    font-size: 26rpx;
+  }
+  button.guest-login-action {
+    display: flex;
+    flex: 0 0 180rpx;
+    align-items: center;
+    min-height: 44px;
+    overflow: visible;
+  }
+  .guest-login-fabric {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 13rpx;
+    width: 100%;
+    min-height: 74rpx;
+    box-sizing: border-box;
+    padding: 0 13rpx;
+    border-radius: 6rpx;
+    font-family: inherit;
+    font-size: 28rpx;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .guest-login-fabric::after {
+    inset: 3rpx 10rpx;
+    border-width: 0 1rpx;
+  }
+  .guest-login-arrow {
+    position: relative;
+    width: 24rpx;
+    height: 2rpx;
+    background: currentColor;
+  }
+  .guest-login-arrow::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 12rpx;
+    height: 12rpx;
+    border-top: 2rpx solid currentColor;
+    border-right: 2rpx solid currentColor;
+    transform: translateY(-50%) rotate(45deg);
+  }
+}
