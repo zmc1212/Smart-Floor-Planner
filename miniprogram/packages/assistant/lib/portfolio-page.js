@@ -280,7 +280,7 @@ function page(kind) {
       this.continueChat();
     },
     onShareAppMessage() { return { title: this.data.shareTitle || '设计师的设计室 · 家客来', path: this.data.sharePath || '/pages/index/index',
-      imageUrl: '/packages/assistant/assets/designer-studio-book.png' }; },
+      imageUrl: '/images/xiaok/designer-studio-book.png' }; },
   };
 }
 module.exports = { page };

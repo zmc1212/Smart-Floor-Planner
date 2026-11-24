@@ -179,7 +179,7 @@ Qwen10730原稿先称无法确认公司采用，复述有据的5–35℃/85%，�
 <!-- /xiaok-nearby-city-current -->
 
 <!-- xiaok-style-recommendations-current -->
-**小K客户服务企业（本地实现）。** 0144 从客户当前有效线索和归属锁确定服务企业。旧线索仅在能确认唯一有效企业时作为依据。有多家有效企业时请联系顾问确认。入口令牌、新建与恢复咨询、历史和作品访问均重查服务企业。未绑定客户从小K既有提示区扫描企业服务码，再走原手机号授权和建线索流程。已绑定客户扫码后回原服务咨询。作品分享通过 GET /api/miniprogram/assistant/portfolio-preview 及 X-Portfolio-Entry 请求头预览签名指定的公开版本和媒体。公开工地分享可围观，同企业已验证的原咨询才显示接续入口。设计师按客户原话在当前企业作品中匹配，无匹配时由服务端回复“当前服务企业暂无符合条件的公开设计师作品”，重进可读回。 扫码操作复用批准的 C01 提示区与获客页，分享作品沿 D-02 详情并收起联系和偏好操作，公开工地沿现有预览结构。Stable 390×844 以隔离数据验证上述状态。见[扫码及作品预览](../tmp/xiaok-service-scope-20261123/native-verification.json)和[工地预览](../tmp/xiaok-service-scope-20261123/native-public-verification.json)。
+**小K客户服务企业（本地实现）。** 0144 从客户当前有效线索和归属锁确定服务企业。旧线索仅在能确认唯一有效企业时作为依据。有多家有效企业时请联系顾问确认。入口令牌、新建与恢复咨询、历史和作品访问均重查服务企业。未绑定客户从小K既有提示区点「扫推广码」，可扫现有推荐人推广码或员工活动码，在小K对话里确认并复用原归属和建线索流程。已绑定客户扫码后回原服务咨询。作品分享通过 GET /api/miniprogram/assistant/portfolio-preview 及 X-Portfolio-Entry 请求头预览签名指定的公开版本和媒体。公开工地分享可围观，同企业已验证的原咨询才显示接续入口。设计师按客户原话在当前企业作品中匹配，无匹配时由服务端回复“当前服务企业暂无符合条件的公开设计师作品”，重进可读回。 扫码操作复用批准的 C01 提示区与获客页。Stable 390×844 核对了独立咨询页修订文案，见[扫码提示实测](../tmp/xiaok-promotion-20261124/stable-copy.json)。分享作品沿 D-02 详情并收起联系和偏好操作，公开工地沿现有预览结构。Stable 390×844 以隔离数据验证上述状态。见[扫码及作品预览](../tmp/xiaok-service-scope-20261123/native-verification.json)和[工地预览](../tmp/xiaok-service-scope-20261123/native-public-verification.json)。
 
 **V1-04按风格推荐公开设计师：有界Implemented，整版仍Limited。** C01复用原设计师/作品服务，严格过滤主/辅助风格、城市、公开版本/许可及有效作者。`recommendDesigners`现将本轮原话、最近十条本会话用户原话与紧接着的上次成功推荐查询原话核对；最新城市有歧义或否定时仍先澄清，不回退更早城市。其他咨询、没有该查询的回复或中间插话不承接偏好。私有`requestMessageIds`保留出处，不自动保存需求、建线索、联系、预约或改归属；卡片、作品及图片重进仍核当前公开权限和版本。本次批准稿让根Tab和独立聊天页共用设计师身份优先的推荐卡。卡片展示已授权头像或本地默认头像、职业及城市、擅长方向、真实封面类型和18–20px作品标题，面积单位连排，标题最多两行；「设计师主页」为主入口，「看这套作品」为次入口。先前标题修复的证据保留，完整标题在作品详情可读。工具未取得城市时，消息下方展示「允许定位并查看设计师」卡片，点击后调用原定位授权并按同一回复重读公开作品；定位失败或无匹配时展示可执行提示与「找设计师聊聊」，不再只显示文字。2026-11-18服务端修复后该卡片在LangGraph链路真正可达：此前worker不为needContext/已定位空结果写step 2000，`designerDiscovery`投影恒缺失，卡片从未渲染（回复文案却指向它）；修复在工作区，生产未部署，小程序端代码无变化。
 
@@ -1127,11 +1127,13 @@ Repository 现在会校验活动推广码/员工活动码的 active 记录哈希
 正常一致的记录继续复用，打开页面不会让有效码失效。该修复不改变扫码归因、身份、权限、路由或持久化
 结构。需要部署新 Admin 镜像并重新编译小程序；已经分发的二维码图片无法远程修改。
 
-## 小K扫码获客入口（Implemented，390×844 视觉手测待补）
+## 小K扫码获客入口（本地 Implemented）
+
+旧「免费服务码」和「小K获客码」均进入客户首页小K。旧 `packages/business/free-design-service/free-design-service` 对推广人码兼容跳转，旧员工活动码沿用原领取入口。`packages/business/acquisition-chat/acquisition-chat` 作为小K获客码及小K员工活动码的跳转入口。从小K内扫码时在当前视图继续。`entryCode`、`token` 和 `scene` 沿用原令牌格式，平台码环境设置用于生成新图。
 
 新增 `packages/business/acquisition-chat/acquisition-chat`，承接推广人服务码和员工活动码的小K获客二维码。页面从 `entryCode`、`token` 或 `scene` 还原码令牌，调用既有 `POST /api/miniprogram/codes/resolve` 校验并读取 `acquisition`：匿名模式只展示“本地合作装企”，不出现企业名/Logo；品牌模式展示企业身份。开场白和最多 3 个可点击话题来自后台「扫码获客」设置，未配置时使用匿名默认话术。
 
-客户点击“手机号授权，安排免费量房”后，页面复用既有 `POST /api/miniprogram/referrals/authorize-and-create-lead`、原幂等键、归属锁、自动派单和通知；成功后刷新客户会话并跳转 `packages/assistant/chat/chat?entryCode=...`，由入口快照绑定该企业唯一的有效线索，让小K继续基于真实线索服务。已有有效服务的客户直接回到原企业咨询。未绑定客户先授权建立服务关系，再进入小K。`promotion-service-code` 增加“免费服务码 / 小K获客码”切换，后者通过 `GET /api/miniprogram/referrer-memberships/:id/promotion-code/image?target=xiaok` 生成指向本页面的小程序码；分享路径同步切换。没有新增线索、归属、派单或提成旁路，也未修改既有 `free-design-service` 领取页。
+隔离开发预览在 Android 真机核实微信登录、微云（1454）单次绑定、两次扫对照企业新码，以及原对话、档案和推荐读回。两家都有已发布的同风格测试作品，`qwen3.8-flash` 的推荐只返回获权的微云作品。真机首个任务遇到测试进程领任务和配置故障，点「重新回答」后沿用原消息成功。完整 DevTools 预览通过 2MB 分包限制，会客室图和分享封面原样移到 `images/xiaok/`，底栏复用原图。[隔离回执](../tmp/xiaok-promotion-entry-20261124/phone-acceptance.json)。
 
 ## 平台企业开户 API
 

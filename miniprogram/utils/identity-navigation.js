@@ -85,7 +85,8 @@ const ROUTE_CAPABILITIES = Object.freeze({
 const SCAN_LANDING_ROUTES = Object.freeze([
   '/packages/business/enterprise-register/enterprise-register',
   '/packages/business/onboarding/onboarding',
-  '/packages/business/free-design-service/free-design-service'
+  '/packages/business/free-design-service/free-design-service',
+  '/packages/business/acquisition-chat/acquisition-chat'
 ]);
 const STICKY_SCAN_REOPEN_SCENES = Object.freeze([
   1001,

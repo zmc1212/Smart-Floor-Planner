@@ -1,5 +1,6 @@
 <template name="portfolio-designer-cards">
-  <view class="designer-cards">
+  <view class="designer-cards promotion-paper">
+    <view class="answer-label"><text class="fabric-label">设计师作品</text></view>
     <view wx:for="{{recommendation.items}}" wx:for-item="card" wx:key="authorId" class="designer-card">
       <button class="designer-card-head" data-id="{{card.authorId}}" data-work="{{card.work.id}}"
         bindtap="openCardDesigner" disabled="{{blocked}}" aria-label="{{card.authorName}}的设计师主页">
@@ -13,9 +14,12 @@
         </view>
       </button>
       <view class="designer-card-work" data-work="{{card.work.id}}" data-version="{{card.work.versionId}}" bindtap="openCardWork">
-        <view class="designer-card-cover">
-          <image wx:if="{{images['i' + card.work.coverAssetId]}}" src="{{images['i' + card.work.coverAssetId]}}" mode="aspectFill" />
-          <text wx:if="{{card.work.coverLabel}}" class="designer-card-cover-label">{{card.work.coverLabel}}</text>
+        <view class="designer-card-photo">
+          <view class="designer-card-cover">
+            <image wx:if="{{images['i' + card.work.coverAssetId]}}" src="{{images['i' + card.work.coverAssetId]}}" mode="aspectFill" />
+            <text wx:if="{{card.work.coverLabel}}" class="designer-card-cover-label">{{card.work.coverLabel}}</text>
+          </view>
+          <view class="welcome-tape designer-card-tape" aria-hidden="true"></view>
         </view>
         <view class="designer-card-copy">
           <text class="designer-card-work-title"><text wx:for="{{card.work.titleParts}}" wx:for-item="part" wx:key="id" class="{{part.atomic ? 'work-title-atomic' : ''}}">{{part.text}}</text></text>

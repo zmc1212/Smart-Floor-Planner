@@ -5,6 +5,7 @@ const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { openAIDesignEntry } = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign } = require('../../utils/aiDesignAccess.js');
 const { roleForIdentity, getRoleLanding } = require('../../utils/identity-navigation.js');
+const { serviceEntryCode } = require('../../utils/service-entry');
 
 const QUICK_TOOLS = [
   {
@@ -182,9 +183,11 @@ Page({
   },
 
   onLoad: function (options) {
-    if (options && options.customerTab === 'service') getApp().globalData.customerTab = 'service';
+    const promotionCode = serviceEntryCode(options?.promotionCode);
+    if (promotionCode) getApp().globalData.customerTab = 'xiaok';
+    else if (options?.customerTab === 'service') getApp().globalData.customerTab = 'service';
     const global = getApp().globalData;
-    this.setData({ customerTab: global.customerTab || 'xiaok', siteWorkbenchTab: global.siteWorkbenchTab || 'workbench' });
+    this.setData({ customerTab: global.customerTab || 'xiaok', promotionCode, siteWorkbenchTab: global.siteWorkbenchTab || 'workbench' });
     if (!this.isLoggedIn()) {
       this.showGuestServiceHome();
       return;
@@ -227,6 +230,8 @@ Page({
       this.fetchHomeDashboard();
     });
   },
+
+  onPromotionEntryConsumed() { this.setData({ promotionCode: '' }); },
 
   onShow: async function () {
     if (!this.isLoggedIn()) {

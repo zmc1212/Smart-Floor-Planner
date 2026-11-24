@@ -33,7 +33,7 @@ test('source package keeps the Mini Program runtime directories', () => {
   }
 });
 
-test('source package excludes development configuration and the superseded encoded font copy', () => {
+test('source package excludes development configuration and unused legacy assets', () => {
   const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
   const ignoredFiles = new Set(
     projectConfig.packOptions.ignore
@@ -47,6 +47,7 @@ test('source package excludes development configuration and the superseded encod
     'project.config.json',
     'project.private.config.json',
     'packages/assistant/assets/studio-serif-data.js',
+    'packages/assistant/assets/customer-handoff.png',
   ]));
 });
 

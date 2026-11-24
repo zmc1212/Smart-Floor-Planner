@@ -1,6 +1,6 @@
 <!-- Confirmed source: phase-one PPT slide 6; summary/edit/confirm subset. -->
 <view class="requirements-page">
-  <image class="room-scene" src="../assets/xiaok-chat-room.png" mode="aspectFit" aria-hidden="true" />
+  <image class="room-scene" src="/images/xiaok/xiaok-chat-room.png" mode="aspectFit" aria-hidden="true" />
   <view class="summary-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
     <view class="nav-lane" style="min-height: {{navigationHeight}}px;">
       <button class="back-button" bindtap="back" aria-label="返回"><image src="../assets/arrow-left.png" /></button>

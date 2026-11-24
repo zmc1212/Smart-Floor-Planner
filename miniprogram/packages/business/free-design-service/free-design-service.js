@@ -1,5 +1,6 @@
 const api = require('../../../utils/api.js');
 const { leaveScanLanding } = require('../../../utils/identity-navigation.js');
+const { serviceEntryCode, openPromotionChat } = require('../../../utils/service-entry');
 const {
   customerProjectFromApiResponse,
   hasDesignerContact,
@@ -247,15 +248,14 @@ Page({
   },
 
   onLoad(options) {
-    refreshWechatLoginCode();
     const promotionToken = safeToken(options.token || options.scene);
     this.setData({ ...navigationMetrics(), promotionToken });
     this.idempotencyKey = `claim-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-    this.resolvePromotionCode();
+    return this.resolvePromotionCode();
   },
 
   onShow() {
-    refreshWechatLoginCode();
+    if (!this.data.promotionToken.startsWith('rp_')) refreshWechatLoginCode();
   },
 
   async resolvePromotionCode() {
@@ -270,6 +270,9 @@ Page({
     }
     this.setData({ pageState: 'resolving', navTitle: navTitleFor('resolving'), errorMessage: '' });
     try {
+      if (serviceEntryCode(token) && token.startsWith('rp_')) return this.forwardPromotion(token);
+      // Development QR scenes omit the prefix. Resolve their type before
+      // forwarding referrers so the retained old employee activity flow stays usable.
       const response = await api.request('/miniprogram/codes/resolve', 'POST', {
         token,
         sessionKey: this.idempotencyKey,
@@ -278,6 +281,7 @@ Page({
       if (!response.data || (response.data.kind !== 'referral' && response.data.kind !== 'staff_activity')) {
         throw new Error('服务码类型无效');
       }
+      if (response.data.kind === 'referral' && serviceEntryCode(token)) return this.forwardPromotion(token);
       if (response.data.existingAttribution) {
         this.setData({
           pageState: 'existing',
@@ -307,6 +311,12 @@ Page({
         errorMessage: resolveErrorMessage(error)
       });
     }
+  },
+
+  forwardPromotion(token) {
+    return openPromotionChat(token, () => this.setData({
+      pageState: 'error', navTitle: navTitleFor('error'), errorMessage: '暂时无法打开小K，请重新确认。'
+    }));
   },
 
   onSkipAuth() {

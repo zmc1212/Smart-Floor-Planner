@@ -1,7 +1,7 @@
 const { ChatController, initial, appendPatch } = require('../lib/chat');
 const chatResume = require('../lib/chat-resume');
 const { goToLogin } = require('../../../utils/session');
-const { resolveServiceEntryUrl } = require('../../../utils/service-entry');
+const { resolveServiceEntryUrl, serviceEntryCode } = require('../../../utils/service-entry');
 const nativePreview = require('../../../utils/native-preview');
 const { MediaController } = require('../lib/media');
 const { ReferenceImage } = require('../lib/reference-image');
@@ -28,6 +28,7 @@ const { ownerSiteContext } = require('../lib/owner-site-context');
 const { measureIntent, measureInvite } = require('../lib/measure-card');
 const { initialReplyActions, replyActionsMethods } = require('./reply-actions');
 const { initialMessageActions, messageActionsMethods } = require('./message-actions');
+const { promotionMethods } = require('./promotion-entry');
 const { ReplyScroll } = require('./reply-scroll');
 const api = require('../../../utils/api');
 
@@ -56,6 +57,7 @@ module.exports = () => ({
 	...reportQuestionMethods,
 	...replyActionsMethods,
 	...messageActionsMethods,
+	...promotionMethods,
 	data: {
 		...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
 		...initialOwnerReminder(),
@@ -81,6 +83,7 @@ module.exports = () => ({
 		portfolioReplyId: '', portfolioItems: [], portfolioImages: {}, portfolioError: '', portfolioNotice: '', portfolioLoading: false,
 		latestDesignerMessageId: '',
 		designerCardImages: {}, designerCardPortraits: {}, designerCardError: '',
+		promotionEntry: null, promotionResumedLeadId: '', promotionSubmitting: false,
 	},
 
 	onLoad(options) {
@@ -89,6 +92,8 @@ module.exports = () => ({
 		this._options = options || {};
 		if (resumeConversationId && !this._options.conversationId) this._options.conversationId = resumeConversationId;
 		this._alive = true;
+		const promotionCode = serviceEntryCode(this._options.promotionCode);
+		if (promotionCode) this.preparePromotion(promotionCode);
 		this._replyScroll = new ReplyScroll(this);
 		this.speechController = new SpeechController({ identity: sessionToken, emit: patch => { if (this._alive && this._shown) this.setData(patch); },
 			getDraft: () => this.data.draft || '', setDraft: text => { this.clearStageInput(); this.controller.input(text); },
@@ -115,6 +120,7 @@ module.exports = () => ({
 					this.speechController.hide();
 				}
 				if (patch.fatal || patch.needsLogin || patch.conversation === null || patch.conversation?.id && patch.conversation.id !== this.data.conversation?.id) {
+					if (patch.fatal || patch.needsLogin) patch.promotionResumedLeadId = '';
 					this.closeMessageMenu();
 					if (this.data.sheet === 'messageShare') this.closeSheet();
 					patch.expandedAnswerProcessId = '';
@@ -240,6 +246,7 @@ module.exports = () => ({
 		if (nativePreview.shownAfterPreview(this)) return;
 		const app = getApp();
 		if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
+		if (!this._alive || !this._shown || await this.showPromotionEntry()) return;
 		const currentIdentity = app.globalData.bootstrap?.current?.context || app.globalData.userInfo || {};
 		const selectedMode = app.globalData.bootstrap?.current?.mode || currentIdentity.mode;
 		if (this._ownerReport) {
@@ -262,6 +269,12 @@ module.exports = () => ({
 			const staffProjectId = String(this._options.staffProjectId || '');
 			await this.followups.show({ autoOpen: true, projectId: /^[1-9]\d*$/.test(staffProjectId) ? staffProjectId : '' }); return;
 		}
+		return this.showConsultation();
+	},
+
+	async showConsultation() {
+		const { globalData } = getApp();
+		const selectedMode = globalData.bootstrap?.current?.mode || globalData.userInfo?.mode;
 		if (this.media && this.media.session !== sessionToken()) {
 			this.media.dispose(); this.media = null;
 			this.setData({ mediaItems: [], mediaPaths: {}, mediaPending: false, mediaBusy: false, mediaError: '' });
@@ -553,11 +566,12 @@ module.exports = () => ({
 	},
 	login() { goToLogin(); },
 	scanServiceCode() {
-		if (!this.data.needsServiceCode) return;
+		if (!this.data.needsServiceCode && !this.data.promotionEntry?.rescan) return;
 		wx.scanCode({ onlyFromCamera: false, success: result => {
 			const url = resolveServiceEntryUrl(result, { assistant: true });
-			if (url) wx.navigateTo({ url });
-			else wx.showToast({ title: '请扫描装修企业的服务码', icon: 'none' });
+			const code = serviceEntryCode(url.split('?entryCode=')[1]);
+			if (code) void this.beginPromotion(code);
+			else wx.showToast({ title: '请扫描装修企业的推广码', icon: 'none' });
 		} });
 	},
 	back() {

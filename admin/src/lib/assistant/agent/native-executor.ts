@@ -1347,11 +1347,20 @@ export async function processNativeAgentAnswer(lease: Lease) {
       nativeFinalization: streamReply,
       ports: { authorize: guard, model, tool: toolPort, validateTool,
         canFinalizeContext: () => reviewedOriginals && !specialist?.companyPractice,
-        resolveToolReply: delegationTool ? () => withTenantTransaction(lease.enterpriseId, async tx => {
-          const { conversation } = await runContext(tx, lease);
-          return (await longTermDelegationReceipt(tx, lease.actor, conversation, lease.runId, { standalone: true }))?.text ?? null;
-        }) : undefined,
+        resolveToolReply: async () => {
+          if (delegationTool) {
+            const delegated = await withTenantTransaction(lease.enterpriseId, async tx => {
+              const { conversation } = await runContext(tx, lease);
+              return longTermDelegationReceipt(tx, lease.actor, conversation, lease.runId, { standalone: true });
+            });
+            if (delegated?.text) return delegated.text;
+          }
+          // The catalog receipt already owns the final designer copy and IDs.
+          // Reuse the graph's durable tool reply before a prose-only model turn.
+          return customerConsultation ? designers.text() : null;
+        },
         resolveFinal: async (text, state) => {
+          if (state.finalFromTools) return text;
           if (asksForDesigners && !designers.text()) await designers();
           const designerText = designers.text();
           if (designerText) return designerText;
@@ -1417,7 +1426,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         }) },
     });
     await guard();
-    if (result.finalFromTools) {
+    if (result.finalFromTools && result.output?.text !== designers.text()) {
       if (!await completeDelegationReply(lease, { standalone: true })) fail('context_changed');
       return;
     }

@@ -1,0 +1,53 @@
+.notebook-chat {
+  .promotion-entry-room { margin: 26rpx 27rpx 40rpx 62rpx; }
+  .promotion-paper {
+    position: relative;
+    background-color: #fbf7ed;
+    background-image: repeating-linear-gradient(123deg, #99886005 0 1rpx, transparent 1rpx 7rpx), radial-gradient(ellipse at 60% 24%, #fffdf8, transparent 78%);
+    border: 1rpx solid #fffdf6;
+    border-radius: 3rpx;
+    box-shadow: 0 6rpx 13rpx #8d78452b;
+  }
+  .promotion-paper::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: -4rpx; height: 7rpx;
+    background: #fbf7ed; pointer-events: none;
+    clip-path: polygon(0 0, 100% 0, 100% 47%, 97% 83%, 94% 54%, 91% 100%, 86% 55%, 82% 91%, 78% 52%, 74% 94%, 69% 66%, 64% 100%, 59% 61%, 54% 92%, 50% 52%, 46% 93%, 41% 61%, 36% 100%, 31% 56%, 27% 87%, 23% 49%, 18% 96%, 13% 66%, 9% 100%, 5% 62%, 0 85%);
+  }
+  .promotion-entry-paper { padding: 99rpx 46rpx 35rpx; }
+  .promotion-entry-label { position: absolute; top: 7rpx; left: 13rpx; transform: rotate(-5deg); font-size: 32rpx; }
+  .promotion-entry-tape { width: 118rpx; height: 49rpx; top: -7rpx; right: -4rpx; }
+  .promotion-entry-title {
+    display: block;
+    font: 900 56rpx/1.28 'Chat Serif','Songti SC',SimSun,serif;
+    text-align: center;
+  }
+  .promotion-entry-brand { display: flex; align-items: center; justify-content: center; gap: 8rpx; margin-top: 12rpx; color: #527062; font-size: 24rpx; }
+  .promotion-entry-brand image { width: 36rpx; height: 36rpx; flex: none; }
+  .promotion-entry-copy { display: block; margin: 36rpx 0 38rpx; font-size: 29rpx; line-height: 1.6; color: #252c2d; }
+  .promotion-entry-primary, .promotion-entry-secondary {
+    display: flex; align-items: center; justify-content: center;
+    margin: 0; padding: 0 14rpx; width: 100%; min-height: 44px; line-height: 1.35;
+    font-size: 28rpx; color: #294d3e; background: transparent;
+  }
+  .promotion-entry-primary {
+    min-height: 94rpx; color: #fffdf0; border-radius: 10rpx; font-weight: 700;
+    background: repeating-linear-gradient(13deg, #ffffff0a 0 1rpx, transparent 1rpx 6rpx), #145440;
+  }
+  .promotion-entry-primary[disabled] { color: #f7f5ed; background: #6c8a7b; }
+  .promotion-entry-secondary { margin: 12rpx 0 0; }
+  .promotion-entry-secondary text, .promotion-resume-link text { padding: 3rpx 4rpx; border-bottom: 2rpx solid #9ca98b; }
+  .promotion-resume {
+    position: relative; display: flex; align-items: center; gap: 10rpx;
+    flex: none; margin: 12rpx 27rpx 6rpx 62rpx; padding: 0 15rpx;
+    border: 1rpx solid #d5dac5; border-radius: 4rpx;
+    background: repeating-linear-gradient(123deg, #8d987007 0 1rpx, transparent 1rpx 8rpx), #e6e9d8;
+    box-shadow: 0 4rpx 8rpx #8d784528; color: #144333; font-size: 26rpx;
+  }
+  .promotion-resume::after {
+    content: ''; position: absolute; top: 0; right: 0; width: 22rpx; height: 22rpx;
+    background: #d1d3b9; clip-path: polygon(0 0, 100% 100%, 0 100%); pointer-events: none;
+  }
+  .promotion-resume-mark { flex: none; font-size: 33rpx; }
+  .promotion-resume-link { flex: none; margin: 0 0 0 auto; padding: 0 10rpx; min-height: 44px; color: inherit; background: transparent; font-size: 25rpx; }
+  &.promotion-entry-active .composer { opacity: .5; }
+}

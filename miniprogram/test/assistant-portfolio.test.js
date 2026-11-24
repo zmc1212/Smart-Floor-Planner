@@ -38,7 +38,7 @@ test('studio uses real identity and only its published works; forwarding never e
   const { controller: c } = fixture(); await c.show({ conversationId: '11', authorId: '14' });
   assert.equal(c.state.designer.name, '真实设计师'); assert.equal(c.state.works.length, 1);
   const shared = page('designer').onShareAppMessage.call({ data: c.state });
-  assert.equal(shared.path, '/packages/assistant/designer/designer?portfolioEntry=signed'); assert.ok(!JSON.stringify(shared).includes('11')); assert.equal(shared.imageUrl, '/packages/assistant/assets/designer-studio-book.png');
+  assert.equal(shared.path, '/packages/assistant/designer/designer?portfolioEntry=signed'); assert.ok(!JSON.stringify(shared).includes('11')); assert.equal(shared.imageUrl, '/images/xiaok/designer-studio-book.png');
   assert.deepEqual(entryInput({ portfolioEntry: 'signed' }), { portfolioEntry: 'signed' });
   assert.throws(() => entryInput({ portfolioEntry: 'signed', conversationId: '11' }));
 });

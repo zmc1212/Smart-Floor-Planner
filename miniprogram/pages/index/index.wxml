@@ -2,7 +2,7 @@
 
 <view class="home-page {{roleWorkbenchRole === 'customer' && customerTab === 'xiaok' ? 'xiaok-home' : (roleWorkbenchRole === 'designer' || roleWorkbenchRole === 'construction_staff' || roleWorkbenchRole === 'enterprise_admin') ? 'site-workbench-home' : 'sfp-tab-page'}}">
   <block wx:if="{{roleWorkbenchRole === 'customer'}}">
-    <view hidden="{{customerTab !== 'xiaok'}}"><xiaok-chat id="xiaok-chat" active="{{customerTab === 'xiaok'}}" /></view>
+    <view hidden="{{customerTab !== 'xiaok'}}"><xiaok-chat id="xiaok-chat" active="{{customerTab === 'xiaok'}}" promotion-code="{{promotionCode}}" bindpromotionentryconsumed="onPromotionEntryConsumed" /></view>
     <owner-site-home id="owner-site-home" wx:if="{{customerTab === 'service'}}" />
     <customer-nav id="customer-nav" />
   </block>

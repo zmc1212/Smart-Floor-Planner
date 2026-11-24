@@ -11,12 +11,13 @@ Component({
   properties: {
     active: { type: Boolean, value: false, observer() { this.syncVisibility(); } },
     staffTab: { type: Boolean, value: false },
+    promotionCode: { type: String, value: '' },
   },
   data: { ...definition.data, embedded: true },
   lifetimes: {
     attached() {
       this._hostVisible = true;
-      definition.onLoad.call(this, {});
+      definition.onLoad.call(this, this.data.promotionCode ? { promotionCode: this.data.promotionCode } : {});
       this._attached = true;
       this.syncVisibility();
     },

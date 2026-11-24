@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, safeText } from '../contracts';
+import { STYLE_OPTIONS } from '@/lib/portfolio/options';
 
 const browsing = /看看|看下|看一下|看一看|(?:想(?:先|再)?|能不能|能否|可以|可不可以|能|给我|带我|先|只)(?:去)?看(?:看|下|一下|一看)?|参观|围观|浏览|观摩|了解一下|(?:想|帮我)(?:先)?找|(?:^|请|帮我|给我|想|可以|能否|能不能)推荐/;
 const site = /工地|施工现场|施工实况|施工直播|在建项目/;
@@ -20,6 +21,9 @@ export function discoveryIntent(text: string) {
     const clause = segment.trim();
     if (/不想|不要|不用|不需要|先不|别(?:看|推荐)|假如|假设|如果/.test(clause)) continue;
     if (/怎么|怎样|如何|为什么|要不要|该不该|多少钱|什么标准/.test(clause)) continue;
+    // A catalog style plus the object is a search fragment. It should not be
+    // recorded as the customer's statement of preference by guided capture.
+    if (STYLE_OPTIONS.some(style => clause === style + '的设计师')) works = true;
     if (nearbyListing.test(clause) && !ownSite.test(clause) && !siteInformation.test(clause)) sites = true;
     const action = browsing.exec(clause) || /有没有|有没|有哪些|有哪几位|哪里有|哪儿有/.exec(clause);
     if (!action) continue;

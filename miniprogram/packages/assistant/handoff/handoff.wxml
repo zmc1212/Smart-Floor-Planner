@@ -1,6 +1,6 @@
 <!-- S01 calibrated standalone sources: local tabs never change the global TabBar. -->
 <view class="handoff-page {{detail.handoff.state === 'active' ? 'detail-workspace' : ''}} {{detail.handoff.state === 'active' && tab === 'chat' ? 'chat-workspace' : ''}}" style="{{detail.handoff.state === 'active' && tab === 'chat' ? 'height:' + (viewportHeight - keyboardHeight) + 'px;' : ''}}">
-  <image wx:if="{{!detail || detail.handoff.state === 'waiting'}}" class="room-scene" src="../assets/xiaok-chat-room.png" mode="aspectFit" aria-hidden="true" />
+  <image wx:if="{{!detail || detail.handoff.state === 'waiting'}}" class="room-scene" src="/images/xiaok/xiaok-chat-room.png" mode="aspectFit" aria-hidden="true" />
   <view class="handoff-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
     <view class="nav-lane" style="min-height: {{navigationHeight}}px;">
       <block wx:if="{{!detail || detail.handoff.state === 'waiting'}}">

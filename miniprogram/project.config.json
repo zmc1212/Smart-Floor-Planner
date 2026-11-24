@@ -45,6 +45,10 @@
       {
         "value": "packages/assistant/assets/studio-serif-data.js",
         "type": "file"
+      },
+      {
+        "value": "packages/assistant/assets/customer-handoff.png",
+        "type": "file"
       }
     ],
     "include": [
