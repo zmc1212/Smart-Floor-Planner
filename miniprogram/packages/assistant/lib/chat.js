@@ -1,5 +1,5 @@
 const { AssistantClient, entryInput, errorCopy, uncertain, messagesForView: projectMessages } = require('./client');
-const { markdownForBlock, copyableReplyText } = require('./message-markdown');
+const { markdownForBlock, revealMarkdown, copyableReplyText } = require('./message-markdown');
 const { LiveAnswer } = require('./answer-stream');
 
 function messagesForView(items) {
@@ -88,7 +88,7 @@ const initial = () => ({
   conversation: null, readOnly: false, messages: [], messageCursor: null, run: null, sending: false,
   history: [], historyCursor: null, historyLoading: false, historyError: '',
   draft: '', messageQuote: null, pendingText: '', pendingSend: false, pendingAction: '', handoffBusy: false,
-  runLabel: '', liveAnswerText: '', revealingReplyId: '', retryable: false, generating: false, uncertainRun: false,
+  runLabel: '', liveAnswerText: '', liveAnswerMarkdown: null, revealingReplyId: '', retryable: false, generating: false, uncertainRun: false,
   citation: null, citationLoading: false, citationError: '',
   contactLoading: false,
 });
@@ -103,8 +103,16 @@ class ChatController {
     this.resumeConversationId = String(resumeConversationId || ''); this.onResumeInvalid = onResumeInvalid;
     this.state = initial(); this.epoch = 0; this.visible = false; this.hidden = false; this.ready = false;
     this.revealReportReply = revealReportReply;
-    this.liveAnswer = new LiveAnswer((text, messageId) => {
-      if (!text || this.visible && this.session === this.identity()) this.set({ liveAnswerText: text, revealingReplyId: messageId });
+    let previewBlock = null;
+    this.liveAnswer = new LiveAnswer((text, messageId, target) => {
+      if (text && (!this.visible || this.session !== this.identity())) return;
+      if (!text) previewBlock = null;
+      else if (previewBlock?.text !== target) previewBlock = { text: target };
+      this.set({
+        liveAnswerText: text,
+        liveAnswerMarkdown: previewBlock ? revealMarkdown(previewBlock, text.length) : null,
+        revealingReplyId: messageId,
+      });
     });
     this.latestSeq = ''; this.seqConversationId = ''; this.rawMessages = null; this.lastFullSyncAt = 0; this.seqSupported = false;
   }

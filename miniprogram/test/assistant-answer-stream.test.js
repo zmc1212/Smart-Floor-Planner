@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { LiveAnswer } = require('../packages/assistant/lib/answer-stream');
 const { ChatController } = require('../packages/assistant/lib/chat');
+const { markdownForBlock } = require('../packages/assistant/lib/message-markdown');
 
 test('growing text appears during the run, and stopping aborts the connection and rejects late chunks', () => {
   let receive, aborted = 0;
@@ -29,6 +30,39 @@ test('run polling feeds the same live bubble when the host cannot consume respon
   live.stop();
 });
 
+test('verified reply prefixes type headings, list items and emphasis without showing Markdown markers', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const chat = new ChatController({ emit() {}, client: {}, identity: () => 'owner' });
+  t.after(() => chat.dispose());
+  chat.visible = true;
+  chat.session = 'owner';
+  chat.liveAnswer.listen = () => null;
+  const preview = text => chat.liveAnswer.sync({
+    id: '5', status: 'running', answerStreaming: true, answerPreview: { text },
+  });
+  const drain = () => {
+    for (let tick = 0; tick < 100 && chat.liveAnswer.timer; tick++) t.mock.timers.tick(24);
+  };
+  const heading = '## 铺贴前';
+  const reply = heading + '\n\n1. **纹理方向**先试排。\n   - 门口留样\n2. 约师傅一起确认。';
+  preview(heading);
+  assert.equal(chat.state.liveAnswerText, '##');
+  const first = chat.state.liveAnswerMarkdown[0].nodes[0];
+  assert.equal(first.name, 'h2');
+  assert.equal(first.children[0].text, '铺贴');
+  drain();
+  preview(reply);
+  drain();
+  assert.deepEqual(chat.state.liveAnswerMarkdown, markdownForBlock({ text: reply }));
+  const list = chat.state.liveAnswerMarkdown[0].nodes[1];
+  assert.equal(list.name, 'ol');
+  assert.equal(list.children[0].children[0].name, 'strong');
+  assert.equal(list.children[0].children.at(-1).name, 'ul');
+  preview('');
+  assert.equal(chat.state.liveAnswerText, '');
+  assert.equal(chat.state.liveAnswerMarkdown, null);
+});
+
 test('an observed report run types the saved authorized answer once and skips withdrawn replies', t => {
   const chat = new ChatController({ emit() {}, client: {}, identity: () => 'owner' });
   t.after(() => chat.liveAnswer.stop());
@@ -48,6 +82,7 @@ test('an observed report run types the saved authorized answer once and skips wi
   assert.equal(chat.state.revealingReplyId, '8');
   assert.ok(reply.content.blocks[0].text.startsWith(chat.state.liveAnswerText));
   assert.ok(chat.state.liveAnswerText.length < reply.content.blocks[0].text.length);
+  assert.equal(chat.state.liveAnswerMarkdown, null);
   chat.finishLiveReply(run, window({ ...reply, available: false }), conversation);
   assert.equal(chat.state.revealingReplyId, '');
   assert.equal(chat.state.liveAnswerText, '');

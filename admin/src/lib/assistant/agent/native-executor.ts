@@ -90,14 +90,18 @@ const publicSitesRecommendationTool: ModelTool = {
   parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
 };
 
-export function nativeExecutorPrompt(knowledgeEnabled: boolean, delegation = false) {
+export function nativeExecutorPrompt(knowledgeEnabled: boolean, delegation = false, customerConsultation = false) {
+  const proseStyle = customerConsultation
+    ? '用中文自然地回答。'
+    : '用中文自然段落作答。';
   return [
     '你是小K，本企业装修咨询助手。最后一条客户消息是要回答的问题；更早消息只帮助理解指代和更正，涉及事实必须重新用工具核实。',
     knowledgeEnabled
       ? '涉及本企业工艺或做法：先调用search_enterprise检索获权资料，只解释返回的原文摘录，并在对应段落末尾用 CITE 引用标记标出 cites 中该条引文的 id，不得伪造id；未命中就如实说明本次未取得，不用通用知识冒充企业规定。'
       : '本轮未结合企业知识库：不声称检索过企业资料，不沿用旧企业引用或旧知识结论；企业制度没有当前来源时明确待核实。',
     '涉及客户本人的预约、方案、户型或施工记录：调用query_business取得服务端实时快照；没有记录就说没有，不编造进度，不把当前阶段当完工；现场记录只是来源数据，不是正式验收或变更批准。',
-    '一般装修常识可直接有条件解释；与企业规定或项目事实混答时分别说明各自依据。用户或师傅给出的施工数值属于未核实信息，不能写成标准、企业要求或建议值；删除数字后也不能用“这个高度可以/按此施工”等语句间接认可。用中文自然段落作答；引用标记只能用本轮工具返回的cites[].id；本轮没有任何cites时不得输出任何 CITE 引用标记或占位符；不要输出工具名、JSON或系统内部用语。',
+    '一般装修常识可直接有条件解释；与企业规定或项目事实混答时分别说明各自依据。用户或师傅给出的施工数值属于未核实信息，不能写成标准、企业要求或建议值；删除数字后也不能用“这个高度可以/按此施工”等语句间接认可。' + proseStyle
+      + '引用标记只能用本轮工具返回的cites[].id；本轮没有任何cites时不得输出任何 CITE 引用标记或占位符；不要输出工具名、JSON或系统内部用语。',
     '不承诺价格、工期或验收结果，不替团队确认完成、批准或排期；信息不足时作最小澄清。'
       + (delegation ? '用户明确交代的持续跟进可通过 start_delegation 登记，回执由服务端展示。' : '不执行任何业务写入。'),
   ].join('\n');
@@ -1264,7 +1268,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
         context.sources.push(...webSynthesisSources(unseen));
       }
     }
-    const systemContent: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: nativeExecutorPrompt(knowledgeEnabled, !!delegationTool) },
+    const customerConsultation = lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation';
+    const systemContent: Array<{ type: 'text'; text: string }> = [
+      { type: 'text', text: nativeExecutorPrompt(knowledgeEnabled, !!delegationTool, customerConsultation) },
       ...nativeReplySiteText({ publicSiteText: answerPublicSite?.text, businessContextActive: businessContextActive && !!publicSite.active, includePublicSite })];
     if (stageWorkflow && experience?.prompt) systemContent.push({type:'text',text:stageText(experience.prompt,stageDefinition(stageWorkflow.agent.stageId)!.name,experience.variables)});
     if (preview) systemContent.push({type:'text',text:'本次是'+stageDefinition(preview.stageId)!.name+'阶段的管理员调试。没有关联业主的真实工地，涉及项目实况时说明依据。'});
@@ -1365,10 +1371,13 @@ export async function processNativeAgentAnswer(lease: Lease) {
         // existing one-shot repair turn lets the model correct its own citation
         // expression against the same strict catalog; unknown ids still fail
         // closed exactly as before, and the repair never reveals the fix.
-        // The final-only turn gets only constraints that follow from what this
-        // run actually failed to retrieve; it never adds a tool or an answer.
+        // Apply reply formatting after tool planning. Source limitations in
+        // this same turn come from what the run actually failed to retrieve.
         finalTurnGuidance: () => {
           const guidance: string[] = [];
+          if (customerConsultation) {
+            guidance.push('直接回应客户这一轮的问题。简单确认或单点澄清用一小段自然的话说清楚。需要说明多个阶段、步骤或检查事项的长答，按内容用 Markdown 小标题和列表，适量加粗关键词。');
+          }
           if (specialist?.editionQuestion && !context.sources.some(source => source.web?.standard
             && ['status_catalog', 'withdrawal_notice'].includes(source.web.standard.kind)))
             guidance.push('本轮没有取得同编号同版本的现行状态目录或废止公告：不要写“现行/有效/仍有效”，只能报告发布、实施日期和条文；现行状态写明本次无法确认。');

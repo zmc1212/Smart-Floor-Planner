@@ -63,7 +63,7 @@ class LiveAnswer {
     this.finalId = messageId;
     this.receive(text);
     if (this.text === this.target) this.stop();
-    else this.emit(this.text, messageId);
+    else this.emit(this.text, messageId, this.target);
   }
 
   receive(value) {
@@ -83,7 +83,7 @@ class LiveAnswer {
   }
 
   show(text) {
-    if (this.text !== text) { this.text = text; this.emit(text, this.finalId || ''); }
+    if (this.text !== text) { this.text = text; this.emit(text, this.finalId || '', this.target); }
   }
 
   disconnect() {

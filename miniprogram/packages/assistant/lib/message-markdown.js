@@ -112,6 +112,37 @@ function markdownForBlock(block) {
   return sections;
 }
 
+// Parse the whole authorized prefix before revealing any of its text. This
+// lets an opening heading or emphasis appear without flashing its delimiters.
+function revealMarkdown(block, remaining) {
+  const sections = markdownForBlock(block);
+  if (!sections) return null;
+
+  function revealNodes(nodes) {
+    const visible = [];
+    for (const node of nodes) {
+      if (remaining <= 0) break;
+      if (node.type === 'text') {
+        const end = node.text.codePointAt(remaining - 1) > 0xffff ? remaining - 1 : remaining;
+        const text = node.text.slice(0, end);
+        if (text) visible.push(text === node.text ? node : textNode(text));
+        remaining -= node.text.length;
+      } else if (node.children.length) {
+        const children = revealNodes(node.children);
+        if (children.length) visible.push({ ...node, children });
+      } else {
+        visible.push(node);
+      }
+    }
+    return visible;
+  }
+
+  return sections.flatMap(section => {
+    const nodes = revealNodes(section.nodes);
+    return nodes.length ? [{ ...section, nodes }] : [];
+  });
+}
+
 const paragraphTags = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'table']);
 
 function copyNode(node) {
@@ -137,4 +168,4 @@ function copyableReplyText(message) {
   }).filter(Boolean).join('\n\n');
 }
 
-module.exports = { markdownForBlock, copyableReplyText };
+module.exports = { markdownForBlock, revealMarkdown, copyableReplyText };
