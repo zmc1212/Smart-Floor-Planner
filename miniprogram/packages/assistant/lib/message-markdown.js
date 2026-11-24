@@ -9,6 +9,7 @@ const containerTags = new Set([
 const maxAnswerChars = 16000;
 const maxTokens = 512;
 const renderedBlocks = new WeakMap();
+const sublistMarkerClass = 'md-sublist-marker';
 
 function element(name, children = [], attrs = {}) {
   return { name, attrs: { class: 'md-' + name, ...attrs }, children };
@@ -86,6 +87,27 @@ function sectionsForView(nodes) {
   return sections;
 }
 
+function markNestedLists(nodes, insideItem = false) {
+  for (const node of nodes) {
+    if (!node.children) continue;
+    if (insideItem && node.name === 'ul') {
+      // Native rich-text keeps its circular marker when the WXSS changes it.
+      // Supply the marker on the trusted nodes and keep the list structure.
+      const hasSiblings = node.children.length > 1;
+      node.attrs.style = 'padding-left: ' + (hasSiblings ? '1.2em' : '0');
+      for (const item of node.children) {
+        item.attrs.style = 'display: block; list-style-type: none; position: relative';
+        if (hasSiblings) {
+          item.children.unshift(element('span', [textNode('–')], {
+            class: sublistMarkerClass, style: 'position: absolute; top: 0; left: -1em',
+          }));
+        }
+      }
+    }
+    markNestedLists(node.children, insideItem || node.name === 'li');
+  }
+}
+
 function render(text) {
   if (typeof text !== 'string' || !text.trim() || text.length > maxAnswerChars) return null;
   const tokens = parser.parse(text, {});
@@ -93,7 +115,9 @@ function render(text) {
   if (tokens.length === 3 && tokens[0].type === 'paragraph_open'
     && inline?.length === 1 && inline[0].type === 'text' && inline[0].content === text) return null;
   const nodes = [];
-  return appendTokens(tokens, nodes, { remaining: maxTokens }) && nodes.length ? sectionsForView(nodes) : null;
+  if (!appendTokens(tokens, nodes, { remaining: maxTokens }) || !nodes.length) return null;
+  markNestedLists(nodes);
+  return sectionsForView(nodes);
 }
 
 function markdownForBlock(block) {
@@ -128,8 +152,10 @@ function revealMarkdown(block, remaining) {
         if (text) visible.push(text === node.text ? node : textNode(text));
         remaining -= node.text.length;
       } else if (node.children.length) {
-        const children = revealNodes(node.children);
-        if (children.length) visible.push({ ...node, children });
+        const first = node.children[0];
+        const marker = first.attrs?.class === sublistMarkerClass ? first : null;
+        const children = revealNodes(marker ? node.children.slice(1) : node.children);
+        if (children.length) visible.push({ ...node, children: marker ? [marker, ...children] : children });
       } else {
         visible.push(node);
       }
@@ -147,6 +173,7 @@ const paragraphTags = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockqu
 
 function copyNode(node) {
   if (node.type === 'text') return node.text;
+  if (node.attrs?.class === sublistMarkerClass) return '';
   if (node.name === 'br') return '\n';
   const children = (node.children || []).map(copyNode);
   if (node.name === 'ol' || node.name === 'ul') {

@@ -1376,7 +1376,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
         finalTurnGuidance: () => {
           const guidance: string[] = [];
           if (customerConsultation) {
-            guidance.push('直接回应客户这一轮的问题。简单确认或单点澄清用一小段自然的话说清楚。需要说明多个阶段、步骤或检查事项的长答，按内容用 Markdown 小标题和列表，适量加粗关键词。');
+            guidance.push('直接回答本轮问题。简单确认或单点澄清用一两句自然话说清楚。'
+              + '长答按内容分小标题，每个要点连同补充说明写成一段。'
+              + '并列事项用一层 Markdown 项目符号，顺序步骤用编号，适量加粗要点开头。'
+              + '同一要点下确有多个独立的核对项时，再用一级无序子列表。');
           }
           if (specialist?.editionQuestion && !context.sources.some(source => source.web?.standard
             && ['status_catalog', 'withdrawal_notice'].includes(source.web.standard.kind)))

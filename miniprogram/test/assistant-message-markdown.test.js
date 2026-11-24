@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { markdownForBlock, copyableReplyText } = require('../packages/assistant/lib/message-markdown');
+const { markdownForBlock, revealMarkdown, copyableReplyText } = require('../packages/assistant/lib/message-markdown');
 const { messagesForView } = require('../utils/assistant-client');
 
 test('copy follows the visible reply, preserving numbering and omitting citation and link destinations', () => {
@@ -43,6 +43,23 @@ test('contiguous text stays together and consecutive tables scroll independently
   assert.equal(parts[1].nodes[0].children[0].children[0].text, 'SW-01\n  左侧\n\n    门边');
   assert.equal(parts[2].nodes[0].children[0].name, 'table');
   assert.deepEqual(parts[2].nodes, parts[3].nodes);
+});
+
+test('only sibling subitems get dashes, and typing waits for visible item text before showing its dash', () => {
+  const block = { type: 'text', text: '- 核对\n  - 门口\n  - 收边' };
+  const parent = parts => parts[0].nodes[0].children[0].children;
+  const [first, second] = parent(markdownForBlock(block))[1].children;
+  assert.equal(first.attrs.style, 'display: block; list-style-type: none; position: relative');
+  for (const item of [first, second]) assert.equal(item.children[0].children[0].text, '–');
+  assert.deepEqual(parent(revealMarkdown(block, 2)), [{ type: 'text', text: '核对' }]);
+  const [firstRevealed] = parent(revealMarkdown(block, 3))[1].children;
+  assert.equal(firstRevealed.children[0].children[0].text, '–');
+  assert.equal(firstRevealed.children[1].text, '门');
+  const single = parent(markdownForBlock({ text: '- 核对\n  - 门口' }))[1];
+  assert.equal(single.attrs.style, 'padding-left: 0');
+  assert.deepEqual(single.children[0].children, [{ type: 'text', text: '门口' }]);
+  assert.doesNotMatch(copyableReplyText({ authorKind: 'assistant', available: true, replyActions: {},
+    content: { blocks: [block] } }), /–/);
 });
 
 test('HTML, dangerous destinations, external media and nested links stay inert', () => {

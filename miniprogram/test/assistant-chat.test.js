@@ -914,7 +914,7 @@ test('AI Markdown produces headings, inline styles, lists, quotes, code and tabl
   assert.deepEqual(nodes.map(node => node.name), ['h1', 'h3', 'p', 'ol', 'blockquote', 'pre', 'div']);
   assert.deepEqual(names(nodes[2].children), ['strong', 'em', 'br', 'code']);
   assert.equal(nodes[3].attrs.start, 3);
-  assert.deepEqual(names(nodes[3].children), ['li', 'li', 'ul', 'li', 'li']);
+  assert.deepEqual(names(nodes[3].children), ['li', 'li', 'ul', 'li', 'span', 'li', 'span']);
   assert.equal(nodes[5].children[0].children[0].text, 'SW-01\n  左侧底盒');
   assert.deepEqual(names(nodes[6].children), ['table', 'thead', 'tr', 'th', 'th', 'tbody', 'tr', 'td', 'td', 'strong']);
   const reopened = new ChatController({ client: f.client, identity: () => 'customer-A', emit() {}, schedule: () => 0 });
