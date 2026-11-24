@@ -130,11 +130,10 @@ const replyActionsMethods = {
     const conversationId = this.controller.conversationId;
     const current = () => this._alive && this._shown && this.controller.conversationId === conversationId && this.controller.questionText(id) === text;
     const choose = (method, options) => new Promise(resolve => wx[method]({ ...options, success: resolve, fail: () => resolve(null) }));
-    const choice = await choose('showActionSheet', { itemList: ['编辑后重发'] });
-    if (choice?.tapIndex !== 0 || !current()) return;
     const draft = this.data.draft;
     if (draft && draft !== text && !(await choose('showModal', { title: '替换当前草稿？', content: '确认后把这条原问题带回输入框。', confirmText: '替换' }))?.confirm) return;
     if (!current() || this.data.draft !== draft) return;
+    this.controller.setMessageQuote?.();
     this.controller.input(text);
     this.clearStageInput();
   },

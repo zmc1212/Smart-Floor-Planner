@@ -1,0 +1,26 @@
+<template name="message-quote-line">
+  <view class="message-quote-line"><text>{{quote.text || '原消息已不可查看'}}</text></view>
+</template>
+
+<template name="message-actions-menu">
+  <view class="message-actions-layer">
+    <view class="message-actions-mask" catchtap="closeMessageMenu" catchtouchmove="swallow" aria-label="关闭消息操作"/>
+    <view class="user-message message-action-focus" aria-hidden="true"
+      style="left:{{menu.sourceLeft}}px;top:{{menu.sourceTop}}px;width:{{menu.sourceWidth}}px;height:{{menu.sourceHeight}}px;">
+      <view class="bubble" style="top:{{menu.sourceOffset}}px;">
+        <template wx:if="{{menu.quote}}" is="message-quote-line" data="{{quote:menu.quote}}"/>
+        <text class="message-block">{{menu.text}}</text>
+      </view>
+    </view>
+    <view class="message-action-panel {{menu.opensUp ? 'opens-up' : ''}}" style="top:{{menu.top}}px;left:{{menu.left}}px;" catchtap="swallow">
+      <view class="message-action-pointer" style="left:{{menu.pointer}}px;" aria-hidden="true"/>
+      <scroll-view class="message-action-list" style="height:{{menu.panelHeight}}px;" scroll-y="{{menu.panelHeight < 234}}" show-scrollbar="{{false}}">
+        <button wx:for="{{actions}}" wx:key="id" data-action="{{item.id}}" catchtap="chooseMessageAction"
+          disabled="{{item.needsIdle && !idle}}" class="message-action-row {{item.id === 'delete' ? 'message-action-danger' : ''}}">
+          <image src="../assets/{{item.icon}}.png" mode="aspectFit" aria-hidden="true"/>
+          <text>{{item.text}}</text>
+        </button>
+      </scroll-view>
+    </view>
+  </view>
+</template>

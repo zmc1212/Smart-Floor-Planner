@@ -1791,6 +1791,53 @@ test('a definite server rejection keeps the draft and does not become a disconne
   assert.equal(f.db.items.length, 1);
 });
 
+test('owner message menu repositions without covering a short selected bubble', () => {
+  const { messageMenuLayout } = require('../packages/assistant/chat/message-actions');
+  const viewport = { top: 88, bottom: 760 };
+  const upper = messageMenuLayout({ left: 166, right: 376, width: 210, top: 116, bottom: 160 }, viewport, 390);
+  assert.deepEqual([upper.left, upper.top, upper.panelHeight, upper.opensUp], [216, 169, 234, false]);
+  const lower = messageMenuLayout({ left: 166, right: 376, width: 210, top: 698, bottom: 742 }, viewport, 390);
+  assert.equal(lower.top + lower.panelHeight, 689);
+  assert.equal(lower.opensUp, true);
+  assert.equal(messageMenuLayout({ left: 166, right: 376, width: 210, top: 780, bottom: 824 }, viewport, 390), null);
+});
+
+test('owner message sharing hands only the previewed text file to WeChat and cleans up on retry', async () => {
+  const { messageActionsMethods } = require('../packages/assistant/chat/message-actions');
+  const previous = global.wx;
+  const text = '木纹砖先试排。\n再核对门口收边。';
+  const files = new Map(), shares = [];
+  const page = {
+    _alive: true, _shown: true, data: { sheet: 'messageShare', messageShare: { id: '5', conversationId: '11', text } },
+    controller: { conversationId: '11', questionText: id => id === '5' ? text : '' },
+    setData(patch) { Object.assign(this.data, patch); },
+    closeSheet() { this.setData({ sheet: '', messageShare: null, messageShareBusy: false }); },
+  };
+  try {
+    global.wx = {
+      env: { USER_DATA_PATH: 'wxfile://usr' },
+      getFileSystemManager: () => ({
+        writeFile({ filePath, data, encoding, success }) {
+          assert.equal(encoding, 'utf8'); files.set(filePath, data); success();
+        },
+        unlink({ filePath }) { files.delete(filePath); },
+      }),
+      shareFileMessage({ filePath, fileName, success, fail }) {
+        shares.push({ fileName, text: files.get(filePath) });
+        if (shares.length === 1) fail({ errMsg: 'shareFileMessage:fail fixture' });
+        else success();
+      },
+    };
+    await messageActionsMethods.shareSelectedMessage.call(page);
+    assert.equal(page.data.messageShareError, '分享未打开，请重试。');
+    assert.equal(files.size, 0);
+    await messageActionsMethods.shareSelectedMessage.call(page);
+    assert.deepEqual(shares, Array.from({ length: 2 }, () => ({ fileName: '小K聊天消息.txt', text })));
+    assert.equal(page.data.sheet, '');
+    assert.equal(files.size, 0);
+  } finally { global.wx = previous; }
+});
+
 test('editing a saved question restores it to the composer only after confirmation', async () => {
   const { replyActionsMethods } = require('../packages/assistant/chat/reply-actions');
   const previous = global.wx;
@@ -1804,7 +1851,6 @@ test('editing a saved question restores it to the composer only after confirmati
   try {
     let allow = false;
     global.wx = {
-      showActionSheet: ({ itemList, success }) => { assert.deepEqual(itemList, ['编辑后重发']); success({ tapIndex: 0 }); },
       showModal: ({ success }) => success({ confirm: allow }),
     };
     await replyActionsMethods.editQuestionText.call(page, '4');

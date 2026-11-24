@@ -196,11 +196,14 @@ async function projectSavedMessage(tx:PostgresTransaction, actor:ActorContext, c
   // Revoking an original also hides pre-revocation AI prose after it. This
   // conservative fence covers unstructured replies without inventing citations;
   // future turns can answer again from the remaining live sources.
+  const deleted = (message.content as Row)?.deleted === true;
   const speech = await one(tx, sql`select exists(select 1 from app.assistant_speech_assets a
     join app.assistant_messages original on original.enterprise_id=a.enterprise_id and original.id=a.message_id
     join app.assistant_messages target on target.enterprise_id=a.enterprise_id and target.conversation_id=a.conversation_id
     where a.enterprise_id=${actor.enterpriseId} and a.conversation_id=${String(c.id)} and a.deleted_at is not null and target.id=${String(message.id)}
-      and (target.id=a.message_id or target.author_kind='assistant' and target.seq>=original.seq and target.created_at<=a.deleted_at)) as revoked`);
+      and (target.id=a.message_id or target.author_kind='assistant' and target.seq>=original.seq and target.created_at<=a.deleted_at)) as revoked,
+    exists(select 1 from app.assistant_speech_assets a where a.enterprise_id=${actor.enterpriseId}
+      and a.conversation_id=${String(c.id)} and a.message_id=${String(message.id)}) as bound`);
   const media = await one(tx, sql`select a.id,(a.deleted_at is null and (a.source_ref is null or exists(
       select 1 from app.leads l join app.floor_plans f on f.enterprise_id=l.enterprise_id and f.id=l.primary_floor_plan_id
       where l.enterprise_id=a.enterprise_id and l.id::text=a.source_ref->>'leadId' and l.customer_user_id=a.customer_user_id
@@ -216,7 +219,7 @@ async function projectSavedMessage(tx:PostgresTransaction, actor:ActorContext, c
   for (const citationId of webIds) projected.push(await webCitationProjection(tx, actor, c, citationId, webChecks));
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
   const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
-  const sourceAvailable=originalAvailable && speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
+  const sourceAvailable=!deleted && originalAvailable && speech?.revoked !== true && planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !projected.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id),actor);
   const siteResult = sourceAvailable && message.purpose === 'construction.result'
     ? await siteResultProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null;
@@ -234,7 +237,8 @@ async function projectSavedMessage(tx:PostgresTransaction, actor:ActorContext, c
     ? { needContext: designerProjection.needContext === true } : null;
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
     ...(publicProjection ? { publicSourceBound: true } : {}),
-    content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',
+    ...(deleted ? { deleted: true } : {}), ...(speech?.bound ? { speechMessage: true } : {}),
+    content:available || deleted ? message.content : {version:1,blocks:[{type:'notice',code:'source_unavailable',
       ...(publicReason?{reason:publicReason}:{}),fallbackText:unavailableNoticeText(publicReason)}]},
     citations:publicReason ? [] : projected, ...(citationGroups.length ? { citationGroups } : {}),
     createdAt:message.created_at,constructionReminder: available && message.purpose === 'construction.stage',

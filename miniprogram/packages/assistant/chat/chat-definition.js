@@ -27,6 +27,7 @@ const { inputCandidates } = require('../lib/stage-chat-experience');
 const { ownerSiteContext } = require('../lib/owner-site-context');
 const { measureIntent, measureInvite } = require('../lib/measure-card');
 const { initialReplyActions, replyActionsMethods } = require('./reply-actions');
+const { initialMessageActions, messageActionsMethods } = require('./message-actions');
 const { ReplyScroll } = require('./reply-scroll');
 const api = require('../../../utils/api');
 
@@ -54,6 +55,7 @@ module.exports = () => ({
 	...followupChatMethods,
 	...reportQuestionMethods,
 	...replyActionsMethods,
+	...messageActionsMethods,
 	data: {
 		...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
 		...initialOwnerReminder(),
@@ -61,6 +63,7 @@ module.exports = () => ({
 		...initialLive(),
 		...initialPlans(),
 		...initialReplyActions(),
+		...initialMessageActions(),
 		expandedAnswerProcessId: '',
 		...initialContext(),
 		...initialFollowups(), ...initialEnterprise(), followupChat: emptyFollowupChat(), followupScrollTarget: '', professionalFollowup: false, followupHistoryOpen: false, followupManageOpen: false, followupOriginalPaths: {}, followupOriginalError: '',
@@ -111,12 +114,18 @@ module.exports = () => ({
 					|| patch.conversation?.id && this.speechController.visible && this.speechController.base !== consultationSpeechPath(patch.conversation.id)) {
 					this.speechController.hide();
 				}
-				if (patch.conversation === null || patch.conversation?.id && patch.conversation.id !== this.data.conversation?.id) {
+				if (patch.fatal || patch.needsLogin || patch.conversation === null || patch.conversation?.id && patch.conversation.id !== this.data.conversation?.id) {
+					this.closeMessageMenu();
+					if (this.data.sheet === 'messageShare') this.closeSheet();
 					patch.expandedAnswerProcessId = '';
 					patch.replyVersionChoice = {};
 					patch.replyAudioId = '';
 					patch.replyAudioState = '';
 				}
+				if (patch.messages && this.data.messageMenu && !patch.messages.some(item => item.id === this.data.messageMenu.id && item.editableQuestion))
+					this.closeMessageMenu();
+				if (patch.messages && this.data.messageShare && !patch.messages.some(item => item.id === this.data.messageShare.id && item.editableQuestion))
+					this.closeSheet();
 				if (patch.messages && this.data.replyAudioId && !patch.messages.some(item => item.id === this.data.replyAudioId && item.replyActions))
 					this.speechController.stopPlayback();
 				if (patch.conversation && Object.prototype.hasOwnProperty.call(patch.conversation,'stageExperience')) {
@@ -332,7 +341,7 @@ module.exports = () => ({
 		wx.switchTab({ url: '/pages/index/index' });
 	},
 
-	onHide() { if (nativePreview.hiddenByPreview(this)) return; this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this._replyScroll?.suspend(); this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
+	onHide() { if (nativePreview.hiddenByPreview(this)) return; this.closeMessageMenu(); this.stopOwnerReminderRefresh(); if (this.liveConsent) this.liveConsent.clear(); this._shown = false; this._replyScroll?.suspend(); this.followupChatController?.hide(); this._enterpriseEpoch = (this._enterpriseEpoch || 0) + 1; this.followups.hide(); if (this._followupObserver) this._followupObserver.disconnect(); clearTimeout(this._followupObserveTimer); this.setData({ ...initialEnterprise(), followupHistoryOpen: false, followupManageOpen: false }); if (this.speechController) this.speechController.hide(); if (this.location) this.location.clear(); this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ speechBusy: false, keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
 	onUnload() {
 		this._alive = false; this._replyScroll?.reset(); clearTimeout(this._sheetTimer);
 		clearTimeout(this._copyAnswerTimer); clearTimeout(this._historySearchTimer);
@@ -354,7 +363,7 @@ module.exports = () => ({
 		if (this.plans) this.plans.clear();
 		if (this.media) this.media.dispose();
 	},
-	onResize() { if (!this.data.keyboardHeight) this.measureWindow(); },
+	onResize() { this.closeMessageMenu(); if (!this.data.keyboardHeight) this.measureWindow(); },
 	measureWindow() {
 		const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
 		let capsule;
@@ -461,6 +470,7 @@ module.exports = () => ({
 			|| this.data.contextBusy || this.data.contextPending || this.data.speechBusy || this._openingVoice) return;
 		this._promptSending = true;
 		try {
+			if (this.data.messageQuote) this.controller.setMessageQuote();
 			this.controller.input(event.currentTarget.dataset.text);
 			return await this.send();
 		} finally { this._promptSending = false; }
@@ -554,9 +564,10 @@ module.exports = () => ({
 		wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/index/index' }) });
 	},
 	scrollBottom() {
+		if (this.data.messageMenu) return;
 		this.setData({ scrollTarget: '' }, () => this.setData({ scrollTarget: 'conversation-end' }));
 	},
-	watchReplyScroll() { this._replyScroll?.request(); },
+	watchReplyScroll() { if (!this.data.messageMenu) this._replyScroll?.request(); },
 	pauseReplyScroll() { this._replyScroll?.hold(); },
 	jumpToReplyEnd() { this._replyScroll?.jump(); },
 	scrollBottomSettled(attempt = 0) {
@@ -647,6 +658,7 @@ module.exports = () => ({
 	},
 	closeSheet() {
 		clearTimeout(this._sheetTimer);
+		if (this.data.sheet === 'messageShare') this.setData({ messageShare: null, messageShareBusy: false, messageShareError: '' });
 		const closingInteraction = ['history', 'answerFeedback', 'answerMore'].includes(this.data.sheet);
 		if (closingInteraction && this.data.interactionKeyboard) wx.hideKeyboard();
 		if (this.data.sheet === 'history') this.resetHistorySearch();
@@ -842,11 +854,11 @@ module.exports = () => ({
 		} finally { this._openingVoice = false; }
 	},
 	async voiceMessage(event) {
-		const messageId = event.currentTarget.dataset.message;
+		const messageId = String(event.currentTarget.dataset.message);
+		if (!this.data.staffTab && !this.data.professionalFollowup && !this.data.ownerSiteReport && this.controller.questionText(messageId))
+			return this.openMessageMenu(messageId);
 		if (await this.prepareSpeech() && this.speechController.items.some(asset => asset.messageId === String(messageId)))
 			return this.speechController.messageMenu(messageId);
-		if (!this.data.staffTab && !this.data.professionalFollowup && !this.data.ownerSiteReport)
-			return this.editQuestionText(String(messageId));
 	},
 	moreHistory() { return this.controller.loadHistory(true); },
 	async selectHistory(event) {

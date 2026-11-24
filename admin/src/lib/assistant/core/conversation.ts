@@ -68,7 +68,7 @@ import type { ReportCompositionScope } from '@/lib/construction/report-compositi
 import { samePublicRef, type PublicContextRef } from '@/lib/construction/public-contract';
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
 import { publicMessageAvailable } from '@/lib/construction/public-projections';
-import { editableQuestion, feedbackInput, loadReplyFeedback, ownedReply, readableReply, regenerationSource, replyControls, replyText, saveReplyFeedback, searchConsultations } from './conversation-interactions';
+import { editableQuestion, feedbackInput, loadReplyFeedback, ownedQuestion, ownedReply, readableReply, regenerationSource, replyControls, replyText, saveReplyFeedback, searchConsultations } from './conversation-interactions';
 import { synthesizeReply } from '../speech/read-aloud';
 
 export const reserveTokens = 12000;
@@ -105,7 +105,7 @@ export function conversationDto(c: Row, requirementProposalPending = false) {
 export function runDto(r: Row) {
   return { id: String(r.id), conversationId: String(r.conversation_id), status: r.status, outputMessageId: r.output_message_id ? String(r.output_message_id) : null,
     answerKind:r.answer_kind ?? null,errorCode: r.error_code, usageReconciled: r.usage_reconciled === true,
-    retryable: !r.awaiting_reconciliation && ['failed', 'cancelled'].includes(String(r.status)), nextPollMs: ['queued', 'running'].includes(String(r.status)) ? 1500 : null };
+    retryable: !r.trigger_deleted && !r.awaiting_reconciliation && ['failed', 'cancelled'].includes(String(r.status)), nextPollMs: ['queued', 'running'].includes(String(r.status)) ? 1500 : null };
 }
 /** Retain operation results with their resources; expiry is not permission to duplicate effects. */
 export async function idempotent(tx: PostgresTransaction, actor: ActorContext, operation: string, requestKey: string, body: unknown, action: () => Promise<Row>): Promise<Row> {
@@ -392,6 +392,7 @@ export class ConversationService {
       const result = await rows(repo.tx, sql`select c.*, case when coalesce(c.entry_snapshot->>'retentionRedacted','false') != 'true' then
         (select m.content->'blocks'->0->>'text' from app.assistant_messages m
           where m.enterprise_id=c.enterprise_id and m.conversation_id=c.id and m.author_kind=${this.actor.principal.kind}
+            and (m.content->>'deleted') is distinct from 'true'
           order by m.seq asc limit 1) end as first_question
         from app.assistant_conversations c join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
         where c.enterprise_id=${this.actor.enterpriseId} and ${this.actor.principal.kind==='user'?sql`p.user_id=${this.actor.principal.userId}`:sql`p.admin_id=${this.actor.principal.adminId}`}
@@ -419,6 +420,25 @@ export class ConversationService {
       return idempotent(repo.tx, this.actor, 'answer-feedback:' + messageId, requestKey, feedback,
         () => saveReplyFeedback(repo, conversationId, messageId, userId, feedback));
     }, true);
+  }
+  deleteQuestion(conversationId: string, messageId: string, requestKey: string) {
+    return this.scoped(async repo => {
+      const c = await repo.conversation(conversationId);
+      if (c.status !== 'open' || c.mode !== 'ai') fail('assistant_resource_not_found', 404);
+      const source = await ownedQuestion(repo.tx, this.actor, c, messageId);
+      if (!source) fail('assistant_resource_not_found', 404);
+      return idempotent(repo.tx, this.actor, 'question-delete:' + messageId, requestKey, { conversationId }, async () => {
+        if (!source.deleted) {
+          if (await one(repo.tx, sql`select id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId}
+            and conversation_id=${conversationId} and status in ('queued','running')`)) fail('conversation_busy');
+          await repo.tx.execute(sql`update app.assistant_messages set content=${json({ version: 1, blocks: [], deleted: true })}::jsonb,
+            version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and id=${messageId}`);
+          await repo.tx.execute(sql`update app.assistant_conversations set context_revision=context_revision+1,version=version+1,updated_at=now()
+            where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`);
+        }
+        return { conversationId, messageId, deleted: true };
+      });
+    });
   }
   async readAloud(conversationId: string, messageId: string) {
     const read = () => this.scoped(async repo => {
@@ -451,7 +471,9 @@ export class ConversationService {
       const checkpoint = config ? await requirementCheckpoint(repo.tx, this.actor.enterpriseId, conversationId) : undefined;
       const guidance = guidanceView(config, turns.map(m => ({ id: String(m.id), text: ((m.content as { blocks?: Array<{text?: string}> })?.blocks || []).map(b => b.text || '').join('\n') })), checkpoint);
       if (guidance && (!configuredGuidance(settings?.guidance_config).enabled || c.status !== 'open' || c.mode !== 'ai')) { guidance.options = []; guidance.questionKey = null; }
-      const latest = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation
+      const latest = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation,
+        (select m.content->>'deleted'='true' from app.assistant_messages m where m.enterprise_id=r.enterprise_id
+          and m.conversation_id=r.conversation_id and m.id=r.trigger_message_id) as trigger_deleted
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId} and r.purpose not in ('speech.transcribe','construction.report.facts','construction.report.compose')
         order by r.id desc limit 1`);
       const preview = this.actor.principal.kind === 'admin' && c.purpose === 'knowledge_preview' ? previewPolicy(c) : null;
@@ -516,8 +538,12 @@ export class ConversationService {
         const readable = this.actor.principal.kind === 'user' && readableReply(c, message, projected);
         const process = projected.available && replyText(projected.content) && !projected.designerRecommendation
           ? processes?.get(projected.id) : undefined;
+        const quoteId = projected.available && this.actor.principal.kind === 'user' && message.author_kind === 'user'
+          && String(message.user_id) === this.actor.principal.userId && message.reply_to_message_id ? String(message.reply_to_message_id) : '';
+        const quote = quoteId ? await ownedQuestion(repo.tx, this.actor, c, quoteId) : null;
         items.push({
           ...projected,
+          ...(quoteId ? { messageQuote: { id: quoteId, text: quote?.text || '' } } : {}),
           ...(intent && (intent.sites || intent.works) ? { discovery: intent } : {}),
           ...(editableQuestion(repo, c, message, projected) ? { editableQuestion: true } : {}),
           ...(readable ? { replyActions: replyControls(message, projected, feedback.get(projected.id) ?? null) } : {}),
@@ -630,14 +656,19 @@ export class ConversationService {
   send(conversationId: string, clientMessageId: string, content: unknown, interceptor?: {
     matches(content: MessageContent, conversation: Row): boolean;
     apply(tx: PostgresTransaction, actor: ActorContext, conversation: Row, message: Row): Promise<boolean>;
-  }, speech?: unknown) {
+  }, speech?: unknown, quoteMessageId?: string) {
     key(clientMessageId);
     return this.scoped(async (repo, settings) => {
       const c = await repo.conversation(conversationId); const safe = userContent(content, Number(settings!.max_message_chars));
-      return idempotent(repo.tx, this.actor, 'send:' + conversationId, clientMessageId, speech === undefined ? safe : { ...safe, speech }, async () => {
+      const payload = { ...safe, ...(speech === undefined ? {} : { speech }), ...(quoteMessageId ? { quoteMessageId } : {}) };
+      return idempotent(repo.tx, this.actor, 'send:' + conversationId, clientMessageId, payload, async () => {
         if (c.status !== 'open') fail('context_changed');
+        if (quoteMessageId) {
+          if (c.mode !== 'ai') fail('context_changed');
+          if (!(await ownedQuestion(repo.tx, this.actor, c, quoteMessageId))?.text) fail('message_quote_unavailable', 409);
+        }
         const append = async (purpose?: string) => {
-          const message = await appendMessage(repo.tx, this.actor, conversationId, { author: this.actor.principal.kind, content: safe, clientMessageId, purpose });
+          const message = await appendMessage(repo.tx, this.actor, conversationId, { author: this.actor.principal.kind, content: safe, clientMessageId, purpose, replyToMessageId: quoteMessageId });
           await bindSpeechToMessage(repo.tx, this.actor, conversationId, String(message.id), safeText(safe), speech);
           return message;
         };
@@ -677,7 +708,8 @@ export class ConversationService {
         const old = intercepted ? undefined : await one(repo.tx, sql`select * from app.assistant_messages where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId}
           and ${this.actor.principal.kind==='user'?sql`user_id=${this.actor.principal.userId}`:sql`admin_id=${this.actor.principal.adminId}`} and client_message_id=${clientMessageId}`);
         if (old) {
-          if (fingerprint(old.content) !== fingerprint(safe)) fail('idempotency_conflict');
+          if ((old.content as Row)?.deleted || fingerprint(old.content) !== fingerprint(safe)
+            || String(old.reply_to_message_id || '') !== (quoteMessageId || '')) fail('idempotency_conflict');
           const r = await one(repo.tx, sql`select id from app.assistant_runs where enterprise_id=${this.actor.enterpriseId} and trigger_message_id=${String(old.id)} and retry_of_run_id is null`);
           return { conversationId, messageId: String(old.id), runId: r ? String(r.id) : null, status: r ? 'queued' : 'succeeded', nextPollMs: r ? 1500 : null };
         }
@@ -727,7 +759,9 @@ export class ConversationService {
   }
   run(runId: string, action?: 'cancel' | 'retry', requestKey?: string) {
     return this.scoped(async (repo, settings) => {
-      const r = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation
+      const r = await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation,
+        (select m.content->>'deleted'='true' from app.assistant_messages m where m.enterprise_id=r.enterprise_id
+          and m.conversation_id=r.conversation_id and m.id=r.trigger_message_id) as trigger_deleted
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${runId}`);
       if (!r) fail('assistant_resource_not_found', 404);
       const c = await repo.conversation(String(r.conversation_id));
@@ -739,7 +773,7 @@ export class ConversationService {
           return runDto((await one(repo.tx, sql`select r.*,${runUsageReconciled()} as usage_reconciled,${runRetryAwaitingReconciliation()} as awaiting_reconciliation
             from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${runId}`))!);
         }
-        if (!['failed', 'cancelled'].includes(String(r.status))) fail('context_changed');
+        if (r.trigger_deleted || !['failed', 'cancelled'].includes(String(r.status))) fail('context_changed');
         if (r.trigger_kind !== 'user_message') fail('assistant_capability_forbidden', 403);
         // Unknown/cancelled submissions still need reconciliation. A proved
         // model response followed by retrieval failure keeps its original cost

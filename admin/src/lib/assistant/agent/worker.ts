@@ -94,6 +94,7 @@ import { searchPublicResearch, parsePublicRead, publicResearchTools, publicDisco
 import { projectSynthesisPolicy, modelPolicyProjectionVersion, synthesisQuestionPrefix } from './model-policy';
 import { citationProtocolVersion, modelCitationCatalog, sourceReferenceText } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
+import { questionQuote } from '../core/conversation-interactions';
 import { historyTool, parseHistoryQuery, publicHistoryScope, recallHistory, historyRefsAvailable, historySynthesisSources, reviewHistorySnapshot, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
 import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, independentAdviceRequested, explicitHumanHandoffRequested, sourceReadProtocol, sourceAnswerProtocol, drawingChecklistReadProtocol, drawingChecklistRequested, type ReadToolContext } from './read-tool-input';
@@ -582,7 +583,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const config = agentConfig((context.run.policy_snapshot as Row).agent);
       const current = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
       if (!config || agentCapabilityFingerprint(config) !== agentCapabilityFingerprint(agentConfig(current?.agent_config))) fail('context_changed');
-      const trigger = await one(tx, sql`select id,seq,content,purpose,author_kind from app.assistant_messages where enterprise_id=${lease.enterpriseId}
+      const trigger = await one(tx, sql`select id,seq,content,purpose,author_kind,reply_to_message_id from app.assistant_messages where enterprise_id=${lease.enterpriseId}
         and conversation_id=${String(context.conversation.id)} and id=${String(context.run.trigger_message_id)}`);
       if (!trigger) fail('context_changed');
       const policy = context.run.policy_snapshot as Row;
@@ -742,6 +743,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       }
       // The oldest row of a bounded DB window can be the tail of a prior turn.
       while (turns.length > 1 && turns[0].role !== 'user') turns.shift();
+      const quote = await questionQuote(tx, lease.actor, context.conversation, trigger);
+      if (quote && turns.at(-1)?.id === String(trigger.id)) {
+        const prior = turns.findIndex(turn => turn.id === quote.id);
+        if (prior >= 0) turns.splice(prior, 1);
+        turns.splice(turns.length - 1, 0, { id: quote.id, role: 'user', text: '本轮引用的原话：\n' + quote.text });
+      }
       const messages = buildAgentContext(turns, memory, knowledgeEnabled, minimalDialogue, difyDialogue);
       const question = safeText(trigger.content as Parameters<typeof safeText>[0]);
       const r5 = (context.run.policy_snapshot as Row).longTermMemory && trigger.author_kind === 'user'

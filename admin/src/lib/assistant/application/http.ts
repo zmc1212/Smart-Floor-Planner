@@ -132,6 +132,10 @@ export async function assistantHttp(request: Request, path: string[]) {
       if (method === 'POST') data = await service.create(requestKey());
       else if (params.has('search')) data = await service.search(params.get('search')!, cursor('cursor'), limit);
       else data = await service.list(cursor('cursor'), limit);
+    } else if (path[0] === 'conversations' && path[2] === 'messages' && path.length === 4 && method === 'DELETE') {
+      const target = id(path[1]);
+      const service = new ConversationService(await locate(identity, 'conversation', target));
+      data = await service.deleteQuestion(target, id(path[3]), requestKey());
     } else if (path[0] === 'conversations' && path[2] === 'messages' && path.length === 5) {
       const target = id(path[1]);
       const service = new ConversationService(await locate(identity, 'conversation', target));
@@ -173,9 +177,11 @@ export async function assistantHttp(request: Request, path: string[]) {
         data = await service.constructionContact(target, id(params.get('projectId')), id(params.get('messageId')));
       }
       else if (path[2] === 'messages' && method === 'POST') {
-        only(body, ['clientMessageId', 'content', 'speech']);
+        only(body, ['clientMessageId', 'content', 'speech', 'quoteMessageId']);
         if (requestKey() !== key(body.clientMessageId)) fail('invalid_message', 422);
-        data = await service.send(target, String(body.clientMessageId), body.content, siteWatchInterceptor, body.speech); status = 202;
+        data = await service.send(target, String(body.clientMessageId), body.content, siteWatchInterceptor, body.speech,
+          body.quoteMessageId === undefined ? undefined : id(body.quoteMessageId));
+        status = 202;
       } else fail('assistant_resource_not_found', 404);
     } else if (path[0]==='citations' && path.length===2 && method==='GET') {
       const web = parseWebCitationId(path[1]);

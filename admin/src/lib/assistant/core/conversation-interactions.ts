@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { one, rows, type AssistantRepository, type Row } from '@/db/repositories/assistant-repository';
-import { fail, type MessageContent } from '../contracts';
+import { fail, type ActorContext, type MessageContent } from '../contracts';
+import type { PostgresTransaction } from '@/db/transaction';
 import { projectMessage } from '../knowledge/sources';
 import { readAloudAvailable } from '../speech/read-aloud';
 
@@ -39,10 +40,42 @@ export function replyControls(message: Row, projected: Projection, feedback: Fee
     ...(message.purpose === 'reply.regenerate' && message.reply_to_message_id ? { versionOf: String(message.reply_to_message_id) } : {}) };
 }
 
+function authoredQuestion(actor: ActorContext, conversation: Row, message: Row) {
+  return actor.principal.kind === 'user' && conversation.purpose === 'customer_consultation'
+    && !(conversation.entry_snapshot as Row)?.retentionRedacted && message.purpose === 'reply'
+    && message.author_kind === 'user' && String(message.user_id) === actor.principal.userId;
+}
+
+function plainQuestion(projected: Projection) {
+  const blocks = (projected.content as MessageContent | null)?.blocks;
+  return projected.available && !projected.mediaId && !projected.speechMessage && blocks?.length === 1
+    ? replyText(projected.content) : '';
+}
+
 export function editableQuestion(repo: AssistantRepository, conversation: Row, message: Row, projected: Projection) {
-  return repo.actor.principal.kind === 'user' && conversation.purpose === 'customer_consultation' && conversation.status === 'open'
-    && conversation.mode === 'ai' && message.purpose === 'reply' && message.author_kind === 'user'
-    && String(message.user_id) === repo.actor.principal.userId && projected.available && !projected.mediaId && !!replyText(projected.content);
+  return conversation.status === 'open' && conversation.mode === 'ai'
+    && authoredQuestion(repo.actor, conversation, message) && !!plainQuestion(projected);
+}
+
+/** Address an original only within the already authorized consultation. */
+export async function ownedQuestion(tx: PostgresTransaction, actor: ActorContext, conversation: Row, messageId: string) {
+  if (actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation') return null;
+  const message = await one(tx, sql`select * from app.assistant_messages where enterprise_id=${actor.enterpriseId}
+    and conversation_id=${String(conversation.id)} and id=${messageId} and user_id=${actor.principal.userId}`);
+  if (!message || !authoredQuestion(actor, conversation, message)) return null;
+  if ((message.content as Row)?.deleted === true) return { message, text: '', deleted: true };
+  const text = plainQuestion(await projectMessage(tx, actor, conversation, message));
+  return text ? { message, text, deleted: false } : null;
+}
+
+export async function questionQuote(tx: PostgresTransaction, actor: ActorContext, conversation: Row, trigger: Row) {
+  if (trigger.author_kind !== 'user' || !trigger.reply_to_message_id) return null;
+  const id = String(trigger.reply_to_message_id);
+  const original = await ownedQuestion(tx, actor, conversation, id);
+  if (!original?.text) fail('message_quote_unavailable', 409);
+  const chars = Array.from(original.text);
+  const text = chars.slice(0, 1000).join('') + (chars.length > 1000 ? '…' : '');
+  return { id, text, source: original.message };
 }
 
 export async function ownedReply(repo: AssistantRepository, conversation: Row, messageId: string) {
@@ -89,7 +122,7 @@ export async function regenerationSource(repo: AssistantRepository, conversation
   const original = await one(repo.tx, sql`select * from app.assistant_messages
     where enterprise_id=${actor.enterpriseId} and conversation_id=${cid} and id=${questionId}
       and author_kind='user' and purpose='reply' and user_id=${actor.principal.userId}`);
-  if (!original) return null;
+  if (!original || original.reply_to_message_id) return null;
   const questionView = await projectMessage(repo.tx, actor, conversation, original);
   if (!editableQuestion(repo, conversation, original, questionView)) return null;
   const question = replyText(questionView.content), answer = replyText(current.content);
@@ -169,7 +202,8 @@ export async function searchConsultations(repo: AssistantRepository, query: stri
     const c = await repo.conversation(id, 'share');
     if ((c.entry_snapshot as Row)?.retentionRedacted) continue;
     const first = await one(repo.tx, sql`select m.* from app.assistant_messages m where m.enterprise_id=${actor.enterpriseId}
-      and m.conversation_id=${id} and m.author_kind='user' and m.user_id=${userId} order by m.seq limit 1`);
+      and m.conversation_id=${id} and m.author_kind='user' and m.user_id=${userId}
+      and (m.content->>'deleted') is distinct from 'true' order by m.seq limit 1`);
     const firstView = first ? await projectMessage(repo.tx, actor, c, first) : null;
     const titleBody = firstView?.available ? normalize(replyText(firstView.content)) : '';
     const titleChars = Array.from(titleBody);

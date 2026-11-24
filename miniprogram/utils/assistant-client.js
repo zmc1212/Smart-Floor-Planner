@@ -105,7 +105,7 @@ const COPY = {
   assistant_capability_forbidden: '请切换到业主身份后使用小K咨询。',
   assistant_resource_not_found: '这段对话已不可访问，请返回历史记录重新选择。',
   entry_context_invalid: '暂时无法确认服务企业，请从有效的装修服务入口进入。',
-  assistant_service_code_required: '请扫描装修企业的服务码，关联服务后就能和小K聊。',
+  assistant_service_code_required: '请扫描装修企业的推广码，关联服务后就能和小K聊。',
   customer_service_ambiguous: '暂时无法确认当前服务企业，请联系你的装修顾问。',
   assistant_share_preview_only: '分享内容仅供预览。请从你的企业服务入口打开小K。',
   identity_context_invalid: '登录状态已失效，请重新登录后继续。',
@@ -113,6 +113,7 @@ const COPY = {
   conversation_busy: '这段对话还有回答正在处理，请先查看处理结果。',
   conversation_read_only: '这段对话已结束，可以查看记录或开启新对话。',
   context_changed: '对话状态已更新，请刷新后继续。',
+  message_quote_unavailable: '这条原消息已不可用，可以继续编辑后发送。',
   version_conflict: '对话状态已更新，请刷新后再操作。',
   idempotency_conflict: '这次操作的内容已改变，请刷新对话后继续。',
   invalid_message: '请检查文字内容和长度后再发送。',
@@ -182,6 +183,11 @@ class AssistantClient {
         const [, conversationId, messageId] = slot.split(':');
         if (data.conversationId !== conversationId || data.messageId !== messageId
           || data.rating !== (pending.body.rating === 'clear' ? null : pending.body.rating)) throw { code: 'invalid_response' };
+      }
+      if (slot.startsWith('question-delete:')) {
+        const [, conversationId, messageId] = slot.split(':');
+        if (data.conversationId !== conversationId || data.messageId !== messageId || data.deleted !== true)
+          throw { code: 'invalid_response' };
       }
       if (slot.startsWith('answer-regenerate:') && (data.conversationId !== slot.split(':')[1]
         || !/^[1-9]\d*$/.test(String(data.runId)) || data.status !== 'queued')) throw { code: 'invalid_response' };
@@ -304,7 +310,7 @@ function messagesForView(items, formatAssistantText) {
   }
   const record = r => r?.available && /^[1-9]\d*$/.test(String(r.id)) && Number.isSafeInteger(r.version)
     ? { ...r, assets: (r.assets || []).filter(id => /^[1-9]\d*$/.test(String(id))).slice(0, 4).map(String) } : null;
-  return (items || []).map(item => {
+  return (items || []).filter(item => !item.deleted).map(item => {
     // WXML uses the projected blocks. Keep the raw content in the controller
     // so it isn't serialized twice or sent to the view after withdrawal.
     const { content, answerProcess, citationGroups = [], ...metadata } = item;

@@ -7,6 +7,7 @@ import { synthesisContextAvailable } from '../agent/synthesis-sources';
 import { readMemory } from '../agent/memory';
 import { publicHistoryScope, type HistorySnapshot } from '../agent/history';
 import { projectMessage } from '../knowledge/sources';
+import { questionQuote } from '../core/conversation-interactions';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { runContext, type Lease } from '../infrastructure/job-queue';
 import { publicContextSelection, publicMessageRefs, type PublicContextRef } from '@/lib/construction/public-projections';
@@ -70,9 +71,12 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
           and m.seq<=trigger.seq and (m.author_kind='assistant' or m.author_kind=${preview?'admin':'user'} and (m.id=trigger.id or ${preview} or ${historyScope}))
         order by m.seq desc limit ${((run.policy_snapshot as Row).stageHistoryLimit as number | undefined) ?? 7}`);
       if (!originals.length || String(originals[0].id) !== String(run.trigger_message_id)) fail('context_changed');
+      const trigger = originals[0];
+      const quote = await questionQuote(tx, lease.actor, conversation, trigger);
       const result: RagChatMessage[] = [], history: HistorySnapshot['sources'] = [];
       let keptAssistant = false;
       for (const m of originals) {
+        if (String(m.id) === quote?.id) continue;
         const projected = await projectMessage(tx, lease.actor, conversation, m);
         if (!projected.available) continue;
         const role = m.author_kind === 'assistant' ? 'assistant' : 'user';
@@ -134,6 +138,13 @@ export async function nativeConversation(lease: Lease, configured: RagSource[], 
             text: safeText(projected.content as MessageContent), seq: String(m.seq) });
         }
         result.push(turn(nativeOriginal));
+        if (m === trigger && quote) {
+          const quoted: RagChatMessage = { role: 'user', content: '本轮引用的原话：\n' + quote.text };
+          if (!fits(quoted)) fail('agent_input_limit', 422);
+          result.push(quoted);
+          history.push({ messageId: quote.id, hash: fingerprint(quote.source.content),
+            memoryVersion: readMemory(conversation.entry_snapshot).version, text: quote.text, seq: String(quote.source.seq) });
+        }
       }
       if (history[0]?.messageId !== String(run.trigger_message_id)) fail('invalid_message', 422);
       context.history!.push({ query: '本轮获权会话历史', beforeSeq: String(BigInt(String(originals[0].seq)) + BigInt(1)),

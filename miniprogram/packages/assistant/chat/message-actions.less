@@ -1,0 +1,88 @@
+/* C01 owner's message menu, calibrated against the approved 390px viewport. */
+.notebook-chat {
+  .message-actions-layer { position: fixed; inset: 0; z-index: 20; }
+  .message-actions-mask { position: absolute; inset: 0; background: rgba(29, 50, 39, .28); }
+  .message-action-focus.user-message {
+    position: absolute;
+    display: block;
+    padding: 0;
+    margin: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .message-action-focus.user-message .bubble {
+    box-sizing: border-box;
+    position: relative;
+    width: 100%;
+    border-color: #7a937b;
+  }
+  .message-action-panel {
+    position: absolute;
+    width: 160px;
+    border-radius: 14px;
+    background: linear-gradient(#fffdf8, #f9f6ed);
+    box-shadow: 0 8px 24px rgba(19, 35, 28, .20), inset 0 0 0 1px #e2dfd2;
+    color: #16392e;
+  }
+  .message-action-pointer {
+    position: absolute;
+    top: -4px;
+    width: 8px;
+    height: 8px;
+    border-left: 1px solid #e2dfd2;
+    border-top: 1px solid #e2dfd2;
+    border-radius: 1px;
+    background: #fffdf8;
+    transform: rotate(45deg);
+  }
+  .message-action-panel.opens-up .message-action-pointer {
+    top: auto;
+    bottom: -4px;
+    background: #f9f6ed;
+    transform: rotate(225deg);
+  }
+  .message-action-list { box-sizing: border-box; padding: 7px 13px; border-radius: 14px; }
+  .message-action-row {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    margin: 0;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #16392e;
+    font-size: 15.5px;
+    font-weight: 500;
+    line-height: 44px;
+    text-align: left;
+  }
+  .message-action-row::after { border: 0; }
+  .message-action-row image { width: 19px; height: 19px; flex: none; }
+  .message-action-row.message-action-danger { border-top: 1px solid #e0ddd0; color: #a7443b; }
+  .message-action-row[disabled] { color: #788878; }
+  .message-action-row[disabled] image { opacity: .45; }
+  .message-quote-line {
+    margin: 0 0 6px;
+    padding: 3px 0 3px 7px;
+    border-left: 2px solid #8eaa91;
+    color: #486758;
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .message-quote-line text, .message-compose-quote > text {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sheet-panel.message-share-sheet { height: 340px; max-height: 65vh; }
+  .message-share-text { display: block; font-size: 15px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .message-share-footer { flex: none; }
+}

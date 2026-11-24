@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
+import { questionQuote } from '../core/conversation-interactions';
 import { AssistantError, fail, fingerprint, safeText, type Evidence, type KnowledgeRetriever, type MessageContent, type TextModelGateway } from '../contracts';
 import { KnowledgeSearchUnavailable, retrieveKnowledge } from '../knowledge/retrieval';
 import { answerMessages, insufficientAnswer, parseSelection } from '../knowledge/answer';
@@ -198,12 +199,14 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     if(context.run.trigger_kind!=='user_message')fail('assistant_capability_forbidden',403);
     if ((context.conversation.entry_snapshot as Row).activePublicSite) fail('assistant_model_configuration_invalid', 503);
     const historyScope = publicHistoryScope(context.conversation, false);
-    const messages=await withTenantTransaction(lease.enterpriseId,async tx=>{
-      await runContext(tx,lease);
-      return rows(tx,sql`select m.* from app.assistant_messages m join app.assistant_messages trigger on trigger.enterprise_id=m.enterprise_id
+    const { messages, quote } = await withTenantTransaction(lease.enterpriseId, async tx => {
+      await runContext(tx, lease);
+      const messages = await rows(tx,sql`select m.* from app.assistant_messages m join app.assistant_messages trigger on trigger.enterprise_id=m.enterprise_id
         and trigger.conversation_id=m.conversation_id where m.enterprise_id=${lease.enterpriseId} and trigger.id=${String(context.run.trigger_message_id)}
         and m.conversation_id=${String(context.run.conversation_id)} and m.seq<=trigger.seq and m.author_kind in ('user','admin')
         and (m.id=trigger.id or ${historyScope}) order by m.seq desc limit 3`);
+      const quote = messages[0] ? await questionQuote(tx, lease.actor, context.conversation, messages[0]) : null;
+      return { messages, quote };
     });
     if(!messages.length || String(messages[0].id)!==String(context.run.trigger_message_id))fail('context_changed');
     const read=(m:Row)=>safeText(m.content as Parameters<typeof safeText>[0]);
@@ -225,7 +228,8 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     if (!runKnowledgeEnabled(policy)) fail('assistant_disabled', 403);
     const followup: string | undefined = undefined;
     // Old generated answers are deliberately excluded. Prior user turns only resolve pronouns.
-    const history=messages.slice(1).reverse().map(m=>Array.from(read(m)).slice(0,120).join(''));
+    const history = messages.slice(1).filter(m => String(m.id) !== quote?.id).reverse().map(m => Array.from(read(m)).slice(0,120).join(''));
+    if (quote) history.push('本轮引用的原话：\n' + Array.from(quote.text).slice(0, 300).join(''));
     if(Buffer.byteLength(JSON.stringify(answerMessages(query,history,[])))>9000)fail('invalid_message',422);
     const retrievalQuery=history.length?history.join('\n')+'\n当前问题：'+query:query;
     await heartbeat(lease);
