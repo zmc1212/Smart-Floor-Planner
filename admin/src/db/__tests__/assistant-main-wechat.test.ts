@@ -19,7 +19,7 @@ import type { ActorContext } from '@/lib/assistant/contracts';
 import { claimJob, completeRun } from '@/lib/assistant/infrastructure/job-queue';
 import { startChannel, pollChannel, recipientState, readChannel } from '@/lib/assistant/wechat/channels';
 import { tickWechatChannel } from '@/lib/assistant/wechat/worker';
-import { weixinOrigin, type WeixinInbound, type WeixinAccount } from '@/lib/assistant/wechat/ilink';
+import { weixinOrigin, type weixinClient, type WeixinInbound, type WeixinAccount, type WeixinDeliveryClient } from '@/lib/assistant/wechat/ilink';
 import { mainDialogueTools, reportToolName, stageToolName } from '@/lib/xiaok-v1/main-dialogue-tools';
 import { manageMainPublication } from '@/lib/xiaok-v1/main-publication';
 import { stageIds } from '@/lib/xiaok-v1/stages';
@@ -83,12 +83,27 @@ test('主小K发布、双端互认、工地报告查询、订退、撤权与确�
   const state = () => recipientState(recipient);
   const request = (body?: Record<string,unknown>) => handleFollowup(new Request(route,body ? {method:'POST',body:JSON.stringify(body)}:{}),[bindingId,'wechat'],actor);
   const input: WeixinInbound[] = [], sent: {context:string; text:string}[] = [];
+  const images: { context: string; png: Buffer }[] = [];
+  let stagedImage: Buffer | undefined;
   let ambiguous = false;
-  const client = {
+  const client: WeixinDeliveryClient & Pick<typeof weixinClient, 'login' | 'status'> = {
     async login(){return {code:randomUUID(),display:'https://example.test/fixture'};},
     async status(){return {state:'confirmed' as const,origin:weixinOrigin,bot:'test-main-bot',peer:'test-main-peer',token:'test-main-session'};},
     async updates(){return {cursor:randomUUID(),messages:input.splice(0)};},
-    async reply(a:WeixinAccount,context:string,_id:string,text:string){assert.equal(a.peer,'test-main-peer');sent.push({context,text}); if(ambiguous)throw Error('synthetic provider timeout');}
+    async reply(a:WeixinAccount,context:string,_id:string,text:string){assert.equal(a.peer,'test-main-peer');sent.push({context,text});},
+    async uploadImage(a, image) {
+      assert.equal(a.peer,'test-main-peer');
+      stagedImage = image;
+      return { type: 2, image_item: { media: { encrypt_query_param: 'fixture-image', aes_key: 'fixture', encrypt_type: 1 }, mid_size: image.length } };
+    },
+    async replyImage(a, context, _id, item) {
+      assert.equal(a.peer,'test-main-peer');
+      assert.ok(context);
+      assert.equal(item.image_item.mid_size, stagedImage?.length);
+      assert.ok(stagedImage);
+      images.push({ context, png: stagedImage });
+      if (ambiguous) throw Error('synthetic provider timeout');
+    },
   };
   const scope = {enterpriseId:eid,adminId,stage:'main' as const};
   const publicChannel = await startChannel(scope,client); assert.ok(publicChannel);
@@ -140,13 +155,20 @@ test('主小K发布、双端互认、工地报告查询、订退、撤权与确�
     assert.ok(actual.available && actual.facts?.projects[0].records.some(record=>record.data.completed===fact));}
   const baseline=sent.length;
   await tick();await tick();await tick();
-  assert.equal(sent.length,baseline+2);assert.ok(sent.slice(-2).every(item=>item.text.includes(fact)&&item.context==='verified-peer'));
-  assert.ok(sent.slice(-2).some(item=>item.text.includes('周报')));
+  assert.equal(sent.length,baseline+1);
+  assert.ok(sent.at(-1)?.text.includes('日报') && sent.at(-1)?.text.includes(fact) && sent.at(-1)?.context==='verified-peer');
+  assert.equal(images.length,1);
+  assert.equal(images[0].context,'verified-peer');
+  assert.equal(images[0].png.readUInt32BE(16),780);
+  const weekly = reports[1];
+  const poster = await new FollowupService(actor).reportImage(bindingId, weekly.reportId, weekly.revision, projectId);
+  assert.ok(images[0].png.equals(poster), 'legacy delivery uses the same authorized weekly poster as the Mini Program');
   const question='我家这个星期进展怎么样？', lookup=await ask(question);
   await withTenantTransaction(eid,async tx=>{const tools=await mainDialogueTools(tx,lookup,question);assert.ok(tools);
     const result=await tools.invoke(tx,reportToolName,'{"period":"weekly"}',3190);assert.ok(!result.includes(fact));});
   await completeRun(lookup,{content:{version:1,blocks:[{type:'text',text:'已找到本周工地报告。'}]},usage:localUsage}); await tick();
   assert.ok(sent.at(-1)?.text.includes('周报')&&sent.at(-1)?.text.includes(fact));
+  assert.equal(images.length,1);
 
   const prior=(await state()).channel!;await request({action:'preferences',id:prior.id,version:prior.version,daily:false,weekly:true});
   assert.equal((await state()).channel?.daily,false);
@@ -155,12 +177,17 @@ test('主小K发布、双端互认、工地报告查询、订退、撤权与确�
     select enterprise_id,channel_id,${'fixture-'+randomUUID()},report_kind,report_id,report_revision,recipient_version,true
     from app.assistant_wechat_events where channel_id=${channelId} and proactive and report_kind=${kind} order by id limit 1`));
   await replay('daily');const afterUnsubscribe=sent.length;await tick();assert.equal(sent.length,afterUnsubscribe);
-  await replay('weekly');ambiguous=true;await tick();ambiguous=false;await tick();assert.equal(sent.length,afterUnsubscribe+1);
+  await replay('weekly');ambiguous=true;await tick();ambiguous=false;await tick();
+  assert.equal(sent.length,afterUnsubscribe);
+  assert.equal(images.length,2);
+  assert.match(images[1].context,/^ctx-/);
   const hasUnknown=await withTenantTransaction(eid,tx=>one(tx,sql`select 1 from app.assistant_wechat_events where channel_id=${channelId} and proactive and status='unknown'`));
   assert.ok(hasUnknown);
   async function customerAccess(enabled:boolean) {const current=(await manage.execute('detail',{projectId})).project as Row;
     await manage.execute('update',{projectId,expectedVersion:current.version,name:current.name,status:current.status,customerAccess:enabled},randomUUID());}
-  await replay('weekly');await customerAccess(false);const afterRevoke=sent.length;await tick();assert.equal(sent.length,afterRevoke);
+  await replay('weekly');await customerAccess(false);const afterRevoke=sent.length;await tick();
+  assert.equal(sent.length,afterRevoke);
+  assert.equal(images.length,2);
   await assert.rejects(state(),/(forbidden|not_found)/);await customerAccess(true);
   await publish(false);assert.equal((await state()).channel,null);assert.equal(await tick(),false);
   const finalPublication=await publish(true);

@@ -97,14 +97,21 @@ async function prepare(tx: PostgresTransaction, c: ChannelRow, event: Event): Pr
 }
 
 async function stageWeeklyImage(lease: ChannelRow, event: Event, client: WeixinDeliveryClient) {
-  if (!event.proactive || event.report_kind !== 'weekly' || lease.recipient_audience !== 'boss' ||
-      !client.uploadImage || !client.replyImage) return null;
+  if (!event.proactive || event.report_kind !== 'weekly' || !client.uploadImage || !client.replyImage ||
+      lease.recipient_audience === 'worker' || lease.recipient_audience === 'designer') return null;
   const report = await locked(lease, (tx, c) => reportMessage(tx, c, event));
-  if (!report?.notebook) return null;
+  const source = report?.image;
+  if (!source) return null;
   try {
-    const image = renderBossWeeklyNotebook(report.notebook);
+    let image: Buffer;
+    if (source.kind === 'boss') {
+      image = renderBossWeeklyNotebook(source.notebook);
+    } else {
+      const { renderReportPoster } = await import('@/lib/construction/report-poster');
+      image = await renderReportPoster({ reading: source.reading, weekly: true, updatedProjectIds: new Set(source.updatedProjectIds) });
+    }
     const item = await client.uploadImage(account(lease), image);
-    return { item, source: fingerprint(report.notebook) };
+    return { item, source: fingerprint(source) };
   } catch (error) {
     if (error instanceof AssistantError && error.code === 'wechat_login_invalid') throw error;
     // An upload cannot deliver a message. The final check can still send the text digest.
@@ -153,7 +160,7 @@ async function send(lease: ChannelRow, reply: Reply, client: WeixinDeliveryClien
       const report = await reportMessage(tx,c,event);
       if (!report && event.proactive) { await finish(tx,c,event.id,'failed','wechat_report_unavailable'); return; }
       text = report?.text || '这份工地报告当前已不可查看，请从小程序核对工地和权限。';
-      matchingImage = !!(staged && report?.notebook && fingerprint(report.notebook) === staged.source);
+      matchingImage = !!(staged && report?.image && fingerprint(report.image) === staged.source);
     }
     const context = event.proactive ? c.latest_context : event.context_secret;
     if (!context) { await finish(tx,c,event.id,'failed','wechat_report_unavailable'); return; }

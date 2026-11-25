@@ -185,6 +185,10 @@ test('主小K个人微信四端角色、多工地报告与租户隔离', { skip:
   let bossMedia: 'image' | 'upload-failure' | 'rejected' | 'unknown' | 'scope-change' = 'image';
   let imageSends = 0;
   const bossImages: Buffer[] = [];
+  let customerMedia: 'image' | 'rejected' = 'image';
+  let customerImageAttempts = 0;
+  let customerImageSends = 0;
+  const customerImages: Buffer[] = [];
   const verifyRoleChannel = async (audience: RoleAudience) => {
     const suffix = randomUUID().slice(0, 6), bot = `role-${audience}-${suffix}`, peer = `peer-${audience}-${suffix}`;
     const input: WeixinInbound[] = [], sent: string[] = [];
@@ -346,6 +350,93 @@ test('主小K个人微信四端角色、多工地报告与租户隔离', { skip:
   assert.equal(bossImages.length, 1);
   assert.equal(bossImages[0].readUInt32BE(16), 780);
 
+  // Keep the original four-role text regression intact. The owner transport
+  // gains image methods only after that regression so older single-site
+  // fixtures without uploadImage remain text-only.
+  const customerClient = roleClients.get('customer')!;
+  let pendingCustomerImage: Buffer | undefined;
+  customerClient.client.uploadImage = async (account, image) => {
+    assert.equal(account.peer, customerClient.peer);
+    assert.equal(image.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    customerImageAttempts++;
+    pendingCustomerImage = image;
+    return { type: 2, image_item: { media: { encrypt_query_param: 'fixture-customer-image', aes_key: 'fixture', encrypt_type: 1 }, mid_size: image.length } };
+  };
+  customerClient.client.replyImage = async (account, context, _id, image) => {
+    assert.equal(account.peer, customerClient.peer);
+    assert.ok(context);
+    assert.ok(pendingCustomerImage);
+    assert.equal(image.image_item.mid_size, pendingCustomerImage.length);
+    if (customerMedia === 'rejected') throw new AssistantError('wechat_provider_rejected', 502);
+    customerImageSends++;
+    customerImages.push(pendingCustomerImage);
+  };
+
+  const customerImageStart = new Date(cutoff.getTime() + 60 * 1000);
+  const customerImageReports = await generateReports([
+    { audience: 'customer', kind: 'daily' }, { audience: 'customer', kind: 'weekly' },
+  ], customerImageStart);
+  reports.push(...customerImageReports);
+  const customerDaily = customerImageReports.find(item => item.kind === 'daily')!;
+  const customerWeekly = customerImageReports.find(item => item.kind === 'weekly')!;
+  const expectedCustomerImage = await new FollowupService(actors.customer).reportImage(
+    bindingIds.customer, customerWeekly.reportId, customerWeekly.revision, project1Id);
+  assert.equal(Buffer.from(expectedCustomerImage).subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+
+  await withTenantTransaction(eid, tx => queueWechatReports(tx, eid));
+  const customerBeforeText = customerClient.sent.length;
+  const customerBeforeAttempts = customerImageAttempts;
+  const customerBeforeImageSends = customerImageSends;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const pending = await withTenantTransaction(eid, tx => one(tx, sql`select id from app.assistant_wechat_events
+      where enterprise_id=${eid} and channel_id=${channelIds.customer} and proactive and status<>'sent'`));
+    if (!pending) break;
+    await tickRole('customer');
+  }
+  const customerImageEvents = await withTenantTransaction(eid, tx => rows(tx, sql`select report_id::text as report_id,status
+    from app.assistant_wechat_events where enterprise_id=${eid} and channel_id=${channelIds.customer}
+      and proactive and report_id in (${customerDaily.reportId},${customerWeekly.reportId}) order by report_id`));
+  assert.deepEqual(customerImageEvents.map(event => event.status), ['sent', 'sent']);
+  assert.equal(customerImageAttempts - customerBeforeAttempts, 1);
+  assert.equal(customerImageSends - customerBeforeImageSends, 1);
+  assert.equal(customerClient.sent.length - customerBeforeText, 1);
+  const customerDailyText = customerClient.sent.at(-1)!;
+  assert.match(customerDailyText, /^日报（/u);
+  assert.ok(customerDailyText.includes(fact1));
+  assert.deepEqual(Buffer.from(customerImages.at(-1)!), Buffer.from(expectedCustomerImage));
+  await tickRole('customer');
+  assert.equal(customerImageAttempts - customerBeforeAttempts, 1, 'customer weekly image duplicated');
+  assert.equal(customerImageSends - customerBeforeImageSends, 1, 'customer weekly image reply duplicated');
+  assert.equal(customerClient.sent.length - customerBeforeText, 1, 'customer daily text duplicated');
+
+  // An explicit provider rejection must fall back to the saved owner text;
+  // retrying the worker must not resend either the image or the fallback.
+  customerMedia = 'rejected';
+  try {
+    const [customerFallback] = await generateReports([{ audience: 'customer', kind: 'weekly' }],
+      new Date(customerImageStart.getTime() + 86400000));
+    reports.push(customerFallback);
+    const beforeText = customerClient.sent.length;
+    const beforeAttempts = customerImageAttempts;
+    const beforeImageSends = customerImageSends;
+    await tickRole('customer');
+    const fallbackEvent = await withTenantTransaction(eid, tx => one(tx, sql`select status from app.assistant_wechat_events
+      where enterprise_id=${eid} and channel_id=${channelIds.customer} and report_id=${customerFallback.reportId} and proactive`));
+    assert.equal(fallbackEvent?.status, 'sent');
+    assert.equal(customerImageAttempts - beforeAttempts, 1);
+    assert.equal(customerImageSends - beforeImageSends, 0);
+    assert.equal(customerClient.sent.length - beforeText, 1);
+    const fallbackText = customerClient.sent.at(-1)!;
+    assert.match(fallbackText, /^周报（/u);
+    assert.ok(fallbackText.includes(fact1));
+    await tickRole('customer');
+    assert.equal(customerImageAttempts - beforeAttempts, 1, 'customer rejected image duplicated');
+    assert.equal(customerImageSends - beforeImageSends, 0, 'customer rejected image unexpectedly delivered');
+    assert.equal(customerClient.sent.length - beforeText, 1, 'customer fallback text duplicated');
+  } finally {
+    customerMedia = 'image';
+  }
+
   const reportManager = new ConstructionReportService({ enterpriseId: eid, adminId: fixture.boss });
   const reportSettings = await reportManager.settings();
   assert.throws(() => reportManager.configure({ expectedVersion: Number(reportSettings.version || 0), enabled: true,
@@ -454,6 +545,7 @@ test('主小K个人微信四端角色、多工地报告与租户隔离', { skip:
   if (output) {
     mkdirSync(output, { recursive: true });
     writeFileSync(join(output, 'boss-weekly-notebook.png'), bossImages[0]);
+    if (customerImages[0]) writeFileSync(join(output, 'customer-weekly-notebook.png'), customerImages[0]);
     const finalStates = {} as Record<RoleAudience, Record<string, unknown>>;
     for (const audience of ['customer', 'worker', 'designer', 'boss'] as const)
       finalStates[audience] = ((await recipientState(requested[audience])).channel || {}) as Record<string, unknown>;

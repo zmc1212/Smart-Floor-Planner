@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm';
 import { one } from '@/db/repositories/assistant-repository';
 import type { PostgresTransaction } from '@/db/transaction';
 import { FollowupService } from '@/lib/construction/followup-service';
-import type { FollowupAudience } from '@/lib/construction/report-scope';
+import { buildReportReading, type ReportReading } from '@/lib/construction/report-reading';
+import type { FollowupAudience, ReportFacts } from '@/lib/construction/report-scope';
 import { mainRelease } from '@/lib/xiaok-v1/main-publication';
 import { AssistantError, fail, principalKey } from '../contracts';
 import { checkRecipient, checkReportBinding, savedRecipient, type Recipient } from './recipient';
@@ -12,7 +13,19 @@ import { bossWeeklyNotebookText, buildBossWeeklyNotebook, type BossWeeklyNoteboo
 export type Period = 'daily' | 'weekly';
 export type ReportEvent = { report_kind: Period | null; report_id: string | null; report_revision: number | null;
   recipient_version: number | null; proactive: boolean; role_delivery_key?: string | null };
-type WechatReportMessage = { text: string; notebook?: BossWeeklyNotebook };
+type WeeklyImage = { kind: 'boss'; notebook: BossWeeklyNotebook }
+  | { kind: 'customer'; reportId: string; revision: number; reading: ReportReading; updatedProjectIds: string[] };
+type WechatReportMessage = { text: string; image?: WeeklyImage };
+
+function customerWeeklyPoster(report: { reportId: string; revision: number; facts: ReportFacts;
+  periodStart: unknown; periodEnd: unknown; cutoffAt: unknown }, projectId: string): WeeklyImage | undefined {
+  const project = report.facts.projects.find(site => site.id === projectId);
+  if (!project) return undefined;
+  const reading = buildReportReading({ kind: 'weekly', audience: 'customer', facts: report.facts, projectId,
+    periodStart: String(report.periodStart), periodEnd: String(report.periodEnd), cutoffAt: String(report.cutoffAt) });
+  return { kind: 'customer', reportId: report.reportId, revision: report.revision, reading,
+    updatedProjectIds: project.records.length ? [projectId] : [] };
+}
 
 type RoleRecipient = Extract<Recipient, { audience: FollowupAudience }>;
 type ReportProjectView = {
@@ -206,10 +219,13 @@ async function roleReportMessage(tx: PostgresTransaction, c: ChannelRow, recipie
   if (event.proactive && recipient.audience === 'boss' && event.report_kind === 'weekly') {
     const notebook = buildBossWeeklyNotebook({ reportId: report.reportId, revision: report.revision,
       periodStart: report.periodStart as Date | string, periodEnd: report.periodEnd as Date | string, projects: report.facts.projects });
-    return { notebook, text: bossWeeklyNotebookText(notebook) };
+    return { image: { kind: 'boss', notebook }, text: bossWeeklyNotebookText(notebook) };
   }
   const text = buildWechatReportSummary(report, event.report_kind, recipient.audience);
-  return text ? { text } : null;
+  if (!text) return null;
+  const image = event.proactive && event.report_kind === 'weekly' && recipient.audience === 'customer' && binding.project_id
+    ? customerWeeklyPoster({ ...report, facts: report.facts }, String(binding.project_id)) : undefined;
+  return { text, image };
 }
 
 export async function reportMessage(tx: PostgresTransaction, c: ChannelRow, event: ReportEvent): Promise<WechatReportMessage | null> {
@@ -247,7 +263,9 @@ export async function reportMessage(tx: PostgresTransaction, c: ChannelRow, even
     const text = [project.name+' · '+name+'（'+period+'）', project.stageName ? '本期阶段：' + project.stageName : '',
       ...(progress.length ? progress : records.length ? records : ['本期暂无可展示的已发布进展记录。']).slice(0,3),
       reportFooter].filter(Boolean).join('\n').slice(0,1600);
-    return { text };
+    const image = event.proactive && event.report_kind === 'weekly'
+      ? customerWeeklyPoster({ ...report, facts: report.facts }, recipient.projectId) : undefined;
+    return { text, image };
   } catch (error) {
     if (error instanceof AssistantError && [401,403,404,409].includes(error.status)) return null;
     throw error;
