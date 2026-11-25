@@ -7,12 +7,12 @@
       <image class="chat-image" wx:if="{{promotionEntry.brandLogo}}" src="{{promotionEntry.brandLogo}}" mode="aspectFit" aria-hidden="true"/>
       <text>{{promotionEntry.brandName}}</text>
     </view>
-    <text class="promotion-entry-copy">{{promotionEntry.phase === 'loading' ? '正在读取推广码…' : promotionEntry.message || (promotionEntry.phase === 'confirm' ? '确认后，小K会为你关联本次装修服务。' : '授权微信手机号后，小K会帮你接续已有服务，或建立本次服务档案。')}}</text>
+    <text class="promotion-entry-copy">{{promotionEntry.phase === 'loading' ? '正在读取活动码…' : promotionEntry.message || (promotionEntry.phase === 'confirm' ? '确认后，小K会为你关联本次装修服务。' : '授权微信手机号后，小K会帮你接续已有服务，或建立本次服务档案。')}}</text>
     <button wx:if="{{promotionEntry.phase === 'phone'}}" class="promotion-entry-primary chat-button {{(promotionSubmitting) ? 'is-disabled' : ''}}" open-type="getPhoneNumber"
       bindgetphonenumber="onPromotionPhone" loading="{{promotionSubmitting}}" disabled="{{promotionSubmitting}}">授权手机号并继续</button>
     <button wx:elif="{{promotionEntry.phase === 'confirm'}}" class="promotion-entry-primary chat-button {{(promotionSubmitting) ? 'is-disabled' : ''}}" bindtap="confirmPromotionEntry"
       loading="{{promotionSubmitting}}" disabled="{{promotionSubmitting}}">确认关联服务</button>
-    <button wx:elif="{{promotionEntry.rescan}}" class="promotion-entry-primary chat-button" bindtap="scanServiceCode">扫推广码</button>
+    <button wx:elif="{{promotionEntry.rescan}}" class="promotion-entry-primary promotion-entry-rescan chat-button" bindtap="scanServiceCode">扫活动码</button>
     <button wx:elif="{{promotionEntry.canRetry}}" class="promotion-entry-primary chat-button" bindtap="retryPromotionEntry">重新确认</button>
     <button wx:if="{{promotionEntry.phase !== 'loading'}}" class="promotion-entry-secondary chat-button {{(promotionSubmitting) ? 'is-disabled' : ''}}" bindtap="cancelPromotionEntry" disabled="{{promotionSubmitting}}">
       <text class="chat-text">{{promotionEntry.phase === 'phone' ? '暂不授权' : '返回小K'}}</text>

@@ -24,6 +24,19 @@ function messagesForView(items) {
 }
 const ACTIVE = ['queued', 'running'];
 const WELCOME = '你好，我是小K。\n先聊聊你的装修想法吧。';
+const PUBLIC_TOPIC_ICONS = ['requirement-home', 'requirement-style', 'requirement-style'];
+const ENTERPRISE_TOPIC_ICONS = ['requirement-home', 'requirement-style', 'requirement-budget'];
+const DEFAULT_TOPICS = [
+  { title: '旧房改造', helper: '从哪开始', icon: 'requirement-home', text: '旧房改造有哪些需要先考虑？' },
+  { title: '装修风格', helper: '找找灵感', icon: 'requirement-style', text: '想聊聊适合我家的装修风格' },
+  { title: '预算安排', helper: '先聊想法', icon: 'requirement-budget', text: '想聊聊装修预算怎么安排' },
+];
+const PUBLIC_DEFAULT_TOPICS = [
+  { title: '装修先做什么', helper: '', icon: 'requirement-home', text: '第一次装修，应该先从哪一步开始？' },
+  { title: '小户型收纳', helper: '', icon: 'requirement-style', text: '小户型怎么规划收纳，才能住得更舒服？' },
+  { title: '找设计师', helper: '', icon: 'requirement-style', text: '我想找一个适合我的设计师' },
+];
+const VALID_CONVERSATION_ID = /^[1-9]\d{0,18}$/;
 function historyForView(items) {
   return (items || []).map(item => {
     const time = new Date(item.createdAt);
@@ -82,6 +95,7 @@ function appendPatch(patch, previousLength) {
 }
 const initial = () => ({
   loading: true, busy: false, error: '', connectionInterrupted: false, fatal: false, needsLogin: false, needsServiceCode: false,
+  entryScope: 'enterprise', publicConversationId: '',
   enterpriseId: '', enterpriseName: '', canSend: false, maxChars: 4000,
   shareReferenceEntry: '', staffProfileCapture: false,
   welcomeText: WELCOME, guidanceEnabled: false, guidance: null, selectedOptions: [], selectedOptionMap: {},
@@ -102,6 +116,7 @@ class ChatController {
     this.prepareFirstSend = prepareFirstSend;
     this.resumeConversationId = String(resumeConversationId || ''); this.onResumeInvalid = onResumeInvalid;
     this.state = initial(); this.epoch = 0; this.visible = false; this.hidden = false; this.ready = false;
+    this.entryScope = 'enterprise'; this.publicConversationId = '';
     this.revealReportReply = revealReportReply;
     let previewBlock = null;
     this.liveAnswer = new LiveAnswer((text, messageId, target) => {
@@ -128,11 +143,15 @@ class ChatController {
   valid(epoch) { return this.epoch === epoch && this.session === this.identity(); }
   hide() { this.visible = false; this.hidden = true; this.showTicket = (this.showTicket || 0) + 1; this.unschedule(this.timer); this.liveAnswer.stop(); }
   dispose() { this.hide(); this.epoch += 1; }
-  clear() {
+  clear({ preservePublicHistory = false } = {}) {
+    const publicConversationId = preservePublicHistory
+      ? (this.publicConversationId || (this.entryScope === 'public' ? this.conversationId : ''))
+      : '';
     this.operationalDraft = null;
     this.dispose(); this.client.pending.clear(); this.entry = null; this.entryExpiry = 0;
-    this.ready = false; this.resetWindow();
+    this.ready = false; this.resetWindow(); this.entryScope = 'enterprise'; this.publicConversationId = publicConversationId;
     this.conversationId = ''; this.startedNew = false; this.set(initial());
+    if (publicConversationId) this.set({ publicConversationId });
   }
 
   async show(options) {
@@ -204,22 +223,54 @@ class ChatController {
     if (!this.valid(epoch)) return null;
     this.entry = entry;
     this.entryExpiry = Date.now() + Math.max(0, Number(entry.expiresIn || 900) - 30) * 1000;
-    const acquisitionTopics = entry.acquisition && Array.isArray(entry.acquisition.prompts)
+    const scope = entry.scope === 'public' ? 'public' : 'enterprise';
+    const enterprise = entry.enterprise && typeof entry.enterprise === 'object' ? entry.enterprise : {};
+    const publicTopics = scope === 'public' && Array.isArray(entry.publicTopics)
+      ? entry.publicTopics.slice(0, 3).filter(item => item && item.title && item.text).map((item, index) => ({
+          title: String(item.title).slice(0, 12),
+          helper: typeof item.helper === 'string' ? item.helper.slice(0, 20) : '',
+          icon: PUBLIC_TOPIC_ICONS[index] || 'requirement-home',
+          text: String(item.text).slice(0, 80),
+        }))
+      : [];
+    const acquisitionTopics = scope !== 'public' && entry.acquisition && Array.isArray(entry.acquisition.prompts)
       ? entry.acquisition.prompts.slice(0, 3).filter(item => item && item.title && item.text).map((item, index) => ({
           title: String(item.title).slice(0, 12),
           helper: '',
-          icon: ['requirement-home', 'requirement-style', 'requirement-budget'][index] || 'requirement-home',
+          icon: ENTERPRISE_TOPIC_ICONS[index] || 'requirement-home',
           text: String(item.text).slice(0, 80)
         }))
       : [];
-    this.set({ enterpriseId: entry.enterprise.id,
-      enterpriseName: entry.acquisition && entry.acquisition.brandMode === 'anonymous' ? '本地服务商' : entry.enterprise.name,
+    const topics = publicTopics.length ? publicTopics : acquisitionTopics.length ? acquisitionTopics
+      : scope === 'public' ? PUBLIC_DEFAULT_TOPICS : DEFAULT_TOPICS;
+    this.entryScope = scope;
+    const publicConversationId = entry.publicConversationId || (scope === 'public' ? entry.resumeConversationId : '');
+    if (VALID_CONVERSATION_ID.test(String(publicConversationId || ''))) {
+      this.publicConversationId = String(publicConversationId);
+    }
+    this.set({ entryScope: scope, publicConversationId: this.publicConversationId || '',
+      enterpriseId: scope === 'public' ? '' : String(enterprise.id || ''),
+      enterpriseName: scope === 'public' ? '' : entry.acquisition && entry.acquisition.brandMode === 'anonymous' ? '本地服务商' : String(enterprise.name || ''),
       canSend: entry.canSend !== false,
       maxChars: Math.min(4000, Number(entry.maxMessageChars) || 4000), shareReferenceEntry: entry.referenceEntry || '',
       staffProfileCapture: entry.staffProfileCapture === true,
-      ...(acquisitionTopics.length ? { topics: acquisitionTopics } : {}) });
+      topics });
     if (!this.state.conversation) this.set({ welcomeText: entry.guidanceOpening || WELCOME, guidanceEnabled: !!entry.guidanceEnabled, guidance: entry.guidance || null });
     return entry;
+  }
+
+  async switchEntry(options = {}, { preservePublicHistory = false, draft = '' } = {}) {
+    const publicConversationId = preservePublicHistory
+      ? (this.publicConversationId || (this.entryScope === 'public' ? this.conversationId : ''))
+      : '';
+    this.options = options || {};
+    this.resumeConversationId = '';
+    this.entry = null; this.entryExpiry = 0; this.entryScope = 'enterprise'; this.publicConversationId = publicConversationId;
+    this.conversationId = ''; this.startedNew = false; this.ready = false; this.resetWindow();
+    this.set({ ...initial(), publicConversationId, draft: String(draft || '').slice(0, 4000) });
+    await this.refresh({ forceEntry: true });
+    if (draft && this.state.draft !== draft) this.set({ draft: String(draft).slice(0, this.state.maxChars) });
+    return !this.state.fatal;
   }
 
   async historyPage(cursor, search = '') {
@@ -285,9 +336,10 @@ class ChatController {
     this.liveAnswer.stop();
     const code = error.code || error.error;
     const connectionInterrupted = isTransportInterruption(error);
-    const denied = error.statusCode === 401 || ['assistant_capability_forbidden', 'assistant_resource_not_found',
+    const publicAttribution = code === 'assistant_service_code_required' && this.entryScope === 'public';
+    const denied = !publicAttribution && (error.statusCode === 401 || ['assistant_capability_forbidden', 'assistant_resource_not_found',
       'entry_context_invalid', 'identity_context_invalid', 'assistant_service_code_required',
-      'customer_service_ambiguous', 'assistant_share_preview_only'].includes(code);
+      'customer_service_ambiguous', 'assistant_share_preview_only'].includes(code));
     if (denied) {
       this.epoch += 1;
       this.unschedule(this.timer); this.client.pending.clear();
@@ -300,9 +352,10 @@ class ChatController {
       this.set({ messages: this.state.messages.filter(message => !hasPublicSource(message) || message.available === false),
         citation: null, citationLoading: false });
     }
-    const errorText = code === 'provider_outcome_unknown' ? '有一轮服务结果尚待核对，请稍后重试。' : errorCopy(error);
+    const errorText = publicAttribution ? '请扫描装修企业的活动码，关联服务后就能和小K聊。'
+      : code === 'provider_outcome_unknown' ? '有一轮服务结果尚待核对，请稍后重试。' : errorCopy(error);
     this.set({ loading: false, error: errorText, connectionInterrupted,
-      fatal: denied || fatal && !(connectionInterrupted && this.state.conversation), needsLogin: error.statusCode === 401,
+      fatal: denied || fatal && !(connectionInterrupted && this.state.conversation) && !publicAttribution, needsLogin: error.statusCode === 401,
       needsServiceCode: code === 'assistant_service_code_required',
       ...(code === 'assistant_disabled' ? { canSend: false } : {}) });
   }
@@ -342,6 +395,7 @@ class ChatController {
     }
     const sameQuestion = this.conversationId === id && this.state.guidance?.questionKey === conversation.guidance?.questionKey;
     this.conversationId = id;
+    if (this.entryScope === 'public') this.publicConversationId = String(id);
     if (this.createdAwaitingDetail?.id === id) this.createdAwaitingDetail = null;
     const pendingMessage = this.client.pending.get('send:' + id), pendingHandoff = this.client.pending.get('handoff:' + id);
     if (pendingMessage) {
@@ -352,7 +406,7 @@ class ChatController {
     }
     if (pendingHandoff) this.set({ pendingAction: 'handoff:' + pendingHandoff.body.action });
     const run = conversation.mode === 'ai' ? conversation.latestRun : null;
-    this.set({ conversation, connectionInterrupted: false, readOnly: conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(conversation.mode) });
+    this.set({ conversation, connectionInterrupted: false, publicConversationId: this.publicConversationId || '', readOnly: conversation.status !== 'open' || !['ai', 'human', 'handoff_requested'].includes(conversation.mode) });
     if (!ACTIVE.includes(run?.status)) this.finishLiveReply(resume ? null : run, window, conversation);
     if (window) this.commitWindow(window);
     this.set({ welcomeText: conversation.guidanceOpening || WELCOME, guidanceEnabled: !!conversation.guidanceEnabled, guidance: conversation.guidance || null,
@@ -709,14 +763,22 @@ class ChatController {
       ...(entry.staffProfileCapture === true && noticeWasShown ? { staffProfileNotice: true } : {}) });
   }
 
-  async selectConversation(id) {
+  async selectConversation(id, { reloadEntry = false } = {}) {
     if (this.state.busy || this.state.pendingSend || this.state.pendingAction) return;
     this.unschedule(this.timer);
     const epoch = ++this.epoch;
+    if (reloadEntry) {
+      this.options = { conversationId: String(id) };
+      this.resumeConversationId = '';
+      this.entry = null; this.entryExpiry = 0; this.entryScope = 'enterprise';
+    }
     this.conversationId = id;
     this.resetWindow();
     this.set({ loading: true, messages: [], conversation: null, run: null, draft: '', messageQuote: null, pendingText: '', sending: false, error: '', fatal: false, citation: null, shareReferenceEntry: '' });
-    try { await this.snapshot(id, epoch); this.setIf(epoch, { loading: false }); }
+    try {
+      if (reloadEntry) await this.ensureEntry(true);
+      await this.snapshot(id, epoch); this.setIf(epoch, { loading: false });
+    }
     catch (error) { this.fail(error, epoch, true); }
   }
 

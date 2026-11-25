@@ -28,6 +28,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/native-workflow/definitions': 'native-workflow',
   '/assistant-worker': 'assistant-worker',
   '/api/platform/assistant-worker': 'assistant-worker',
+  '/public-assistant': 'public-assistant',
   '/map-settings': 'map-settings',
   '/media-storage': 'media-storage',
   '/sms-settings': 'sms-settings',
@@ -73,6 +74,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/platform/sms-config': 'sms-settings',
   '/api/platform/sms-delivery-logs': 'sms-settings',
   '/api/platform/llm-config': 'llm-settings',
+  '/api/platform/public-assistant-config': 'public-assistant',
   '/api/platform/map-config': 'map-settings',
   '/ai-studio': 'ai-scenarios',
   '/design-reports': 'ai-scenarios',
@@ -254,6 +256,9 @@ export async function proxy(request: NextRequest) {
     // The Worker switch controls deployment-wide generation and delivery, so it
     // stays with the platform super admin only (not platform admins).
     if ((pathname.startsWith('/assistant-worker') || pathname.startsWith('/api/platform/assistant-worker')) && role !== 'super_admin') {
+      return pathname.startsWith('/api/') ? NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }) : NextResponse.redirect(new URL('/', request.url));
+    }
+    if ((pathname.startsWith('/public-assistant') || pathname.startsWith('/api/platform/public-assistant-config')) && role !== 'super_admin' && role !== 'admin') {
       return pathname.startsWith('/api/') ? NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }) : NextResponse.redirect(new URL('/', request.url));
     }
 

@@ -1,5 +1,7 @@
 # 小K第二期：需求整理与人工交接
 
+通用小K沿用原生对话执行器、签名入口、持久运行和用量台账。平台专用存储范围内，只有当前参与者可读本人咨询。执行器提供公开网页工具与找设计师的类型化服务入口。已保存的入口只标记原问题。认证的扫码确认服务决定企业归属，客户在企业会话明确发送选中的内容。交付与配置见[后台清单](admin-system-modules.zh-CN.md)。
+
 **可复用阶段工作流。** 十阶段注册共用一个运行时，企业配置按模板 ID、发布版本和 SHA-256 绑定。宿主提供当前获权阶段的解答、现场核对事项、下一阶段准备和是否匹配常见问题。模板可据此分支、返回文本。原生咨询按当前 Agent 的绑定暴露工具，核对项目、阶段和配置版本，并把实际调用写入 `assistant_run_steps`。确定性阶段回复与工作流回执在同一事务落库。专业流程、企业知识 Evidence、成员授权、模型用量和业务写入继续使用原服务。参考 FastGPT 把定义与每次运行状态分离的方式及工具调用结构，复用项目内的类型化编排引擎。[FastGPT 工作流调度源码](https://github.com/labring/FastGPT/blob/main/packages/service/core/workflow/dispatch/index.ts) · [LangGraph 子图持久化测试](https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/tests/test_subgraph_persistence.py) · [调用重试、项目撤权和停用复核](../tmp/stage-agent-workflows-20261123/authority-4849b79d/report.json)。
 
 **C01 正文流式。** 原生图复用 `finish_context` 分开工具收集和最终正文回合，业主咨询在最终正文回合引导模型用自然段回答简单确认。长答按阶段或主题分标题，默认一层要点，适量加粗关键词。补充说明写在原条目内，多条独立子项才用一级无序子列表，有明确先后的操作用编号。客户流可以提前发布已经校验的普通完整句。带结构或依据的答复沿用段落和证据校验。分块和运行状态接口返回同一版本，撤权时返回带版本的空正文。推理字段与原始工具数据留在服务端，每个正文前缀绑定当前租约及查阅过的证据。最终验证、取消、用量和历史落库沿用原合同。OpenAI 兼容的 Chat Completions 在终止事件中取得用量。报告追问沿用结构化终稿和整份正文审核，审核通过后由客户端展开。[LangGraph 流模式](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/streaming.mdx) · [OpenAI 流式事件](https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events/) · [百炼流式协议](https://help.aliyun.com/zh/model-studio/stream)。

@@ -1,4 +1,5 @@
 const api = require('../../../utils/api');
+const { resolveServiceEntryUrl, serviceEntryCode } = require('../../../utils/service-entry');
 const {
   refreshWechatLoginCode, resolveWechatPhoneLoginInput, wechatPhoneAuthToast,
 } = require('../../../utils/wechat-phone-auth');
@@ -8,7 +9,7 @@ const unavailable = new Set(['invalid_token', 'code_not_found', 'code_disabled',
 
 function promotionError(error) {
   const code = error?.code || error?.error;
-  if (unavailable.has(code)) return '这张推广码已失效，请重新扫码。';
+  if (unavailable.has(code)) return '这张活动码已失效，请重新扫码。';
   if (code === 'customer_service_ambiguous') return '请联系当前装修顾问确认服务归属。';
   if (code === 'wechat_user_mismatch') return '请用与当前微信登录一致的手机号授权。';
   return '暂时无法关联服务，请重试。';
@@ -21,15 +22,16 @@ function customerSession() {
 }
 
 const promotionMethods = {
-  preparePromotion(code) {
-    this._promotion = { code, key: `acq-${Date.now()}-${Math.random().toString(36).slice(2, 12)}` };
+  preparePromotion(code, options = {}) {
+    this._promotion = { code, key: `acq-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
+      preservePublicHistory: options.preservePublicHistory === true };
     this.setData({ promotionEntry: { phase: 'loading' }, promotionResumedLeadId: '' });
   },
 
-  async beginPromotion(code) {
+  async beginPromotion(code, options = {}) {
     if (this.data.promotionSubmitting) return;
-    this.controller.clear();
-    this.preparePromotion(code);
+    if (!options.preservePublicHistory) this.controller.clear();
+    this.preparePromotion(code, options);
     if (!await this.showPromotionEntry()) await this.showConsultation();
   },
 
@@ -61,7 +63,8 @@ const promotionMethods = {
       if (identity !== app.globalData.token) throw new Error('客户身份已变更');
       if (!['referral', 'staff_activity'].includes(data?.kind)) throw { code: 'invalid_token' };
       if (data.existingAttribution && data.lead?.id) {
-        this.finishPromotion(data.lead.id, true);
+        const result = this.finishPromotion(data.lead.id, true);
+        if (result?.preservePublicHistory && this._shown) await this.switchAfterPromotion(result);
         return;
       }
       if (!data.pendingSource) throw { code: 'invalid_token' };
@@ -84,6 +87,16 @@ const promotionMethods = {
   async retryPromotionEntry() {
     await this.resolvePromotionEntry();
     if (this._alive && this._shown && !this._promotion) await this.showConsultation();
+  },
+
+  async switchAfterPromotion(result) {
+    if (!result?.preservePublicHistory) return true;
+    const ok = await this.controller.switchEntry(this._options, {
+      preservePublicHistory: true,
+      draft: result.draft,
+    });
+    if (this._alive) this.setData({ serviceLinkBusy: false, ...(ok ? { serviceContinuation: null } : {}) });
+    return ok;
   },
 
   onPromotionPhone(event) {
@@ -129,8 +142,9 @@ const promotionMethods = {
           throw new Error('客户身份资料刷新失败');
       }
       if (!this._alive || this._promotion !== attempt) return;
-      this.finishPromotion(response.data?.lead?.id, response.existingAttribution === true);
-      if (this._shown) await this.showConsultation();
+      const result = this.finishPromotion(response.data?.lead?.id, response.existingAttribution === true);
+      if (this._shown && result?.preservePublicHistory) await this.switchAfterPromotion(result);
+      else if (this._shown) await this.showConsultation();
     } catch (error) {
       if (this._alive && this._promotion === attempt) {
         if (error?.code === 'phone_authorization_required') {
@@ -144,13 +158,19 @@ const promotionMethods = {
   },
 
   finishPromotion(leadId, existing) {
-    const code = this._promotion.code;
+    const attempt = this._promotion;
+    const code = attempt.code;
+    const continuation = this.data.serviceContinuation;
     this.consumePromotion();
-    this.controller.clear();
+    if (!attempt.preservePublicHistory) this.controller.clear();
     // A plain entry resumes the authoritative current service. A successful
     // first claim can still carry the verified acquisition setup into its chat.
     this._options = existing ? {} : { entryCode: code };
     this.setData({ promotionResumedLeadId: existing ? String(leadId || '') : '' });
+    return attempt.preservePublicHistory ? {
+      preservePublicHistory: true,
+      draft: String(continuation?.question || '').slice(0, 4000),
+    } : null;
   },
 
   consumePromotion() {
@@ -163,6 +183,7 @@ const promotionMethods = {
     if (this.data.promotionSubmitting) return;
     this.consumePromotion();
     this._options = {};
+    this.setData({ serviceLinkBusy: false, serviceContinuation: null });
     const mode = getApp().globalData.bootstrap?.current?.mode;
     if (!this.data.embedded && mode && mode !== 'customer') return this.back();
     if (this._shown) await this.showConsultation();
@@ -173,6 +194,25 @@ const promotionMethods = {
     if (!this.data.fatal && /^[1-9]\d{0,18}$/.test(leadId)) {
       wx.navigateTo({ url: '/packages/business/customer-project/customer-project?leadId=' + encodeURIComponent(leadId) });
     }
+  },
+
+  scanPromotionCode(event) {
+    const fromServiceLink = event?.currentTarget?.dataset?.serviceLink === '1'
+      || this.data.serviceLinkBusy || this.data.entryScope === 'public';
+    if (!fromServiceLink && !this.data.needsServiceCode && !this.data.promotionEntry?.rescan) return;
+    wx.scanCode({ onlyFromCamera: false, success: result => {
+      const url = resolveServiceEntryUrl(result, { assistant: true });
+      const code = serviceEntryCode(url.split('?entryCode=')[1]);
+      if (code) void this.beginPromotion(code, { preservePublicHistory: fromServiceLink });
+      else {
+        if (fromServiceLink && this._alive) this.setData({ serviceLinkBusy: false });
+        wx.showToast({ title: '请扫描装修企业的活动码', icon: 'none' });
+      }
+    }, fail: () => {
+      // A native scan cancel is a normal recovery path: keep the captured
+      // continuation so the customer can try the same activity code again.
+      if (fromServiceLink && this._alive) this.setData({ serviceLinkBusy: false });
+    } });
   },
 };
 

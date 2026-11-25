@@ -5,7 +5,7 @@ import { configuredPublicSiteGuide, type PublicSiteGuideTurn } from '@/lib/const
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { AssistantError, fail, fingerprint, safeText, type ActorContext, type MessageContent, type Evidence } from '../contracts';
+import { AssistantError, fail, fingerprint, isPublicAssistantScope, safeText, type ActorContext, type MessageContent, type Evidence } from '../contracts';
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { processKnowledgeJob } from '../knowledge/index-worker';
 import { processManagedKnowledgeCleanup } from '../knowledge/managed-cleanup';
@@ -21,6 +21,7 @@ import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 import { assertKnowledgePolicy, runKnowledgeEnabled } from '../knowledge-policy';
 import { assertRunLocationCurrent } from '../location/run-context';
 import { assistantQueueFilter, type AssistantQueueScope } from './worker-scope';
+import { readPublicAssistantScope } from '../application/public-scope';
 
 export const workerTiming = { providerMs: 90000, leaseMs: 150000, requestMs: 180000, heartbeatMs: 30000 };
 export type Lease = { enterpriseId: string; jobId: string; runId: string; token: string; actor: ActorContext };
@@ -35,25 +36,36 @@ async function finish(tx: PostgresTransaction, lease: Lease, status: string, err
 async function authorized(repo: AssistantRepository, run: Row) {
   const settings = await repo.settings(true);
   const c = await repo.conversation(String(run.conversation_id));
+  const policy = run.policy_snapshot as Row;
+  const publicRun = policy.scope === 'public' || isPublicAssistantScope(repo.actor);
+  if (publicRun) {
+    const scope = await withPlatformTransaction(tx => readPublicAssistantScope(tx));
+    const runActor = policy.actor as ActorContext | undefined;
+    if (!scope || !scope.config.enabled || scope.enterpriseId !== repo.actor.enterpriseId
+      || policy.scope !== 'public' || !isPublicAssistantScope(repo.actor)
+      || !runActor || !isPublicAssistantScope(runActor) || runActor.enterpriseId !== scope.enterpriseId
+      || c.purpose !== 'customer_consultation' || (c.entry_snapshot as Row)?.scope !== 'public'
+      || Number((runActor.entry as Row | undefined)?.publicConfigVersion) !== Number(scope.config.version)) fail('context_changed');
+  }
   const localReport = run.purpose === 'construction.report.facts' && c.purpose === 'construction_followup'
     && (run.policy_snapshot as Row).localWorkflow === 'construction-report-facts-v1';
   const composedReport = run.purpose === 'construction.report.compose' && c.purpose === 'construction_followup'
     && ((run.policy_snapshot as Row).reportComposition as Row | undefined)?.protocol === 'construction-report-composition-v1'
     && repo.actor.capabilities.includes('assistant.followup.delivery');
   const scheduledReport = localReport || composedReport;
-  if (!localReport && run.purpose !== 'speech.transcribe' && c.purpose !== 'knowledge_preview')
-    assertKnowledgePolicy((run.policy_snapshot as Row).knowledgePolicy, settings!.agent_config);
+  if (!publicRun && !localReport && run.purpose !== 'speech.transcribe' && c.purpose !== 'knowledge_preview')
+    assertKnowledgePolicy(policy.knowledgePolicy, settings!.agent_config);
   if (!((run.purpose === 'speech.transcribe' || scheduledReport) ? ['ai', 'human', 'handoff_requested'].includes(String(c.mode)) : c.mode === 'ai')
     || (scheduledReport ? c.status === 'closed' : c.status !== 'open') || c.context_revision !== run.context_revision
-    || (!localReport && run.purpose !== 'speech.transcribe' && runKnowledgeEnabled(run.policy_snapshot as Row) && settings!.knowledge_epoch !== run.knowledge_epoch)
-    || Number(settings!.policy_version) !== Number((run.policy_snapshot as { policyVersion: number }).policyVersion)) fail('context_changed');
+    || (!publicRun && !localReport && run.purpose !== 'speech.transcribe' && runKnowledgeEnabled(policy) && settings!.knowledge_epoch !== run.knowledge_epoch)
+    || Number(settings!.policy_version) !== Number((policy as { policyVersion: number }).policyVersion)) fail('context_changed');
   const configuredAgent = agentConfig((run.policy_snapshot as Row).agent);
   const guideTurn = (run.policy_snapshot as Row).publicSiteGuideTurn as PublicSiteGuideTurn | undefined;
   if (guideTurn && fingerprint(configuredPublicSiteGuide(settings!.guidance_config)) !== guideTurn.configHash)
     fail('context_changed');
   const reportVersion = (run.policy_snapshot as Row).reportContextVersion;
   if (!scheduledReport && reportVersion !== undefined && reportContext(c.entry_snapshot).revision !== reportVersion) fail('context_changed');
-  if (c.purpose === 'customer_consultation' && run.purpose === 'reply')
+  if (!publicRun && c.purpose === 'customer_consultation' && run.purpose === 'reply')
     await assertRunLocationCurrent(repo.tx, repo.actor.enterpriseId, run, c.entry_snapshot);
   if (configuredAgent && agentCapabilityFingerprint(configuredAgent) !== agentCapabilityFingerprint(agentConfig(settings!.agent_config))) fail('context_changed');
   if (!localReport) await validatePreviewSnapshot(repo.tx,repo.actor,c);

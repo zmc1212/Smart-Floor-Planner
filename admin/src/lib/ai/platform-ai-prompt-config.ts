@@ -84,11 +84,16 @@ export async function savePlatformAiPromptConfig(input: {
     ),
   };
   try {
-    await withPlatformTransaction((transaction) =>
-      new PlatformConfigRepository(transaction).upsert('default', {
-        aiPromptConfig: config,
-      })
-    );
+    await withPlatformTransaction(async (transaction) => {
+      const repository = new PlatformConfigRepository(transaction);
+      const row = await repository.ensureForUpdate('default');
+      const previous = row?.aiPromptConfig && typeof row.aiPromptConfig === 'object'
+        ? row.aiPromptConfig as Record<string, unknown>
+        : {};
+      await repository.update('default', {
+        aiPromptConfig: { ...previous, ...config },
+      });
+    });
   } catch (error) {
     if (isPromptConfigMigrationError(error)) {
       throw new Error('AI 内置提示词字段尚未完成数据库迁移，请先运行 npm run db:migrate');

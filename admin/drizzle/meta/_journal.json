@@ -1030,6 +1030,13 @@
       "when": 1798099200000,
       "tag": "0150_xiaok_wechat_role_recipients",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1798185600000,
+      "tag": "0151_assistant_public_agent_library",
+      "breakpoints": true
     }
   ]
 }

@@ -14,9 +14,14 @@ function chatFixture(t, current, request) {
   global.getApp = () => ({ globalData: current });
   t.after(() => { global.getApp = original; });
   t.mock.method(api, 'request', request);
+  const controller = {
+    clears: 0,
+    clear() { this.clears += 1; },
+    async switchEntry(options, settings) { this.switched = { options, settings }; return true; },
+  };
   return {
     ...promotionMethods, _alive: true, _shown: true, opens: 0,
-    data: {}, controller: { clear() {} },
+    data: {}, controller,
     setData(value) { Object.assign(this.data, value); },
     showConsultation() { this.opens++; },
   };
@@ -66,6 +71,33 @@ test('an identified returning customer resumes their original conversation scope
   assert.equal(page.opens, 1);
 });
 
+test('public designer continuation keeps the public conversation and hands an editable draft to the enterprise entry', async (t) => {
+  const page = chatFixture(t, { token: 'signed' }, async url => {
+    assert.equal(url, '/miniprogram/codes/resolve');
+    return { data: { kind: 'referral', existingAttribution: true, lead: { id: '42' } } };
+  });
+  page.data.serviceContinuation = { type: 'designer', questionMessageId: '21', question: '我想找设计师' };
+  await page.beginPromotion(token, { preservePublicHistory: true });
+  assert.equal(page.controller.clears, 0);
+  assert.deepEqual(page.controller.switched, {
+    options: {}, settings: { preservePublicHistory: true, draft: '我想找设计师' },
+  });
+  assert.equal(page.data.serviceContinuation, null);
+  assert.equal(page.data.serviceLinkBusy, false);
+});
+
+test('a failed enterprise reload keeps the public designer draft for retry', async (t) => {
+  const page = chatFixture(t, { token: 'signed' }, async url => {
+    assert.equal(url, '/miniprogram/codes/resolve');
+    return { data: { kind: 'referral', existingAttribution: true, lead: { id: '42' } } };
+  });
+  page.controller.switchEntry = async () => false;
+  page.data.serviceContinuation = { type: 'designer', questionMessageId: '21', question: '我想找设计师' };
+  await page.beginPromotion(token, { preservePublicHistory: true });
+  assert.equal(page.data.serviceLinkBusy, false);
+  assert.deepEqual(page.data.serviceContinuation, { type: 'designer', questionMessageId: '21', question: '我想找设计师' });
+});
+
 test('an authenticated unbound customer explicitly confirms once with the original pending source', async (t) => {
   const calls = [];
   const page = chatFixture(t, { token: 'signed', userInfo: { mode: 'customer', phone: '13000000000' } }, async (url, method, body, options) => {
@@ -99,7 +131,7 @@ test('configured acquisition prompts become the welcome topics in chat', () => {
   const js = fs.readFileSync(path.join(root, 'packages', 'assistant', 'lib', 'chat.js'), 'utf8');
   assert.match(js, /entry\.acquisition\.prompts/);
   assert.match(js, /acquisitionTopics/);
-  assert.match(js, /topics: acquisitionTopics/);
+  assert.match(js, /const topics = publicTopics\.length \? publicTopics : acquisitionTopics\.length \? acquisitionTopics/);
   assert.match(js, /本地服务商/);
 });
 

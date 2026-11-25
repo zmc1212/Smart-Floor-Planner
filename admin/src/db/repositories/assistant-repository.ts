@@ -1,6 +1,6 @@
 import { sql, type SQL } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { fail, type ActorContext } from '@/lib/assistant/contracts';
+import { fail, isPublicAssistantScope, type ActorContext } from '@/lib/assistant/contracts';
 import { authorizeKnowledgeManager } from '@/lib/assistant/knowledge/manager';
 import { assistantDailyLimitsEnabled } from '@/lib/assistant/core/daily-limits';
 import { currentCustomerService } from './customer-service';
@@ -83,6 +83,11 @@ export class AssistantRepository {
   }
   private async validateCustomerService() {
     const a = this.actor;
+    if (a.principal.kind === 'user' && isPublicAssistantScope(a)) {
+      if (a.capabilities.includes('assistant.chat.public') !== true || a.entry?.kind !== 'public_consultation' && a.entry?.kind !== 'public_history')
+        fail('assistant_capability_forbidden', 403);
+      return;
+    }
     if (a.principal.kind === 'user' && !a.capabilities.includes('assistant.followup.delivery') && a.customerServiceRequired
       && (await currentCustomerService(this.tx, a.principal.userId)).enterpriseId !== a.enterpriseId)
       fail('assistant_resource_not_found', 404);
@@ -123,6 +128,7 @@ export class AssistantRepository {
       join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
       where c.enterprise_id=${a.enterpriseId} and c.id=${conversationId}
       and c.purpose=${a.principal.kind==='user'?'customer_consultation':'knowledge_preview'}
+      ${a.principal.kind==='user' && isPublicAssistantScope(a) ? sql`and c.entry_snapshot->>'scope'='public'` : a.principal.kind==='user' ? sql`and c.entry_snapshot->>'scope' is distinct from 'public'` : sql``}
       and ${a.principal.kind==='user'?sql`p.user_id=${a.principal.userId}`:sql`p.admin_id=${a.principal.adminId}`}
       and p.status='active' for ${lock} of c,p`);
     if (!conversation) fail('assistant_resource_not_found', 404);

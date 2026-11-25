@@ -148,8 +148,8 @@ test('public company entry resumes the visitor’s own consultation with an acti
 
   const entry = await entryContext(identity, fromPublicSite);
   assert.equal(entry.resumeConversationId, visitorCid);
-  assert.equal(entry.enterprise.id, eids[0]);
-  assert.equal((await entryContext(identity, { conversationId: visitorCid })).enterprise.id, eids[0]);
+  assert.equal(entry.enterprise?.id, eids[0]);
+  assert.equal((await entryContext(identity, { conversationId: visitorCid })).enterprise?.id, eids[0]);
   await assert.rejects(entryContext(identity, { conversationId: cid }), /assistant_resource_not_found/);
   await assert.rejects(entryContext(identity, { publicEnterpriseId: eids[1] }), /assistant_share_preview_only/);
   await assert.rejects(entryContext(identity, { ...fromPublicSite, leadId: serviceLead.id }), /entry_context_invalid/);

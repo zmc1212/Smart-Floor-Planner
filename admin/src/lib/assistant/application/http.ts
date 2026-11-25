@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { AssistantError, fail, id, key } from '../contracts';
+import { AssistantError, fail, id, isPublicAssistantScope, key } from '../contracts';
 import { ConversationService } from '../core/conversation';
 import { replyStreamResponse } from '../core/answer-stream';
 import { RequirementWorkflow } from '../requirements/workflow';
 import { customerIdentity, entryContext, fromEntry, locate } from './auth';
+import { assertPrivateScope } from './public-scope';
 import { HandoffWorkflow } from '../handoff/workflow';
 import { staffHandoffHttp } from '../handoff/http';
 import { mediaHttp } from '../media/http';
@@ -33,11 +34,16 @@ export async function assistantHttp(request: Request, path: string[]) {
   const requestId = randomUUID();
   try {
     const identity = await customerIdentity(request);
+    const privateConversation = async (target: string) => {
+      const actor = await locate(identity, 'conversation', target);
+      assertPrivateScope(actor);
+      return actor;
+    };
     if (path[0] === 'portfolio-preview') return await portfolioPreviewHttp(request, path.slice(1));
     if (path[0] === 'conversations' && ['report-context','report-topic'].includes(path[2]) && path.length === 3) {
       const cid = id(path[1]), params = new URL(request.url).searchParams;
       if (params.size) fail('invalid_message', 422);
-      const service = new ReportContextService(await locate(identity, 'conversation', cid), cid);
+      const service = new ReportContextService(await privateConversation(cid), cid);
       let data: unknown;
       if (request.method === 'GET' && path[2] === 'report-context') data = await service.read();
       else if (request.method === 'POST') {
@@ -51,7 +57,7 @@ export async function assistantHttp(request: Request, path: string[]) {
     }
     if (path[0] === 'conversations' && path[2] === 'measure-booking') {
       const cid = id(path[1]), params = new URL(request.url).searchParams;
-      const service = new AssistantMeasureBookingService(await locate(identity, 'conversation', cid), cid, {
+      const service = new AssistantMeasureBookingService(await privateConversation(cid), cid, {
         phone: identity.phone,
         name: identity.nickname,
       });
@@ -69,7 +75,7 @@ export async function assistantHttp(request: Request, path: string[]) {
     }
     if (path[0] === 'conversations' && path[2] === 'floorplan-context' && path.length === 3) {
       const cid = id(path[1]), params = new URL(request.url).searchParams;
-      const service = new FloorplanContextService(await locate(identity, 'conversation', cid), cid);
+      const service = new FloorplanContextService(await privateConversation(cid), cid);
       let data: unknown;
       if (request.method === 'GET') {
         if (!params.size) data = await service.read();
@@ -86,11 +92,11 @@ export async function assistantHttp(request: Request, path: string[]) {
     }
     if (path[0] === 'conversations' && path[2] === 'speech') {
       const cid = id(path[1]);
-      return await speechHttp(request, await locate(identity, 'conversation', cid), { kind: 'consultation', id: cid }, path.slice(3));
+      return await speechHttp(request, await privateConversation(cid), { kind: 'consultation', id: cid }, path.slice(3));
     }
     if (path[0] === 'conversations' && path[2] === 'location' && path.length === 3) {
       if (new URL(request.url).searchParams.size) fail('invalid_location', 422);
-      const cid = id(path[1]), service = new LocationService(await locate(identity, 'conversation', cid), cid);
+      const cid = id(path[1]), service = new LocationService(await privateConversation(cid), cid);
       let data: unknown;
       if (request.method === 'GET') data = await service.read();
       else if (request.method === 'DELETE') data = await service.clear();
@@ -103,14 +109,14 @@ export async function assistantHttp(request: Request, path: string[]) {
     }
     if (path[0] === 'conversations' && path[2] === 'plans') {
       const cid = id(path[1]);
-      return await customerPlanHttp(request, await locate(identity, 'conversation', cid), cid, path.slice(3));
+      return await customerPlanHttp(request, await privateConversation(cid), cid, path.slice(3));
     }
     if (path[0] === 'conversations' && path[2] === 'public-sites') {
       const cid = id(path[1]);
-      return await customerPublicHttp(request, await locate(identity, 'conversation', cid), cid, path.slice(3));
+      return await customerPublicHttp(request, await privateConversation(cid), cid, path.slice(3));
     }
     if (path[0] === 'conversations' && path[2] === 'construction-records' && path[4] === 'media' && path.length === 6 && request.method === 'GET') {
-      const cid = id(path[1]), actor = await locate(identity, 'conversation', cid), params = new URL(request.url).searchParams;
+      const cid = id(path[1]), actor = await privateConversation(cid), params = new URL(request.url).searchParams;
       const version = Number(params.get('version'));
       if ([...params.keys()].some(k => k !== 'version') || !Number.isSafeInteger(version) || version < 1) fail('invalid_message', 422);
       const media = await withTenantTransaction(actor.enterpriseId, async tx => {
@@ -121,11 +127,11 @@ export async function assistantHttp(request: Request, path: string[]) {
     }
     if (path[0] === 'conversations' && path[2] === 'portfolio') {
       const target = id(path[1]);
-      return await portfolioCatalogHttp(request, await locate(identity, 'conversation', target), target, path.slice(3));
+      return await portfolioCatalogHttp(request, await privateConversation(target), target, path.slice(3));
     }
     if (path[0] === 'conversations' && path[2] === 'media' && [3,4].includes(path.length)) {
       const target = id(path[1]);
-      return await mediaHttp(request, await locate(identity, 'conversation', target), target, path.slice(3));
+      return await mediaHttp(request, await privateConversation(target), target, path.slice(3));
     }
     const method = request.method;
     let body: Record<string, unknown> = {};
@@ -148,7 +154,10 @@ export async function assistantHttp(request: Request, path: string[]) {
       const actor = await fromEntry(identity, method === 'GET' ? request.headers.get('X-Assistant-Entry') : body.entryToken,
         method === 'POST' && body.staffProfileNotice === true);
       const service = new ConversationService(actor);
-      if (method === 'POST') data = await service.create(requestKey());
+      if (method === 'POST') {
+        if (body.staffProfileNotice) assertPrivateScope(actor);
+        data = await service.create(requestKey());
+      }
       else if (params.has('search')) data = await service.search(params.get('search')!, cursor('cursor'), limit);
       else data = await service.list(cursor('cursor'), limit);
     } else if (path[0] === 'conversations' && path[2] === 'messages' && path.length === 4 && method === 'DELETE') {
@@ -157,7 +166,8 @@ export async function assistantHttp(request: Request, path: string[]) {
       data = await service.deleteQuestion(target, id(path[3]), requestKey());
     } else if (path[0] === 'conversations' && path[2] === 'messages' && path.length === 5) {
       const target = id(path[1]);
-      const service = new ConversationService(await locate(identity, 'conversation', target));
+      const actor = await locate(identity, 'conversation', target);
+      const service = new ConversationService(actor);
       const message = id(path[3]);
       if (path[4] === 'feedback' && method === 'PATCH') {
         only(body, ['rating', 'reason', 'note']);
@@ -167,11 +177,13 @@ export async function assistantHttp(request: Request, path: string[]) {
         data = await service.regenerate(target, message, requestKey());
         status = 202;
       } else if (path[4] === 'audio' && method === 'GET') {
+        assertPrivateScope(actor);
         const audio = await service.readAloud(target, message);
         return new Response(new Uint8Array(audio), { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } });
       } else fail('assistant_resource_not_found', 404);
     } else if (path[0] === 'conversations' && path.length <= 3) {
       const target = id(path[1]); const actor = await locate(identity, 'conversation', target); const service = new ConversationService(actor);
+      if (path.length === 3 && path[2] !== 'messages') assertPrivateScope(actor);
       if (path.length === 2 && method === 'GET') data = await service.detail(target);
       else if (path.length === 2 && method === 'PATCH') {
         only(body, ['action', 'expectedVersion']);
@@ -198,7 +210,9 @@ export async function assistantHttp(request: Request, path: string[]) {
       else if (path[2] === 'messages' && method === 'POST') {
         only(body, ['clientMessageId', 'content', 'speech', 'quoteMessageId']);
         if (requestKey() !== key(body.clientMessageId)) fail('invalid_message', 422);
-        data = await service.send(target, String(body.clientMessageId), body.content, siteWatchInterceptor, body.speech,
+        const publicScope = isPublicAssistantScope(actor);
+        if (publicScope && body.speech !== undefined) fail('assistant_capability_forbidden', 403);
+        data = await service.send(target, String(body.clientMessageId), body.content, publicScope ? undefined : siteWatchInterceptor, body.speech,
           body.quoteMessageId === undefined ? undefined : id(body.quoteMessageId));
         status = 202;
       } else fail('assistant_resource_not_found', 404);

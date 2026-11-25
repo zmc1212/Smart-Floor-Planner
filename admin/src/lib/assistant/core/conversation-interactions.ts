@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { one, rows, type AssistantRepository, type Row } from '@/db/repositories/assistant-repository';
-import { fail, type ActorContext, type MessageContent } from '../contracts';
+import { fail, isPublicAssistantScope, type ActorContext, type MessageContent } from '../contracts';
 import type { PostgresTransaction } from '@/db/transaction';
 import { projectMessage } from '../knowledge/sources';
 import { readAloudAvailable } from '../speech/read-aloud';
@@ -193,6 +193,7 @@ export async function searchConsultations(repo: AssistantRepository, query: stri
     where c.enterprise_id=${actor.enterpriseId} and p.user_id=${userId} and p.status='active'
       and c.purpose='customer_consultation' and c.id<${cursor}
       and (c.entry_snapshot->>'retentionRedacted') is distinct from 'true'
+      ${isPublicAssistantScope(actor) ? sql`and c.entry_snapshot->>'scope'='public'` : sql`and c.entry_snapshot->>'scope' is distinct from 'public'`}
       and (${includesText(sql`c.title`, term)} or exists (select 1 from app.assistant_messages m
         where m.enterprise_id=c.enterprise_id and m.conversation_id=c.id and ${messageMatch}))
     order by c.id desc limit ${pageSize}`);

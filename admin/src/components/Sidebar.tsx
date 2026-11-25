@@ -90,6 +90,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'llm-settings', label: 'LLM大模型配置', icon: BrainCircuit, href: '/llm-settings' },
         { key: 'native-workflow', label: 'Agent 工作流模板', icon: Network, href: '/native-workflow' },
         { key: 'assistant-worker', label: '小K Worker 启停', icon: PlayCircle, href: '/assistant-worker' },
+        { key: 'public-assistant', label: '平台通用小K', icon: Sparkles, href: '/public-assistant' },
         { key: 'map-settings', label: '地图服务配置', icon: Map, href: '/map-settings' },
         { key: 'portfolio-templates', label: '作品集模板', icon: LayoutTemplate, href: '/portfolio-templates' },
         { key: 'media-storage', label: '媒体存储', icon: HardDrive, href: '/media-storage' },
@@ -512,6 +513,7 @@ export default function Sidebar() {
     if (key === 'llm-settings') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'native-workflow') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'assistant-worker') return admin.role === 'super_admin';
+    if (key === 'public-assistant') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'portfolio-templates') return admin.role === 'super_admin' || admin.role === 'admin';
     if (['ai-credit-prices', 'ai-presets', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;
     if (admin.effectivePermissions?.includes(key)) return true;

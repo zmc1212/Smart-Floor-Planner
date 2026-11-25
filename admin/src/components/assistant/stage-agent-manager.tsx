@@ -156,6 +156,7 @@ export function StageAgentManager({ canPublish }: { canPublish: boolean }) {
           value={tab}
           onChange={(v) => setTab(String(v))}
         />
+        {canPublish && <Button type="link" size="small" href="/public-assistant">通用小K</Button>}
         {!main && <Space size={7}>
           {canPublish && (
             <Button

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { verifyMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { customerIdentity, fromEntry } from '@/lib/assistant/application/auth';
+import { assertPrivateScope } from '@/lib/assistant/application/public-scope';
 import { AssistantError, fail, id, key, type ActorContext } from '@/lib/assistant/contracts';
 import { FollowupService } from './followup-service';
 import { object } from './contracts';
@@ -19,6 +20,7 @@ export async function followupMiniActor(request: Request): Promise<ActorContext>
     const actor = entry ? await fromEntry(identity, entry) : context.enterpriseId
       ? { enterpriseId: context.enterpriseId, principal: { kind: 'user' as const, userId: context.user._id }, contextVersion: token.contextVersion }
       : fail('entry_context_invalid', 422);
+    if ('entry' in actor) assertPrivateScope(actor);
     return { ...actor, capabilities: ['assistant.followup.self'] };
   }
   if (context.mode !== 'staff' || !context.staff || !context.enterpriseId) fail('assistant_capability_forbidden', 403);

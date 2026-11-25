@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { ProfessionalEvidence, ReportWorkmanshipStage } from './professional';
 
 export type Principal = { kind: 'user'; userId: string } | { kind: 'admin'; adminId: string };
+export type AssistantScope = 'private' | 'public';
 export type ActorContext = {
   enterpriseId: string; principal: Principal; contextVersion: number;
   customerServiceRequired?: true;
@@ -57,6 +58,15 @@ export function principalKey(actor: ActorContext) {
 export function requireCapability(actor: ActorContext, capability: string) {
   if (!actor.capabilities.includes(capability)) fail('assistant_capability_forbidden', 403);
 }
+export function assistantScope(value: { entry?: Record<string, unknown> } | RowLike | null | undefined): AssistantScope {
+  const entry = value?.entry;
+  const scope = entry && typeof entry === 'object' && 'scope' in entry ? entry.scope : (value as RowLike | undefined)?.scope;
+  return scope === 'public' ? 'public' : 'private';
+}
+export function isPublicAssistantScope(value: { entry?: Record<string, unknown> } | RowLike | null | undefined) {
+  return assistantScope(value) === 'public';
+}
+type RowLike = Record<string, unknown>;
 export function id(value: unknown): string {
   if (typeof value !== 'string' || !/^[1-9]\d{0,18}$/.test(value) || BigInt(value) > BigInt('9223372036854775807')) fail('invalid_message', 422);
   return value;

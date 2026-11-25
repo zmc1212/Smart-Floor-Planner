@@ -6,7 +6,7 @@ import { configuredPublicSiteGuide, publicGuideQuestion } from '@/lib/constructi
 import { publishedPublicMaterial } from '@/lib/construction/public-read';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { questionQuote } from '../core/conversation-interactions';
-import { AssistantError, fail, fingerprint, safeText, type Evidence, type KnowledgeRetriever, type MessageContent, type TextModelGateway } from '../contracts';
+import { AssistantError, fail, fingerprint, isPublicAssistantScope, safeText, type Evidence, type KnowledgeRetriever, type MessageContent, type TextModelGateway } from '../contracts';
 import { KnowledgeSearchUnavailable, retrieveKnowledge } from '../knowledge/retrieval';
 import { answerMessages, insufficientAnswer, parseSelection } from '../knowledge/answer';
 import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, heartbeat, markProviderStarted, recoverKnowledgeAnswer, requeuePreDispatchModelFailure, runContext, type Lease } from './job-queue';
@@ -120,6 +120,12 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
   try {
     const context=await withTenantTransaction(lease.enterpriseId,tx=>runContext(tx,lease));
     const policy = context.run.policy_snapshot as Row;
+    if (isPublicAssistantScope(lease.actor)) {
+      if ((policy.agentRuntime as Row | undefined)?.protocol !== xiaokNativeExecutorProtocol)
+        fail('assistant_capability_forbidden', 403);
+      await processNativeAgentAnswer(lease);
+      return;
+    }
     if (context.run.purpose === 'reply.regenerate') {
       regeneration = true;
       stage = 'model';

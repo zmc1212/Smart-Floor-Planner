@@ -1,11 +1,11 @@
 import { sql } from 'drizzle-orm';
 import { minimalDialogueProtocol } from '../agent/minimal-dialogue';
-import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
+import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { delegationsEnabled } from '@/lib/native-workflow/live/delegation-config';
 import { recordDelegationExternalResult } from '@/lib/native-workflow/live/delegation-external';
 import { applyDelegationCommand, delegationCommand, recordDelegationOwnerInput } from '@/lib/native-workflow/live/delegation-chat';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, fingerprint, key, principalKey, requireCapability, safeText, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
+import { fail, fingerprint, isPublicAssistantScope, key, principalKey, requireCapability, safeText, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
 import { bindSpeechToMessage } from '../speech/link';
 import { speechConfigurationHash } from '../speech/local';
 import { answerProcesses, answerProgress, projectAnswerProcess, showsAnswerProcess } from './answer-process';
@@ -71,6 +71,7 @@ import { configuredPublicSiteGuide, publicGuideTurn } from '@/lib/construction/p
 import { publicMessageAvailable } from '@/lib/construction/public-projections';
 import { editableQuestion, feedbackInput, loadReplyFeedback, ownedQuestion, ownedReply, readableReply, regenerationSource, replyControls, replyText, saveReplyFeedback, searchConsultations } from './conversation-interactions';
 import { synthesizeReply } from '../speech/read-aloud';
+import { readPublicAssistantScope } from '../application/public-scope';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -97,7 +98,7 @@ export function conversationDto(c: Row, requirementProposalPending = false) {
   const entry = c.entry_snapshot as Row;
   const measureOffer = entry?.measureOffer as Row | undefined;
 
-  return { id: String(c.id), purpose: c.purpose, status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, lastSeq: String(c.last_seq), createdAt: c.created_at,
+  return { id: String(c.id), purpose: c.purpose, scope: entry?.scope === 'public' ? 'public' : 'private', status: c.status, mode: c.mode, title: c.title, version: c.version, contextRevision: c.context_revision, lastSeq: String(c.last_seq), createdAt: c.created_at,
     ...(entry?.requirementReviewMode===true && entry?.requirementWorkflow==='langgraph' ? {reviewWorkflow:'langgraph'} : {}),
     ...(c.purpose === 'knowledge_preview' && entry.stagePreview ? { stagePreview: { stageId:(entry.stagePreview as EnterpriseStageAgent).stageId, version:(entry.stagePreview as EnterpriseStageAgent).version } } : {}),
     requirementProposalPending,
@@ -196,11 +197,20 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     privateFollowup, selected: !!reference.selection });
   if (report && !agent) fail('assistant_capability_forbidden', 403);
   const entry = c.entry_snapshot as Row;
+  const publicScope = isPublicAssistantScope(actor);
+  if (publicScope && (c.purpose !== 'customer_consultation' || entry.scope !== 'public')) fail('context_changed');
+  if (publicScope && actor.entry?.scope !== 'public') fail('context_changed');
+  if (publicScope && purpose !== 'reply') fail('assistant_capability_forbidden', 403);
+  if (publicScope) {
+    const currentPublic = await withPlatformTransaction(tx => readPublicAssistantScope(tx));
+    if (!currentPublic || currentPublic.enterpriseId !== actor.enterpriseId || !currentPublic.config.enabled
+      || Number(currentPublic.config.version) !== Number(actor.entry?.publicConfigVersion)) fail('assistant_disabled', 403);
+  }
   const publicSiteGuideOpening = purpose === 'public.site.intro' && entry.activePublicSite && actor.principal.kind === 'user'
     ? entry.activePublicSite as PublicContextRef : null;
   if (publicSiteGuideOpening && !configuredPublicSiteGuide(settings.guidance_config).enabled) fail('context_changed');
   const rag = agent && purpose === 'reply' && trigger.kind === 'user_message' && c.purpose === 'customer_consultation'
-    && actor.principal.kind === 'user' && entry.requirementReviewMode !== true && !entry.activePublicSite ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
+    && actor.principal.kind === 'user' && !publicScope && entry.requirementReviewMode !== true && !entry.activePublicSite ? fastGPTRagConfiguration(actor.enterpriseId) : undefined;
   // The explicit per-enterprise executor switch (`runtime: 'langgraph-v1'`).
   // Unlike the knowledge switch it is decoupled from enterprise knowledge:
   // Knowledge-off replies keep the same executor, minus enterprise material.
@@ -208,13 +218,14 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     && trigger.kind === 'user_message'
     && (stagePreview || c.purpose === 'customer_consultation' && actor.principal.kind === 'user') && entry.requirementReviewMode !== true
     ? nativeAgentRuntimeBinding(actor.enterpriseId) : undefined;
+  if (publicScope && !nativeExecutor) fail('assistant_model_configuration_invalid', 503);
   const triggerContent = rag || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
   const triggerMessage = triggerContent?.content as MessageContent | undefined;
   const textOnlyTrigger = triggerMessage?.blocks.every(b => b.type === 'text');
   // Keep a private Mini Program save on the existing source-bound write executor.
   const requirementWrite = triggerMessage && textOnlyTrigger && purpose === 'reply' && c.purpose === 'customer_consultation'
-    && !isWechatConsultation(actor) && !entry.activePublicSite && !reference.selection
+    && !publicScope && !isWechatConsultation(actor) && !entry.activePublicSite && !reference.selection
     && !['reference_content', 'reference_unavailable', 'portfolio_content', 'public_site_entry'].includes(String(entry.kind))
     && Boolean(explicitNeedWriteStatement(safeText(triggerMessage)));
   if ((stagePreview || isWechatConsultation(actor)) && (!nativeExecutor || !agent || !textOnlyTrigger)) fail('stage_preview_unavailable',503);
@@ -226,7 +237,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config)) && textOnlyTrigger
     ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
   const reviewRuntime = agent && purpose === 'reply' && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
-    && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
+    && !publicScope && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
     && entry.requirementWorkflow === 'langgraph' ? boundReviewProtocol(entry, actor.enterpriseId) : null;
   // The snapshot and quota are bound together; old image runs never gain an
   // enlarged request envelope without its corresponding reservation.
@@ -262,14 +273,15 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const publicSiteGuideTurn = purpose === 'reply' && c.purpose === 'customer_consultation' && entry.activePublicSite
     && actor.principal.kind === 'user' && trigger.kind === 'user_message'
     ? await publicGuideTurn(tx, actor.enterpriseId, c, trigger.messageId, configuredPublicSiteGuide(settings.guidance_config)) : undefined;
-  const stageConfig = agentRuntime ? await currentConversationExperience(tx,actor,c) : null;
+  const stageConfig = agentRuntime && !publicScope ? await currentConversationExperience(tx,actor,c) : null;
   const r = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,trigger_event_id,trigger_schedule_key,purpose,retry_of_run_id,policy_snapshot,context_revision,knowledge_epoch)
-    values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
+      values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
-    ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version,
+    ${retryOf || null},${json({ schemaVersion: 1, actor, scope: publicScope ? 'public' : 'private', maxTokens: agent?.consultation ? 8192 : 2048, policyVersion: settings.policy_version,
       agent: publicSiteGuideOpening ? null : agent,
       ...(stageConfig ? {stageHistoryLimit:stageConfig.historyRounds*2+1} : {}),
-      knowledgePolicy: c.purpose === 'knowledge_preview' && !stagePreview ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
+      knowledgePolicy: publicScope ? { ...knowledgePolicy(settings.agent_config), enabled: false }
+        : c.purpose === 'knowledge_preview' && !stagePreview ? { ...knowledgePolicy(settings.agent_config), enabled: true } : knowledgePolicy(settings.agent_config),
       ...(purpose === 'reply' && c.purpose === 'customer_consultation' && trigger.kind === 'user_message'
         ? { publicSiteSelection: entry.activePublicSite ?? null } : {}),
       ...(publicSiteGuideOpening ? { publicSiteGuideOpening } : {}),
@@ -287,7 +299,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
         && !agent.imageContext && !agent.knowledgeExplanation && !reportContext(c.entry_snapshot).selection
         ? { dialogueContext: minimalDialogueProtocol } : {}),
       ...(!report && reference.selection ? { reportContextVersion: reference.revision } : {}),
-      ...(c.purpose === 'customer_consultation' && purpose === 'reply' ? { nearbyLocationVersion: nearbyLocationVersion(c.entry_snapshot) } : {}),
+      ...(c.purpose === 'customer_consultation' && purpose === 'reply' && !publicScope ? { nearbyLocationVersion: nearbyLocationVersion(c.entry_snapshot) } : {}),
       ...(stageReminderFollowup ? { stageReminderFollowup: stageReminderFollowupProtocol, reportHistoryScope: reportHistoryScopeProtocol } : {}),
       ...(report ? { reportComposition } : {}),
       ...(report ? reportBodyFinalPolicy(agent) : {}),
@@ -308,7 +320,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(speech ? { localSpeech: { protocol: 'local-speech-v1', configurationHash: speechBinding } } : {}),
       ...(reservation.imageContextBudget ? { imageContextBudget: reservation.imageContextBudget } : {}),
       ...(reservation.imageSchema ? { imageSchema: reservation.imageSchema } : {}),
-      ...(agent && !isWechatConsultation(actor) && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && ['reply', 'specialist.workflow'].includes(purpose)
+      ...(agent && !publicScope && !isWechatConsultation(actor) && actor.principal.kind === 'user' && c.purpose === 'customer_consultation' && ['reply', 'specialist.workflow'].includes(purpose)
         ? { homeSourceBudget: homeSourceBudgetProtocol, siteObservationReferral: siteObservationReferralProtocol,
           drawingChecklistRead: drawingChecklistReadProtocol, homeSourceView: homeSourceViewProtocol,
           ownerQuestionScope: ownerQuestionScopeProtocol, ownerArchiveRead: ownerArchiveReadProtocol,
@@ -316,7 +328,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
           ...(!reviewRuntime && !nativeRag && !agent.structuredFinal && specialistPolicy(actor.enterpriseId, agent)
             ? { specialist: specialistPolicy(actor.enterpriseId, agent) } : {}),
           ...(agent.providerKey === 'dashscope' && agent.model === 'qwen3.8-flash' ? { ownerCitationCarrier: ownerCitationCarrierProtocol } : {}) } : {}),
-      ...(agent && !isWechatConsultation(actor) && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId)
+      ...(agent && !publicScope && !isWechatConsultation(actor) && purpose === 'reply' && c.purpose === 'customer_consultation' && delegationsEnabled(actor.enterpriseId)
         ? { longTermMemory: true, ...(agent.tools ? { delegationToolProtocol } : {}) } : {}),
       ...(reviewRuntime ? { reviewRuntime } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
@@ -373,8 +385,9 @@ export class ConversationService {
       const stagePreview = stageDraft !== undefined && this.actor.principal.kind === 'admin'
         ? await stagePreviewDraft(repo.tx,this.actor.enterpriseId,this.actor.principal.adminId,stageDraft) : undefined;
       const previewScope = stagePreview ? { audience: 'customer_public', draftVersionIds: [] } : previewPolicyInput;
-      const entry: Row=preview?{preview:await createPreviewPolicy(repo.tx,this.actor.enterpriseId,previewScope),...(stagePreview ? {stagePreview} : {})}
-        : !isWechatConsultation(this.actor) && agentConfig(settings!.agent_config) ? developmentReviewEntry(this.actor.enterpriseId, baseEntry) : baseEntry;
+       const entry: Row=preview?{preview:await createPreviewPolicy(repo.tx,this.actor.enterpriseId,previewScope),...(stagePreview ? {stagePreview} : {})}
+         : isPublicAssistantScope(this.actor) ? { ...baseEntry, scope: 'public', kind: 'public_consultation' }
+         : !isWechatConsultation(this.actor) && agentConfig(settings!.agent_config) ? developmentReviewEntry(this.actor.enterpriseId, baseEntry) : baseEntry;
       if (!preview && entry.guidanceVersion !== undefined) {
         if (entry.guidanceVersion !== Number(settings!.version)) fail('entry_context_invalid', 409);
         entry.guidance = configuredGuidance(settings!.guidance_config);
@@ -404,6 +417,7 @@ export class ConversationService {
         from app.assistant_conversations c join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
         where c.enterprise_id=${this.actor.enterpriseId} and ${this.actor.principal.kind==='user'?sql`p.user_id=${this.actor.principal.userId}`:sql`p.admin_id=${this.actor.principal.adminId}`}
         and p.status='active' and c.purpose=${this.actor.principal.kind==='user'?'customer_consultation':'knowledge_preview'} and c.id<${cursor}
+        ${this.actor.principal.kind === 'user' ? (isPublicAssistantScope(this.actor) ? sql`and c.entry_snapshot->>'scope'='public'` : sql`and c.entry_snapshot->>'scope' is distinct from 'public'`) : sql``}
         ${previewStage ? sql`and c.entry_snapshot->'stagePreview'->>'stageId'=${previewStage}` : sql``}
         order by c.id desc limit ${limit}`);
       const items = [];
@@ -526,13 +540,13 @@ export class ConversationService {
       if (c.purpose === 'customer_consultation' && this.actor.principal.kind === 'user')
         purpose = sql`purpose is distinct from 'construction.stage_reminder'`;
       const result = after !== undefined
-        ? await rows(repo.tx, sql`select id,seq,author_kind,user_id,content,answer_kind,created_at,purpose,reply_to_message_id from app.assistant_messages
+        ? await rows(repo.tx, sql`select id,seq,author_kind,user_id,run_id,content,answer_kind,created_at,purpose,reply_to_message_id from app.assistant_messages
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq>${after}
           and ${purpose} order by seq asc limit ${cursor.limit}`)
-        : await rows(repo.tx, sql`select id,seq,author_kind,user_id,content,answer_kind,created_at,purpose,reply_to_message_id from app.assistant_messages
+        : await rows(repo.tx, sql`select id,seq,author_kind,user_id,run_id,content,answer_kind,created_at,purpose,reply_to_message_id from app.assistant_messages
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and seq<${cursor.beforeSeq}
           and ${purpose} order by seq desc limit ${cursor.limit}`);
-      const discovery = this.actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
+      const discovery = this.actor.principal.kind === 'user' && !isPublicAssistantScope(this.actor) && c.purpose === 'customer_consultation'
         ? await discoveryReplies(repo.tx, this.actor.enterpriseId, conversationId,
           result.filter(message => message.author_kind === 'assistant').map(message => String(message.id))) : null;
       const feedback = await loadReplyFeedback(repo, c, result);
@@ -574,7 +588,7 @@ export class ConversationService {
       const c = await repo.conversation(conversationId);
       const items = [];
       for (const item of history.items) {
-        const message = await one(repo.tx, sql`select id,seq,author_kind,user_id,content,answer_kind,created_at,purpose,reply_to_message_id from app.assistant_messages
+        const message = await one(repo.tx, sql`select id,seq,author_kind,user_id,run_id,content,answer_kind,created_at,purpose,reply_to_message_id from app.assistant_messages
           where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and id=${item.id}`);
         if (!message) continue;
         const projected = await projectMessage(repo.tx, this.actor, c, message, checked);
@@ -667,6 +681,10 @@ export class ConversationService {
     key(clientMessageId);
     return this.scoped(async (repo, settings) => {
       const c = await repo.conversation(conversationId); const safe = userContent(content, Number(settings!.max_message_chars));
+      const publicScope = isPublicAssistantScope(this.actor);
+      if (publicScope && (c.purpose !== 'customer_consultation' || c.mode !== 'ai'
+        || (c.entry_snapshot as Row)?.scope !== 'public')) fail('context_changed');
+      if (publicScope && speech !== undefined) fail('assistant_capability_forbidden', 403);
       const payload = { ...safe, ...(speech === undefined ? {} : { speech }), ...(quoteMessageId ? { quoteMessageId } : {}) };
       return idempotent(repo.tx, this.actor, 'send:' + conversationId, clientMessageId, payload, async () => {
         if (c.status !== 'open') fail('context_changed');
@@ -680,13 +698,13 @@ export class ConversationService {
           return message;
         };
         if (this.actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
-          && !isWechatConsultation(this.actor) && delegationsEnabled(this.actor.enterpriseId) && delegationCommand(safeText(safe))) {
+          && !publicScope && !isWechatConsultation(this.actor) && delegationsEnabled(this.actor.enterpriseId) && delegationCommand(safeText(safe))) {
           const message = await append();
           await applyDelegationCommand(repo.tx, this.actor, c, message);
           return { conversationId, messageId: String(message.id), runId: null, status: 'succeeded', nextPollMs: null };
         }
         let intercepted: Row | undefined;
-        if (interceptor?.matches(safe, c)) {
+        if (!publicScope && interceptor?.matches(safe, c)) {
           intercepted = await append();
           if (await interceptor.apply(repo.tx, this.actor, c, intercepted)) return { conversationId, messageId: String(intercepted.id), runId: null, status: 'succeeded', nextPollMs: null };
         }
@@ -721,13 +739,14 @@ export class ConversationService {
           return { conversationId, messageId: String(old.id), runId: r ? String(r.id) : null, status: r ? 'queued' : 'succeeded', nextPollMs: r ? 1500 : null };
         }
         const message = intercepted || await append();
-        await recordDelegationOwnerInput(repo.tx, this.actor, c, message);
+        if (!publicScope) await recordDelegationOwnerInput(repo.tx, this.actor, c, message);
         // A model-backed consultation stores needs through its source-bound write operation.
         // A keyword in a newly appended question is not a draft or a save receipt.
-        if (c.purpose !== 'customer_consultation' || !agentConfig(settings!.agent_config)) {
+        if (!publicScope && (c.purpose !== 'customer_consultation' || !agentConfig(settings!.agent_config))) {
           await saveAutomaticRequirements(repo, conversationId, String(message.id));
         }
-        if (this.actor.principal.kind === 'user' && !isWechatConsultation(this.actor) && requestsDesigner(safe.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'))) {
+        if (this.actor.principal.kind === 'user' && !publicScope && !isWechatConsultation(this.actor)
+          && requestsDesigner(safe.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'))) {
           if((c.entry_snapshot as Row)?.requirementReviewMode===true && (c.entry_snapshot as Row)?.requirementWorkflow==='langgraph') {
             const proposal=await stageHandoffProposal(repo,c,settings!,'request');
             const event=await one(repo.tx,sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)

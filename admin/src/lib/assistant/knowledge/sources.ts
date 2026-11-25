@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, fingerprint, id, type ActorContext, type Evidence } from '../contracts';
+import { fail, fingerprint, id, isPublicAssistantScope, type ActorContext, type Evidence } from '../contracts';
 import { knowledgeContext, reportStageKnowledgeContext } from './applicability-context';
 import { agentMessageAvailable } from '../agent/media-context';
 import { constructionMessageActions } from '@/lib/construction/customer';
@@ -18,6 +18,7 @@ import { sourceIndexReady } from './managed-store';
 import { platformKnowledgeScope, platformKnowledgeSupplement, readPlatformKnowledge } from './platform-library';
 import { citationWebSource, parseWebCitationId, webCitationForAnswer, webSourceErrorCode, type WebSourceChecks } from '../agent/web-evidence';
 import { designerMessageProjection } from '@/lib/portfolio/designer-recommendation';
+import { publicDesignerLinkProtocol } from '../agent/public-designer-link';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
 export function previewPolicy(c:Row):PreviewPolicy {
   const value=(c.entry_snapshot as {preview?:PreviewPolicy})?.preview;
@@ -230,11 +231,17 @@ async function projectSavedMessage(tx:PostgresTransaction, actor:ActorContext, c
   const webReason = projected.find(x => !x.available && 'reason' in x && webIds.includes(x.id) && x.reason !== 'source_unavailable');
   const publicReason = publicProjection && publicProjection.available === false ? publicProjection.reason
     : webReason && 'reason' in webReason ? webReason.reason : undefined;
-  const designerProjection = available && actor.principal.kind === 'user'
+  const designerProjection = available && actor.principal.kind === 'user' && !isPublicAssistantScope(actor)
     ? await designerMessageProjection(tx, actor, String(c.id), String(message.id)) : null;
   const designerRecommendation = designerProjection?.items.length ? designerProjection : null;
   const designerDiscovery = designerProjection && !designerProjection.items.length
     ? { needContext: designerProjection.needContext === true } : null;
+  const serviceLink = available && isPublicAssistantScope(actor) && message.author_kind === 'assistant' && message.run_id
+    ? (await one<{ question_message_id: string }>(tx, sql`select s.private_checkpoint->>'questionMessageId' as question_message_id
+        from app.assistant_run_steps s where s.enterprise_id=${actor.enterpriseId} and s.run_id=${String(message.run_id)}
+          and s.kind='agent_public_service_link' and s.capability_name=${publicDesignerLinkProtocol} and s.status='succeeded'
+        order by s.step_seq desc limit 1`))
+    : null;
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
     ...(publicProjection ? { publicSourceBound: true } : {}),
     ...(deleted ? { deleted: true } : {}), ...(speech?.bound ? { speechMessage: true } : {}),
@@ -251,6 +258,7 @@ async function projectSavedMessage(tx:PostgresTransaction, actor:ActorContext, c
     siteWatch: available && message.purpose === 'construction.watch' ? await siteWatchProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
     ...(available && publicProjection?.available && !publicProjection.opening ? { publicConsent: publicProjection.publicConsent || null, publicContext: publicProjection.publicContext || null, publicReferences: publicProjection.publicReferences || [] } : {}),
     ...(available && actor.principal.kind === 'user' ? { constructionContacts: await constructionMessageActions(tx, actor, String(c.id), String(message.id)) } : {}),
-    ...(available ? { designerRecommendation, ...(designerDiscovery ? { designerDiscovery } : {}) } : {}),
+     ...(available ? { designerRecommendation, ...(designerDiscovery ? { designerDiscovery } : {}),
+       ...(serviceLink?.question_message_id ? { serviceLink: { type: 'designer', questionMessageId: serviceLink.question_message_id } } : {}) } : {}),
     ...(media ? { mediaId: String(media.id), mediaAvailable: !!media.available } : {}) };
 }

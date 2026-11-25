@@ -253,7 +253,7 @@ test('A01 entry tokens bind customer/version, forbidden arbitrary enterprise and
   await assert.rejects(fromEntry({ ...identity, userId: userIds[1] }, entry.entryToken), /entry_context_invalid/);
   await assert.rejects(fromEntry({ ...identity, contextVersion: 2 }, entry.entryToken), /entry_context_invalid/);
   await assert.rejects(entryContext(identity, { enterpriseId: b.enterpriseId }), /entry_context_invalid/);
-  assert.equal((await entryContext({ ...identity, enterpriseId: b.enterpriseId }, {})).enterprise.id, a.enterpriseId);
+  assert.equal((await entryContext({ ...identity, enterpriseId: b.enterpriseId }, {})).enterprise?.id, a.enterpriseId);
   await assert.rejects(entryContext({ ...identity, userId: userIds[1] }, {}), /assistant_service_code_required/);
   const c = await conversation();
   assert.equal((await locate({ ...identity, enterpriseId: undefined }, 'conversation', c)).enterpriseId, a.enterpriseId);
@@ -285,7 +285,7 @@ test('service scope blocks old foreign conversations and share entries, redirect
     assert.equal(scan.existingAttribution, true); assert.equal(scan.pendingSource, null);
     assert.equal(scan.lead.id, serviceLeadId);
     const redirected = await entryContext(identity, { entryCode: token });
-    assert.equal(redirected.enterprise.id, a.enterpriseId);
+    assert.equal(redirected.enterprise?.id, a.enterpriseId);
     assert.notEqual(redirected.resumeConversationId, otherConversation);
     assert.ok(redirected.resumeConversationId);
     assert.equal((await locate(identity, 'conversation', original)).enterpriseId, a.enterpriseId);
@@ -309,7 +309,7 @@ test('service scope blocks old foreign conversations and share entries, redirect
     assert.equal(claim.status, 201, JSON.stringify(claimed));
     newLeadId = claimed.data.lead.id;
     const freshEntry = await entryContext(fresh, { entryCode: token });
-    assert.equal(freshEntry.enterprise.id, b.enterpriseId);
+    assert.equal(freshEntry.enterprise?.id, b.enterpriseId);
     const freshChat = await new ConversationService(await fromEntry(fresh, freshEntry.entryToken)).create(crypto.randomUUID());
     assert.equal((await locate(fresh, 'conversation', String(freshChat.id))).enterpriseId, b.enterpriseId);
     await withTenantTransaction(a.enterpriseId, tx => tx.execute(sql`update app.leads set archived_at=now() where id=${serviceLeadId}`));

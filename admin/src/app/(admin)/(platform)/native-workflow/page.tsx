@@ -22,6 +22,7 @@ interface DefinitionSummary {
 }
 
 const TEMPLATE_OPTIONS = [
+  { value: 'public-assistant', label: '通用小K（平台内置应用）' },
   { value: 'stage-guidance', label: '阶段知识问答（多 Agent 共用）' },
   { value: 'stage-checklist', label: '现场核对清单（多 Agent 共用）' },
   { value: 'stage-reminder', label: '阶段提醒（实际阶段变化后）' },
@@ -50,9 +51,15 @@ export default function NativeWorkflowListPage() {
   const [stageTemplates,setStageTemplates]=useState<DefinitionSummary[]>([]);
   const callers=useStageCallers(canManage);
   const callable = templateId === 'stage-guidance' || templateId === 'stage-checklist';
+  const publicAssistant = templateId === 'public-assistant';
   const [createSaving, setCreateSaving] = useState(false);
 
   const createDraft = async () => {
+    if (publicAssistant) {
+      setCreating(false);
+      router.push('/public-assistant');
+      return;
+    }
     setCreateSaving(true);
     try {
       const response = await fetch('/api/native-workflow/definitions', {
@@ -130,7 +137,7 @@ export default function NativeWorkflowListPage() {
     <PageContainer
       header={{
         title: '工作流模板',
-        extra: <Space><Button href="/assistant-knowledge?tab=stage-agents">阶段 Agent</Button><Button type="primary" onClick={()=>{setDisplayName('');setCreating(true);}}>从模板新建</Button></Space>,
+        extra: <Space><Button href="/assistant-knowledge?tab=stage-agents">阶段 Agent</Button><Button href="/public-assistant">通用小K</Button><Button type="primary" onClick={()=>{setDisplayName('');setCreating(true);}}>从模板新建</Button></Space>,
       }}
     >
       <section className="nw-library" aria-label="阶段工作流模板">{stageTemplates.map(row=><article key={row.definitionId}>
@@ -161,9 +168,9 @@ export default function NativeWorkflowListPage() {
         toolbar={undefined}
       />
       <Modal
-        title="从模板新建草稿"
+        title={publicAssistant ? '打开平台内置应用' : '从模板新建草稿'}
         open={creating}
-        okText="创建"
+        okText={publicAssistant ? '打开配置' : '创建'}
         cancelText="取消"
         confirmLoading={createSaving}
         onOk={() => void createDraft()}
@@ -173,7 +180,9 @@ export default function NativeWorkflowListPage() {
           <Select aria-label="模板类型" value={templateId} onChange={setTemplateId} options={TEMPLATE_OPTIONS} style={{ width: '100%' }} />
           {callable && <label>模板名称<Input aria-label="模板名称" placeholder={templateId==='stage-checklist'?'现场核对清单':'阶段知识问答'} maxLength={60} value={displayName} onChange={event=>setDisplayName(event.target.value)} /></label>}
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            创建模板会保存草稿。可检查节点、端口和模拟轨迹，正式运行使用已发布版本。
+            {publicAssistant
+              ? '通用小K使用现有平台对话 Agent 和平台配置。进入后可配置开场白与“猜你想问”；此入口不会创建工作流草稿，也不会改变阶段 Agent 的工作流配置。'
+              : '创建模板会保存草稿。可检查节点、端口和模拟轨迹，正式运行使用已发布版本。'}
           </Typography.Paragraph>
         </Space>
       </Modal>

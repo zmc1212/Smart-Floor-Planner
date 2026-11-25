@@ -1,12 +1,13 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { sql } from 'drizzle-orm';
-import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
+import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, assistantWritesEnabled, one, rows } from '@/db/repositories/assistant-repository';
 import { currentCustomerService } from '@/db/repositories/customer-service';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { verifyMiniProgramToken } from '@/lib/miniprogram-jwt';
 import { ReferrerNetworkRepository } from '@/db/repositories/referrer-network-repository';
-import { fail, id, type ActorContext } from '../contracts';
+import { fail, id, isPublicAssistantScope, type ActorContext } from '../contracts';
+import { publicActor, readPublicAssistantScope, PUBLIC_ASSISTANT_SCOPE, publicActorEntry } from './public-scope';
 import { configuredGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { readContentEntry, contentEntrySource, contentChannel, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { acquisitionEntryView } from '../acquisition/config';
@@ -42,22 +43,92 @@ export async function locate(identity: Identity, kind: 'conversation' | 'run' | 
   id(targetId);
   const found = await withPlatformTransaction(async tx => {
     const { enterpriseId } = await currentCustomerService(tx, identity.userId);
-    if (!enterpriseId) return null;
-    return one(tx, sql`select c.enterprise_id,c.id from app.assistant_conversations c
-      join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
-      ${kind === 'run' ? sql`join app.assistant_runs r on r.enterprise_id=c.enterprise_id and r.conversation_id=c.id` : sql``}
-      ${kind === 'citation' ? sql`join app.assistant_message_citations x on x.enterprise_id=c.enterprise_id and x.conversation_id=c.id` : sql``}
-      where c.enterprise_id=${enterpriseId} and ${kind === 'run' ? sql`r.id` : kind==='citation'?sql`x.id`:sql`c.id`}=${targetId}
-      and p.user_id=${identity.userId} and p.status='active' and c.purpose='customer_consultation'`);
+    const locateInTenant = (tenantId: string, publicOnly = false) => one(tx, sql`select c.enterprise_id,c.id,
+        coalesce(c.entry_snapshot->>'scope','private') as scope from app.assistant_conversations c
+        join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
+        ${kind === 'run' ? sql`join app.assistant_runs r on r.enterprise_id=c.enterprise_id and r.conversation_id=c.id` : sql``}
+        ${kind === 'citation' ? sql`join app.assistant_message_citations x on x.enterprise_id=c.enterprise_id and x.conversation_id=c.id` : sql``}
+        where c.enterprise_id=${tenantId} and ${kind === 'run' ? sql`r.id` : kind==='citation'?sql`x.id`:sql`c.id`}=${targetId}
+        and p.user_id=${identity.userId} and p.status='active' and c.purpose='customer_consultation'
+        ${publicOnly ? sql`and c.entry_snapshot->>'scope'=${PUBLIC_ASSISTANT_SCOPE}` : sql`and c.entry_snapshot->>'scope' is distinct from ${PUBLIC_ASSISTANT_SCOPE}`}`);
+    if (enterpriseId) {
+      const privateFound = await locateInTenant(String(enterpriseId));
+      if (privateFound) return privateFound;
+    }
+    const publicScope = await readPublicAssistantScope(tx);
+    if (!publicScope) return null;
+    const publicFound = await locateInTenant(publicScope.enterpriseId, true);
+    return publicFound ? { ...publicFound, publicConfigVersion: publicScope.config.version } : null;
   });
   if (!found) fail('assistant_resource_not_found', 404);
+  if (String(found.scope) === PUBLIC_ASSISTANT_SCOPE) {
+    const scope = await withPlatformTransaction(tx => readPublicAssistantScope(tx));
+    if (!scope || scope.enterpriseId !== String(found.enterprise_id)
+      || Number(found.publicConfigVersion) !== Number(scope.config.version)) fail('assistant_resource_not_found', 404);
+    return publicActor(identity, scope, { kind: 'public_history', conversationId: String(found.id) });
+  }
   return actorFor(identity, String(found.enterprise_id));
 }
+async function recentPublicConsultation(tx: PostgresTransaction, enterpriseId: string, userId: string) {
+  const row = await one<{ id: string }>(tx, sql`select c.id::text from app.assistant_conversations c
+    join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
+    where c.enterprise_id=${enterpriseId} and c.purpose='customer_consultation'
+      and c.entry_snapshot->>'scope'=${PUBLIC_ASSISTANT_SCOPE} and c.status='open'
+      and p.user_id=${userId} and p.status='active'
+      and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false)
+    order by c.id desc limit 1`);
+  return row?.id ?? null;
+}
+
 export async function entryContext(identity: Identity, body: Record<string, unknown>) {
   const fields = ['entryCode', 'leadId', 'conversationId','referenceEntry', 'portfolioEntry', 'publicEnterpriseId'].filter(k => body[k] !== undefined);
   if (fields.length > 1 || Object.keys(body).some(k => !fields.includes(k))) fail('entry_context_invalid', 422);
   if (body.portfolioEntry !== undefined) fail('assistant_share_preview_only', 403);
   const { enterpriseId, ambiguous } = await withPlatformTransaction(tx => currentCustomerService(tx, identity.userId));
+  let publicHistoryActor: ActorContext | null = null;
+  // An explicit conversation link may refer to an older public consultation
+  // even after the visitor has joined an enterprise. locate() verifies the
+  // participant and public marker before we switch scope.
+  if (body.conversationId !== undefined) {
+    const located = await locate(identity, 'conversation', id(body.conversationId));
+    if (isPublicAssistantScope(located)) publicHistoryActor = located;
+  }
+  const publicRequested = !!publicHistoryActor || !enterpriseId && fields.length === 0;
+  if (ambiguous && !publicRequested) fail('customer_service_ambiguous', 409);
+  if (publicRequested) {
+    const publicScope = await withPlatformTransaction(tx => readPublicAssistantScope(tx));
+    if (!publicScope) fail('assistant_service_code_required', 403);
+    const basis = publicHistoryActor
+      ? { kind: 'public_history', conversationId: String(body.conversationId) }
+      : { kind: 'public_consultation' };
+    const actor = publicActor(identity, publicScope, basis);
+    const { settings, resumeConversationId } = await withTenantTransaction(publicScope.enterpriseId, async tx => {
+      const settings = await new AssistantRepository(tx, actor).settings();
+      let resumeConversationId: string | null = null;
+      if (publicHistoryActor) {
+        const row = await one<{ id: string }>(tx, sql`select c.id::text from app.assistant_conversations c
+          join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
+          where c.enterprise_id=${publicScope.enterpriseId} and c.id=${String(body.conversationId)}
+            and c.purpose='customer_consultation' and c.entry_snapshot->>'scope'=${PUBLIC_ASSISTANT_SCOPE}
+            and p.user_id=${identity.userId} and p.status='active' limit 1`);
+        if (!row) fail('assistant_resource_not_found', 404);
+        resumeConversationId = String(row.id);
+      } else {
+        resumeConversationId = await recentPublicConsultation(tx, publicScope.enterpriseId, identity.userId);
+      }
+      return { settings, resumeConversationId };
+    });
+    const entryToken = await new SignJWT({ scope: PUBLIC_ASSISTANT_SCOPE, enterpriseId: publicScope.enterpriseId,
+      publicConfigVersion: publicScope.config.version, contextVersion: identity.contextVersion,
+      basis: publicActorEntry(publicScope, basis) }).setProtectedHeader({ alg: 'HS256' })
+      .setSubject(identity.userId).setAudience('assistant-entry').setIssuedAt().setExpirationTime('15m').sign(entrySecret());
+    return { scope: PUBLIC_ASSISTANT_SCOPE, entryToken, expiresIn: 900, enterprise: null,
+      publicTopics: publicScope.config.publicTopics, guidanceOpening: publicScope.config.guidanceOpening,
+      capabilities: actor.capabilities, resumeConversationId,
+      canSend: publicScope.config.enabled && assistantWritesEnabled(settings),
+      maxMessageChars: Number(settings?.max_message_chars) || 4000,
+      guidanceEnabled: publicScope.config.enabled, guidance: null };
+  }
   if (ambiguous) fail('customer_service_ambiguous', 409);
   if (!enterpriseId) fail('assistant_service_code_required', 403);
   let basis: Record<string, unknown> = { kind: 'identity' };
@@ -175,6 +246,10 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
       (basis.kind !== 'lead' || eligibleLeads[0].id === basis.id) ? eligibleLeads[0].id : null;
     return { enterprise, settings, reference, resumeConversationId: ids.length ? ids[0].id : null, staffProfileLeadId, acquisition };
   });
+  const publicConversationId = await withPlatformTransaction(async tx => {
+    const scope = await readPublicAssistantScope(tx);
+    return scope ? recentPublicConsultation(tx, scope.enterpriseId, identity.userId) : null;
+  });
   const guidance = configuredGuidance(settings?.guidance_config);
   const guidanceVersion = Number(settings?.version || 1);
   const entryToken = await new SignJWT({ enterpriseId, contextVersion: identity.contextVersion,
@@ -184,6 +259,7 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
       ? { id: enterpriseId, name: acquisition.brandName, logo: acquisition.brandLogo }
       : { id: enterpriseId, name: enterprise!.name, logo: enterprise!.logo },
     capabilities: actor.capabilities, resumeConversationId,
+    ...(publicConversationId ? { publicConversationId } : {}),
     canSend: assistantWritesEnabled(settings), maxMessageChars: Number(settings?.max_message_chars) || 4000,
     ...(staffProfileLeadId ? { staffProfileCapture: true } : {}),
     ...(acquisition ? { acquisition } : {}),
@@ -198,6 +274,14 @@ export async function fromEntry(identity: Identity, token: unknown, staffProfile
   if (payload.sub !== identity.userId || payload.contextVersion !== identity.contextVersion) fail('entry_context_invalid', 422);
   const enterpriseId = id(payload.enterpriseId), basis = { ...(payload.basis as Record<string, unknown>) };
   if (basis.kind === 'portfolio_content') fail('assistant_share_preview_only', 403);
+  if (payload.scope === PUBLIC_ASSISTANT_SCOPE) {
+    const scope = await withPlatformTransaction(tx => readPublicAssistantScope(tx));
+    if (!scope || scope.enterpriseId !== enterpriseId
+      || !scope.config.enabled || Number(payload.publicConfigVersion) !== Number(scope.config.version)
+      || basis.scope !== PUBLIC_ASSISTANT_SCOPE) fail('entry_context_invalid', 422);
+    if (basis.kind !== 'public_consultation') fail('entry_context_invalid', 422);
+    return publicActor(identity, scope, { ...basis, publicConfigVersion: scope.config.version });
+  }
   const service = await withPlatformTransaction(tx => currentCustomerService(tx, identity.userId));
   if (service.ambiguous) fail('customer_service_ambiguous', 409);
   if (!service.enterpriseId) fail('assistant_service_code_required', 403);

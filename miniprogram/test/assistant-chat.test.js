@@ -259,6 +259,94 @@ test('each welcome topic sends its text immediately through the existing chat fl
   }
 });
 
+test('public entry uses public topics, keeps service-code recovery nonfatal, and resets scope topics on enterprise return', async () => {
+  const f = fixture();
+  f.db.entry = { entryToken: 'public-entry', scope: 'public', enterprise: null,
+    publicTopics: [{ title: '先聊需求', helper: '从想法开始', text: '我想先理清装修需求' }], canSend: true, expiresIn: 900 };
+  await f.controller.show({});
+  assert.equal(f.controller.state.entryScope, 'public');
+  assert.equal(f.controller.state.enterpriseId, '');
+  assert.deepEqual(f.controller.state.topics.map(item => item.text), ['我想先理清装修需求']);
+  f.controller.fail({ code: 'assistant_service_code_required' }, f.controller.epoch, true);
+  assert.equal(f.controller.state.fatal, false);
+  assert.equal(f.controller.state.needsServiceCode, true);
+  assert.equal(f.controller.state.error, '请扫描装修企业的活动码，关联服务后就能和小K聊。');
+
+  f.db.entry = { entryToken: 'enterprise-entry', enterprise: { id: '1', name: '测试企业' }, canSend: true, expiresIn: 900 };
+  await f.controller.refresh({ forceEntry: true });
+  assert.equal(f.controller.state.entryScope, 'enterprise');
+  assert.equal(f.controller.state.enterpriseId, '1');
+  assert.deepEqual(f.controller.state.topics.map(item => item.text), [
+    '旧房改造有哪些需要先考虑？', '想聊聊适合我家的装修风格', '想聊聊装修预算怎么安排',
+  ]);
+});
+
+test('message projection preserves the designer service link for the public CTA', () => {
+  const serviceLink = { type: 'designer', questionMessageId: '21' };
+  const [view] = messagesForView([{ id: '22', seq: '2', authorKind: 'assistant', available: true,
+    serviceLink, content: { blocks: [{ type: 'text', text: '可以请设计师继续沟通。' }] } }]);
+  assert.deepEqual(view.serviceLink, serviceLink);
+});
+
+test('public handoff and history controls reuse the existing chat paper actions', () => {
+  const chat = readFileSync(path.join(__dirname, '../packages/assistant/chat/chat.wxml'), 'utf8');
+  const promotion = readFileSync(path.join(__dirname, '../packages/assistant/chat/promotion-entry.wxml'), 'utf8');
+  assert.match(chat, /public-service-link[^>]*data-message="\{\{item\.id\}\}" bindtap="startServiceLink"/);
+  assert.match(chat, /扫活动码后继续找设计师/);
+  assert.match(chat, /public-history-row[^>]*data-public-history="1" bindtap="selectHistory"/);
+  assert.match(chat, /entryScope === 'public' \? welcomeText/);
+  assert.match(chat, /entryScope === 'public' \? '猜你想问'/);
+  assert.match(chat, /entryScope === 'public' \|\| .*openMedia/);
+  assert.match(promotion, /promotion-entry-rescan[^>]*>扫活动码/);
+});
+
+test('public fallback uses a non-budget topic icon and enterprise resume ids stay private', async () => {
+  const publicFixture = fixture();
+  publicFixture.db.entry = { entryToken: 'public-entry', scope: 'public', enterprise: null, publicTopics: [], canSend: true, expiresIn: 900 };
+  await publicFixture.controller.show({});
+  assert.equal(publicFixture.controller.state.topics[2].icon, 'requirement-style');
+  const enterpriseFixture = fixture();
+  enterpriseFixture.db.entry = { entryToken: 'enterprise-entry', resumeConversationId: '77', enterprise: { id: '1', name: '测试企业' }, canSend: true, expiresIn: 900 };
+  await enterpriseFixture.controller.show({});
+  assert.equal(enterpriseFixture.controller.state.publicConversationId, '');
+});
+
+test('enterprise entry restores the server-provided public conversation id', async () => {
+  const f = fixture();
+  f.db.entry = { entryToken: 'enterprise-entry', publicConversationId: '88', enterprise: { id: '1', name: '测试企业' }, canSend: true, expiresIn: 900 };
+  await f.controller.show({});
+  assert.equal(f.controller.state.publicConversationId, '88');
+});
+
+test('public activity-code scan cancellation releases the CTA but keeps the continuation', () => {
+  const previous = global.wx, f = fixture(), page = promptPage(f);
+  page.setData = patch => Object.assign(page.data, patch);
+  page.data.entryScope = 'public';
+  page.data.serviceLinkBusy = true;
+  page.data.serviceContinuation = { type: 'designer', questionMessageId: '21', question: '我想找设计师' };
+  global.wx = { scanCode: options => options.fail({ errMsg: 'scanCode:fail cancel' }) };
+  try {
+    page.scanPromotionCode({ currentTarget: { dataset: { serviceLink: '1' } } });
+    assert.equal(page.data.serviceLinkBusy, false);
+    assert.deepEqual(page.data.serviceContinuation, { type: 'designer', questionMessageId: '21', question: '我想找设计师' });
+  } finally { global.wx = previous; }
+});
+
+test('switching from public history to an enterprise entry preserves an explicit public-history handle and draft', async () => {
+  const f = fixture();
+  f.db.entry = { entryToken: 'public-entry', scope: 'public', enterprise: null, publicTopics: [], canSend: true, expiresIn: 900 };
+  await f.controller.show({});
+  f.controller.conversationId = '51';
+  f.controller.publicConversationId = '51';
+  f.db.entry = { entryToken: 'enterprise-entry', enterprise: { id: '1', name: '测试企业' }, canSend: true, expiresIn: 900 };
+  const ok = await f.controller.switchEntry({ entryCode: 'a'.repeat(32) }, { preservePublicHistory: true, draft: '我想找设计师' });
+  assert.equal(ok, true);
+  assert.equal(f.controller.state.entryScope, 'enterprise');
+  assert.equal(f.controller.state.publicConversationId, '51');
+  assert.equal(f.controller.state.draft, '我想找设计师');
+  assert.deepEqual(f.calls.filter(call => call.url === '/entry-context').at(-1).body, { entryCode: 'a'.repeat(32) });
+});
+
 test('a second topic tap while the first send is in flight cannot replace or duplicate it', async () => {
   const f = fixture(); await f.controller.show({});
   const page = promptPage(f), accepted = deferred();

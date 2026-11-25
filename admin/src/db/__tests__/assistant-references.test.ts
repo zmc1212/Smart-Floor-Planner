@@ -162,7 +162,7 @@ test('P2C foundation: signed case entry persists source, native chat reentry and
   const token=new URL('https://local'+shared.path).searchParams.get('referenceEntry')!;
   const payload=await readContentEntry(token);assert.equal(payload.enterpriseId,actor.enterpriseId);assert.equal(payload.documentId,d.documentId);assert.ok(!('userId' in payload));
   const identity={userId:users[0],contextVersion:1,enterpriseId:tenants[1]};
-  const entry=await entryContext(identity,{referenceEntry:token});assert.equal(entry.enterprise.id,actor.enterpriseId);assert.match(String(entry.guidanceOpening),/入口/);assert.equal(entry.guidanceEnabled,false);
+  const entry=await entryContext(identity,{referenceEntry:token});assert.equal(entry.enterprise?.id,actor.enterpriseId);assert.match(String(entry.guidanceOpening),/入口/);assert.equal(entry.guidanceEnabled,false);
   const bound=await fromEntry(identity,entry.entryToken),chat=new ConversationService(bound),c=String((await chat.create(randomUUID())).id);
   const snapshot=await preferences(c);assert.equal(snapshot.kind,'reference_content');assert.equal(snapshot.documentId,d.documentId);assert.equal((snapshot.channel as Row).kind,'company');assert.equal(snapshot.referencePreferences,undefined);
   assert.match(String((await new ConversationService(actor).detail(c)).guidanceOpening),/入口/);
@@ -172,7 +172,7 @@ test('P2C foundation: signed case entry persists source, native chat reentry and
   await assert.rejects(entryContext(identity,{referenceEntry:token,leadId:'1'}),/entry_context_invalid/);
   await assert.rejects(readContentEntry(token.slice(0,-8)+'tampered'),/entry_context_invalid/);
   await exec('retire',d);
-  const fallback=await entryContext(identity,{referenceEntry:token});assert.match(String(fallback.guidanceOpening),/分享已失效/);assert.equal(fallback.referenceEntry,undefined);
+  const fallback=await entryContext(identity,{referenceEntry:token});assert.match(String(fallback.guidanceOpening),/分享已失效/);assert.equal('referenceEntry' in fallback ? fallback.referenceEntry : undefined,undefined);
   assert.match(String((await new ConversationService(actor).detail(c)).guidanceOpening),/分享已失效/);
   const late=await fromEntry(identity,entry.entryToken);assert.equal(late.entry!.kind,'reference_unavailable');
 });
@@ -183,7 +183,7 @@ test('P2C foundation: expired signed content falls back; unpublished/internal ca
   const shared=await exec('share',{documentId:d.documentId,expectedVersion:2}),token=new URL('https://local'+shared.path).searchParams.get('referenceEntry')!;
   const payload=await readContentEntry(token),now=Math.floor(Date.now()/1000);
   const expired=await new SignJWT({enterpriseId:payload.enterpriseId,documentId:payload.documentId,versionId:payload.versionId,hash:payload.hash}).setProtectedHeader({alg:'HS256'}).setAudience('assistant-reference-share').setIssuedAt(now-7200).setExpirationTime(now-3600).sign(new TextEncoder().encode(process.env.JWT_SECRET!));
-  const entry=await entryContext({userId:users[0],contextVersion:1,enterpriseId:undefined},{referenceEntry:expired});assert.match(String(entry.guidanceOpening),/分享已失效/);assert.equal(entry.enterprise.id,actor.enterpriseId);
+  const entry=await entryContext({userId:users[0],contextVersion:1,enterpriseId:undefined},{referenceEntry:expired});assert.match(String(entry.guidanceOpening),/分享已失效/);assert.equal(entry.enterprise?.id,actor.enterpriseId);
   await exec('metadata',{documentId:d.documentId,expectedVersion:2,audience:'staff_internal'});
   await assert.rejects(exec('share',{documentId:d.documentId,expectedVersion:3}),/reference_unavailable/);
 });

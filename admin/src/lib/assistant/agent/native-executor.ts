@@ -7,7 +7,7 @@ import { AppointmentRepository } from '@/db/repositories';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
-import { AssistantError, fail, fingerprint, safeText, type Evidence, type MessageContent } from '../contracts';
+import { AssistantError, fail, fingerprint, isPublicAssistantScope, safeText, type Evidence, type MessageContent } from '../contracts';
 import { agentModelLimits, modelTurnProtocolIssue, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import { recordAgentModelUsage } from '../core/model-usage';
 import { replyPreviewEnd, replyStreamAvailable, saveReplyPreview } from '../core/answer-stream';
@@ -35,6 +35,7 @@ import { assertModelTurnBand, modelStepBase, modelStepStride, maxModelTurns, dia
 import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publicSitesDelivery,
   type RecommendToolRuntime } from './dialogue-recommend-tools';
 import { canOfferDesignerRecommendation, directDesignerDiscovery } from '../core/discovery';
+import { publicDesignerLinkProtocol, publicDesignerLinkReceipt, publicDesignerLinkToolName, publicDesignerServiceLinkTool } from './public-designer-link';
 import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
 import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
 import { bindReadToolInput, companyPracticeRequested, independentAdviceRequested, knowledgeOriginalRequested, readToolContext, readToolContextProtocol, readToolsForContext,
@@ -100,7 +101,13 @@ const customerReplyStyle = '直接回答本轮问题。简单确认或单点澄�
   + '并列事项用一层 Markdown 项目符号，顺序步骤用编号，适量加粗要点开头。'
   + '同一要点下确有多个独立的核对项时，再用一级无序子列表。';
 
-export function nativeExecutorPrompt(knowledgeEnabled: boolean, delegation = false, customerConsultation = false) {
+export function nativeExecutorPrompt(knowledgeEnabled: boolean, delegation = false, customerConsultation = false, publicScope = false) {
+  if (publicScope) return [
+    '你是小K的公开装修咨询助手。当前访客尚未绑定企业，只能回答一般装修常识、公开网页资料和公开设计师作品；不得声称知道任何企业、客户、项目、预约、施工或个人资料。',
+    '需要实时资料时只能使用公开互联网搜索/读取和公开设计师目录。不得调用或暗示企业知识、客户业务、需求保存、历史召回、长期记忆、材料共享、人工接待或任何项目工具。',
+    '只有客户明确要找/推荐具体设计师或继续刚才的设计师查找时才查询设计师目录；“如何挑选设计师”这类泛建议直接用一般建议回答。作品和目录结果不承诺价格、工期、档期或预约。',
+    '如需联系具体设计师，回复由服务端提供扫活动码继续的入口；不要自行创建线索、预约、转人工或宣称已联系。用中文自然回答，不输出工具名、JSON或系统内部用语。',
+  ].join('\n');
   const proseStyle = customerConsultation
     ? '用中文自然地回答。'
     : '用中文自然段落作答。';
@@ -968,6 +975,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const userTurns = messages.filter(message => message.role === 'user');
     const stageQuestion = userTurns.at(-1)?.content ?? '';
     const customerConsultation = lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation';
+    const publicScope = isPublicAssistantScope(lease.actor);
+    if (publicScope && (!customerConsultation || (initial.conversation.entry_snapshot as Row)?.scope !== 'public')) fail('context_changed');
+    if (publicScope) knowledgeEnabled = false;
     const designerToolAvailable = !customerConsultation || canOfferDesignerRecommendation(stageQuestion, userTurns.at(-2)?.content);
     const consultationEntry = initial.conversation.entry_snapshot as Row;
     const privateConsultation = customerConsultation && !isWechatConsultation(lease.actor) && !specialist
@@ -976,11 +986,11 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const needsFirstTool = !privateConsultation
       || companyPracticeRequested(stageQuestion) || knowledgeOriginalRequested(stageQuestion);
     const needMemory = readMemory(initial.conversation.entry_snapshot);
-    if (isMainWechat(lease.actor) || !isWechatConsultation(lease.actor) && !preview && !specialist && !consultationEntry.activePublicSite &&
-        lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation' && !reportContext(consultationEntry).selection) {
+    if (!publicScope && (isMainWechat(lease.actor) || !isWechatConsultation(lease.actor) && !preview && !specialist && !consultationEntry.activePublicSite &&
+        lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation' && !reportContext(consultationEntry).selection)) {
       mainTools = await withTenantTransaction(lease.enterpriseId, tx => mainDialogueTools(tx,lease,stageQuestion));
     }
-    stageWorkflow = await withTenantTransaction(lease.enterpriseId, async tx => {
+    stageWorkflow = publicScope ? null : await withTenantTransaction(lease.enterpriseId, async tx => {
       const { conversation } = await runContext(tx, lease);
       const entry = conversation.entry_snapshot as Row;
       return prepareStageWorkflowTool(tx, lease, { conversationId: String(conversation.id), leadId: readContext?.leadId, preview,
@@ -1014,7 +1024,10 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const drawingRequested = specialist?.agent.agentId === 'electrical-specialist'
       && /图纸|点位图|水电图|电气图|给排水图|平面图/u.test(specialistQuestion);
     const materialRead = drawingRequested ? readToolsForContext([materialTool], readContext)[0] : null;
-    const tools: ModelTool[] = [
+    const tools: ModelTool[] = publicScope ? [
+      ...publicResearchTools([webSearchTool], true, true),
+      publicDesignerServiceLinkTool,
+    ] : [
       ...(mainTools?.definitions ?? []),
       ...(stageWorkflow?.hasWorkflows ? [stageWorkflow.definition] : []),
       ...(knowledgeEnabled ? [enterpriseSearchTool] : []),
@@ -1044,6 +1057,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
     });
     const validateTool = (name: string, args: string): { code: string; feedback: string } | null => {
       if (!modelTools.some(tool=>tool.name===name)) return { code:'assistant_capability_forbidden', feedback:'当前阶段没有启用这项工具。' };
+      if (publicScope && !['search_web', 'read_web', publicDesignerLinkToolName].includes(name))
+        return { code: 'assistant_capability_forbidden', feedback: '公开咨询只支持一般建议、公开网页和明确找设计师的继续入口。' };
       if (name === 'run_stage_workflow' && !stageWorkflow?.parse(args)) return { code: 'invalid_tool_input', feedback: '请选择当前阶段已绑定的 workflowId。' };
       if (name === 'search_enterprise') {
         try {
@@ -1101,6 +1116,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
     let sequence = toolState.nextSequence;
     const toolPort = async (turn: number, index: number, name: string, args: string, callId?: string) => {
       if (!modelTools.some(tool=>tool.name===name)) fail('assistant_capability_forbidden',403);
+      if (publicScope && !['search_web', 'read_web', publicDesignerLinkToolName].includes(name)) fail('assistant_capability_forbidden', 403);
       if (name === stageToolName || name === reportToolName) {
         if (!mainTools) fail('assistant_capability_forbidden',403);
         const main = mainTools;
@@ -1194,6 +1210,24 @@ export async function processNativeAgentAnswer(lease: Lease) {
           : { name: 'read_web' as const, candidateId: String(parsed.candidateId) };
         return { content: JSON.stringify(await web(input, ++sequence)) };
       }
+      if (name === publicDesignerLinkToolName) {
+        const input: unknown = JSON.parse(args);
+        if (!publicScope || !input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length)
+          fail('assistant_capability_forbidden', 403);
+        const step = ++sequence;
+        return withTenantTransaction(lease.enterpriseId, async tx => {
+          await runContext(tx, lease);
+          const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps
+            where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${step}
+              and capability_name=${publicDesignerLinkProtocol}`);
+          const receipt = cached?.private_checkpoint as Row | undefined
+            ?? publicDesignerLinkReceipt(String(initial.run.trigger_message_id));
+          if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,input_summary)
+            values(${lease.enterpriseId},${lease.runId},${step},'agent_public_service_link',${publicDesignerLinkProtocol},1,'succeeded',
+              ${JSON.stringify(receipt)}::jsonb,${JSON.stringify({ questionMessageId: String(initial.run.trigger_message_id), scope: 'public' })}::jsonb)`);
+          return { content: JSON.stringify(receipt) };
+        });
+      }
       if (name === 'recommend_designers') return { content: JSON.stringify(await designers()) };
       if (name === 'recommend_public_sites') return { content: JSON.stringify(await sites.call()) };
       if (name === 'recall_history') {
@@ -1278,7 +1312,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           ...(experience ? {temperature:experience.temperature} : {}),
           ...(delegationTool || specialist ? { applicationWebSearch: true } : {}),
           ...(onFinalText ? { onFinalText } : {}),
-          requireTool: planning || nativeFirstTurnRequiresTool(turn, dispatchTools) } },
+           requireTool: planning || !publicScope && nativeFirstTurnRequiresTool(turn, dispatchTools) } },
         metadata: { promptVersion, runtime: xiaokNativeExecutorProtocol, turn, purpose: 'answer', probeVersion: config.probeVersion },
         beforeProviderCall,
       }).catch(error => { textFailure = error; throw error; });
@@ -1333,7 +1367,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       }
     }
     const systemContent: Array<{ type: 'text'; text: string }> = [
-      { type: 'text', text: nativeExecutorPrompt(knowledgeEnabled, !!delegationTool, customerConsultation) },
+      { type: 'text', text: nativeExecutorPrompt(knowledgeEnabled, !!delegationTool, customerConsultation, isPublicAssistantScope(lease.actor)) },
       ...nativeReplySiteText({ publicSiteText: answerPublicSite?.text, businessContextActive: businessContextActive && !!publicSite.active, includePublicSite })];
     if (customerConsultation && !streamReply) systemContent.push({ type: 'text', text: customerReplyStyle });
     if (guideTurn && answerPublicRef) systemContent.push({ type: 'text', text: publicGuidePrompt(guideTurn) });
@@ -1367,7 +1401,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
       ((step.input_summary as Row | null)?.receipt as Row | undefined)?.status === 'retrieval_unavailable'))
       specialistReview.enterpriseUnavailable = true;
     const currentQuestionText = stageQuestion;
-    const asksForDesigners = !specialist && lease.actor.principal.kind === 'user' && directDesignerDiscovery(currentQuestionText);
+    const asksForDesigners = !publicScope && !specialist && lease.actor.principal.kind === 'user' && directDesignerDiscovery(currentQuestionText);
     // Applicability is independent of citation presence: a user/master value the
     // answer endorses cannot borrow an unrelated run quote as support.
     const stagePreview = stageWorkflow !== null && initial.conversation.purpose === 'knowledge_preview';
@@ -1423,7 +1457,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           }
           // The catalog receipt already owns the final designer copy and IDs.
           // Reuse the graph's durable tool reply before a prose-only model turn.
-          return customerConsultation ? designers.text() : null;
+           return customerConsultation && !publicScope ? designers.text() : null;
         },
         resolveFinal: async (text, state) => {
           if (state.finalFromTools) return text;

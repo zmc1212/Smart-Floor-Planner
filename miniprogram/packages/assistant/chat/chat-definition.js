@@ -1,7 +1,7 @@
 const { ChatController, initial, appendPatch } = require('../lib/chat');
 const chatResume = require('../lib/chat-resume');
 const { goToLogin } = require('../../../utils/session');
-const { resolveServiceEntryUrl, serviceEntryCode } = require('../../../utils/service-entry');
+const { serviceEntryCode } = require('../../../utils/service-entry');
 const nativePreview = require('../../../utils/native-preview');
 const { MediaController } = require('../lib/media');
 const { ReferenceImage } = require('../lib/reference-image');
@@ -92,6 +92,7 @@ module.exports = () => ({
 		designerCardImages: {}, designerCardPortraits: {}, designerCardError: '',
 		promotionEntry: null, promotionResumedLeadId: '', promotionSubmitting: false,
 	},
+		serviceContinuation: null, serviceLinkBusy: false,
 
 	onLoad(options) {
 		this._ownerReport = ownerReportLink(options);
@@ -114,7 +115,7 @@ module.exports = () => ({
 			identity: sessionToken,
 			resumeConversationId,
 			onResumeInvalid: id => chatResume.clear(id),
-			prepareFirstSend: (cid, emptyLocation) => this.location?.ensure(cid, false, emptyLocation),
+			prepareFirstSend: (cid, emptyLocation) => this.data.entryScope === 'public' ? {} : this.location?.ensure(cid, false, emptyLocation),
 			referenceImage: value => this.referenceImages.materialize(value),
 			emit: patch => {
 				if (!this._alive) return;
@@ -170,10 +171,10 @@ module.exports = () => ({
 						if (this.media) this.media.dispose(); this.media = null;
 						this.setData({ mediaPaths: {}, mediaItems: [], sheet: '', siteContext: null, siteTopics: [], siteGreeting: '', stageExperience: null, inputCandidates: [], followQuestions: [], followMessageId: '' });
 					} else if (patch.messages) {
-						if (this._shown && this.liveConsent) this.liveConsent.load(this.controller.conversationId);
-						if (this._shown) this.siteRecords.load(this.controller.conversationId, patch.messages);
-						if (this._shown && this.publicSites) this.publicSites.load(this.controller.conversationId, this.data.enterpriseId, patch.messages);
-						if (this._shown && this.plans) this.plans.load(this.controller.conversationId, patch.messages);
+						if (this.data.entryScope !== 'public' && this._shown && this.liveConsent) this.liveConsent.load(this.controller.conversationId);
+						if (this.data.entryScope !== 'public' && this._shown) this.siteRecords.load(this.controller.conversationId, patch.messages);
+						if (this.data.entryScope !== 'public' && this._shown && this.publicSites) this.publicSites.load(this.controller.conversationId, this.data.enterpriseId, patch.messages);
+						if (this.data.entryScope !== 'public' && this._shown && this.plans) this.plans.load(this.controller.conversationId, patch.messages);
 						if (this._shown) this.loadDesignerCards(patch.messages);
 						this.loadMessageImages(patch.messages);
 						this.maybeShowMeasureCard(patch.messages);
@@ -183,10 +184,10 @@ module.exports = () => ({
 						}
 					}
 					if (patch.conversation === null) { if (this.liveConsent) this.liveConsent.clear(); if (this.floorplans) this.floorplans.clear(); this.recommendations.clear(); this.setData({ portfolioReplyId: '' }); this.resetDesignerCards(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
-					if (patch.conversation?.id && this.floorplans && this._shown && this.floorplans.id !== String(patch.conversation.id)) this.floorplans.show(String(patch.conversation.id));
+					if (this.data.entryScope !== 'public' && patch.conversation?.id && this.floorplans && this._shown && this.floorplans.id !== String(patch.conversation.id)) this.floorplans.show(String(patch.conversation.id));
 					if (patch.conversation?.id && this.measureBooking && this.measureBooking.id && this.measureBooking.id !== String(patch.conversation.id)) this.measureBooking.clear();
 					if (patch.conversation !== undefined && !this.data.followupActive) this.syncReportQuestion();
-					if (patch.messages || patch.conversation || patch.generating===false) void this.loadStageFollowQuestions();
+					if (this.data.entryScope !== 'public' && (patch.messages || patch.conversation || patch.generating===false)) void this.loadStageFollowQuestions();
 					const next = patch.messages;
 					const appended = next?.length && next[next.length - 1].id !== previous.at(-1)?.id;
 					const pendingTurn = patch.sending && patch.pendingText;
@@ -300,10 +301,11 @@ module.exports = () => ({
 			// A current, unchanged message window can resume without a messages patch.
 			if (this._alive && this._shown && !this.data.fatal && this.data.messages?.length) this.loadDesignerCards(this.data.messages);
 			if (this._alive && this._shown && !this.data.fatal && !this.controller.conversationId) void this.loadOwnerSiteContext();
-			if (this._alive && this._shown && !this.data.fatal) await this.floorplans.show(this.controller.conversationId);
+			if (this._alive && this._shown && !this.data.fatal && this.data.entryScope !== 'public') await this.floorplans.show(this.controller.conversationId);
 			await this.prepareSpeech();
+			if (this.data.entryScope === 'public') this.stopOwnerReminderRefresh();
 			if (this._alive && this._shown && !this.data.fatal && !this.data.generating && !this.data.readOnly) await this.syncLocation();
-			if (this._alive && this._shown && !this.data.fatal && this._options.publicSiteId) {
+			if (this._alive && this._shown && !this.data.fatal && this.data.entryScope !== 'public' && this._options.publicSiteId) {
 				const cid = this.controller.conversationId || await this.controller.handoffConversation();
 				if (cid && await this.publicSites.attach(cid, this.data.enterpriseId, this._options.publicSiteId, this._options.publicVersionId)) {
 					delete this._options.publicSiteId; delete this._options.publicVersionId;
@@ -314,12 +316,12 @@ module.exports = () => ({
 			if (this._alive && this._shown && this._options.prompt && !this.data.draft && !this.data.pendingSend && !this.data.fatal) {
 				this.controller.input(this._options.prompt); delete this._options.prompt;
 			}
-			if (this._alive && this._shown) await this.followups.show();
+			if (this._alive && this._shown && this.data.entryScope !== 'public') await this.followups.show();
 		}
 	},
 
 	async loadOwnerSiteContext() {
-		if (this.data.staffTab || this.data.professionalFollowup || this.data.followupActive || this._ownerReport) return;
+		if (this.data.entryScope === 'public' || this.data.staffTab || this.data.professionalFollowup || this.data.followupActive || this._ownerReport) return;
 		if (this._options?.publicSiteId || this._options?.followup === '1') return;
 		if (this.controller?.conversationId || this.data.messages?.length) return;
 		const token = sessionToken();
@@ -493,6 +495,11 @@ module.exports = () => ({
 		if (!cid || !latest) {
 			this._followReceipt = '';
 			if (this.data.followMessageId) this.setData({ followQuestions: [], followMessageId: '' });
+		if (this.data.entryScope === 'public') {
+			this._followReceipt = '';
+			if (this.data.followQuestions?.length || this.data.followMessageId) this.setData({ followQuestions: [], followMessageId: '' });
+			return;
+		}
 			return;
 		}
 		const key = cid + ':' + latest.id;
@@ -532,9 +539,21 @@ module.exports = () => ({
 	async send() {
 		this.clearStageInput();
 		if (this.data.needsLogin) { this.login(); return; }
+	startServiceLink(event) {
+		if (this.data.entryScope !== 'public' || this.data.serviceLinkBusy || this.data.promotionEntry
+			|| this.data.loading || this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.generating) return;
+		const messageId = String(event.currentTarget.dataset.message || ''), message = this.data.messages.find(item => String(item.id) === messageId);
+		const link = message?.serviceLink;
+		if (!message || message.authorKind !== 'assistant' || link?.type !== 'designer'
+			|| !/^[1-9]\d{0,18}$/.test(String(link.questionMessageId || ''))) return;
+		const questionMessageId = String(link.questionMessageId);
+		const question = this.controller.questionText(questionMessageId);
+		this.setData({ serviceLinkBusy: true, serviceContinuation: { type: 'designer', questionMessageId, question } });
+		return this.scanPromotionCode({ currentTarget: { dataset: { serviceLink: '1' } } });
+	},
 		if (this.data.contextBusy || this.data.contextPending || this.data.sending) return;
 		if (this.data.speechBusy || this._openingVoice) return;
-		if (!this.data.staffTab && !this.data.followupActive && !this.data.siteContext && measureIntent(this.data.draft)) {
+		if (this.data.entryScope !== 'public' && !this.data.staffTab && !this.data.followupActive && !this.data.siteContext && measureIntent(this.data.draft)) {
 			this.setData({ measureCardVisible: true, measureCardDismissed: false });
 		}
 		if (!this._alive || !this._shown || this._openingVoice || this.data.speechBusy) return;
@@ -578,7 +597,7 @@ module.exports = () => ({
 		finally { if (this._alive) this.setData({ reconnectingChat: false }); }
 	},
 	async openFloorplanPicker() {
-		if (this.data.contextBusy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.readOnly) return;
+		if (this.data.entryScope === 'public' || this.data.contextBusy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.readOnly) return;
 		const id = this.controller.conversationId || await this.controller.handoffConversation();
 		if (!id || !this._alive || !this._shown) return;
 		this.setData({ contextBrowseOnly: false, contextPlanPaths: {}, contextDetailPath: '', contextDetailImageState: '', floorplanSheetMode: 'is-list' }); this.openSheet('floorplan');
@@ -591,6 +610,7 @@ module.exports = () => ({
 		await Promise.all(items.map(async item => {
 			if (paths[item.leadId] || !item.previewEndpoint) return;
 			try {
+		if (this.data.entryScope === 'public') return;
 				const path = await fetchProtectedImage(item.previewEndpoint,
 					floorPlanCacheKey(item.leadId, { id: item.id, updatedAt: item.updatedAt || item.layoutHash }));
 				if (path) paths[item.leadId] = path;
@@ -601,7 +621,7 @@ module.exports = () => ({
 		if (this._alive && this._shown) this.setData({ contextPlanPaths: paths });
 	},
 	async browseFloorplan() {
-		if (this.data.contextBusy) return;
+		if (this.data.entryScope === 'public' || this.data.contextBusy) return;
 		await this.openFloorplanPicker();
 		this.setData({ contextBrowseOnly: true });
 		if (this.floorplans.selected && this.data.sheet === 'floorplan' && await this.floorplans.detail(this.floorplans.selected)) {
@@ -615,6 +635,7 @@ module.exports = () => ({
 			this.setData({ contextDetailImageState: detail ? 'error' : '' });
 			return false;
 		}
+		if (this.data.entryScope === 'public') return false;
 		this.setData({ contextDetailImageState: 'loading' });
 		try {
 			const path = await fetchProtectedImage(detail.previewEndpoint,
@@ -646,25 +667,22 @@ module.exports = () => ({
 		if (await this.floorplans.detail(plan)) { this.setData({ floorplanSheetMode: 'is-detail' }); await this.loadFloorplanImage(); }
 	},
 	floorplanList() { this.setData({ contextDetail: null, contextDetailPath: '', contextDetailImageState: '', floorplanSheetMode: 'is-list' }); },
+		if (this.data.entryScope === 'public') return;
 	async chooseFloorplan(event) {
 		const index = event.currentTarget.dataset.index;
 		const plan = index === 'detail' ? this.data.contextDetail : index === 'none' ? null : this.data.contextItems[Number(index)];
 		if (index !== 'none' && !plan || this.data.contextBusy || this.data.readOnly || this.data.generating || this.data.pendingSend || this.data.pendingAction) return;
 		if (await this.floorplans.select(plan)) this.closeSheet();
+		if (this.data.entryScope === 'public') return;
 	},
 	async reloadFloorplanContext() {
 		if (this.floorplans.id) return this.floorplans.retry();
 		return this.openFloorplanPicker();
 	},
 	login() { goToLogin(); },
+		if (this.data.entryScope === 'public') return;
 	scanServiceCode() {
-		if (!this.data.needsServiceCode && !this.data.promotionEntry?.rescan) return;
-		wx.scanCode({ onlyFromCamera: false, success: result => {
-			const url = resolveServiceEntryUrl(result, { assistant: true });
-			const code = serviceEntryCode(url.split('?entryCode=')[1]);
-			if (code) void this.beginPromotion(code);
-			else wx.showToast({ title: '请扫描装修企业的推广码', icon: 'none' });
-		} });
+		return this.scanPromotionCode();
 	},
 	back() {
 		wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/index/index' }) });
@@ -706,7 +724,7 @@ module.exports = () => ({
 		});
 	},
 	async openMedia() {
-		if (this.data.mediaBusy || this.data.stageExperience?.attachments === false) return;
+		if (this.data.entryScope === 'public' || this.data.mediaBusy || this.data.stageExperience?.attachments === false) return;
 		this.clearStageInput();
 		wx.hideKeyboard();
 		let id = this.data.conversation && this.data.conversation.id;
@@ -723,7 +741,7 @@ module.exports = () => ({
 	mediaKind(event) { if (!this.data.mediaPending && !this.data.mediaBusy) this.setData({ mediaKind: Number(event.detail.value) }); },
 	mediaRoom(event) { if (!this.data.mediaPending && !this.data.mediaBusy) this.setData({ mediaRoom: event.detail.value }); },
 	async pickImage() {
-		if (!this.media || this.data.mediaBusy || this.data.mediaPending || this.data.readOnly || !this.data.canSend) return;
+		if (this.data.entryScope === 'public' || !this.media || this.data.mediaBusy || this.data.mediaPending || this.data.readOnly || !this.data.canSend) return;
 		const owner = this.media, session = sessionToken();
 		wx.chooseMedia({ count: 1, mediaType: ['image'], sourceType: ['album', 'camera'], sizeType: ['compressed'],
 			success: async result => {
@@ -737,21 +755,21 @@ module.exports = () => ({
 		});
 	},
 	async retryMedia() {
-		if (!this.media) return;
+		if (this.data.entryScope === 'public' || !this.media) return;
 		if (this.data.mediaPending) {
 			const ok = this.data.mediaPendingFormal ? await this.media.attachFormal() : await this.media.upload();
 			if (ok) { await this.media.load(this.media.id); await this.controller.refresh(); }
 		} else await this.media.load(this.media.id);
 	},
-	previewMedia(event) { return this.media && this.media.preview(event.currentTarget.dataset.id); },
-	loadFormalPlans() { return this.media && this.media.floorPlans(); },
+	previewMedia(event) { return this.data.entryScope === 'public' ? undefined : this.media && this.media.preview(event.currentTarget.dataset.id); },
+	loadFormalPlans() { return this.data.entryScope === 'public' ? undefined : this.media && this.media.floorPlans(); },
 	formalPlanChange(event) {
 		const index = Number(event.detail.value);
 		this.setData({ formalIndex: index, formalRoomIndex: 0, formalRooms: [{ id: '', name: '完整户型' }, ...(this.data.formalPlans[index]?.rooms || [])] });
 	},
 	formalRoomChange(event) { this.setData({ formalRoomIndex: Number(event.detail.value) }); },
 	async attachFormal() {
-		if (!this.media || this.data.mediaBusy || this.data.mediaPending) return;
+		if (this.data.entryScope === 'public' || !this.media || this.data.mediaBusy || this.data.mediaPending) return;
 		const plan = this.data.formalPlans[this.data.formalIndex], room = this.data.formalRooms[this.data.formalRoomIndex];
 		if (!plan || !room) return;
 		if (await this.media.attachFormal(plan, room.id)) { await this.media.load(this.media.id); await this.controller.refresh(); }
@@ -762,6 +780,7 @@ module.exports = () => ({
 			if (result.confirm && this._alive && owner === this.media) owner.remove(id).then(() => this.controller.refresh());
 		} });
 	},
+		if (this.data.entryScope === 'public') return;
 	closeSheet() {
 		clearTimeout(this._sheetTimer);
 		if (this.data.sheet === 'messageShare') this.setData({ messageShare: null, messageShareBusy: false, messageShareError: '' });
@@ -796,6 +815,7 @@ module.exports = () => ({
 		if (!this.media || this.media.id !== id) {
 			if (this.media) this.media.dispose();
 			this.setData({ mediaPaths: {} });
+		if (this.data.entryScope === 'public') return;
 			this.media = new MediaController({ identity: sessionToken, emit: p => { if (this._alive) this.setData(p); } });
 			await this.media.load(id);
 		}
@@ -808,7 +828,7 @@ module.exports = () => ({
 	},
 	openHistory() {
 		this.resetHistorySearch();
-		this.openSheet('history'); this.followups.loadList();
+		this.openSheet('history'); if (this.data.entryScope !== 'public') this.followups.loadList();
 		return this.data.professionalFollowup ? null : this.controller.loadHistory();
 	},
 	selectFollowup(event) {
@@ -904,7 +924,7 @@ module.exports = () => ({
 		wx.navigateTo({ url: '/packages/assistant/requirements/requirements?conversationId=' + encodeURIComponent(this.data.conversation.id) });
 	},
 	maybeShowMeasureCard(messages) {
-		if (this.data.staffTab || this.data.professionalFollowup || this.data.followupActive || this.data.readOnly
+		if (this.data.entryScope === 'public' || this.data.staffTab || this.data.professionalFollowup || this.data.followupActive || this.data.readOnly
 			|| this.data.siteContext || this.data.measureCardVisible) return;
 		const offerAt = String(this.data.conversation?.measureOfferAt || '');
 		if (this.data.conversation?.measureOffer && (!offerAt || offerAt !== this._measureOfferDismissedAt)) {
@@ -935,7 +955,7 @@ module.exports = () => ({
 	},
 
 	async openMeasureBooking() {
-		if (this.data.readOnly || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.contextBusy) return;
+		if (this.data.entryScope === 'public' || this.data.readOnly || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.contextBusy) return;
 		const id = this.controller.conversationId || await this.controller.handoffConversation();
 		if (!id || !this._alive || !this._shown) return;
 		this._measureOfferLoadedFor = String(id);
@@ -1001,6 +1021,11 @@ module.exports = () => ({
 			this.setData({ scrollTarget: '' }, () => {
 				if (this._alive && this._shown) this.setData({ scrollTarget: 'handoff-state' });
 			});
+		if (this.data.entryScope === 'public') {
+			if (this.data.serviceLinkBusy || this.data.loading || this.data.busy || this.data.promotionEntry) return;
+			this.setData({ serviceLinkBusy: true, serviceContinuation: { type: 'designer', question: '我想找一个适合我的设计师' } });
+			return this.scanPromotionCode();
+		}
 			return;
 		}
 		return this.controller.handoff();
@@ -1008,6 +1033,10 @@ module.exports = () => ({
 	async contactKeeper(event) {
 		const { project, message } = event.currentTarget.dataset;
 		const phone = await this.controller.constructionContact(String(project), String(message));
+		if (this.data.entryScope === 'public') {
+			const text = String(this.data.draft || '').trim() || '我想找设计师聊聊';
+			return this.pickPrompt({ currentTarget: { dataset: { text } } });
+		}
 		if (!phone || !this._alive || !this._shown) return;
 		wx.makePhoneCall({ phoneNumber: phone, fail: error => {
 			if (this._alive && !/cancel/i.test(error.errMsg || '')) wx.showToast({ title: '电话未拨出，请重试', icon: 'none' });
@@ -1029,7 +1058,7 @@ module.exports = () => ({
 	},
 	speechPath() {
 		const id = this.data.conversation?.id;
-		return this._alive && this._shown && !this.data.fatal && !this.data.followupActive && id && id === this.controller.conversationId
+		return this._alive && this._shown && this.data.entryScope !== 'public' && !this.data.fatal && !this.data.followupActive && id && id === this.controller.conversationId
 			? consultationSpeechPath(id) : '';
 	},
 	async prepareSpeech() {
@@ -1040,7 +1069,7 @@ module.exports = () => ({
 		return path === this.speechPath() && speech.matches(path);
 	},
 	async voiceInput() {
-		if (!this._alive || !this._shown || this.data.followupActive) return;
+		if (!this._alive || !this._shown || this.data.entryScope === 'public' || this.data.followupActive) return;
 		if (this.data.needsLogin) { this.login(); return; }
 		if (this._openingVoice || !this.data.canSend || this.data.loading || this.data.fatal || this.data.readOnly || this.data.busy
 			|| this.data.pendingSend || this.data.pendingAction || this.data.generating || this.data.uncertainRun || this.data.speechBusy) return;
@@ -1058,18 +1087,20 @@ module.exports = () => ({
 			return this.openMessageMenu(messageId);
 		if (await this.prepareSpeech() && this.speechController.items.some(asset => asset.messageId === String(messageId)))
 			return this.speechController.messageMenu(messageId);
+		if (this.data.entryScope === 'public') return;
 	},
 	moreHistory() { return this.controller.loadHistory(true); },
 	async selectHistory(event) {
 		if (this.data.mediaBusy || this.data.mediaPending) return;
 		if (this.data.busy || this.data.pendingSend || this.data.pendingAction) return;
-		const { id, anchor } = event.currentTarget.dataset;
+		const { id, anchor, publicHistory } = event.currentTarget.dataset;
 		if (anchor) this._holdAutoScroll = true;
 		this.followups.leave(); this.controller.visible = true; this.closeSheet();
 		try {
-			await this.controller.selectConversation(id);
+			await this.controller.selectConversation(id, { reloadEntry: publicHistory === '1' });
 			if (id !== this.controller.conversationId) return;
 			if (anchor) {
+		if (publicHistory === '1') this._options = { conversationId: String(id) };
 				const found = await this.controller.findHistoryMessage(anchor);
 				if (this._alive && this._shown && id === this.controller.conversationId) {
 					if (found) {
@@ -1125,7 +1156,7 @@ module.exports = () => ({
 	retryCitation() { return this.controller.openCitation(this._citationId); },
 	async syncLocation(requestPermission = false) {
 		const cid = this.data.conversation?.id, session = sessionToken();
-		if (!cid || !this.location || this.data.generating || this.data.readOnly || this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun) return {};
+		if (this.data.entryScope === 'public' || !cid || !this.location || this.data.generating || this.data.readOnly || this.data.busy || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun) return {};
 		const result = await this.location.ensure(cid, requestPermission);
 		if (!this._alive || !this._shown || cid !== this.data.conversation?.id || session !== sessionToken()) return {};
 		// Reproject in the background like the idle poll: it never supersedes an
@@ -1146,6 +1177,7 @@ module.exports = () => ({
 			&& this.data.messages.some(message => message.id === replyId && (message.discovery?.works || message.designerDiscovery));
 		if (!valid() || this._locatingDesigners || this.data.busy || this.data.generating) return;
 		this._locatingDesigners = true;
+		if (this.data.entryScope === 'public') return;
 		if (replyId !== this.data.portfolioReplyId) this.recommendations.clear();
 		this.setData({ portfolioReplyId: replyId, portfolioLoading: true });
 		try {
@@ -1166,6 +1198,7 @@ module.exports = () => ({
 		const conversationId = this.controller.conversationId;
 		if (this._designerCardConversation !== conversationId) {
 			if (this.designerCardMedia) this.designerCardMedia.clear();
+		if (this.data.entryScope === 'public') { this.resetDesignerCards(); return; }
 			this.designerCardMedia = conversationId ? new PortfolioImages(this.controller.client) : null;
 			this._designerCardConversation = conversationId; this._designerCardKey = '';
 			this.setData({ designerCardImages: {}, designerCardPortraits: {}, designerCardError: '' });
@@ -1216,7 +1249,7 @@ module.exports = () => ({
 		wx.navigateTo({ url: `/packages/assistant/work/work?conversationId=${encodeURIComponent(id)}&workId=${encodeURIComponent(data.work)}&versionId=${encodeURIComponent(data.version)}` });
 	},
 	async browseSites(event) {
-		if (this._browsingSites || this.data.publicLoading || this.data.publicBusy || this.data.loading || this.data.fatal || this.data.busy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun) return;
+		if (this.data.entryScope === 'public' || this._browsingSites || this.data.publicLoading || this.data.publicBusy || this.data.loading || this.data.fatal || this.data.busy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun) return;
 		const cid = this.controller.conversationId, eid = this.data.enterpriseId, session = sessionToken();
 		const replyId = event?.currentTarget?.dataset.message || this.data.publicReplyId;
 		const valid = () => this._alive && this._shown && cid === this.controller.conversationId && session === sessionToken()
@@ -1236,11 +1269,13 @@ module.exports = () => ({
 		this.openSheet('publicSite');
 		return this.publicSites.openDetail(this.controller.conversationId, this.data.enterpriseId, String(d.id), String(d.version));
 	},
+		if (this.data.entryScope === 'public') return;
 	async askPublicSite() {
 		const item = this.data.publicDetail, cid = this.controller.conversationId;
 		if (!item || this._askingPublicSite || !this.data.canSend || this.data.publicDetailLoading || this.data.publicBusy || this.data.publicPending || this.data.loading || this.data.fatal || this.data.readOnly || this.data.busy || this.data.generating || this.data.pendingSend || this.data.pendingAction || this.data.uncertainRun || this.data.contextBusy || this.data.contextPending || this.data.speechBusy) return;
 		this._askingPublicSite = true;
 		try {
+		if (this.data.entryScope === 'public') return;
 			if (await this.publicSites.attach(cid, this.data.enterpriseId, item.id, item.versionId)) {
 				if (!this._alive || !this._shown || cid !== this.controller.conversationId) return;
 				this.closeSheet(); await this.controller.refresh(); this.scrollBottom();
@@ -1252,8 +1287,9 @@ module.exports = () => ({
 		const ok = await this.publicSites.decide(d.key, d.action);
 		if (ok && d.action !== 'preview') await this.controller.refresh();
 	},
+		if (this.data.entryScope === 'public') return;
 	async liveDecision(e) {
-		if (!this.liveConsent || this.data.readOnly) return;
+		if (this.data.entryScope === 'public' || !this.liveConsent || this.data.readOnly) return;
 		const d = e.currentTarget.dataset;
 		if (d.action === 'preview') {
 			const card = this.liveConsent.card(String(d.id));
@@ -1266,33 +1302,36 @@ module.exports = () => ({
 		if (await this.liveConsent.decide(String(d.id), d.action) && d.action !== 'preview') await this.controller.refresh();
 	},
 	stopPublicLive(e) {
-		if (this.data.liveBusy || this.data.livePending || this.data.readOnly) return;
+		if (this.data.entryScope === 'public' || this.data.liveBusy || this.data.livePending || this.data.readOnly) return;
 		const id = String(e.currentTarget.dataset.id);
 		wx.showModal({ title: '停止公开直播', content: '仅停止这路直播，照片和服务记录的授权不变。', confirmText: '停止公开', success: async r => { if (r.confirm && await this.liveConsent.decide(id, 'withdraw')) await this.controller.refresh(); } });
 	},
-	retryLiveConsent() { return this.liveConsent.retry(); },
+	retryLiveConsent() { return this.data.entryScope === 'public' ? undefined : this.liveConsent.retry(); },
 	watchPublicLive() {
 		const item = this.data.publicLiveEntry;
 		if (!item || !/^[a-f0-9]{48}$/.test(item.key)) return;
 		wx.navigateTo({ url: '/packages/construction/public-live/public-live?enterpriseId=' + this.data.enterpriseId + '&key=' + item.key + '&conversationId=' + this.controller.conversationId + '&siteId=' + this.data.publicDetail.id + '&versionId=' + this.data.publicDetail.versionId });
 	},
+		if (this.data.entryScope === 'public') return;
 	publicLiveTab(e) { this.setData({ publicLiveTab: e.currentTarget.dataset.tab }); },
 	publicLiveDesigner() {
 		const item = this.data.publicDetail, cid = this.controller.conversationId;
 		if (!this._alive || !this._shown || this.data.sheet !== 'publicSite' || !item || this.data.publicDetailLoading || this.data.publicDetailError || this.data.publicBusy || this.data.publicPending || this.data.loading || this.data.fatal || this.data.readOnly) return;
 		if (![this.data.enterpriseId, item.id, item.versionId].every(value => /^[1-9]\d{0,18}$/.test(String(value))) || cid && !/^[1-9]\d{0,18}$/.test(String(cid))) return;
 		const values = { ...(cid ? { conversationId: cid } : {}), publicEnterpriseId: this.data.enterpriseId, publicSiteId: item.id, publicVersionId: item.versionId, findDesigner: '1' };
+		if (this.data.entryScope === 'public') return;
 		wx.navigateTo({ url: '/packages/assistant/chat/chat?' + Object.keys(values).map(key => key + '=' + encodeURIComponent(values[key])).join('&') });
 	},
-	laterPublic() { this.publicSites.later(); },
+	laterPublic() { if (this.data.entryScope !== 'public') this.publicSites.later(); },
 	async retryPublic() {
 		if (this.data.publicPending) { if (await this.publicSites.retry()) { if (this.data.sheet === 'publicSite') this.closeSheet(); await this.controller.refresh(); } }
 		else if (this.data.sheet === 'publicSite') await this.publicSites.readDetail();
 		else if (this.data.publicBrowsing) await this.browseSites();
 		else await this.controller.refresh();
+		if (this.data.entryScope === 'public') return;
 	},
-	previewPublic(e) { return this.publicSites.media.preview(e.currentTarget.dataset.key); },
-	previewPublicDetail(e) { return this.publicSites.detailMedia.preview(e.currentTarget.dataset.key); },
+	previewPublic(e) { return this.data.entryScope === 'public' ? undefined : this.publicSites.media.preview(e.currentTarget.dataset.key); },
+	previewPublicDetail(e) { return this.data.entryScope === 'public' ? undefined : this.publicSites.detailMedia.preview(e.currentTarget.dataset.key); },
 	openDesigner(event) {
 		const item = this.data.portfolioItems.find(i => i.authorId === String(event.currentTarget.dataset.id));
 		if (!item || !this.data.conversation) return;
