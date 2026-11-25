@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildReportReading } from '@/lib/construction/report-reading';
+import { renderReportPoster } from '@/lib/construction/report-poster';
 import type { ReportFacts, ReportProject } from '@/lib/construction/report-scope';
-import { bossWeeklyNotebookText, buildBossWeeklyNotebook, renderBossWeeklyNotebook, renderMiniReportNotebook } from '../wechat/weekly-notebook';
+import { bossWeeklyNotebookText, buildBossWeeklyNotebook, renderBossWeeklyNotebook } from '../wechat/weekly-notebook';
 
 function site(id: string, name: string, completed?: string): ReportProject {
   const records = completed ? [{ id, version: 1, hash: '', publishedAt: '2026-11-20T03:00:00.000Z',
@@ -53,7 +54,7 @@ test('the notebook PNG is repeatable and extends to all twenty sites at a fixed 
   assert.match(text, /完整报告可在小程序「企业日周报」查看。$/u);
 });
 
-test('the Mini Program pages share the saved period, counts, site order and published arrangement', () => {
+test('the Mini Program pages share the saved period, counts, site order and published arrangement', async () => {
   const active = site('10', '云栖花园', '云栖花园厨房线管已铺设。');
   active.issues = [{ id: '81', revision: 1, status: 'awaiting_owner', room: '厨房', ownerId: null, ownerName: '',
     recordId: '10', recordVersion: 1, sourceHash: '', eventId: '82', createdAt: period.periodStart, updatedAt: period.periodStart,
@@ -77,8 +78,24 @@ test('the Mini Program pages share the saved period, counts, site order and publ
   const scoped = buildReportReading({ ...input, projectId: '10' });
   assert.deepEqual(scoped.stats.map(stat => stat.value), ['1', '1', '1']);
   assert.notEqual(scoped.key, reading.key);
-  assert.equal(renderMiniReportNotebook(reading).readUInt32BE(16), 780);
+  const poster = await renderReportPoster({ reading, weekly: true, updatedProjectIds: new Set(['10']) });
+  assert.equal(poster.readUInt32BE(16), 780);
   const older = buildReportReading({ ...input, kind: 'daily', facts: { ...facts, projects: [{ ...quiet, issues: undefined }] } });
   assert.equal(older.stats[2].value, '—');
   assert.match(older.projects[0].progress, /当日暂无/u);
+});
+
+test('the daily poster supports a quiet day and expands for twenty sites with long records', async () => {
+  const facts: ReportFacts = { protocol: 'construction-report-facts-v1', projects: [site('1', '云栖花园')], projectsTruncated: false,
+    knowledgeStatus: 'not_generated', arrangementsStatus: 'aggregated', issuesStatus: 'aggregated' };
+  const input = { ...period, cutoffAt: '2026-11-24T12:00:00Z', kind: 'daily' as const, audience: 'boss' as const, facts };
+  const quiet = { reading: buildReportReading(input), weekly: false, updatedProjectIds: new Set<string>() };
+  const small = await renderReportPoster(quiet);
+  assert.deepEqual(await renderReportPoster(quiet), small);
+  const projects = Array.from({ length: 20 }, (_, index) => site(String(index), `长名称工地${index}号${'端到端'.repeat(8)}`,
+    '厨房施工进行中。'.repeat(13)));
+  const full = await renderReportPoster({ reading: buildReportReading({ ...input, facts: { ...facts, projects } }),
+    weekly: false, updatedProjectIds: new Set(projects.map(project => project.id)) });
+  assert.equal(full.readUInt32BE(16), 780);
+  assert.ok(full.readUInt32BE(20) > small.readUInt32BE(20) + 1_500);
 });

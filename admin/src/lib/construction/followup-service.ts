@@ -291,7 +291,7 @@ export class FollowupService {
     [bindingId, reportId].forEach(id);
     if (projectId) id(projectId);
     if (!Number.isSafeInteger(revision) || revision < 1 || readingKey !== undefined && !/^[a-f0-9]{64}$/.test(readingKey)) fail('invalid_construction', 422);
-    const reading = await this.scoped(async repo => {
+    const poster = await this.scoped(async repo => {
       const binding = await bindingForActor(repo.tx, this.actor, bindingId);
       await repo.conversation(String(binding.conversation_id));
       const report = await this.version(repo, binding, reportId, revision);
@@ -299,10 +299,11 @@ export class FollowupService {
         fail('assistant_resource_not_found', 404);
       const current = readingFor({ ...report, facts: report.facts }, binding, projectId);
       if (readingKey && current.key !== readingKey) fail('context_changed', 409);
-      return current;
+      const updatedProjectIds = new Set(report.facts.projects.filter(project => project.records.length).map(project => project.id));
+      return { reading: current, weekly: report.kind === 'weekly', updatedProjectIds };
     });
-    const { renderMiniReportNotebook } = await import('@/lib/assistant/wechat/weekly-notebook');
-    return renderMiniReportNotebook(reading);
+    const { renderReportPoster } = await import('./report-poster');
+    return renderReportPoster(poster);
   }
   knowledgeSource(bindingId: string, reportId: string, revision: number, projectId: string, sourceId: string, original = false) {
     [bindingId, reportId, projectId].forEach(id);

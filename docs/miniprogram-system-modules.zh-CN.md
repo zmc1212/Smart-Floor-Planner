@@ -1034,7 +1034,9 @@ Phase 7 最终治理已实现：纯 geometry/read-model 依赖方向、全模块
 
 共用 V004 手账阅读页，每个周期含详情和图版两张整屏书页。左滑从右上角卷起，页眉、周期书签、正文及页脚随书页翻动。右滑从左上角回到详情，页脚也可点按。图版按手机宽度排版，纵向滚动读完长图，同一期来回翻页保留图版的滚动位置。「原图」会重新核验权限并打开原尺寸图片。微信原生胶囊使用系统安全区。[确认稿 V004](../design-references/xiaok-report-workflow-v1-20261120/README.md#整屏翻阅-v004)。
 
-两张书页共用标题、日期、在建工地数、有现场更新数和各角色的跟进数字。两页都按同一顺序显示工地、施工阶段、当期进展和已保存安排。文字页点工地标题可展开正文、获权照片、原记录及适用的工作台入口。业主仍可确认方案和「问小K」，确认时打开原会话方案并沿用预览前置条件。设计师可核对与回复，工人可查回执、补交和上报，老板仍可处理当前异常、查节点与事项和当期已关闭计数。
+日报和周报的图版采用获批 V002 手账海报，使用作品集式装裱主图、叠放的工序细节和错落的工地纸签。逐处显示当期阶段与进展，当期没有新记录时仍列出获权工地。共用配图保留「工序示意」标注。[V002 确认稿](../design-references/xiaok-report-workflow-v1-20261120/poster-v002/weekly-poster-v002.png) · [版式与素材映射](../design-references/xiaok-report-workflow-v1-20261120/README.md#手账海报-v002)。 Stable 390×844 核对两期 V002 海报、文字页、双向卷页和图版独立纵向滚动。[周报](../tmp/report-book-native-20261125/poster-native-retry/weekly-image.png) · [日报](../tmp/report-book-native-20261125/poster-native-retry/daily-image.png) · [原生证据](../tmp/report-book-native-20261125/poster-native-retry.json)。
+
+两张书页共用标题、日期、三项统计及各工地的阶段、当期进展和已保存安排。图版将一处有已发布进展的工地放入精选区，其余工地沿用报告顺序。文字页点工地标题可展开正文、获权照片、原记录及适用的工作台入口。业主仍可确认方案和「问小K」，确认时打开原会话方案并沿用预览前置条件。设计师可核对与回复，工人可查回执、补交和上报，老板仍可处理当前异常、查节点与事项和当期已关闭计数。
 
 工作页按周期读取原报告索引及 `GET /api/miniprogram/assistant/followups/:bindingId/reports/:reportId/workbench?revision=…&projectId=…`。文字版直接使用返回的 `reading`，图版请求携带对应的 `readingKey` 并渲染同一授权版本和工地范围。授权或来源变化导致内容不一致时，可按「重新读取」刷新两页。切换、隐藏或重进时释放旧临时图。隔离服务核对四端双周期。Stable 390×844 对照老板的日报、周报两页，并从展开的工地打开了原记录。原生预览窗口、真机、真实微信登录及业主在模拟器点按确认待验。[两版内容对齐的服务及原生证据](../tmp/report-book-native-20261125/aligned-current.json) · [V004 手势及恢复验证](../tmp/report-book-native-20261125/native-current.json) · [此前四端与业主照片验证](../tmp/report-board-20261120/isolated-1795162447605/report.json) · [后台模块](./admin-system-modules.zh-CN.md)。
 

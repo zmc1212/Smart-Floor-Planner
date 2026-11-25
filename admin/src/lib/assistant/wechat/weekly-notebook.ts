@@ -1,6 +1,6 @@
 import { createCanvas, type SKRSContext2D } from '@napi-rs/canvas';
 import type { ReportProject } from '@/lib/construction/report-scope';
-import { nextReportScheduleNode, reportDateKey, reportDateRange, reportProgressLine, reportRecordLine, reportText, type ReportReading } from '@/lib/construction/report-reading';
+import { nextReportScheduleNode, reportDateKey, reportDateRange, reportProgressLine, reportRecordLine, reportText } from '@/lib/construction/report-reading';
 import { issueStatusLabel } from '@/lib/xiaok-v1/progress-status';
 import { weeklyProjectStageName } from '@/lib/xiaok-v1/weekly-report-service';
 
@@ -105,17 +105,17 @@ function wrap(ctx: SKRSContext2D, text: string, maxWidth: number, maxLines: numb
 
 type NotebookRow = Pick<BossWeeklyNotebook['projects'][number], 'name' | 'stage' | 'progress' | 'attention' | 'next'>;
 
-function noteLayout(ctx: SKRSContext2D, project: NotebookRow, fullExcerpt: boolean) {
+function noteLayout(ctx: SKRSContext2D, project: NotebookRow) {
   ctx.font = font.small;
   const label = project.stage || '阶段待确认';
   const badge = wrap(ctx, label, 92, 1)[0];
   const badgeWidth = ctx.measureText(badge).width + 20;
   ctx.font = font.name;
-  const nameLines = wrap(ctx, project.name, innerWidth - badgeWidth - 14, fullExcerpt ? Infinity : 3);
+  const nameLines = wrap(ctx, project.name, innerWidth - badgeWidth - 14, 3);
   ctx.font = font.body;
-  const progressLines = wrap(ctx, project.progress, innerWidth, fullExcerpt ? Infinity : 2);
+  const progressLines = wrap(ctx, project.progress, innerWidth, 2);
   ctx.font = font.small;
-  const secondary = [project.attention, project.next].filter(Boolean).flatMap(line => wrap(ctx, line, innerWidth, fullExcerpt ? Infinity : 2));
+  const secondary = [project.attention, project.next].filter(Boolean).flatMap(line => wrap(ctx, line, innerWidth, 2));
   return { nameLines, badge, badgeWidth, progressLines, secondary, pending: !project.stage,
     height: 23 + nameLines.length * 24 + progressLines.length * 23 + secondary.length * 19 };
 }
@@ -176,20 +176,15 @@ export function renderBossWeeklyNotebook(notebook: BossWeeklyNotebook) {
     stats: [{ value: String(notebook.projects.length), label: '个工地' }, { value: String(notebook.withUpdates), label: '个有现场更新' }] });
 }
 
-export function renderMiniReportNotebook(reading: ReportReading) {
-  return renderNotebook({ ...reading, projects: reading.projects.map(project => ({ ...project, next: project.arrangement })),
-    hints: reading.notices.map(text => ({ text, tone: 'pending' })), footer: '详细内容见同一期报告详情。', fullExcerpt: true });
-}
-
 function renderNotebook(notebook: {
   title: string; period: string; section: string; footer: string; projects: NotebookRow[];
-  stats: ReportReading['stats']; hints: ReturnType<typeof notices>; fullExcerpt?: boolean;
+  stats: { label: string; value: string }[]; hints: ReturnType<typeof notices>;
 }) {
   const overviewY = 91, columnWidth = pageWidth / notebook.stats.length;
   const overviewHeight = 76 + notebook.hints.length * 27;
   const sheetY = overviewY + overviewHeight + 24;
   const layoutCtx = createCanvas(1, 1).getContext('2d');
-  const rows = notebook.projects.map(project => noteLayout(layoutCtx, project, !!notebook.fullExcerpt));
+  const rows = notebook.projects.map(project => noteLayout(layoutCtx, project));
   const sheetHeight = 36 + rows.reduce((height, row) => height + row.height, 0);
   const footerY = sheetY + sheetHeight + 18;
   const height = footerY + 57;
@@ -211,10 +206,10 @@ function renderNotebook(notebook: {
 
   ctx.fillStyle = color.ink;
   ctx.font = font.title;
-  ctx.fillText(notebook.title, notebook.fullExcerpt ? pageX : 43, 52);
+  ctx.fillText(notebook.title, 43, 52);
   ctx.font = font.small;
   ctx.fillStyle = color.muted;
-  ctx.fillText(notebook.period, notebook.fullExcerpt ? pageX : 44, 74);
+  ctx.fillText(notebook.period, 44, 74);
 
   paper(ctx, overviewY, overviewHeight);
   notebook.stats.forEach((stat, index) => {
