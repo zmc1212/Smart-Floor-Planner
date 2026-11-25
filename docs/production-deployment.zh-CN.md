@@ -4,7 +4,15 @@
 
 ## 当前正式发布
 
-正式后台、抢单 Worker 和小 K Worker 运行 `20261124-002`，对应干净提交 `4c9f72bc`，镜像 config digest 为 `sha256:f98470f26b9e8cac524084a416a1ad6a9b4f3e1706741f27a41b60f880813b8d`。标准包 ZIP SHA-256 为 `527e2f12261e9bf8174332a29b68137c6ed690c173250a0cf7f7b92b3eb27f77`，上一应用镜像保留为 `20261124-001`。[源码绑定](../tmp/production-release-20261124-002/source-binding.json) · [发布回执](../tmp/production-release-20261124-002/production-server.log)
+正式后台、抢单 Worker 和小 K Worker 运行 `20261125-001`，对应干净提交 `53756742`。该版在正式基线 `4c9f72bc` 上交付小K正文流式修复。镜像 config digest 为 `sha256:688533bad6dc5c6eecf01e455b43b510e7029bd163b472e599ec4dfc84119eeb`。服务器校验的发布包 SHA-256 为 `bacfcb0ad030f6d106f52c24c0ef739a8b4aa6657c71dcdb5daef97675dfefa8`。上一应用镜像为 `20261124-002`。[源码与构建绑定](../tmp/xiaok-live-reply-release-20261125/backend-binding.json) · [发布回执](../tmp/xiaok-live-reply-release-20261125/server-deploy.log)。
+
+PostgreSQL 沿用 `sfp-admin-release_postgres_data`，迁移账本为 146 条。发布脚本校验了备份 `smart_floor_planner-20261125T034538Z-pre-20261125-001.dump`，两项 Worker 及后台登录通过健康和冒烟检查。公网 HTTPS 网关返回 200。微信预览包源于 `056bf37f`，启用合法域名检查。小程序全量回归 2,404 项通过。[线上核验](../tmp/xiaok-live-reply-release-20261125/server-check.log) · [公网健康](../tmp/xiaok-live-reply-release-20261125/public-health.json) · [预览绑定](../tmp/xiaok-live-reply-release-20261125/preview-fresh.json) · [小程序测试](../tmp/xiaok-live-reply-release-20261125/miniprogram-tests-package.log)。
+
+四分钟真机观察窗口未收到精艺业主测试账号的新回复任务，待该账号扫码发问后确认设备上的流式显示。临时 SSH 公钥已撤销，新连接验证被拒。[真机观察](../tmp/xiaok-live-reply-release-20261125/handset-watch.log) · [测试账号回读](../tmp/xiaok-live-reply-release-20261125/handset-count.log) · [公钥撤销](../tmp/xiaok-live-reply-release-20261125/ssh-reauth.log)。
+
+### 上一个已验证版本 20261124-002
+
+这一版本的正式后台、抢单 Worker 和小 K Worker 运行 `20261124-002`，对应干净提交 `4c9f72bc`，镜像 config digest 为 `sha256:f98470f26b9e8cac524084a416a1ad6a9b4f3e1706741f27a41b60f880813b8d`。标准包 ZIP SHA-256 为 `527e2f12261e9bf8174332a29b68137c6ed690c173250a0cf7f7b92b3eb27f77`，上一应用镜像保留为 `20261124-001`。[源码绑定](../tmp/production-release-20261124-002/source-binding.json) · [发布回执](../tmp/production-release-20261124-002/production-server.log)
 
 `0148_assistant_wechat_channels` 和 `0149_xiaok_publications` 已应用。迁移账本从 144 条增至 146 条，三张新表均启用强制 RLS，保留原 PostgreSQL 数据卷。迁移前备份 `smart_floor_planner-20261124T085052Z-pre-20261124-002.dump` 的 SHA-256 和归档目录已校验。后台健康接口返回 200，两项 Worker 健康、实际登录和核心接口冒烟均通过。[迁移试跑](../tmp/production-release-20261124-002/isolated-migrations-checked.log) · [正式发布日志](../tmp/production-release-20261124-002/production-deploy.log)
 
