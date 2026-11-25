@@ -13,11 +13,11 @@ The migration ledger contains 146 records on `sfp-admin-release_postgres_data`. 
 
 The four-minute handset observation received no turn from the designated enterprise 3 test owner. On-device reply timing through the gateway is pending. Fresh SSH authentication rejected the revoked temporary identity. [Handset observation](../tmp/xiaok-live-reply-release-20261125/handset-watch.log) · [Test-owner count](../tmp/xiaok-live-reply-release-20261125/handset-count.log) · [SSH revocation](../tmp/xiaok-live-reply-release-20261125/ssh-reauth.log).
 
-### Full backend candidate 20261125-002
+### Full backend candidate 20261125-003
 
-The local candidate uses the clean `codex/xiaok-integration` snapshot `9111113e`. It includes the existing streaming patch, homeowner reply formatting and copy, designer recommendation intent, role-scoped WeChat reports, and daily and weekly report reading and poster generation. The last commit affecting `admin/` is `5fbb5dbd`. The archive and image match that backend tree. [Source and package binding](../tmp/backend-full-20261125-002/binding.json).
+The local candidate uses the clean `codex/xiaok-integration` snapshot `7602883f`. It includes the full backend from candidate `20261125-002` and adds the homeowner’s weekly WeChat image. The archive, migration and V002 poster assets matched the backend source. [Source and package binding](../tmp/xiaok-owner-weekly-image-20261125/binding.json) · [Previous candidate](../tmp/backend-full-20261125-002/binding.json).
 
-An isolated upgrade applied `0150_xiaok_wechat_role_recipients` from 146 to 147 ledger entries. Repeating the upgrade left the count at 147. The four WeChat service checks used a controlled delivery client. Stable verified an owner sending “下一步什么时候？” with a daily report selected, reading the formatted reply without internal status copy, and reopening it from history and home. Production deployment and handset validation are pending. [Migration and service checks](../tmp/backend-full-20261125-002/migration-and-roles.log) · [Stable run](../tmp/backend-full-20261125-002/run-81b2137e/report.json).
+An isolated upgrade applied `0150_xiaok_wechat_role_recipients` from 146 to 147 ledger entries. Repeating the upgrade left the count at 147. A controlled delivery client verified that each homeowner subscription type sent the same weekly PNG as the Mini Program. The previous candidate’s Stable run verified homeowner reply formatting and its history projection. Production deployment and handset validation are pending. [Weekly delivery checks](../tmp/xiaok-owner-weekly-image-20261125/verified/service-binding.json) · [Stable reply verification](../tmp/backend-full-20261125-002/run-81b2137e/report.json).
 
 ### Previous verified release 20261124-002
 

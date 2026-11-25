@@ -1026,9 +1026,9 @@ Phase 7 最终治理已实现：纯 geometry/read-model 依赖方向、全模块
 
 ### 四端日报周报工作页（开发环境 Implemented）
 
-**微信订阅（Limited，本地开发）。** 报告页和跟进设置沿用「微信订阅」，通过 `/api/miniprogram/assistant/followups/:bindingId/wechat?scope=role` 管理本人角色范围。业主按每个仍有权限的自家工地收摘要，施工人员和设计师按参与工地收每期汇总，老板按本企业报告计划收每期汇总，每期覆盖最多 20 个工地。用本人登录身份和一次性口令确认 ClawBot。日报和周报分别开启，默认关闭。旧单工地收件人可维持原范围，或确认升级后在同一微信连接上重新选择开关。暂停报告时仍可断开。小程序继续独立接收原报告。Stable 390×844 已验证四端进入报告、订阅写入、重进和退订。 [原生验证](../tmp/xiaok-wechat-roles-20261124/native-1795531826128.json)
+**微信订阅（Limited，本地开发）。** 报告页和跟进设置沿用「微信订阅」，通过 `/api/miniprogram/assistant/followups/:bindingId/wechat?scope=role` 管理本人角色范围。业主按每个仍有权限的自家工地收报告，施工人员和设计师按参与工地收每期汇总，老板按本企业报告计划收每期汇总，每期覆盖最多 20 个工地。用本人登录身份和一次性口令确认 ClawBot。日报和周报分别开启，默认关闭。旧单工地收件人可维持原范围，或确认升级后在同一微信连接上重新选择开关。暂停报告时仍可断开。小程序继续独立接收原报告。Stable 390×844 已验证四端进入报告、订阅写入、重进和退订。 [原生验证](../tmp/xiaok-wechat-roles-20261124/native-1795531826128.json)
 
-老板订阅的主动周报在 ClawBot 中以手账长图呈现周期和逐工地小结。图片确定失败时发送短摘要。需要核对明细时，可从小程序「企业日周报」按当前权限读取原报告。图片真机送达待验。[已批准长图](../design-references/xiaok-report-workflow-v1-20261120/05-boss-wechat-weekly-notebook-v003.png)
+业主绑定微信并开启周报后，ClawBot 按获权工地发送和小程序同一期的 V002 长图。老板收获权工地汇总长图。微信日报和主动查询发文字，图片明确发送失败时回短摘要。两种业主订阅已在隔离环境验证，真实微信送达待核验。[业主周报图版证据](../tmp/xiaok-owner-weekly-image-20261125/verified/service-binding.json) · [已批准小程序海报](../design-references/xiaok-report-workflow-v1-20261120/poster-v002/weekly-poster-v002.png)
 
 业主从「工地 → 查看日报与周报」进入；施工人员、设计师从工地工作台的「工地日报与周报」进入并保留所选工地；老板从「企业日周报」进入，默认周报。共用 `packages/assistant/chat/chat?reportBoard=1` 和已批准的[四端单屏设计](../design-references/xiaok-report-workflow-v1-20261120/README.md)。切换保留原收件人与项目范围，历史复用月份、周期及项目筛选，已阅写入现有精确版本回执。
 

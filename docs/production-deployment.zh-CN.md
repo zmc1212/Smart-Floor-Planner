@@ -10,11 +10,11 @@ PostgreSQL 沿用 `sfp-admin-release_postgres_data`，迁移账本为 146 条。
 
 四分钟真机观察窗口未收到精艺业主测试账号的新回复任务，待该账号扫码发问后确认设备上的流式显示。临时 SSH 公钥已撤销，新连接验证被拒。[真机观察](../tmp/xiaok-live-reply-release-20261125/handset-watch.log) · [测试账号回读](../tmp/xiaok-live-reply-release-20261125/handset-count.log) · [公钥撤销](../tmp/xiaok-live-reply-release-20261125/ssh-reauth.log)。
 
-### 完整后台候选 20261125-002
+### 完整后台候选 20261125-003
 
-本地候选从 `codex/xiaok-integration` 的干净快照 `9111113e` 构建，包含已上线的流式补丁，以及业主答复排版和措辞、设计师推荐意图、微信角色报告收件、日报和周报阅读与海报生成。最后一笔改动 `admin/` 的提交是 `5fbb5dbd`。发布包和镜像与该后台源码对应。[源码和发布包绑定](../tmp/backend-full-20261125-002/binding.json)。
+本地候选从 `codex/xiaok-integration` 的干净快照 `7602883f` 构建，包含 `20261125-002` 的完整后台，并增加业主微信周报长图。发布包、迁移和 V002 海报素材已校验与源码一致。[源码和发布包绑定](../tmp/xiaok-owner-weekly-image-20261125/binding.json) · [上一候选包](../tmp/backend-full-20261125-002/binding.json)。
 
-隔离库应用 `0150_xiaok_wechat_role_recipients` 后，迁移账本由 146 条增至 147 条，重复执行仍为 147 条。四组微信服务检查使用受控投递端。Stable 核对了业主选择日报后实发「下一步什么时候？」、阅读有标题和列表且无内部状态措辞的答复，以及从历史和首页重进。正式部署和真机复验待进行。[迁移和服务检查](../tmp/backend-full-20261125-002/migration-and-roles.log) · [Stable 回执](../tmp/backend-full-20261125-002/run-81b2137e/report.json)。
+隔离库应用 `0150_xiaok_wechat_role_recipients` 后，迁移账本由 146 条增至 147 条，重复执行仍为 147 条。受控投递端确认两种业主订阅发出的周报 PNG 与小程序同一期图版一致。上个候选已用 Stable 核对业主答复排版和历史重进。正式部署和真机复验待进行。[长图投递验证](../tmp/xiaok-owner-weekly-image-20261125/verified/service-binding.json) · [Stable 答复验证](../tmp/backend-full-20261125-002/run-81b2137e/report.json)。
 
 ### 上一个已验证版本 20261124-002
 
