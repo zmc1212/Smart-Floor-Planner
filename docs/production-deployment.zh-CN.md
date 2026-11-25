@@ -10,6 +10,12 @@ PostgreSQL 沿用 `sfp-admin-release_postgres_data`，迁移账本为 146 条。
 
 四分钟真机观察窗口未收到精艺业主测试账号的新回复任务，待该账号扫码发问后确认设备上的流式显示。临时 SSH 公钥已撤销，新连接验证被拒。[真机观察](../tmp/xiaok-live-reply-release-20261125/handset-watch.log) · [测试账号回读](../tmp/xiaok-live-reply-release-20261125/handset-count.log) · [公钥撤销](../tmp/xiaok-live-reply-release-20261125/ssh-reauth.log)。
 
+### 完整后台候选 20261125-002
+
+本地候选从 `codex/xiaok-integration` 的干净快照 `9111113e` 构建，包含已上线的流式补丁，以及业主答复排版和措辞、设计师推荐意图、微信角色报告收件、日报和周报阅读与海报生成。最后一笔改动 `admin/` 的提交是 `5fbb5dbd`。发布包和镜像与该后台源码对应。[源码和发布包绑定](../tmp/backend-full-20261125-002/binding.json)。
+
+隔离库应用 `0150_xiaok_wechat_role_recipients` 后，迁移账本由 146 条增至 147 条，重复执行仍为 147 条。四组微信服务检查使用受控投递端。Stable 核对了业主选择日报后实发「下一步什么时候？」、阅读有标题和列表且无内部状态措辞的答复，以及从历史和首页重进。正式部署和真机复验待进行。[迁移和服务检查](../tmp/backend-full-20261125-002/migration-and-roles.log) · [Stable 回执](../tmp/backend-full-20261125-002/run-81b2137e/report.json)。
+
 ### 上一个已验证版本 20261124-002
 
 这一版本的正式后台、抢单 Worker 和小 K Worker 运行 `20261124-002`，对应干净提交 `4c9f72bc`，镜像 config digest 为 `sha256:f98470f26b9e8cac524084a416a1ad6a9b4f3e1706741f27a41b60f880813b8d`。标准包 ZIP SHA-256 为 `527e2f12261e9bf8174332a29b68137c6ed690c173250a0cf7f7b92b3eb27f77`，上一应用镜像保留为 `20261124-001`。[源码绑定](../tmp/production-release-20261124-002/source-binding.json) · [发布回执](../tmp/production-release-20261124-002/production-server.log)
