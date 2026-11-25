@@ -163,6 +163,75 @@ test('an outdated image scope clears the previous image and retry reloads the re
   }
 });
 
+test('posting to Moments checks the exact saved image once and shares the resulting PNG alone', async () => {
+  const download = api.downloadFile, previousWx = global.wx;
+  const requests = [], menus = [], removed = [];
+  const readingKey = 'a'.repeat(64);
+  global.wx = {
+    getFileSystemManager: () => ({ unlink: ({ filePath }) => removed.push(filePath) }),
+    showShareImageMenu: ({ path, needShowEntrance, success }) => { menus.push({ path, needShowEntrance }); success(); },
+    showToast: () => assert.fail('sharing should not show an error'),
+  };
+  api.downloadFile = async url => { requests.push(url); return { tempFilePath: 'authorized-poster.png' }; };
+  const page = { ...reportBoardMethods, _alive: true, _shown: true, _boardScope: { projectId: '10' }, _boardTicket: 3,
+    followups: { state: { followupContext: context('boss') }, current: () => true, headers: async () => ({}) },
+    data: { ...initialBoard(), reportBookPage: 1, reportBookImage: 'previous-poster.png',
+      reportBoardView: { detail: { reportId: '22', revision: 2, readingKey, ready: true } } },
+    setData(patch) { Object.assign(this.data, patch); } };
+  try {
+    const sharing = page.shareReportBookImage();
+    assert.equal(page.data.reportBookSharing, true);
+    await page.shareReportBookImage();
+    await page.previewReportBookImage();
+    await sharing;
+    assert.deepEqual(requests, [`/miniprogram/assistant/followups/12/reports/22/image?revision=2&projectId=10&readingKey=${readingKey}`]);
+    assert.deepEqual(menus, [{ path: 'authorized-poster.png', needShowEntrance: false }]);
+    assert.deepEqual(removed, ['previous-poster.png']);
+    assert.equal(page.data.reportBookSharing, false);
+  } finally {
+    clearTimeout(page.__nativePreviewTimer);
+    api.downloadFile = download;
+    global.wx = previousWx;
+  }
+});
+
+test('sharing cannot open a stale poster after authorization changes or the reader changes period', async () => {
+  const download = api.downloadFile, previousWx = global.wx;
+  const removed = [];
+  global.wx = {
+    getFileSystemManager: () => ({ unlink: ({ filePath }) => removed.push(filePath) }),
+    showShareImageMenu: () => assert.fail('obsolete poster must not be sent to the share menu'),
+    showToast: () => assert.fail('cleared posters use the page feedback'),
+  };
+  const page = { ...reportBoardMethods, _alive: true, _shown: true, _boardScope: {}, _boardTicket: 1,
+    followups: { state: { followupContext: context('boss') }, current: () => true, headers: async () => ({}) },
+    data: { ...initialBoard(), reportBookPage: 1, reportBookImage: 'weekly.png',
+      reportBoardView: { detail: { reportId: '22', revision: 2, ready: true } } },
+    setData(patch) { Object.assign(this.data, patch); } };
+  try {
+    api.downloadFile = async () => { throw Object.assign(new Error('context_changed'), { statusCode: 409 }); };
+    await page.shareReportBookImage();
+    assert.equal(page.data.reportBookImageState, 'stale');
+    assert.equal(page.data.reportBookSharing, false);
+    assert.equal(page.data.reportBookImage, '');
+    page.setData({ reportBookImage: 'weekly-again.png' });
+    let finish;
+    api.downloadFile = () => new Promise(resolve => { finish = resolve; });
+    const pending = page.shareReportBookImage();
+    await Promise.resolve();
+    ++page._boardTicket;
+    page.setData(page.clearReportBook());
+    finish({ tempFilePath: 'late-weekly.png' });
+    await pending;
+    assert.deepEqual(removed, ['weekly.png', 'weekly-again.png', 'late-weekly.png']);
+    assert.equal(page.data.reportBookImage, '');
+    assert.equal(page.data.reportBookSharing, false);
+  } finally {
+    api.downloadFile = download;
+    global.wx = previousWx;
+  }
+});
+
 test('opening the original plan from a report preserves the existing explicit preview and approval workflow', async () => {
   const calls = [];
   const ownerPlan = { id: '41', issueId: '81', mediaId: '44', revision: 1, number: 3, costDeltaCents: 0,

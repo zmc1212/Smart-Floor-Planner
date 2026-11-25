@@ -103,9 +103,15 @@
       <view wx:if="{{reportBookImage}}" class="report-book-image-wrap">
         <image class="report-book-image" src="{{reportBookImage}}" mode="widthFix" data-path="{{reportBookImage}}"
           aria-label="{{reportBoardKind === 'weekly' ? '工地周报手账长图' : '工地日报手账长图'}}" binderror="reportBookImageFailed"/>
-        <button class="report-book-original chat-button" bindtap="previewReportBookImage">
-          <view class="report-book-original-tab">原图 <text aria-hidden="true">↗</text></view>
-        </button>
+        <view class="report-book-image-actions">
+          <button class="report-book-image-action report-book-share chat-button" bindtap="shareReportBookImage"
+            disabled="{{reportBookSharing}}" aria-label="分享到朋友圈">
+            <view class="report-book-original-tab report-book-share-tab">{{reportBookSharing ? '准备中…' : '发朋友圈'}}</view>
+          </button>
+          <button class="report-book-image-action report-book-original chat-button" bindtap="previewReportBookImage">
+            <view class="report-book-original-tab">原图 <text aria-hidden="true">↗</text></view>
+          </button>
+        </view>
       </view>
       <view wx:else class="report-book-image-feedback">
         <text role="status">{{reportBookImageState === 'stale' ? '可查看的报告内容已变化。' : reportBookImageState === 'unavailable' ? '这期图版暂不可查看。' : reportBookImageState === 'error' ? '图版暂时读取失败。' : reportBookImageState === 'loading' || reportBoardLoading ? '正在读取图版…' : reportBoardKind === 'weekly' ? '暂无可查看的周报图版。' : '暂无可查看的日报图版。'}}</text>

@@ -21,7 +21,7 @@ function disarm(page) {
   clearTimeout(page.__nativePreviewTimer);
 }
 
-function previewImage(options, owner) {
+function openImageAction(method, options, owner) {
   const page = owner || currentPage();
   if (page) {
     page.__nativePreviewAt = Date.now();
@@ -30,7 +30,7 @@ function previewImage(options, owner) {
   }
   const input = options || {};
   try {
-    wx.previewImage({ ...input, fail(error) {
+    wx[method]({ ...input, fail(error) {
       disarm(page);
       if (typeof input.fail === 'function') input.fail(error);
     } });
@@ -39,6 +39,14 @@ function previewImage(options, owner) {
     if (typeof input.fail === 'function') input.fail(error);
     else throw error;
   }
+}
+
+function previewImage(options, owner) {
+  openImageAction('previewImage', options, owner);
+}
+
+function shareImage(options, owner) {
+  openImageAction('showShareImageMenu', options, owner);
 }
 
 // Call at the start of onHide / pageLifetimes.hide. Returns true when the hide
@@ -75,4 +83,4 @@ function clearReturn(page) {
   clearTimeout(page.__nativePreviewReturnTimer);
 }
 
-module.exports = { currentPage, previewImage, hiddenByPreview, shownAfterPreview };
+module.exports = { currentPage, previewImage, shareImage, hiddenByPreview, shownAfterPreview };

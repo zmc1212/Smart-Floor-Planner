@@ -3,7 +3,7 @@ const nativePreview = require('../../../utils/native-preview');
 const { clamp, topCornerAngle, drawPageCurl } = require('./report-page-curl');
 
 const initialBook = () => ({ reportBookPage: 0, reportBookMoving: false, reportBookClip: '',
-  reportBookImage: '', reportBookImageState: '' });
+  reportBookImage: '', reportBookImageState: '', reportBookSharing: false });
 
 function unlink(filePath) {
   if (!filePath) return;
@@ -16,7 +16,7 @@ function clearCanvas(surface) {
 
 const reportBookMethods = {
   clearReportBook(resetPage = false) {
-    this._bookGesture = this._bookTurn = this._bookImageLoad = null;
+    this._bookGesture = this._bookTurn = this._bookImageLoad = this._bookShare = null;
     this._bookFrame?.();
     this._bookFrame = null;
     clearCanvas(this._bookSurface);
@@ -70,11 +70,41 @@ const reportBookMethods = {
     this.setData({ reportBookImage: '', reportBookImageState: 'error' });
   },
   async previewReportBookImage() {
-    if (this.data.reportBookMoving || !this.data.reportBookImage || Date.now() < (this._bookSuppressTapUntil || 0)) return;
+    if (this._bookShare || this.data.reportBookMoving || !this.data.reportBookImage || Date.now() < (this._bookSuppressTapUntil || 0)) return;
     const path = await this.loadReportBookImage(true);
     if (path && this.data.reportBookPage === 1 && path === this.data.reportBookImage)
       nativePreview.previewImage({ urls: [path], current: path });
     else if (!path && this.data.reportBookImage) wx.showToast({ title: '原图暂时无法打开', icon: 'none' });
+  },
+  async shareReportBookImage() {
+    if (this._bookShare || this._bookImageLoad || this.data.reportBookPage !== 1 || this.data.reportBookMoving
+      || !this.data.reportBookImage || Date.now() < (this._bookSuppressTapUntil || 0)) return;
+    if (typeof wx.showShareImageMenu !== 'function') {
+      wx.showToast({ title: '请打开原图保存后发朋友圈', icon: 'none' });
+      return;
+    }
+    const share = this._bookShare = {};
+    const current = () => this._bookShare === share && this._alive && this._shown
+      && this.data.reportBookPage === 1 && !this.data.reportBookMoving;
+    this.setData({ reportBookSharing: true });
+    try {
+      const path = await this.loadReportBookImage(true);
+      if (!current()) return;
+      if (!path || path !== this.data.reportBookImage) {
+        if (this.data.reportBookImage) wx.showToast({ title: '海报暂时无法读取，请重试', icon: 'none' });
+        return;
+      }
+      await new Promise((resolve, reject) => nativePreview.shareImage({ path, needShowEntrance: false,
+        success: resolve, fail: reject }, this));
+    } catch (error) {
+      if (current() && !/cancel/i.test(error?.errMsg || ''))
+        wx.showToast({ title: '分享未打开，可保存原图后再发', icon: 'none' });
+    } finally {
+      if (this._bookShare === share) {
+        this._bookShare = null;
+        if (this._alive && this._shown) this.setData({ reportBookSharing: false });
+      }
+    }
   },
   measureReportBook() {
     if (this._bookMeasuring || !this.data.reportBoard || typeof wx === 'undefined') return;

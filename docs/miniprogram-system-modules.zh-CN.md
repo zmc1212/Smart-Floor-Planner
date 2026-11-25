@@ -1034,6 +1034,8 @@ Phase 7 最终治理已实现：纯 geometry/read-model 依赖方向、全模块
 
 共用 V004 手账阅读页，每个周期含详情和图版两张整屏书页。左滑从右上角卷起，页眉、周期书签、正文及页脚随书页翻动。右滑从左上角回到详情，页脚也可点按。图版按手机宽度排版，纵向滚动读完长图，同一期来回翻页保留图版的滚动位置。「原图」会重新核验权限并打开原尺寸图片。微信原生胶囊使用系统安全区。[确认稿 V004](../design-references/xiaok-report-workflow-v1-20261120/README.md#整屏翻阅-v004)。
 
+海报就绪后，「发朋友圈」纸签与「原图」并排。点按后重新校验当前报告，将获权 PNG 交给微信原生图片分享面板，并关闭附带的小程序入口。基础库 3.8.2 起可在面板选择朋友圈，由用户在微信内确认发布。权限或报告变化会清除旧图并提供重新读取。面板不可用时提示通过原图保存。[微信图片分享 API](https://github.com/wechat-miniprogram/api-typings/blob/master/types/wx/lib.wx.api.d.ts#L31708-L31720)。 Stable 已核对日报、周报的 76×24px 分享纸签、44px 触区及原图纸签位置。微信原生面板已打开完整周报长图，模拟器内朋友圈项禁用。四端演示使用公开的小区名和虚构施工记录。[周报图版](../tmp/report-share-20261125/weekly-poster.png) · [日报图版](../tmp/report-share-20261125/daily-poster.png) · [原生分享面板](../tmp/report-share-20261125/weekly-native-share-menu.png) · [原生证据](../tmp/report-share-20261125/native-fresh.json)。
+
 日报和周报的图版采用获批 V002 手账海报，使用作品集式装裱主图、叠放的工序细节和错落的工地纸签。逐处显示当期阶段与进展，当期没有新记录时仍列出获权工地。共用配图保留「工序示意」标注。[V002 确认稿](../design-references/xiaok-report-workflow-v1-20261120/poster-v002/weekly-poster-v002.png) · [版式与素材映射](../design-references/xiaok-report-workflow-v1-20261120/README.md#手账海报-v002)。 Stable 390×844 核对两期 V002 海报、文字页、双向卷页和图版独立纵向滚动。[周报](../tmp/report-book-native-20261125/poster-native-retry/weekly-image.png) · [日报](../tmp/report-book-native-20261125/poster-native-retry/daily-image.png) · [原生证据](../tmp/report-book-native-20261125/poster-native-retry.json)。
 
 两张书页共用标题、日期、三项统计及各工地的阶段、当期进展和已保存安排。图版将一处有已发布进展的工地放入精选区，其余工地沿用报告顺序。文字页点工地标题可展开正文、获权照片、原记录及适用的工作台入口。业主仍可确认方案和「问小K」，确认时打开原会话方案并沿用预览前置条件。设计师可核对与回复，工人可查回执、补交和上报，老板仍可处理当前异常、查节点与事项和当期已关闭计数。

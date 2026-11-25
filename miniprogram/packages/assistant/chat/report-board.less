@@ -41,14 +41,15 @@
     background: transparent; color: #073c30; font-size: 14px; font-weight: 650;
   }
   .report-book-history > text { font-size: 20px; }
-  .report-book-tabs .chat-button::after, .report-book-history::after, .report-book-turn::after, .report-book-original::after { border: 0; }
+  .report-book-tabs .chat-button::after, .report-book-history::after, .report-book-turn::after, .report-book-image-action::after { border: 0; }
   .report-book-detail-scroll, .report-book-image-scroll { flex: 1; min-height: 0; height: 0; touch-action: pan-y; }
   .report-board-inner { padding: 18px 18px 18px 34px; color: #073c30; }
   .report-book-meta { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 3px 8px; }
   .report-book-image-wrap { position: relative; }
   .report-book-image { display: block; width: 100%; }
-  .report-book-original {
-    position: absolute; z-index: 1; top: 5px; right: 12px; display: flex; align-items: center;
+  .report-book-image-actions { position: absolute; z-index: 1; top: 5px; right: 12px; display: flex; gap: 6px; }
+  .report-book-image-action {
+    display: flex; align-items: center;
     min-height: 44px; margin: 0; padding: 0;
     background: transparent; color: #173f31; font: 700 12px/1 'Chat Serif', 'Songti SC', SimSun, serif;
   }
@@ -57,6 +58,7 @@
     background: #eee6ce; box-shadow: inset 0 0 0 1px #ded4b7;
     clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%);
   }
+  .report-book-share-tab { width: 76px; background: #24543e; color: #fbf3d8; box-shadow: inset 0 0 0 1px #54795d; }
   .report-book-image-feedback { padding: 28px 18px 22px 34px; color: #465d54; font-size: 15px; }
   .report-book-image-feedback .report-board-link { display: flex; margin: 3px 0 0; }
   .report-book-folio {
