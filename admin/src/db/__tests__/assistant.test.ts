@@ -254,7 +254,7 @@ test('A01 entry tokens bind customer/version, forbidden arbitrary enterprise and
   await assert.rejects(fromEntry({ ...identity, contextVersion: 2 }, entry.entryToken), /entry_context_invalid/);
   await assert.rejects(entryContext(identity, { enterpriseId: b.enterpriseId }), /entry_context_invalid/);
   assert.equal((await entryContext({ ...identity, enterpriseId: b.enterpriseId }, {})).enterprise?.id, a.enterpriseId);
-  await assert.rejects(entryContext({ ...identity, userId: userIds[1] }, {}), /assistant_service_code_required/);
+  await assert.rejects(entryContext({ ...identity, userId: userIds[1] }, {}), /assistant_unavailable/);
   const c = await conversation();
   assert.equal((await locate({ ...identity, enterpriseId: undefined }, 'conversation', c)).enterpriseId, a.enterpriseId);
   await assert.rejects(locate({ ...identity, userId: userIds[1] }, 'conversation', c), /assistant_resource_not_found/);

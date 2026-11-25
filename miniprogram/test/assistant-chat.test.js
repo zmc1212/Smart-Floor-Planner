@@ -267,6 +267,9 @@ test('public entry uses public topics, keeps service-code recovery nonfatal, and
   assert.equal(f.controller.state.entryScope, 'public');
   assert.equal(f.controller.state.enterpriseId, '');
   assert.deepEqual(f.controller.state.topics.map(item => item.text), ['我想先理清装修需求']);
+  f.controller.fail({ code: 'assistant_unavailable' }, f.controller.epoch, true);
+  assert.equal(f.controller.state.needsServiceCode, false);
+  assert.match(f.controller.state.error, /服务暂时不可用/);
   f.controller.fail({ code: 'assistant_service_code_required' }, f.controller.epoch, true);
   assert.equal(f.controller.state.fatal, false);
   assert.equal(f.controller.state.needsServiceCode, true);

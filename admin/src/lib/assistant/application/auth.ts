@@ -97,7 +97,7 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
   if (ambiguous && !publicRequested) fail('customer_service_ambiguous', 409);
   if (publicRequested) {
     const publicScope = await withPlatformTransaction(tx => readPublicAssistantScope(tx));
-    if (!publicScope) fail('assistant_service_code_required', 403);
+    if (!publicScope) fail('assistant_unavailable', 503);
     const basis = publicHistoryActor
       ? { kind: 'public_history', conversationId: String(body.conversationId) }
       : { kind: 'public_consultation' };

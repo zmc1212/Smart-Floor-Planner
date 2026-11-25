@@ -288,7 +288,9 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
       ...(publicSiteGuideTurn ? { publicSiteGuideTurn } : {}),
       ...(nativeRag ? { nativeRag } : {}),
       ...(agentRuntime ? { agentRuntime } : {}),
-      ...(agentRuntime && agent && ['dashscope', 'bailian', 'deepseek', 'siliconflow'].includes(agent.providerKey)
+      // Public advice can finish on the first model turn. Keep tool planning
+      // optional so the visitor can get a complete reply without a tool turn.
+      ...(!publicScope && agentRuntime && agent && ['dashscope', 'bailian', 'deepseek', 'siliconflow'].includes(agent.providerKey)
         && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
         && purpose === 'reply' && !entry.activePublicSite && !reference.selection && !isWechatConsultation(actor)
         ? { replyStream: replyStreamProtocol } : {}),
