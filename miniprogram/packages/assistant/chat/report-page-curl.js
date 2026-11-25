@@ -78,8 +78,9 @@ function printThrough(ctx, points, nx, ny, shift, width, data) {
     ctx.fillText(report.period, width - 18, heading + 68, width - 52);
   }
   ctx.textAlign = 'center';
-  for (const [index, stat] of (report?.stats || []).entries()) {
-    const x = 34 + (width - 52) * (index + .5) / report.stats.length;
+  const stats = report?.reading?.stats || report?.stats || [];
+  for (const [index, stat] of stats.entries()) {
+    const x = 34 + (width - 52) * (index + .5) / stats.length;
     ctx.font = 'bold 29px sans-serif';
     ctx.fillText(stat.value, x, heading + 125);
     ctx.font = '13px sans-serif';

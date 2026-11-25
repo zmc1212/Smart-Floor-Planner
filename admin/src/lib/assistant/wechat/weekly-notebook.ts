@@ -1,51 +1,28 @@
 import { createCanvas, type SKRSContext2D } from '@napi-rs/canvas';
-import type { FollowupAudience, ReportProject } from '@/lib/construction/report-scope';
+import type { ReportProject } from '@/lib/construction/report-scope';
+import { nextReportScheduleNode, reportDateKey, reportDateRange, reportProgressLine, reportRecordLine, reportText, type ReportReading } from '@/lib/construction/report-reading';
 import { issueStatusLabel } from '@/lib/xiaok-v1/progress-status';
 import { weeklyProjectStageName } from '@/lib/xiaok-v1/weekly-report-service';
 
-const dateFormat = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-});
 const title = '企业工地周报';
 const footer = '完整报告可在小程序「企业日周报」查看。';
 const openIssues = new Set(['awaiting_verification', 'awaiting_rectification', 'rectifying', 'awaiting_review']);
 
-function dateKey(value: Date | string) {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? dateFormat.format(date) : '';
-}
-
-function clean(text: unknown) {
-  return typeof text === 'string' ? text.replace(/\s+/gu, ' ').trim() : '';
-}
-
-function recordLine(project: string, room: string, text: string) {
-  const detail = text.startsWith(project) ? text.slice(project.length).replace(/^[ ·：:]+/u, '') || text : text;
-  return !room || detail.startsWith(room) ? detail : `${room} · ${detail}`;
-}
-
-function projectNote(project: ReportProject, reportEnd: string, kind: 'daily' | 'weekly' = 'weekly', showPlan = true) {
-  const updates = [...project.records].reverse();
-  const latestProgress = updates.find(record => clean(record.data?.completed));
-  const latestPending = updates.find(record => clean(record.data?.coordination) || clean(record.data?.pending));
-  const plan = showPlan ? project.weekSchedule : undefined;
+function projectNote(project: ReportProject, reportEnd: string) {
+  const latestPending = [...project.records].reverse().find(record => reportText(record.data?.coordination) || reportText(record.data?.pending));
+  const plan = project.weekSchedule;
   const late = plan?.available ? plan.nodes.find(node => node.color === 'red') : null;
-  const issue = project.issues?.find(item => openIssues.has(item.status) && clean(item.text));
-  const nextWeek = dateKey(new Date(Date.parse(`${reportEnd}T00:00:00+08:00`) + 7 * 86_400_000));
-  const next = plan?.available && nextWeek ? plan.nodes
-    .filter(node => node.completion !== 'completed' && node.plannedStart > reportEnd && node.plannedStart <= nextWeek)
-    .sort((left, right) => left.plannedStart.localeCompare(right.plannedStart))[0] : null;
-  const period = kind === 'weekly' ? '本周' : '当日';
+  const issue = project.issues?.find(item => openIssues.has(item.status) && reportText(item.text));
+  const next = nextReportScheduleNode(plan, reportEnd);
 
   return {
     id: project.id,
     name: project.name,
     stage: weeklyProjectStageName(project),
-    progress: latestProgress ? recordLine(project.name, clean(latestProgress.room), clean(latestProgress.data.completed))
-      : updates.length ? `${period}有 ${updates.length} 条现场记录。` : `${period}暂无新现场记录。`,
+    progress: reportProgressLine(project, 'weekly'),
     attention: [late && `计划落后 · ${late.roomName}${late.stageName}`,
-      issue ? [issueStatusLabel(issue.status), recordLine(project.name, clean(issue.room), clean(issue.text)), clean(issue.ownerName)].filter(Boolean).join(' · ')
-        : latestPending && `待跟进 · ${recordLine(project.name, clean(latestPending.room), clean(latestPending.data.coordination) || clean(latestPending.data.pending))}`,
+      issue ? [issueStatusLabel(issue.status), reportRecordLine(project.name, reportText(issue.room), reportText(issue.text)), reportText(issue.ownerName)].filter(Boolean).join(' · ')
+        : latestPending && `待跟进 · ${reportRecordLine(project.name, reportText(latestPending.room), reportText(latestPending.data.coordination) || reportText(latestPending.data.pending))}`,
     ].filter((line): line is string => Boolean(line)).join(' / '),
     next: next ? `下周计划 · ${next.plannedStart.slice(5).replace('-', '/')} ${next.roomName}${next.stageName}` : '',
     late: Boolean(late),
@@ -56,19 +33,13 @@ type NotebookSource = {
   reportId: string; revision: number; periodStart: Date | string; periodEnd: Date | string; projects: ReportProject[];
 };
 
-function notebookPeriod(start: string, end: string) {
-  const date = start.replaceAll('-', '.');
-  const last = (start.slice(0, 4) === end.slice(0, 4) ? end.slice(5) : end).replaceAll('-', '.');
-  return start && end && start !== end ? `${date}—${last}` : date || last;
-}
-
 export function buildBossWeeklyNotebook(input: NotebookSource) {
-  const start = dateKey(input.periodStart), end = dateKey(input.periodEnd);
+  const start = reportDateKey(input.periodStart), end = reportDateKey(input.periodEnd);
   const projects = input.projects.map(project => projectNote(project, end));
   return {
     reportId: input.reportId,
     revision: input.revision,
-    period: notebookPeriod(start, end),
+    period: reportDateRange(start, end),
     withUpdates: input.projects.filter(project => project.records.length > 0).length,
     waitingSchedule: input.projects.filter(project => !project.weekSchedule?.available).length,
     projects,
@@ -132,17 +103,19 @@ function wrap(ctx: SKRSContext2D, text: string, maxWidth: number, maxLines: numb
   return [...lines, line];
 }
 
-function noteLayout(ctx: SKRSContext2D, project: BossWeeklyNotebook['projects'][number]) {
+type NotebookRow = Pick<BossWeeklyNotebook['projects'][number], 'name' | 'stage' | 'progress' | 'attention' | 'next'>;
+
+function noteLayout(ctx: SKRSContext2D, project: NotebookRow, fullExcerpt: boolean) {
   ctx.font = font.small;
   const label = project.stage || '阶段待确认';
   const badge = wrap(ctx, label, 92, 1)[0];
   const badgeWidth = ctx.measureText(badge).width + 20;
   ctx.font = font.name;
-  const nameLines = wrap(ctx, project.name, innerWidth - badgeWidth - 14, 3);
+  const nameLines = wrap(ctx, project.name, innerWidth - badgeWidth - 14, fullExcerpt ? Infinity : 3);
   ctx.font = font.body;
-  const progressLines = wrap(ctx, project.progress, innerWidth, 2);
+  const progressLines = wrap(ctx, project.progress, innerWidth, fullExcerpt ? Infinity : 2);
   ctx.font = font.small;
-  const secondary = [project.attention, project.next].filter(Boolean).flatMap(line => wrap(ctx, line, innerWidth, 2));
+  const secondary = [project.attention, project.next].filter(Boolean).flatMap(line => wrap(ctx, line, innerWidth, fullExcerpt ? Infinity : 2));
   return { nameLines, badge, badgeWidth, progressLines, secondary, pending: !project.stage,
     height: 23 + nameLines.length * 24 + progressLines.length * 23 + secondary.length * 19 };
 }
@@ -199,44 +172,24 @@ function spine(ctx: SKRSContext2D, height: number) {
 }
 
 export function renderBossWeeklyNotebook(notebook: BossWeeklyNotebook) {
-  return renderNotebook(notebook, { title, section: '本周工地进展', footer });
+  return renderNotebook({ title, period: notebook.period, section: '本周工地进展', footer, projects: notebook.projects, hints: notices(notebook),
+    stats: [{ value: String(notebook.projects.length), label: '个工地' }, { value: String(notebook.withUpdates), label: '个有现场更新' }] });
 }
 
-const miniTitle: Record<FollowupAudience, string> = { customer: '我家施工', worker: '施工跟进', designer: '项目设计', boss: '企业工地' };
-const cutoffFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-
-export type MiniReportNotebookSource = NotebookSource & {
-  kind: 'daily' | 'weekly'; audience: FollowupAudience; cutoffAt: Date | string; truncated: boolean;
-};
-
-export function renderMiniReportNotebook(input: MiniReportNotebookSource) {
-  const weekly = input.kind === 'weekly', boss = input.audience === 'boss';
-  const end = dateKey(input.periodEnd), start = dateKey(input.periodStart);
-  const date = new Date(input.cutoffAt);
-  const cutoffDay = dateKey(date);
-  const cutoff = cutoffDay ? (cutoffDay === start ? '' : cutoffDay.slice(5).replace('-', '/') + ' ') + cutoffFormat.format(date) : '';
-  const lastDay = dateKey(new Date(new Date(input.periodEnd).getTime() - 1));
-  const notebook: BossWeeklyNotebook = {
-    reportId: input.reportId, revision: input.revision,
-    period: weekly ? notebookPeriod(start, lastDay) : [start.replaceAll('-', '.'), cutoff && '截至' + cutoff].filter(Boolean).join(' · '),
-    projects: input.projects.map(project => projectNote(project, end, input.kind, weekly && boss)),
-    withUpdates: input.projects.filter(project => project.records.length > 0).length,
-    waitingSchedule: weekly && boss ? input.projects.filter(project => !project.weekSchedule?.available).length : 0,
-  };
-  return renderNotebook(notebook, { title: miniTitle[input.audience] + (weekly ? '周报' : '日报'),
-    section: weekly ? '本周工地进展' : '当日工地进展', footer: '详细内容见同一期报告详情。',
-    truncated: input.truncated });
+export function renderMiniReportNotebook(reading: ReportReading) {
+  return renderNotebook({ ...reading, projects: reading.projects.map(project => ({ ...project, next: project.arrangement })),
+    hints: reading.notices.map(text => ({ text, tone: 'pending' })), footer: '详细内容见同一期报告详情。', fullExcerpt: true });
 }
 
-function renderNotebook(notebook: BossWeeklyNotebook, labels: {
-  title: string; section: string; footer: string; truncated?: boolean;
+function renderNotebook(notebook: {
+  title: string; period: string; section: string; footer: string; projects: NotebookRow[];
+  stats: ReportReading['stats']; hints: ReturnType<typeof notices>; fullExcerpt?: boolean;
 }) {
-  const overviewY = 91, hintRows = notices(notebook);
-  if (labels.truncated) hintRows.push({ text: '本份简报未包含全部工地', tone: 'pending' });
-  const overviewHeight = 76 + hintRows.length * 27;
+  const overviewY = 91, columnWidth = pageWidth / notebook.stats.length;
+  const overviewHeight = 76 + notebook.hints.length * 27;
   const sheetY = overviewY + overviewHeight + 24;
   const layoutCtx = createCanvas(1, 1).getContext('2d');
-  const rows = notebook.projects.map(project => noteLayout(layoutCtx, project));
+  const rows = notebook.projects.map(project => noteLayout(layoutCtx, project, !!notebook.fullExcerpt));
   const sheetHeight = 36 + rows.reduce((height, row) => height + row.height, 0);
   const footerY = sheetY + sheetHeight + 18;
   const height = footerY + 57;
@@ -258,24 +211,24 @@ function renderNotebook(notebook: BossWeeklyNotebook, labels: {
 
   ctx.fillStyle = color.ink;
   ctx.font = font.title;
-  ctx.fillText(labels.title, 43, 52);
+  ctx.fillText(notebook.title, notebook.fullExcerpt ? pageX : 43, 52);
   ctx.font = font.small;
   ctx.fillStyle = color.muted;
-  ctx.fillText(notebook.period, 44, 74);
+  ctx.fillText(notebook.period, notebook.fullExcerpt ? pageX : 44, 74);
 
   paper(ctx, overviewY, overviewHeight);
-  rule(ctx, 203, overviewY + 15, 203, overviewY + 62);
-  [{ x: 119, number: notebook.projects.length, label: '个工地' },
-    { x: 287, number: notebook.withUpdates, label: '个有现场更新' }].forEach(stat => {
+  notebook.stats.forEach((stat, index) => {
+    const left = Math.floor(pageX + index * columnWidth), x = Math.floor(pageX + (index + .5) * columnWidth);
+    if (index) rule(ctx, left, overviewY + 15, left, overviewY + 62);
     ctx.textAlign = 'center';
     ctx.fillStyle = color.ink;
     ctx.font = font.number;
-    ctx.fillText(String(stat.number), stat.x, overviewY + 43);
+    ctx.fillText(stat.value, x, overviewY + 43);
     ctx.font = font.small;
-    ctx.fillText(stat.label, stat.x, overviewY + 62);
+    ctx.fillText(stat.label, x, overviewY + 62);
   });
   ctx.textAlign = 'left';
-  hintRows.forEach((hint, index) => {
+  notebook.hints.forEach((hint, index) => {
     pill(ctx, innerX, overviewY + 70 + index * 27, innerWidth, color[hint.tone],
       hint.tone === 'late' ? color.lateInk : color.pendingInk, hint.text);
   });
@@ -292,7 +245,7 @@ function renderNotebook(notebook: BossWeeklyNotebook, labels: {
   ctx.strokeRect(3, 3, 125, 22);
   ctx.fillStyle = color.sheet;
   ctx.font = font.tab;
-  ctx.fillText(labels.section, 11, 20);
+  ctx.fillText(notebook.section, 11, 20);
   ctx.restore();
 
   let y = sheetY + 36;
@@ -320,6 +273,6 @@ function renderNotebook(notebook: BossWeeklyNotebook, labels: {
   ctx.fillStyle = color.ink;
   ctx.font = font.small;
   ctx.textAlign = 'center';
-  ctx.fillText(labels.footer, pageX + pageWidth / 2, footerY + 25);
+  ctx.fillText(notebook.footer, pageX + pageWidth / 2, footerY + 25);
   return canvas.toBuffer('image/png');
 }

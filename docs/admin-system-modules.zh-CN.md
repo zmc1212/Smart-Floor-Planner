@@ -4,7 +4,7 @@
 
 **老板周报长图（Limited，本地）。** 主动周报用已批准的固定手账版式生成一张 PNG，每个获权工地展示阶段和本周事实小结。图片加密上传后，发送前仍复核权限和精确版本。绘制或上传失败、微信明确拒绝图片时发短摘要，送达结果不明时保留回执供核对。图片真机送达待验。[渠道合同](./xiaok-assistant-phase-2.zh-CN.md#微信个人号渠道)
 
-**小程序报告图版（本地 Implemented）。** `GET /api/miniprogram/assistant/followups/:bindingId/reports/:reportId/image?revision=…&projectId=…` 要求精确版本，可限定为一个获权工地。复用原报告的签名收件人、会话、工地和来源校验。四个角色和两个周期均用原手账渲染器输出 780px 宽的 PNG，逐工地显示获权阶段及现场进展。响应私有且禁止缓存，图片由固定模板和已保存报告事实生成。[小程序报告页](./miniprogram-system-modules.zh-CN.md#四端日报周报工作页开发环境-implemented)。
+**小程序报告阅读（本地 Implemented）。** `GET /api/miniprogram/assistant/followups/:bindingId/reports/:reportId/workbench` 的 `reading` 给出标题、周期、三项报告统计和按序排列的工地小结。同级 `/image?revision=…&projectId=…&readingKey=…` 用同一内容渲染固定手账模板，返回私有且禁止缓存的 780px PNG。两次读取均沿用精确版本的签名收件人、会话、工地与来源校验。携带可选的 `readingKey` 时，当前授权内容已变化返回 409。实时操作继续通过原工作台投影提供。[小程序报告页](./miniprogram-system-modules.zh-CN.md#四端日报周报工作页开发环境-implemented)。
 
 **C01 回答过程投影（本地已实现）。** `GET /api/miniprogram/assistant/runs/:id` 和会话详情的 `latestRun` 提供进行中的 `answerPhase`，从获权普通咨询的运行和检索状态映射为准备、查阅企业工艺、查找或核对公开资料、整理回答。历史消息及增量读取的 `answerProcess` 关联同一条成功答复，返回运行起止时间计算的秒数、已完成的检索步骤和当前可读引用。来源标题、页码及站点沿用原引用授权与重验。可读答复的 `citationGroups` 提供页码及有序引用 ID。同一知识文档版本，或同一 URL 与文件哈希的公开 PDF，按页分组。小程序在回答过程和回复底部使用同一分组。原 `GET /api/miniprogram/assistant/citations/:id` 逐条重验权限并返回本轮保存的原文摘录。运行检查点属于服务端审计数据。现有租户、参与人、来源撤回及运行取消合同继续适用。
 

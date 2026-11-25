@@ -12,23 +12,24 @@ const projectRoutes = {
 };
 const initialBoard = () => ({ reportBoard: false, reportBoardView: null, reportBoardKind: 'daily', reportBoardRole: '',
   reportBoardTitle: '', reportBoardLoading: false, reportBoardError: '', reportBoardPaths: {},
-  reportBoardPhotoError: '', reportBoardScroll: 0, reportBoardDecision: '', reportBoardRefreshing: false, ...initialBook() });
+  reportBoardPhotoError: '', reportBoardScroll: 0, reportBoardDecision: '', reportBoardExpandedSite: '',
+  reportBoardRefreshing: false, ...initialBook() });
 
 function photoView(photo) {
   return { ...photo, key: [photo.recordId, photo.version, photo.mediaId].join('_') };
 }
 
-function boardView(report, workbench, context, kind, projectId) {
+function boardView(report, workbench, context, kind, projectId, reading) {
   const detail = reportForView(report, context, projectId);
   const projects = detail.projects || [], primary = projects[0] || {};
   const role = context.audience;
   const subtitle = role === 'customer'
     ? [primary.name || context.selectedProject?.name || context.title, primary.stageName].filter(Boolean).join(' · ')
     : [context.enterprise?.name, '仅自己可见'].filter(Boolean).join(' · ');
-  const period = kind === 'weekly'
+  const period = reading?.period || (kind === 'weekly'
     ? [dateLabel(report.periodStart), dateLabel(new Date(Date.parse(report.periodEnd) - 1))].filter(Boolean).join('—')
     : [dateLabel(report.periodStart), report.cutoffAt ? '截至' + (dateLabel(report.periodStart) === dateLabel(report.cutoffAt)
-      ? dateLabel(report.cutoffAt, true).split(' ').at(-1) : dateLabel(report.cutoffAt, true)) : ''].filter(Boolean).join(' · ');
+      ? dateLabel(report.cutoffAt, true).split(' ').at(-1) : dateLabel(report.cutoffAt, true)) : ''].filter(Boolean).join(' · '));
   const scopeName = role !== 'boss' && role !== 'customer' ? context.selectedProject?.name || '' : '';
   const snapshots = projects.map(p => ({ key: p.id,
     title: projects.length > 1 ? p.name : '',
@@ -42,8 +43,9 @@ function boardView(report, workbench, context, kind, projectId) {
       at: dateLabel(record?.publishedAt, true) };
   }));
   const { reportId, revision, available, ready, readAt, readToken, deliveryState } = detail;
-  const view = { title: titles[role], subtitle, scopeName, period, kind, role, projects: snapshots, originals,
-    detail: { reportId, revision, available, ready, readAt, readToken, deliveryState },
+  const view = { title: reading?.title || titles[role], subtitle, scopeName, period, kind, role,
+    projects: reading ? [] : snapshots, originals, reading: reading || null,
+    detail: { reportId, revision, available, ready, readAt, readToken, deliveryState, readingKey: reading?.key || '' },
     photos: [], actions: [], truncated: detail.truncated,
     status: !detail.available ? '这份简报已不可查看。' : detail.ready ? '' : detail.stateLabel };
   if (workbench?.role !== role || !detail.ready) return view;
@@ -74,20 +76,25 @@ function boardView(report, workbench, context, kind, projectId) {
     view.captureProject = workbench.captureProjects.includes(captureProject) ? captureProject : '';
   } else if (role === 'boss') {
     const items = workbench.items;
-    view.stats = [
+    view.closed = workbench.closedComplete ? String(workbench.closed) : '≥' + workbench.closed;
+    if (!reading) view.stats = [
       { label: '在建工地', value: (detail.truncated ? '≥' : '') + items.filter(item => item.status === 'active').length },
       { label: '需介入', value: (detail.truncated ? '≥' : '') + items.reduce((sum, item) => sum + (item.late ? 1 : 0) + (item.coordinationCount || 0), 0) },
-      { label: kind === 'weekly' ? '本期已关闭' : '当期已关闭', value: workbench.closedComplete ? String(workbench.closed) : '≥' + workbench.closed },
+      { label: kind === 'weekly' ? '本期已关闭' : '当期已关闭', value: view.closed },
     ];
     view.actions = [
-      ...items.filter(item => item.late).map(item => ({ ...item.late, name: item.name, key: item.projectId + ':node',
+      ...items.filter(item => item.late).map(item => ({ ...item.late, projectId: item.projectId, name: item.name, key: item.projectId + ':node',
         tag: '进度落后', late: true, path: projectRoutes.node(item.projectId, item.late.nodeKey) })),
-      ...items.flatMap(item => (item.coordination || []).map(issue => ({ ...issue, name: item.name,
+      ...items.flatMap(item => (item.coordination || []).map(issue => ({ ...issue, projectId: item.projectId, name: item.name,
         key: item.projectId + ':' + issue.issueId, tag: '待协调', path: projectRoutes.issue(item.projectId, issue.issueId) }))),
     ];
     view.unverified = items.some(item => item.unverified);
-    view.plans = projects.flatMap(p => p.arrangements.map(line => ({ ...line, key: p.id + ':' + line.key, projectName: p.name })));
+    if (!reading) view.plans = projects.flatMap(p => p.arrangements.map(line => ({ ...line, key: p.id + ':' + line.key, projectName: p.name })));
   }
+  if (reading) view.siteDetails = Object.fromEntries(snapshots.map(project => [project.key, { ...project,
+    originals: originals.filter(item => item.projectId === project.key),
+    photos: view.photos.filter(item => item.projectId === project.key),
+    actions: view.actions.filter(item => item.projectId === project.key) }]));
   return view;
 }
 
@@ -134,7 +141,8 @@ const reportBoardMethods = {
     const current = () => this._alive && this._shown && ticket === this._boardTicket && followups.current(epoch);
     this._boardKind = kind;
     this.boardMedia?.clear();
-    this.setData({ ...this.clearReportBook(), reportBoardKind: kind, reportBoardLoading: true, reportBoardError: '', reportBoardView: null, reportBoardPhotoError: '' });
+    this.setData({ ...this.clearReportBook(), reportBoardKind: kind, reportBoardLoading: true, reportBoardError: '',
+      reportBoardView: null, reportBoardPhotoError: '', reportBoardExpandedSite: '' });
     const path = '/followups/' + context.bindingId + '/reports';
     const filter = scope.projectId ? { projectId: scope.projectId } : {};
     try {
@@ -150,8 +158,8 @@ const reportBoardMethods = {
       }
       const result = await followups.client.read(path + '/' + item.reportId + '/workbench', { ...filter, revision: item.revision }, headers);
       if (!current()) return;
-      const view = boardView(result.report, result.workbench, context, kind, scope.projectId);
-      this.setData({ reportBoardView: view, reportBoardLoading: false }, () => {
+      const view = boardView(result.report, result.workbench, context, kind, scope.projectId, result.reading);
+      this.setData({ reportBoardView: view, reportBoardTitle: view.title, reportBoardLoading: false }, () => {
         if (!current()) return;
         this.measureReportBook();
         if (view.detail.ready) void this.loadReportBookImage();
@@ -179,7 +187,8 @@ const reportBoardMethods = {
     this._boardTicket = (this._boardTicket || 0) + 1;
     this._boardScope = null;
     this.boardMedia?.clear();
-    this.setData({ ...this.clearReportBook(true), reportBoardView: null, reportBoardPaths: {}, reportBoardLoading: true, reportBoardDecision: '', reportBoardRefreshing: false, reportBoardScroll: 0 });
+    this.setData({ ...this.clearReportBook(true), reportBoardView: null, reportBoardPaths: {}, reportBoardLoading: true,
+      reportBoardDecision: '', reportBoardExpandedSite: '', reportBoardRefreshing: false, reportBoardScroll: 0 });
   },
   switchReportBoard(e) {
     const kind = e.currentTarget.dataset.kind;
@@ -213,14 +222,21 @@ const reportBoardMethods = {
     return this.followups.openHistory();
   },
   async openReportBoardDetail(e) {
-    const r = this.data.reportBoardView?.detail, scope = this._boardScope;
+    const view = this.data.reportBoardView, r = view?.detail, scope = this._boardScope, ticket = this._boardTicket;
     if (!r?.available || !scope || !this.followups.current()) return;
-    await this.followups.readReport(r.reportId, r.revision, this.followups.selected, scope.projectId);
     const key = e?.currentTarget?.dataset?.original;
-    const original = this.data.reportBoardView?.originals.find(item => item.key === key);
+    const original = view.originals.find(item => item.key === key);
+    if (key && !original) return;
+    await this.followups.readReport(r.reportId, r.revision, this.followups.selected, original?.projectId || scope.projectId);
     const opened = this.followups.state.followupDetail;
-    if (original && this._boardScope === scope && opened?.reportId === r.reportId && opened.revision === r.revision)
+    if (original && this._boardScope === scope && this._boardTicket === ticket && opened?.ready
+      && opened.reportId === r.reportId && opened.revision === r.revision && opened.projects.some(p => p.id === original.projectId))
       await this.followups.original(original.projectId, original.id);
+  },
+  toggleReportBoardSite(e) {
+    const projectId = e.currentTarget.dataset.project;
+    if (!this.data.reportBoardView?.siteDetails?.[projectId] || !this.followups.current()) return;
+    this.setData({ reportBoardExpandedSite: this.data.reportBoardExpandedSite === projectId ? '' : projectId });
   },
   openReportBoardAction(e) {
     const action = this.data.reportBoardView?.actions.find(item => item.key === e.currentTarget.dataset.key);

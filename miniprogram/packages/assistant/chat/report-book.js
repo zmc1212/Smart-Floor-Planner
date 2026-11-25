@@ -34,7 +34,8 @@ const reportBookMethods = {
     const current = () => this._alive && this._shown && scope === this._boardScope
       && ticket === this._boardTicket && followups.current(epoch);
     const url = '/miniprogram/assistant/followups/' + context.bindingId + '/reports/' + report.reportId +
-      '/image?revision=' + report.revision + (scope.projectId ? '&projectId=' + encodeURIComponent(scope.projectId) : '');
+      '/image?revision=' + report.revision + (scope.projectId ? '&projectId=' + encodeURIComponent(scope.projectId) : '')
+      + (report.readingKey ? '&readingKey=' + encodeURIComponent(report.readingKey) : '');
     if (!this.data.reportBookImage) this.setData({ reportBookImageState: 'loading' });
     const load = (async () => {
       try {
@@ -48,8 +49,9 @@ const reportBookMethods = {
       } catch (error) {
         if (current()) {
           const denied = [401, 403, 404].includes(error?.statusCode);
-          if (denied) unlink(this.data.reportBookImage);
-          this.setData(denied ? { reportBookImageState: 'unavailable', reportBookImage: '' }
+          const stale = error?.statusCode === 409;
+          if (denied || stale) unlink(this.data.reportBookImage);
+          this.setData(denied || stale ? { reportBookImageState: stale ? 'stale' : 'unavailable', reportBookImage: '' }
             : this.data.reportBookImage ? { reportBookImageState: 'ready' } : { reportBookImageState: 'error' });
         }
         return '';
@@ -59,7 +61,9 @@ const reportBookMethods = {
     try { return await load; }
     finally { if (this._bookImageLoad === load) this._bookImageLoad = null; }
   },
-  retryReportBookImage() { return this.loadReportBookImage(); },
+  retryReportBookImage() {
+    return this.data.reportBookImageState === 'stale' ? this.refreshReportBoard() : this.loadReportBookImage();
+  },
   reportBookImageFailed(e) {
     if (e.currentTarget.dataset.path !== this.data.reportBookImage) return;
     unlink(this.data.reportBookImage);

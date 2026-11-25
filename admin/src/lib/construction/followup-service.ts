@@ -13,11 +13,20 @@ import { reportBodyView, reportKnowledgeSource } from './report-body-view';
 import type { ReportBody } from './report-composition';
 import { enqueueReportBody } from './report-body-store';
 import { buildRoleWeeklyDigest } from '@/lib/xiaok-v1/weekly-report-service';
-import type { MiniReportNotebookSource } from '@/lib/assistant/wechat/weekly-notebook';
 import { reportWorkbench } from './report-workbench';
+import { buildReportReading } from './report-reading';
 
 type ReminderPreferences = { stage: boolean; daily: boolean; weekly: boolean };
 const preferences = (b: Row): ReminderPreferences => ({ stage: b.remind_stage !== false, daily: b.remind_daily !== false, weekly: b.remind_weekly !== false });
+
+function readingFor(report: { kind: string; facts: ReportFacts; periodStart: unknown; periodEnd: unknown; cutoffAt: unknown },
+  binding: Row, projectId?: string) {
+  if (report.kind !== 'daily' && report.kind !== 'weekly') fail('invalid_construction', 422);
+  const reading = buildReportReading({ facts: report.facts, kind: report.kind, audience: binding.audience as FollowupAudience,
+    periodStart: String(report.periodStart), periodEnd: String(report.periodEnd), cutoffAt: String(report.cutoffAt), projectId });
+  if (!reading.projects.length) fail('construction_not_found', 404);
+  return reading;
+}
 
 export class FollowupService {
   constructor(readonly actor: ActorContext, private readonly transaction?: PostgresTransaction) { requireCapability(actor, 'assistant.followup.self'); }
@@ -274,31 +283,26 @@ export class FollowupService {
       await repo.conversation(String(b.conversation_id));
       const report = await this.version(repo, b, reportId, revision);
       if (!report.available || !report.facts || !('kind' in report)) return { report, workbench: null };
-      if (!['daily', 'weekly'].includes(report.kind)) fail('invalid_construction', 422);
-      if (projectId && !report.facts.projects.some(p => p.id === projectId)) fail('construction_not_found', 404);
-      return { report, workbench: await reportWorkbench(repo, b, { ...report, facts: report.facts }, projectId) };
+      const saved = { ...report, facts: report.facts };
+      return { report, reading: readingFor(saved, b, projectId), workbench: await reportWorkbench(repo, b, saved, projectId) };
     });
   }
-  async reportImage(bindingId: string, reportId: string, revision: number, projectId?: string) {
+  async reportImage(bindingId: string, reportId: string, revision: number, projectId?: string, readingKey?: string) {
     [bindingId, reportId].forEach(id);
     if (projectId) id(projectId);
-    if (!Number.isSafeInteger(revision) || revision < 1) fail('invalid_construction', 422);
-    const source = await this.scoped<MiniReportNotebookSource>(async repo => {
+    if (!Number.isSafeInteger(revision) || revision < 1 || readingKey !== undefined && !/^[a-f0-9]{64}$/.test(readingKey)) fail('invalid_construction', 422);
+    const reading = await this.scoped(async repo => {
       const binding = await bindingForActor(repo.tx, this.actor, bindingId);
       await repo.conversation(String(binding.conversation_id));
       const report = await this.version(repo, binding, reportId, revision);
       if (!report.available || !report.facts || !('kind' in report) || report.deliveryState === 'muted')
         fail('assistant_resource_not_found', 404);
-      const kind = report.kind;
-      if (kind !== 'daily' && kind !== 'weekly') fail('invalid_construction', 422);
-      const projects = projectId ? report.facts.projects.filter(project => project.id === projectId) : report.facts.projects;
-      if (!projects.length) fail('construction_not_found', 404);
-      return { reportId, revision, projects, kind, audience: binding.audience as FollowupAudience,
-        periodStart: String(report.periodStart), periodEnd: String(report.periodEnd), cutoffAt: String(report.cutoffAt),
-        truncated: !projectId && report.facts.projectsTruncated };
+      const current = readingFor({ ...report, facts: report.facts }, binding, projectId);
+      if (readingKey && current.key !== readingKey) fail('context_changed', 409);
+      return current;
     });
     const { renderMiniReportNotebook } = await import('@/lib/assistant/wechat/weekly-notebook');
-    return renderMiniReportNotebook(source);
+    return renderMiniReportNotebook(reading);
   }
   knowledgeSource(bindingId: string, reportId: string, revision: number, projectId: string, sourceId: string, original = false) {
     [bindingId, reportId, projectId].forEach(id);

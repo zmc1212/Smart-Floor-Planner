@@ -55,6 +55,22 @@ test('management counts reflect the authorized scope and incomplete history stay
   assert.match(view.actions[1].path, /projectId=10&issueId=81&mode=review$/);
 });
 
+test('the shared report heading and counts use its reading while sites keep their exact records and actions', () => {
+  const reading = { title: '企业工地周报', period: '2026.11.15—11.16', key: 'r'.repeat(64),
+    projects: [{ id: '10', name: project.name, stage: '水电', progress: '客厅线管已铺设' }],
+    stats: [{ label: '在建工地', value: '1' }, { label: '有现场更新', value: '1' }, { label: '需介入', value: '0' }] };
+  const view = boardView(report('weekly'), { role: 'boss', closed: 2, closedComplete: true, items: [
+    { projectId: '10', name: project.name, coordinationCount: 1, coordination: [{ issueId: '81', title: '协调点位' }] },
+  ] }, context('boss'), 'weekly', '10', reading);
+  assert.equal(view.title, reading.title);
+  assert.equal(view.period, reading.period);
+  assert.deepEqual(view.reading.stats.map(stat => stat.value), ['1', '1', '0']);
+  assert.equal(view.detail.readingKey, reading.key);
+  assert.equal(view.closed, '2');
+  assert.equal(view.siteDetails['10'].originals[0].key, '10:30');
+  assert.match(view.siteDetails['10'].actions[0].path, /projectId=10&issueId=81/);
+});
+
 test('period refresh reads the same scoped project and ignores a response from the previous period', async () => {
   let resolveDaily;
   const daily = new Promise(resolve => { resolveDaily = resolve; });
@@ -120,6 +136,29 @@ test('a late image download never replaces a different report period or keeps it
       '/miniprogram/assistant/followups/12/reports/22/image?revision=1&projectId=10']);
   } finally {
     api.downloadFile = originalDownload;
+    global.wx = previousWx;
+  }
+});
+
+test('an outdated image scope clears the previous image and retry reloads the report pair', async () => {
+  const download = api.downloadFile, previousWx = global.wx;
+  const unlinked = [], calls = [];
+  const readingKey = 'a'.repeat(64);
+  global.wx = { getFileSystemManager: () => ({ unlink: ({ filePath }) => unlinked.push(filePath) }) };
+  api.downloadFile = async url => { calls.push(url); throw Object.assign(new Error('context_changed'), { statusCode: 409 }); };
+  const page = { ...reportBoardMethods, _alive: true, _shown: true, _boardScope: {}, _boardTicket: 1,
+    followups: { state: { followupContext: context('boss') }, current: () => true, headers: async () => ({}) },
+    data: { ...initialBoard(), reportBoardView: { detail: { reportId: '22', revision: 2, readingKey, ready: true } }, reportBookImage: 'old.png' },
+    setData(patch) { Object.assign(this.data, patch); }, refreshReportBoard() { calls.push('refresh'); } };
+  try {
+    assert.equal(await page.loadReportBookImage(true), '');
+    assert.equal(page.data.reportBookImage, '');
+    assert.equal(page.data.reportBookImageState, 'stale');
+    assert.deepEqual(unlinked, ['old.png']);
+    await page.retryReportBookImage();
+    assert.deepEqual(calls, [`/miniprogram/assistant/followups/12/reports/22/image?revision=2&readingKey=${readingKey}`, 'refresh']);
+  } finally {
+    api.downloadFile = download;
     global.wx = previousWx;
   }
 });

@@ -58,7 +58,7 @@ export async function handleFollowup(request: Request, path: string[], actor: Ac
   const service = new FollowupService(actor), method = request.method, params = new URL(request.url).searchParams;
   const workbench = path.length === 4 && path[1] === 'reports' && path[3] === 'workbench';
   const reportImage = path.length === 4 && path[1] === 'reports' && path[3] === 'image';
-  const allowed = path.length === 1 ? path[0] === 'manage' ? ['beforeId'] : ['afterProjectId','projectId'] : path[1] === 'reports' ? path.length === 2 ? ['beforeId','projectId','month','kind'] : workbench || reportImage ? ['revision','projectId'] : ['revision'] : [];
+  const allowed = reportImage ? ['revision','projectId','readingKey'] : path.length === 1 ? path[0] === 'manage' ? ['beforeId'] : ['afterProjectId','projectId'] : path[1] === 'reports' ? path.length === 2 ? ['beforeId','projectId','month','kind'] : workbench ? ['revision','projectId'] : ['revision'] : [];
   if ([...params.keys()].some(k => !allowed.includes(k) || params.getAll(k).length !== 1)) fail('invalid_construction', 422);
   if (method === 'GET') {
     if (!path.length) return service.list();
@@ -76,7 +76,8 @@ export async function handleFollowup(request: Request, path: string[], actor: Ac
         return service.workbench(bid, rid, revision, params.has('projectId') ? id(params.get('projectId')) : undefined);
       }
       if (reportImage && revision) {
-        const image = await service.reportImage(bid, rid, revision, params.has('projectId') ? id(params.get('projectId')) : undefined);
+        const image = await service.reportImage(bid, rid, revision, params.has('projectId') ? id(params.get('projectId')) : undefined,
+          params.get('readingKey') ?? undefined);
         return new Response(new Uint8Array(image), { headers: {
           'Content-Type': 'image/png', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
         } });
