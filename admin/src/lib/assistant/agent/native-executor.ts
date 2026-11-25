@@ -25,6 +25,7 @@ import { agentCapabilityFingerprint, agentConfig } from './config';
 import { businessToolDefinitions, measureOfferTool, parseBusinessQuery, type BusinessSnapshot } from './business-tools';
 import { materialTool, parseMaterialQuery, queryMaterials } from './materials';
 import { guardAnswerCommitments } from './context';
+import { assertRecordedReply, needReplyFeedback, readMemory } from './memory';
 import { runRenovationAgent, type AgentCheckpoint } from './runtime';
 import { finishContextTool, nativePlanningMessages } from './native-final';
 import { synthesisContextAvailable } from './synthesis-sources';
@@ -36,7 +37,7 @@ import { dialogueDesignerRecommendation, dialoguePublicSitesRecommendation, publ
 import { canOfferDesignerRecommendation, directDesignerDiscovery } from '../core/discovery';
 import { dialogueHistoryRecall, type HistoryToolRuntime } from './dialogue-history-tools';
 import { parseWebQuery, webSearchTool, type WebSearchSnapshot } from './web';
-import { bindReadToolInput, independentAdviceRequested, readToolContext, readToolContextProtocol, readToolsForContext,
+import { bindReadToolInput, companyPracticeRequested, independentAdviceRequested, knowledgeOriginalRequested, readToolContext, readToolContextProtocol, readToolsForContext,
   type ReadToolContext } from './read-tool-input';
 import { stageText } from '@/lib/xiaok-v1/stage-experience';
 import { stageDefinition } from '@/lib/xiaok-v1/stages';
@@ -969,6 +970,12 @@ export async function processNativeAgentAnswer(lease: Lease) {
     const customerConsultation = lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation';
     const designerToolAvailable = !customerConsultation || canOfferDesignerRecommendation(stageQuestion, userTurns.at(-2)?.content);
     const consultationEntry = initial.conversation.entry_snapshot as Row;
+    const privateConsultation = customerConsultation && !isWechatConsultation(lease.actor) && !specialist
+      && !consultationEntry.activePublicSite && !reportContext(consultationEntry).selection
+      && !['reference_content', 'reference_unavailable', 'portfolio_content', 'public_site_entry'].includes(String(consultationEntry.kind));
+    const needsFirstTool = !privateConsultation
+      || companyPracticeRequested(stageQuestion) || knowledgeOriginalRequested(stageQuestion);
+    const needMemory = readMemory(initial.conversation.entry_snapshot);
     if (isMainWechat(lease.actor) || !isWechatConsultation(lease.actor) && !preview && !specialist && !consultationEntry.activePublicSite &&
         lease.actor.principal.kind === 'user' && initial.conversation.purpose === 'customer_consultation' && !reportContext(consultationEntry).selection) {
       mainTools = await withTenantTransaction(lease.enterpriseId, tx => mainDialogueTools(tx,lease,stageQuestion));
@@ -1234,7 +1241,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         return output;
       }
       let dispatchTools = delegationTool && specialist && turn === 0 && modelTools.length ? [delegationTool] : modelTools;
-      if (streamReply && turn === 0 && dispatchTools.some(tool => tool.name !== finishContextTool.name))
+      if (streamReply && turn === 0 && needsFirstTool && dispatchTools.some(tool => tool.name !== finishContextTool.name))
         dispatchTools = dispatchTools.filter(tool => tool.name !== finishContextTool.name);
       if (publishedPreview) await publishPreview('');
       const planning = streamReply && dispatchTools.some(tool => tool.name === finishContextTool.name);
@@ -1384,6 +1391,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
         if (nativeSpecialistDraftIssues(text, catalog.values(), context.sources,
           specialistReview ?? { currentQuestion: currentQuestionText, projectSnapshotAuthoritative: true }).length) return null;
         guardAnswerCommitments(text, { stagePreview });
+        if (privateConsultation) assertRecordedReply(text, needMemory, lease.runId, [], currentQuestionText);
       } catch (error) {
         if (error instanceof AssistantError) return null;
         throw error;
@@ -1467,6 +1475,8 @@ export async function processNativeAgentAnswer(lease: Lease) {
           if (issue || parameter) return issue ?? parameter;
           if (specialistIssues.length)
             return { code: specialistIssues[0].issue.code, feedback: specialistIssues.map(item => item.issue.feedback).join('\n') };
+          const needIssue = privateConsultation ? needReplyFeedback(text, needMemory, lease.runId, currentQuestionText) : null;
+          if (needIssue) return needIssue;
           return stagePreview ? stagePreviewCommitmentIssue(text) : null;
         },
         checkpoint: state => withTenantTransaction(lease.enterpriseId, async tx => {
@@ -1523,6 +1533,7 @@ export async function processNativeAgentAnswer(lease: Lease) {
           if (issue) fail(issue.code, 502);
         } : undefined), sites.outcome());
     const text = composed.text;
+    if (privateConsultation) assertRecordedReply(text, needMemory, lease.runId, [], currentQuestionText);
     // A finished, checked model answer can reach the same live bubble while
     // ancillary suggestions and the final message transaction complete.
     if (streamReply) await publishPreview(composed.modelIncluded ? verifiedPreview(finalText) ?? '' : '');

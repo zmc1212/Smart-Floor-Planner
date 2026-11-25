@@ -6,6 +6,7 @@ import {FastGPTKnowledgeWorkflow} from './knowledge-workflow';
 import {FastGPTNativeKnowledge} from './native-knowledge';
 import {FastGPTNativeRag} from './native-rag';
 import type {RagConfiguration} from './rag-config';
+import { parseAgentRuntimeBindings } from './agent-v2/config';
 
 type Configuration={baseUrl:string;apiKey:string;knowledgeAppId?:string;stageAppId?:string;auditFile?:string;
   nativeKnowledgeAppId?:string; nativeModel?:string; nativeTransportModel?:string; nativeBridgeKey?:string; rag?:RagConfiguration};
@@ -72,7 +73,12 @@ export function fastGPTWorkflows():FastGPTWorkflows|undefined {
   const hash=createHash('sha256').update(bytes).digest('hex');
   const current=cache.__xiaokFastGPTWorkflows;
   if(current){if(current.file!==file||current.hash!==hash)throw Error('FastGPT workflow configuration changed during the Worker lifetime');return current.runtime;}
-  const configuration=JSON.parse(bytes.toString('utf8')) as Configuration;
+  const configuration=JSON.parse(bytes.toString('utf8')) as Configuration & {agentV2?:unknown};
+  // A deployment file that selects only the native executor does not enable a bridge.
+  if (configuration.agentV2 !== undefined && Object.keys(configuration).length === 1) {
+    parseAgentRuntimeBindings(configuration.agentV2);
+    return undefined;
+  }
   const capable=Boolean(configuration.rag)||[configuration.knowledgeAppId,configuration.stageAppId,configuration.nativeKnowledgeAppId]
     .some(id=>/^[a-f0-9]{24}$/.test(id??''));
   if(!configuration.apiKey||!capable)throw Error('Invalid FastGPT workflow configuration');

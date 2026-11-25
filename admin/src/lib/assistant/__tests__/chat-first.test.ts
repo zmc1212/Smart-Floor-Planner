@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chatFirstProgress, defaultGuidance } from '../requirements/guidance';
+import { chatFirstProgress, defaultGuidance, guidanceCommand } from '../requirements/guidance';
 import { requestsDesigner, needsDesignerSuggestion } from '../handoff/intent';
 import { dispatchHandoff } from '../handoff/service';
 const turns = (...texts: string[]) => texts.map((text, i) => ({ id: String(i + 1), text }));
@@ -22,10 +22,19 @@ test('natural corrections retain negation, source ids and separate named rooms',
   assert.match(p.fields.room.text, /客厅保留沙发/); assert.match(p.fields.room.text, /书房保留原书桌/);
   assert.doesNotMatch(p.fields.room.text, /靠窗/);
 });
+test('guidance handles standalone controls and leaves natural turns to consultation', () => {
+  assert.equal(guidanceCommand('继续整理。'), 'resume');
+  assert.equal(guidanceCommand('先暂停'), 'pause');
+  for (const text of ['想聊聊适合我家的装修风格', '旧房翻新费用大概多少', '两个人住的客厅想显大一点',
+    '继续了解奶油风和原木风的区别', '继续整理，厨房收纳我想先比较几种做法']) {
+    assert.equal(guidanceCommand(text), null, text);
+  }
+});
 test('acknowledges only what the turn captured instead of one fixed prefix', () => {
-  const style = chatFirstProgress(defaultGuidance, turns('想聊聊适合我家的装修风格'));
-  assert.doesNotMatch(style.reply, /^记下了。/); assert.match(style.reply, /风格/);
   assert.equal(chatFirstProgress(defaultGuidance, turns('你好')).reply, '先聊聊你家的情况吧，新房还是旧房？');
+  const style = chatFirstProgress(defaultGuidance, turns('我更喜欢原木风'));
+  assert.match(style.reply, /风格方向记下了/);
+  assert.equal(style.fields.style.text, '我更喜欢原木风');
   const all = chatFirstProgress(defaultGuidance, turns('90平旧房，两个人住，喜欢原木风'));
   assert.match(all.reply, /房屋情况、居住情况、风格/);
   assert.match(chatFirstProgress(defaultGuidance, turns('新房')).reply, /^新房好/);

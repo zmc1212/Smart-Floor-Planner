@@ -50,6 +50,11 @@ export function conversationGuidance(entry: unknown): Guidance | null {
 export const isQuestion = (s: string) => /[?？]/.test(s) || (!/^(还没|暂未|不确定|还不|不知道)/.test(s)
   && (/怎么|如何|为什么|能不能|可不可以|多少钱|什么|哪些|是否/.test(s)
     || /^(请问|介绍|讲讲|说说|解释|告诉我|帮我)|吗[。！!\s]*$/.test(s)));
+export function guidanceCommand(text: string) {
+  if (/^(继续整理|开始整理|继续了解)[。！!\s]*$/.test(text.trim())) return 'resume';
+  if (/^(先暂停|暂停整理|不想填|先不聊|停止整理)[。！!\s]*$/.test(text.trim())) return 'pause';
+  return null;
+}
 const isGreeting = (s: string) => /^(你好|您好|嗨|哈喽|好的?|嗯|谢谢|开始|继续)[。！!\s]*$/.test(s);
 /** Ordered, traceable interview replay. Short answers use the active question,
  * never a model-inferred household count, amount, or date. */
@@ -128,8 +133,8 @@ export function chatFirstProgress(g: Guidance, messages: Array<{ id: string; tex
     captured = [];
     const turn = captured;
     interrupt = isQuestion(text); lastControl = false;
-    if (/^(继续整理|开始整理|继续了解)[。！!\s]*$/.test(text)) { paused = false; lastControl = true; continue; }
-    if (/^(先暂停|暂停整理|不想填|先不聊|停止整理)[。！!\s]*$/.test(text)) { paused = true; lastControl = true; continue; }
+    const command = guidanceCommand(text);
+    if (command) { paused = command === 'pause'; lastControl = true; continue; }
     if (interrupt) paused = true;
     if (!text || isGreeting(text)) continue;
     const next = topics.find(q => !fields[q.field]?.text);

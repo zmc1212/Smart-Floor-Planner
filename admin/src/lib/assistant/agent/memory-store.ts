@@ -9,7 +9,7 @@ import { MemoryService } from '../memory/long-term';
 import { privateMemoryScope } from '../memory/scope';
 import { appendDelegationEvent } from '@/lib/native-workflow/live/delegation-store';
 import { delegationOwnerInput } from '@/lib/native-workflow/live/delegation-state';
-import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, uncoveredNeedStatements, NeedWriteIncompleteError, type NeedFact } from './memory';
+import { applyNeedDelta, compactNeedMemory, explicitNeedWriteStatement, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, uncoveredNeedStatements, NeedWriteIncompleteError, type NeedFact } from './memory';
 
 type NeedReceipt = { status: 'saved'; memoryVersion: number; conversationVersion: number; formalApproval: false;
   savedFacts: Array<Pick<NeedFact, 'id' | 'room' | 'field' | 'value' | 'supersedes'>> };
@@ -19,7 +19,7 @@ type NeedCheckpoint = { policy: typeof needMemoryPolicy.version; receipt: NeedRe
  * step for an immutable receipt and private archive; no second fact store or
  * model-visible archive. The existing retention/tenant cleanup clears both. */
 export async function persistNeedWrites(tx: PostgresTransaction, actor: ActorContext, conversation: Row,
-  operation: { runId: string; turn: number; index: number; sourceMessageId: string }, input: unknown): Promise<{ content: string }> {
+  operation: { runId: string; turn: number; index: number; sourceMessageId: string; requireExplicit?: boolean }, input: unknown): Promise<{ content: string }> {
   if (actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation'
     || String(conversation.enterprise_id) !== actor.enterpriseId) fail('assistant_capability_forbidden', 403);
   const repository = new AssistantRepository(tx, actor);
@@ -31,6 +31,10 @@ export async function persistNeedWrites(tx: PostgresTransaction, actor: ActorCon
       and m.user_id=${actor.principal.userId} and m.author_kind='user' and r.id=${operation.runId} for share of m`);
   if (!source) fail('context_changed');
   const sourceText = safeText(source.content as Parameters<typeof safeText>[0]);
+  if (operation.requireExplicit) {
+    const statement = explicitNeedWriteStatement(sourceText);
+    if (!statement || writes.some(write => !statement.includes(write.quote))) fail('need_source_mismatch', 422);
+  }
   if (/喜欢|中意|满意|不合适/.test(sourceText) && /第[一二三123](?:个|款|张|套|例)|这(?:款|张|套)参考/.test(sourceText)) fail('need_source_mismatch', 422);
   const sequence = 1200 + operation.turn * 10 + operation.index;
   const inputHash = fingerprint({ input, sourceMessageId: operation.sourceMessageId, content: source.content });
@@ -73,7 +77,7 @@ export async function persistNeedWrites(tx: PostgresTransaction, actor: ActorCon
       where enterprise_id=${actor.enterpriseId} and id=${String(conversation.id)}`);
     for (const fact of changedFacts) await recordNeedIssueSupplement(tx, actor, conversation, fact);
     await recordDelegationRequirements(tx, actor, String(conversation.id), operation.sourceMessageId, `${operation.runId}:${sequence}`, changedFacts, reply);
-    await saveAutomaticRequirements(repository, String(conversation.id), operation.sourceMessageId);
+    await saveAutomaticRequirements(repository, String(conversation.id), operation.sourceMessageId, 'recorded');
     const scope = await privateMemoryScope(tx, actor, conversation);
     if (scope && changedFacts.length) {
       await new MemoryService(tx, scope).rememberNeeds(operation.sourceMessageId, changedFacts);

@@ -702,7 +702,7 @@ test('P2S guidance follows topic changes and natural corrections without requiri
   assert.doesNotMatch(interrupted, /预算有大致|什么时候开始装修|需求摘要/);
   assert.equal((await chat.detail(c)).guidance, null);
   const corrected = await respond('预算改成25万元');
-  assert.match(corrected, /预算改成25万元/); assert.doesNotMatch(corrected, /需求摘要|确认保存/);
+  assert.doesNotMatch(corrected, /记下了|需求摘要|确认保存/);
   const recap = await respond('你帮我记了哪些想法？');
   assert.match(recap, /25万元/); assert.match(recap, /90平旧房/);
   const requirements = await new RequirementService(actor).read(c);
@@ -711,7 +711,7 @@ test('P2S guidance follows topic changes and natural corrections without requiri
   await assert.rejects(chat.create(randomUUID()), /entry_context_invalid/);
 });
 
-test('ordinary LangGraph replies honor the saved guidance switch before provider dispatch', async t => {
+test('guidance commands stay deterministic while natural questions use the configured executor', async t => {
   const settings = new GuidanceSettingsService(actor.enterpriseId, adminId);
   const old = await settings.execute();
   const original = await withTenantTransaction(actor.enterpriseId, tx => one(tx,
@@ -737,7 +737,7 @@ test('ordinary LangGraph replies honor the saved guidance switch before provider
           tools: true, probeVersion: 'guidance-test', enterpriseKnowledgeEnabled: !native });
         const chat = new ConversationService({ ...actor, entry: { guidanceVersion: saved.version } });
         const cid = String((await chat.create(randomUUID())).id);
-        const text = '我家是套旧房，准备重新装修。';
+        const text = '开始整理';
         const body = { version: 1, blocks: [{ type: 'text', text }] };
         const key = randomUUID();
         const sent = await chat.send(cid, key, body);
@@ -753,8 +753,8 @@ test('ordinary LangGraph replies honor the saved guidance switch before provider
         assert.equal(run.status, 'succeeded', JSON.stringify(run));
         const messages = (await new ConversationService(actor).messages(cid)).items;
         assert.equal(messages[0].authorKind, 'assistant');
-        assert.match(JSON.stringify(messages[0].content), /平时有哪些人住/);
-        assert.equal((await new RequirementService(actor).read(cid)).latest?.status, 'draft');
+        assert.match(JSON.stringify(messages[0].content), /新房还是旧房/);
+        assert.equal((await new RequirementService(actor).read(cid)).latest, null);
         assert.equal((await chat.send(cid, key, body)).runId, sent.runId);
         assert.equal((await chat.messages(cid)).items.length, 2);
         const accounting = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`
@@ -763,16 +763,23 @@ test('ordinary LangGraph replies honor the saved guidance switch before provider
           join app.assistant_messages m on m.enterprise_id=q.enterprise_id and m.id=${messages[0].id}
           where q.enterprise_id=${actor.enterpriseId} and q.run_id=${runId}`));
         assert.deepEqual(accounting, { status: 'released', provider_started_at: null, purpose: 'requirements.guidance' });
-        const correction = await chat.send(cid, randomUUID(), { version: 1,
-          blocks: [{ type: 'text', text: '风格改一下，我更喜欢现代简约，不想要大面积木色。' }] });
-        const correctionLease = await claimJob({ enterpriseId: actor.enterpriseId, runId: String(correction.runId) });
-        assert.ok(correctionLease);
-        await processAnswer(correctionLease);
-        const corrected = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`
-          select draft_fields->'housing'->>'text' as housing, draft_fields->'style'->>'text' as style
-          from app.assistant_requirement_summaries where enterprise_id=${actor.enterpriseId}
-            and conversation_id=${cid} order by id desc limit 1`));
-        assert.deepEqual(corrected, { housing: '我家是套旧房', style: '我更喜欢现代简约' });
+        const reentry = new ConversationService(actor);
+        for (const text of ['想聊聊适合我家的装修风格', '旧房翻新时，我想听听墙面保留和重做的利弊',
+          '两个人住的客厅想显大一点，先聊聊收纳'] ) {
+          const consultationId = String((await chat.create(randomUUID())).id);
+          const key = randomUUID();
+          const body = { version: 1, blocks: [{ type: 'text', text }] };
+          const runId = String((await chat.send(consultationId, key, body)).runId);
+          const lease = await claimJob({ enterpriseId: actor.enterpriseId, runId });
+          assert.ok(lease);
+          await processAnswer(lease);
+          const run = await reentry.run(runId);
+          assert.equal(run.errorCode, 'model_unavailable', text);
+          assert.equal(run.outputMessageId, null);
+          assert.equal((await new RequirementService(actor).read(consultationId)).latest, null);
+          assert.deepEqual((await reentry.messages(consultationId)).items.map(message => message.authorKind), ['user']);
+          assert.equal(String((await chat.send(consultationId, key, body)).runId), runId);
+        }
         const question = await chat.send(cid, randomUUID(), { version: 1,
           blocks: [{ type: 'text', text: '厨房收纳有什么建议？' }] });
         const questionLease = await claimJob({ enterpriseId: actor.enterpriseId, runId: String(question.runId) });

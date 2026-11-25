@@ -1133,6 +1133,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     if (review && reviewMode !== 'propose' && initial.messages[0]?.role === 'system' && !initial.resume)
       initial.messages[0].content.push({ type: 'text', text: reviewReplyOnlyContext(reviewMode) });
     const publicResearch = !!initial.config.consultation || initial.minimalDialogue;
+    const canRecordNeed = Boolean(explicitNeedWriteStatement(reviewContext.currentQuestion));
     const nativeWorkflow = initial.minimalDialogue && initial.config.tools && !initial.mediaRefs.length
       && publicResearch ? fastGPTWorkflows()?.nativeKnowledge : undefined;
     const useApplicationWeb = !!dependencies.applicationWeb && !nativeWorkflow && !initial.config.consultation && !nativeFinalization;
@@ -1158,7 +1159,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (readOnly) return registerReads(replaceWeb(knowledgeTools(readOnly, initial.knowledgeEnabled)));
       const base = replaceWeb(knowledgeTools(publicResearchTools(readToolsForContext(agentToolsForMessage(reviewContext.currentQuestion,
         initial.config.tools, businessFollowup, webAvailable,
-        initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), publicResearch, initial.minimalDialogue), initial.knowledgeEnabled));
+        initial.designerFollowup, ((initial.conversation.entry_snapshot as Row).materialShareProposal as Row | undefined)?.status === 'pending'), readContext), publicResearch, initial.minimalDialogue), initial.knowledgeEnabled))
+        .filter(tool => tool.name !== needTool.name || canRecordNeed);
       // fitAgentContext appends the final tool. An empty candidate list gives the
       // provider exactly one final_response and a named tool_choice.
       const offered = registerReads(review ? reviewMode !== 'propose' ? []
@@ -2703,7 +2705,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (name !== 'record_need') fail('assistant_capability_forbidden', 403);
           try { return await scoped(async (tx, context) => {
             const result = await persistNeedWrites(tx, lease.actor, context.conversation,
-              { runId: lease.runId, turn, index, sourceMessageId: String(initial.trigger.id) }, input);
+              { runId: lease.runId, turn, index, sourceMessageId: String(initial.trigger.id), requireExplicit: true }, input);
             const conversation = await new AssistantRepository(tx, lease.actor).conversation(String(context.conversation.id));
             const evidence = await currentSynthesisContext(tx, lease.actor, conversation, lease.runId);
             return { exhausted: Boolean(explicitNeedWriteStatement(safeText(initial.trigger.content as Parameters<typeof safeText>[0]))), content: JSON.stringify({ ...JSON.parse(result.content),

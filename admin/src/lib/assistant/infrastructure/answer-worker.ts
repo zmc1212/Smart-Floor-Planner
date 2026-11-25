@@ -13,7 +13,7 @@ import { completeAnswer, completeGuidance, completeStageKnowledge, failRun, hear
 import { isStageChatQuestion, stageChatForConversation } from '@/lib/xiaok-v1/stage-chat-service';
 import { classifyStageIntent } from '@/lib/xiaok-v1/stage-router';
 import { specialistProtocol } from '../specialists/registry';
-import { configuredGuidance, conversationGuidance, guidanceProgress } from '../requirements/guidance';
+import { configuredGuidance, conversationGuidance, guidanceCommand, guidanceProgress } from '../requirements/guidance';
 import { textGateway } from './model-gateway';
 import { configuredEmbeddingProfile, embeddingGateway } from './embedding-gateway';
 import { chatFirstProgress, defaultGuidance } from '../requirements/guidance';
@@ -31,9 +31,9 @@ import { fastGPTPreviewProtocol } from '../knowledge/fastgpt-retrieval';
 import { processNativeRagAnswer } from '../fastgpt/rag-worker';
 import { nativeAgentRuntimeBinding, nativeExecutorConfigurationIssue } from '../fastgpt/agent-v2/config';
 import { publicHistoryScope } from '../agent/history';
-import { companyPracticeRequested, explicitHumanHandoffRequested, knowledgeOriginalRequested } from '../agent/read-tool-input';
-import { discoveryIntent } from '../core/discovery';
+import { companyPracticeRequested, knowledgeOriginalRequested } from '../agent/read-tool-input';
 import { profileFieldLabels, profileRecallKind, renovationLeadId, renovationProfileRecall } from '../requirements/renovation-profile';
+import { readMemory } from '../agent/memory';
 
 type Dependencies={retriever?:KnowledgeRetriever;model?:TextModelGateway};
 const requirementRecapRequested = (text: string) => /回顾|总结.*(?:需求|想法)|(?:需求|想法).*总结|整理一下|记了哪些想法|记住了什么/.test(text);
@@ -99,35 +99,17 @@ async function tryRequirementGuidance(lease: Lease, context: Awaited<ReturnType<
     }
     const settings = await one(tx, sql`select guidance_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
     if (!configuredGuidance(settings?.guidance_config).enabled) return null;
-    const historyScope = publicHistoryScope(current.conversation, false);
-    const messages = await rows<{ id: string; content: MessageContent }>(tx, sql`select m.id::text, m.content
-      from app.assistant_messages m join app.assistant_messages trigger on trigger.enterprise_id=m.enterprise_id
-        and trigger.conversation_id=m.conversation_id
-      where m.enterprise_id=${lease.enterpriseId} and m.conversation_id=${String(conversation.id)} and m.user_id=${userId}
-        and m.author_kind='user' and trigger.id=${String(run.trigger_message_id)} and m.seq<=trigger.seq
-        and (m.id=trigger.id or ${historyScope}) order by m.seq limit 201`);
-    const trigger = messages.at(-1);
-    if (messages.length > 200 || trigger?.id !== String(run.trigger_message_id)
-      || trigger.content.blocks.some(block => block.type !== 'text')) return null;
-    const query = safeText(trigger.content);
-    const discovery = discoveryIntent(query);
-    if (requirementRecapRequested(query) || needsDesignerSuggestion(query) || explicitHumanHandoffRequested(query)
-      || discovery.sites || discovery.works
-      || companyPracticeRequested(query) || knowledgeOriginalRequested(query)) return null;
+    const trigger = await one<{ id: string; content: MessageContent }>(tx, sql`select id::text, content
+      from app.assistant_messages where enterprise_id=${lease.enterpriseId} and conversation_id=${String(conversation.id)}
+        and id=${String(run.trigger_message_id)} and user_id=${userId} and author_kind='user'`);
+    if (!trigger || trigger.content.blocks.some(block => block.type !== 'text')) return null;
+    const text = safeText(trigger.content);
+    if (!guidanceCommand(text)) return null;
 
-    const turns = messages.map(message => ({ id: message.id, text: safeText(message.content) }));
-    const before = guidanceProgress(guidance, turns.slice(0, -1));
-    const progress = guidanceProgress(guidance, turns);
-    if (progress.interrupt) return null;
-    const changes = Object.entries(progress.fields).filter(([key, value]) => value.text
-      && value.text !== before.fields[key as keyof typeof before.fields]?.text).map(([, value]) => value.text);
-    const corrected = !!guidance.schemaVersion && changes.length > 0;
-    if (progress.paused) {
-      if (!corrected) return null;
-      const acknowledgement = '记下了：' + changes.join('；') + '。你可以继续说想法，也可以换个话题。';
-      return acknowledgement.length <= 2000 ? acknowledgement : null;
-    }
-    return progress.lastControl || (before.next && !before.paused) || corrected ? progress.reply : null;
+    const turns = readMemory(current.conversation.entry_snapshot).facts.filter(fact => fact.status === 'current')
+      .map(fact => ({ id: fact.sourceMessageId, text: fact.quote }));
+    turns.push({ id: trigger.id, text });
+    return guidanceProgress(guidance, turns).reply;
   });
 }
 

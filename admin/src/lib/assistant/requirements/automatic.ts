@@ -1,20 +1,22 @@
 import { sql } from 'drizzle-orm';
 import { AssistantRepository, one, rows } from '@/db/repositories/assistant-repository';
 import { chatFirstProgress, defaultGuidance } from './guidance';
+import { excerptRequirements } from './contract';
 import { fingerprint } from '../contracts';
 import { readMemory } from '../agent/memory';
 import { captureStaffRenovationProfile } from './renovation-profile';
 
 /** Draft versions retain correction provenance; confirmed historical versions
  * are never overwritten or treated as approval of newer customer statements. */
-export async function saveAutomaticRequirements(repo: AssistantRepository, conversationId: string, sourceMessageId?: string) {
+export async function saveAutomaticRequirements(repo: AssistantRepository, conversationId: string, sourceMessageId?: string,
+  capture: 'legacy' | 'recorded' = 'legacy') {
   if (repo.actor.principal.kind !== 'user') return;
   const messages = await rows(repo.tx, sql`select id,seq,content from app.assistant_messages
     where enterprise_id=${repo.actor.enterpriseId} and conversation_id=${conversationId}
       and author_kind='user' order by seq desc limit 200`);
   const inputs = messages.reverse().map(m => ({ id: String(m.id), text:
     ((m.content as { blocks?: { text?: string }[] })?.blocks || []).map(b => b.text || '').join('\n') }));
-  const fields = chatFirstProgress(defaultGuidance, inputs).fields;
+  const fields = capture === 'recorded' ? excerptRequirements([]) : chatFirstProgress(defaultGuidance, inputs).fields;
   const conversation = await one(repo.tx, sql`select purpose,mode,created_at,entry_snapshot from app.assistant_conversations
     where enterprise_id=${repo.actor.enterpriseId} and id=${conversationId}`);
   if ((conversation?.entry_snapshot as { requirementReviewMode?: boolean })?.requirementReviewMode === true) return;

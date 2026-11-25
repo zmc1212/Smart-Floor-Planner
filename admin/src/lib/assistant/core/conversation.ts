@@ -42,6 +42,7 @@ import { homeSourceBudgetProtocol } from '../agent/home-source-budget';
 import { homeSourceViewProtocol } from '../agent/home-source-view';
 import { specialistPolicy } from '../specialists/consultation';
 import { delegationToolProtocol } from '../memory/agent';
+import { explicitNeedWriteStatement } from '../agent/memory';
 import type { SpecialistRunBinding } from '../specialists/registry';
 import { ownerArchiveReadProtocol, ownerProjectStatusReadProtocol, ownerQuestionScopeProtocol } from '../agent/owner-question-scope';
 import { ownerCitationCarrierProtocol } from '../agent/final-output';
@@ -209,14 +210,20 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
     ? nativeAgentRuntimeBinding(actor.enterpriseId) : undefined;
   const triggerContent = rag || nativeExecutor ? await one(tx, sql`select content from app.assistant_messages where enterprise_id=${actor.enterpriseId}
     and conversation_id=${String(c.id)} and id=${messageId}`) : undefined;
-  const textOnlyTrigger = (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text');
+  const triggerMessage = triggerContent?.content as MessageContent | undefined;
+  const textOnlyTrigger = triggerMessage?.blocks.every(b => b.type === 'text');
+  // Keep a private Mini Program save on the existing source-bound write executor.
+  const requirementWrite = triggerMessage && textOnlyTrigger && purpose === 'reply' && c.purpose === 'customer_consultation'
+    && !isWechatConsultation(actor) && !entry.activePublicSite && !reference.selection
+    && !['reference_content', 'reference_unavailable', 'portfolio_content', 'public_site_entry'].includes(String(entry.kind))
+    && Boolean(explicitNeedWriteStatement(safeText(triggerMessage)));
   if ((stagePreview || isWechatConsultation(actor)) && (!nativeExecutor || !agent || !textOnlyTrigger)) fail('stage_preview_unavailable',503);
   const nativeConfigurationIssue = nativeExecutor && agent && textOnlyTrigger ? nativeExecutorConfigurationIssue(agent) : null;
   if (nativeConfigurationIssue && (stagePreview || isWechatConsultation(actor) || purpose !== 'reply')) fail(nativeConfigurationIssue, 503);
-  const agentRuntime = nativeExecutor && textOnlyTrigger && !nativeConfigurationIssue
+  const agentRuntime = nativeExecutor && textOnlyTrigger && !nativeConfigurationIssue && !requirementWrite
     ? { protocol: xiaokNativeExecutorProtocol, binding: nativeExecutor.binding } : undefined;
-  const nativeRag = !agentRuntime && !nativeConfigurationIssue && rag && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config))
-    && (triggerContent?.content as MessageContent)?.blocks.every(b => b.type === 'text')
+  const nativeRag = !agentRuntime && !nativeConfigurationIssue && !requirementWrite && rag
+    && (rag.configuration.mode === 'unified' || enterpriseKnowledgeEnabled(settings.agent_config)) && textOnlyTrigger
     ? { protocol: fastGPTRagProtocol, binding: rag.binding } : undefined;
   const reviewRuntime = agent && purpose === 'reply' && actor.principal.kind === 'user' && c.purpose === 'customer_consultation'
     && entry.agentReviewCandidate === true && entry.requirementReviewMode === true
@@ -715,7 +722,11 @@ export class ConversationService {
         }
         const message = intercepted || await append();
         await recordDelegationOwnerInput(repo.tx, this.actor, c, message);
-        await saveAutomaticRequirements(repo, conversationId, String(message.id));
+        // A model-backed consultation stores needs through its source-bound write operation.
+        // A keyword in a newly appended question is not a draft or a save receipt.
+        if (c.purpose !== 'customer_consultation' || !agentConfig(settings!.agent_config)) {
+          await saveAutomaticRequirements(repo, conversationId, String(message.id));
+        }
         if (this.actor.principal.kind === 'user' && !isWechatConsultation(this.actor) && requestsDesigner(safe.blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'))) {
           if((c.entry_snapshot as Row)?.requirementReviewMode===true && (c.entry_snapshot as Row)?.requirementWorkflow==='langgraph') {
             const proposal=await stageHandoffProposal(repo,c,settings!,'request');
