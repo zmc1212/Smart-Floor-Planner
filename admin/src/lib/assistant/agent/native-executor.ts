@@ -10,7 +10,7 @@ import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
 import { AssistantError, fail, fingerprint, safeText, type Evidence, type MessageContent } from '../contracts';
 import { agentModelLimits, modelTurnProtocolIssue, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 import { recordAgentModelUsage } from '../core/model-usage';
-import { replyStreamAvailable, saveReplyPreview } from '../core/answer-stream';
+import { replyPreviewEnd, replyStreamAvailable, saveReplyPreview } from '../core/answer-stream';
 import { completeRun, completeDelegationReply, delegationAnswerRejected, failRun, heartbeat, markProviderStarted, recoverKnowledgeAnswer, runContext, type Lease } from '../infrastructure/job-queue';
 import { runKnowledgeEnabled } from '../knowledge-policy';
 import { saveKnowledgeCitation } from '../knowledge/save-citation';
@@ -1207,6 +1207,12 @@ export async function processNativeAgentAnswer(lease: Lease) {
       fail('assistant_capability_forbidden', 403);
     };
     let publishedPreview = '';
+    const publishPreview = async (text: string) => {
+      if (text === publishedPreview) return;
+      if (text) await guard();
+      await saveReplyPreview(lease, text, text ? { context, history: [...historyRefs.values()] } : undefined);
+      publishedPreview = text;
+    };
     const model = async (turn: number, modelMessages: ModelMessage[], modelTools: ModelTool[]): Promise<ModelTurnOutput> => {
       // Turn 9 is the last whose ten tool slots stay below the 1200 web band.
       const step = assertModelTurnBand(turn);
@@ -1230,31 +1236,22 @@ export async function processNativeAgentAnswer(lease: Lease) {
       let dispatchTools = delegationTool && specialist && turn === 0 && modelTools.length ? [delegationTool] : modelTools;
       if (streamReply && turn === 0 && dispatchTools.some(tool => tool.name !== finishContextTool.name))
         dispatchTools = dispatchTools.filter(tool => tool.name !== finishContextTool.name);
-      if (publishedPreview) {
-        await saveReplyPreview(lease, '');
-        publishedPreview = '';
-      }
+      if (publishedPreview) await publishPreview('');
       const planning = streamReply && dispatchTools.some(tool => tool.name === finishContextTool.name);
       const wireMessages = planning ? nativePlanningMessages(modelMessages,
         '这个回合先调用需要的工具。资料已足够时调用 finish_context({})。正文由下一回合生成。') : modelMessages;
-      let buffered = '', completeLength = 0;
+      let buffered = '', completeLength = 0, previewAt = -Infinity;
       const onFinalText = streamReply && !dispatchTools.length ? async (delta: string) => {
         buffered += delta;
-        const boundaries = buffered.slice(completeLength).matchAll(/\n[ \t\r]*\n/gu);
-        let end = completeLength;
-        for (const boundary of boundaries) end = completeLength + boundary.index + boundary[0].length;
+        const now = performance.now();
+        if (now - previewAt < 300) return;
+        const plainAdvice = !specialist && !knowledgeRetrieved && !webRetrieved && !stageWorkflow?.hasWorkflows
+          && delivered.every(({ data }) => Array.isArray(data) && !data.length);
+        const end = replyPreviewEnd(buffered, completeLength, plainAdvice);
         if (end === completeLength) return;
         completeLength = end;
-        const preview = verifiedPreview(buffered.slice(0, end));
-        if (preview === null) {
-          if (publishedPreview) await saveReplyPreview(lease, '');
-          publishedPreview = '';
-          return;
-        }
-        if (!preview || preview === publishedPreview) return;
-        await guard();
-        await saveReplyPreview(lease, preview, { context, history: [...historyRefs.values()] });
-        publishedPreview = preview;
+        previewAt = now;
+        await publishPreview(verifiedPreview(buffered.slice(0, end)) ?? '');
       } : undefined;
       await withTenantTransaction(lease.enterpriseId, async tx => {
         await runContext(tx, lease);
@@ -1526,6 +1523,9 @@ export async function processNativeAgentAnswer(lease: Lease) {
           if (issue) fail(issue.code, 502);
         } : undefined), sites.outcome());
     const text = composed.text;
+    // A finished, checked model answer can reach the same live bubble while
+    // ancillary suggestions and the final message transaction complete.
+    if (streamReply) await publishPreview(composed.modelIncluded ? verifiedPreview(finalText) ?? '' : '');
     // The earlier 1006.publicSite field remains readable by existing consumers
     // and history filters; it names the selected version this run actually
     // consumed, or the first inherited dependency when the site was not

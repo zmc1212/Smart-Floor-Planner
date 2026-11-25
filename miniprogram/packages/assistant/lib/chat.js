@@ -366,13 +366,15 @@ class ChatController {
   }
 
   finishLiveReply(run, window, conversation) {
-    const raw = window?.cache.rawMessages;
+    const raw = window?.cache.rawMessages ?? this.rawMessages;
     if (this.liveAnswer.finalId && run?.outputMessageId === this.liveAnswer.finalId) {
       if (raw && !raw.some(message => message.id === this.liveAnswer.finalId && message.available !== false)) this.liveAnswer.stop();
       return;
     }
+    const revealSavedReply = this.revealReportReply
+      && (conversation.purpose === 'customer_consultation' || conversation.reportContext?.selected);
     if (this.visible && this.state.generating && this.state.run?.id === run?.id && run?.status === 'succeeded'
-      && (run.answerStreaming || this.revealReportReply && conversation.reportContext?.selected)) {
+      && (run.answerStreaming || revealSavedReply)) {
       const reply = raw?.find(message => message.id === run.outputMessageId && message.authorKind === 'assistant' && message.available !== false);
       const paragraphs = reply?.content?.blocks?.filter(block => block.type === 'text' && block.text?.trim());
       const text = run.answerStreaming ? paragraphs?.map(block => block.text).join('').trim()

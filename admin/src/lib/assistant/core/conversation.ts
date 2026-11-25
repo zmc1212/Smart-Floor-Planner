@@ -316,7 +316,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);
   await tx.execute(sql`insert into app.assistant_quota_reservations(enterprise_id,run_id,operation_key,reserved_tokens,reserved_cost_micros)
     values(${actor.enterpriseId},${runId},${'run:' + runId},${tokenReservation},${costReservation})`);
-  return { conversationId: String(c.id), messageId, runId, status: 'queued', nextPollMs: 1500 };
+  return { conversationId: String(c.id), messageId, runId, status: 'queued', nextPollMs: 1500,
+    ...(replyStreamAvailable(actor, c, r) ? { answerStreaming: true } : {}) };
 }
 /** Internal extension seam; no production P1 actor receives this capability. */
 export function startInternalRun(actor: ActorContext, conversationId: string, trigger: RunTrigger, purpose: string, requestKey: string) {

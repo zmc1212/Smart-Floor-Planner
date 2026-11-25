@@ -11,13 +11,27 @@ import { runContext, type Lease } from '../infrastructure/job-queue';
 export const replyStreamProtocol = 'customer-reply-stream-v1';
 const previewStep = 1028;
 const previewKind = 'customer_reply_preview';
-const emptyPreview = { text: '', revision: 0 };
 type PreviewProof = { context: SynthesisContext; history: HistoryRef[] };
-type PreviewFrame = typeof emptyPreview;
+type PreviewFrame = { text: string; revision: number; initial?: true };
+const emptyPreview: PreviewFrame = { text: '', revision: 0, initial: true };
 
 export function replyStreamAvailable(actor: ActorContext, conversation: Row, run: Row) {
   return actor.principal.kind === 'user' && conversation.purpose === 'customer_consultation'
     && run.purpose === 'reply' && (run.policy_snapshot as Row)?.replyStream === replyStreamProtocol;
+}
+
+export function replyPreviewEnd(text: string, previous: number, plainSentences: boolean) {
+  let end = previous;
+  for (const boundary of text.slice(previous).matchAll(/\n[ \t\r]*\n/gu))
+    end = previous + boundary.index + boundary[0].length;
+  const tail = text.slice(end);
+  // A plain sentence can be checked on its own. A Markdown or cited block
+  // stays together until the paragraph boundary is available.
+  if (!plainSentences || /[*_`[\]<>#|]/u.test(tail)) return end;
+  const paragraphEnd = end;
+  for (const sentence of tail.matchAll(/[。！？!?]+[”’」』）)]*/gu))
+    end = paragraphEnd + sentence.index + sentence[0].length;
+  return end;
 }
 
 async function previewAllowed(tx: PostgresTransaction, actor: ActorContext, conversation: Row, proof: PreviewProof) {
@@ -26,7 +40,7 @@ async function previewAllowed(tx: PostgresTransaction, actor: ActorContext, conv
     && await synthesisContextAvailable(tx, actor, conversation, proof.context);
 }
 
-/** Save only completed, independently checked paragraphs under the current
+/** Save only completed, independently checked text under the current
  * lease. The temporary prefix never enters assistant_messages. */
 export async function saveReplyPreview(lease: Lease, text: string, proof?: PreviewProof) {
   await withTenantTransaction(lease.enterpriseId, async tx => {
@@ -45,19 +59,21 @@ export async function saveReplyPreview(lease: Lease, text: string, proof?: Previ
 export async function readReplyPreview(tx: PostgresTransaction, actor: ActorContext, run: Row): Promise<PreviewFrame> {
   if (run.status !== 'running') return emptyPreview;
   const step = await one(tx, sql`select s.version,s.private_checkpoint,s.source_refs,j.id::text as job_id,j.lease_token
-    from app.assistant_run_steps s join app.assistant_jobs j on j.enterprise_id=s.enterprise_id and j.run_id=s.run_id
-    where s.enterprise_id=${actor.enterpriseId} and s.run_id=${String(run.id)} and s.step_seq=${previewStep} and s.kind=${previewKind}
-      and j.status='running' and j.lease_expires_at>now()`);
-  const saved = step?.private_checkpoint as { leaseToken?: string; text?: string } | undefined;
-  if (!step || !saved?.text || saved.leaseToken !== step.lease_token) return emptyPreview;
+    from app.assistant_run_steps s left join app.assistant_jobs j on j.enterprise_id=s.enterprise_id and j.run_id=s.run_id
+      and j.status='running' and j.lease_expires_at>now()
+    where s.enterprise_id=${actor.enterpriseId} and s.run_id=${String(run.id)} and s.step_seq=${previewStep} and s.kind=${previewKind}`);
+  if (!step) return emptyPreview;
+  const cleared = { text: '', revision: Number(step.version) };
+  const saved = step.private_checkpoint as { leaseToken?: string; text?: string } | undefined;
+  if (!saved?.text || !step.lease_token || saved.leaseToken !== step.lease_token) return cleared;
   try {
     const { conversation } = await runContext(tx, { actor, enterpriseId: actor.enterpriseId, runId: String(run.id),
       jobId: String(step.job_id), token: String(step.lease_token) });
     const proof = step.source_refs as PreviewProof;
-    if (!proof?.context || !await previewAllowed(tx, actor, conversation, proof)) return emptyPreview;
-    return { text: saved.text, revision: Number(step.version) };
+    if (!proof?.context || !await previewAllowed(tx, actor, conversation, proof)) return cleared;
+    return { text: saved.text, revision: cleared.revision };
   } catch (error) {
-    if (error instanceof AssistantError && [403, 404, 409].includes(error.status)) return emptyPreview;
+    if (error instanceof AssistantError && [403, 404, 409].includes(error.status)) return cleared;
     throw error;
   }
 }

@@ -5,6 +5,7 @@ import { composeNativeDelivery, explicitPublicSiteReference, nativeCitationFeedb
   nativeRunReadContract, restoreRunReadContract, runReadContractRecord, nativeFirstTurnRequiresTool,
   stripUnboundCitationPlaceholders, synthesisHistoryFields, nativeSpecialistQuantityPartial, xiaokNativeExecutorProtocol } from '../agent/native-executor';
 import { normalizeNativeCitationCarrier } from '../agent/native-citation-gate';
+import { replyPreviewEnd } from '../core/answer-stream';
 import { nativeAgentRuntimeBinding } from '../fastgpt/agent-v2/config';
 import { nativeHistoryCheckpoint, priorAnswerBusinessObject } from '../fastgpt/rag-session';
 import { recoverableUnavailableRead, runRenovationAgent, type AgentRuntimePorts } from '../agent/runtime';
@@ -23,6 +24,18 @@ const readTools: ModelTool[] = [
   { name: 'query_business', description: '', parameters: {} },
   { name: 'final_response', description: '', parameters: {} },
 ];
+
+test('plain preview advances at sentences while formatted and sourced preview waits for a complete paragraph', () => {
+  const first = '封槽前可以先把现场拍下来。';
+  const following = '下一步等师傅';
+  assert.equal(replyPreviewEnd(first + following, 0, true), first.length);
+  assert.equal(replyPreviewEnd(first + following, first.length, true), first.length);
+  assert.equal(replyPreviewEnd(first + following, 0, false), 0);
+  const formatted = '**先看现场。';
+  assert.equal(replyPreviewEnd(formatted, 0, true), 0);
+  const cited = first + '[K1](CITE)\n\n';
+  assert.equal(replyPreviewEnd(cited + following, 0, false), cited.length);
+});
 
 test('knowledge retrieval without a model citation fails closed', () => {
   assert.throws(() => composeNativeDelivery('先排版再铺贴。', '', 0, true), (error: Code) => error.code === 'missing_citation');

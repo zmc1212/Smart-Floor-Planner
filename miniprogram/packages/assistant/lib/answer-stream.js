@@ -24,8 +24,8 @@ function listenForReply(runId, receive, close) {
       if (!line || line.length > 100000) continue;
       let value;
       try { value = JSON.parse(line); } catch { continue; }
-      if (value.type === 'preview') receive(value.text);
-      else if (value.type === 'refresh') receive('');
+      if (value.type === 'preview') receive(value);
+      else if (value.type === 'refresh') receive({ text: '', revision: 0 });
     }
   };
   task.onChunkReceived(chunks);
@@ -37,19 +37,19 @@ class LiveAnswer {
     this.emit = emit;
     this.listen = listen;
     this.text = '';
+    this.revision = 0;
   }
 
   sync(run) {
     if (!run?.answerStreaming || !['queued', 'running'].includes(run.status)) { this.stop(); return; }
     if (run.id !== this.id) { this.stop(); this.id = run.id; }
-    if (!this.connection?.receiving) this.receive(run.answerPreview?.text || '');
+    this.receiveFrame(run.answerPreview);
     if (!this.connection && !this.pollOnly) {
       const connection = this.connection = {};
       try {
-        connection.abort = this.listen(run.id, text => {
+        connection.abort = this.listen(run.id, frame => {
           if (this.connection !== connection) return;
-          connection.receiving = true;
-          this.receive(text);
+          this.receiveFrame(frame);
         }, () => {
           if (this.connection === connection) this.connection = null;
         });
@@ -58,12 +58,24 @@ class LiveAnswer {
     }
   }
 
+  receiveFrame(frame) {
+    if (typeof frame?.text !== 'string' || frame.text.length > 16000
+      || !Number.isSafeInteger(frame.revision) || frame.revision < 0) return;
+    // Older servers send a zero revision when clearing a preview. A clear at
+    // the current revision must beat an earlier frame still on the wire.
+    const revision = frame.text || frame.initial ? frame.revision : frame.revision || this.revision;
+    if (revision < this.revision || revision === this.revision && frame.text && !this.target) return;
+    this.revision = revision;
+    this.receive(frame.text);
+  }
+
   finish(messageId, text) {
     this.disconnect();
     this.finalId = messageId;
+    const before = this.text;
     this.receive(text);
     if (this.text === this.target) this.stop();
-    else this.emit(this.text, messageId, this.target);
+    else if (this.text === before) this.emit(this.text, messageId, this.target);
   }
 
   receive(value) {
@@ -77,7 +89,8 @@ class LiveAnswer {
     this.timer = null;
     if (!this.target.startsWith(this.text) || this.text === this.target) return;
     const remaining = Array.from(this.target.slice(this.text.length));
-    this.show(this.text + remaining.slice(0, Math.max(2, Math.ceil(remaining.length / 26))).join(''));
+    const step = this.text ? Math.min(8, Math.ceil(remaining.length / 36)) : 1;
+    this.show(this.text + remaining.slice(0, step).join(''));
     if (this.text !== this.target) this.timer = setTimeout(() => this.advance(), 24);
     else if (this.finalId) this.stop();
   }
@@ -98,6 +111,7 @@ class LiveAnswer {
     this.timer = null;
     this.id = null;
     this.target = '';
+    this.revision = 0;
     this.pollOnly = false;
     const displayed = !!(this.text || this.finalId);
     this.text = '';
