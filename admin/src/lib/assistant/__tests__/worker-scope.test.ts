@@ -12,13 +12,15 @@ const pilotGate = evaluateWorkerSafetyGate({
 
 test('I7.5.9 a closed gate has no task scope', () => {
   const execution = workerTaskScope(evaluateWorkerSafetyGate({}));
-  assert.deepEqual(execution, { enabled: false, enterpriseId: null, pilotId: null, scope: undefined });
+  assert.deepEqual(execution, { enabled: false, enterpriseId: null, pilotId: null,
+    scope: undefined, assistantQueueScope: undefined });
 });
 
-test('I7.5.9 an open pilot gate scopes every task to one enterprise', () => {
+test('an open Worker shares customer consultations and scopes background tasks to the pilot', () => {
   assert.deepEqual(workerTaskScope(pilotGate), {
     enabled: true, enterpriseId: '1454', pilotId: 'first-pilot',
     scope: { enterpriseId: '1454' },
+    assistantQueueScope: { enterpriseId: '1454', includeSharedConsultations: true },
   });
 });
 

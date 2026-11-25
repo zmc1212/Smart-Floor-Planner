@@ -21,7 +21,7 @@ export type WorkerSideEffectKind =
 export type WorkerSideEffectTask = {
   task: string;
   label: string;
-  scope: 'pilot_enterprise' | 'none';
+  scope: 'pilot_enterprise' | 'pilot_and_shared_consultations' | 'none';
   wouldRun: boolean;
   pending: number | null;
   productionLimit: number | null;
@@ -74,7 +74,7 @@ export async function previewWorkerSideEffects(input: {
   const siteScope = eid ? sql`and s.enterprise_id=${eid}` : sql``;
   const eventScope = eid ? sql`and e.enterprise_id=${eid}` : sql``;
 
-  const queue = await previewAssistantQueue({ enterpriseId: eid, now });
+  const queue = await previewAssistantQueue({ ...execution.assistantQueueScope, now });
   const knowledgeBatches = await safeCount('app.assistant_knowledge_batches', tx => one(tx, sql`select count(*)::int as n
     from app.assistant_knowledge_batches b where b.state='active' ${eid ? sql`and b.enterprise_id=${eid}` : sql``} and exists(
       select 1 from app.assistant_knowledge_batch_items i join app.assistant_knowledge_evaluations e
@@ -160,15 +160,18 @@ export async function previewWorkerSideEffects(input: {
     ...(detail ? { detail } : {}),
   });
 
+  const assistantJobs = task('assistant_jobs', 'Assistant 对话/站点/报告任务', queue.counts.queued + queue.counts.running, null,
+    ['model_call', 'business_write', 'in_app_notification'], execution.enabled,
+    { queued: queue.counts.queued, running: queue.counts.running, failed: queue.counts.failed,
+      indeterminate: queue.counts.indeterminate, reclaimable: queue.reclaimable.total });
+  if (execution.assistantQueueScope) assistantJobs.scope = 'pilot_and_shared_consultations';
+
   return {
     generatedAt: now.toISOString(),
     gate: { status: gate.status, reason: gate.reason, enterpriseId: gate.enterpriseId, pilotId: gate.pilotId },
     scope: { mode: eid ? 'pilot' : 'none', enterpriseId: eid },
     tasks: [
-      task('assistant_jobs', 'Assistant 对话/站点/报告任务', queue.counts.queued + queue.counts.running, null,
-        ['model_call', 'business_write', 'in_app_notification'], execution.enabled,
-        { queued: queue.counts.queued, running: queue.counts.running, failed: queue.counts.failed,
-          indeterminate: queue.counts.indeterminate, reclaimable: queue.reclaimable.total }),
+      assistantJobs,
       task('knowledge_batches', '知识库评测批次', knowledgeBatches, 1,
         ['model_call', 'knowledge_write']),
       task('site_publications', '施工进展公开通知', sitePublications, 20,

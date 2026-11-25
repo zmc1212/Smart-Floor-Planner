@@ -53,7 +53,7 @@
   - 保存过一次后以数据库最新版本为准；建议随后清空运行时 env 中的这六个变量，避免数据库不可读时回退到旧值。
   - 后台只允许配置 pilot（企业 + pilot ID + 试点项目范围），不提供企业全域开关。
 
-未保存配置且 env 也未成对提供 pilot 时门禁关闭。门禁关闭、试点范围不存在/未激活/为空或查询失败时，Worker 保持常驻空转，不生成、不投递，也不得回退企业全量。
+未保存配置且 env 也未成对提供 pilot 时门禁关闭，Worker 保持常驻空转。试点范围不存在、未激活、为空或查询失败时，试点提醒和周报停止生成与投递。
 
 ### 2.4 自有密钥初始化与运行时文件
 
@@ -126,7 +126,8 @@ psql -v ON_ERROR_STOP=1 -v app_password='...' -v migrator_password='...' \
 1. 以平台超级管理员登录后台：平台管理中心 → 小K Worker 启停（`/assistant-worker`）。
 2. 填写试点企业 ID 与试点 ID，点击「加载企业与试点项目」，勾选试点项目范围并保存。
 3. 打开「启用 Assistant Worker」并保存。保存会新增一条版本记录（含操作人与时间），Worker 在下一次心跳自动生效，无需重启容器。
-4. 关闭开关后 Worker 进程保持常驻，但不再执行任何业务任务；健康检查显示 `idle` 而非失败。
+4. 关闭开关后 Worker 常驻空转，健康检查显示 `idle`。
+5. Worker 启用时，共享队列按任务所属企业处理已启用小K的业主主动咨询。保存的企业和项目范围用于提醒、周报及原有试点后台任务。咨询领取、执行和结果保存沿用企业权限与租约校验。
 
 权限与审计：仅 `super_admin` 可访问页面与 `/api/platform/assistant-worker`；每次保存都写入 `app.assistant_worker_settings` 新版本，历史版本保留。
 
@@ -226,7 +227,7 @@ XIAOK_MIGRATION_RESTORE_URL=... PG_BIN=<PG17 bin> \
 | 现象 | 处理 |
 | --- | --- |
 | 部署门禁失败 | 按输出补齐/替换密钥；不得绕过门禁直接 `next start` |
-| Worker 退出码 2 | 门禁关闭：检查试点配置是否成对一致；不得临时改为企业全量 |
+| Worker 显示 `idle` 或 `blocked` | 查看生效配置和门禁原因。`worker_disabled` 表示总开关已关闭；其他原因检查实际保存的试点配置 |
 | preflight 401 | 检查 `CRON_SECRET` 是否一致 |
 | preflight 503 | 检查数据库连通、租户事务、门禁查询；不得跳过 preflight 启动 |
 | 知识检索 503 `bailian_knowledge_not_configured` | 补齐百炼 Workspace/Key 或显式切换到已批准的本地提供者 |

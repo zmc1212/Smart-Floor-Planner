@@ -21,6 +21,8 @@ import { POST as resolveCode } from '@/app/api/miniprogram/codes/resolve/route';
 import { POST as acceptService } from '@/app/api/miniprogram/referrals/authorize-and-create-lead/route';
 import { changeMode, appendEventNotice, bindContext } from '@/lib/assistant/core/extensions';
 import { claimJob, completeRun, failRun, heartbeat, markProviderStarted, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import { createAssistantJobsPost } from '@/lib/assistant/infrastructure/jobs-post-handler';
+import { assistantWorkerPreflight } from '@/lib/assistant/infrastructure/worker-preflight';
 import { ContextRegistry } from '@/lib/assistant/capabilities/registry';
 import { entryContext, fromEntry, locate } from '@/lib/assistant/application/auth';
 import type { ActorContext } from '@/lib/assistant/contracts';
@@ -498,6 +500,70 @@ test('A06 two workers contend for the same fixture job and only the holder can c
   await completeRun(leases[0], { content: content('服务处理完成。'), usage: null });
   assert.equal((await service.run(String(sent.runId))).status, 'succeeded');
 });
+
+test('shared Worker replies to two enterprises and leaves out-of-pilot background work queued', async () => {
+  const outsideActor: ActorContext = { ...b, principal: { kind: 'user', userId: userIds[1] } };
+  const outside = new ConversationService(outsideActor);
+  const outsideId = String((await outside.create('shared-worker-outside')).id);
+  const pilotId = await conversation();
+  const backgroundId = String((await outside.create('shared-worker-background')).id);
+  const background = await startInternalRun({ ...outsideActor, capabilities: ['assistant.chat.self', 'assistant.run.internal'] },
+    backgroundId, { kind: 'scheduled_task', occurrenceKey: 'shared-worker-digest' }, 'digest', 'shared-worker-digest');
+  const outsideReply = await outside.send(outsideId, 'shared-worker-question', content('想聊聊适合我家的装修风格'));
+  const pilotReply = await service.send(pilotId, 'shared-worker-pilot', content('客厅采光一般，墙面颜色怎么选？'));
+
+  const env = {
+    XIAOK_STAGE_REMINDER_MODE: 'pilot', XIAOK_STAGE_REMINDER_ENTERPRISE_ID: a.enterpriseId,
+    XIAOK_STAGE_REMINDER_PILOT_ID: 'shared-worker-pilot',
+    XIAOK_WEEKLY_REPORT_MODE: 'pilot', XIAOK_WEEKLY_REPORT_ENTERPRISE_ID: a.enterpriseId,
+    XIAOK_WEEKLY_REPORT_PILOT_ID: 'shared-worker-pilot',
+  };
+  const preflight = await assistantWorkerPreflight({ env });
+  assert.equal(preflight.scopedQueue?.scope.mode, 'pilot_and_shared_consultations');
+  const sharedJobs = preflight.scopedQueue?.items.filter(job => job.status === 'queued') ?? [];
+  assert.equal(sharedJobs.filter(job => job.enterpriseId === outsideActor.enterpriseId).length, 1);
+
+  const processed: string[] = [];
+  const answer = '可以先从家里的采光和你喜欢的材质聊起。';
+  const post = createAssistantJobsPost({ env, processAssistantRun: async lease => {
+    processed.push(lease.runId);
+    await completeRun(lease, { content: content(answer), usage: null });
+  } });
+  const previousSecret = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'shared-worker-fixture-secret';
+  const tick = async () => {
+    const response = await post(new Request('http://localhost/api/internal/assistant/jobs/run', {
+      method: 'POST', headers: { 'x-cron-secret': 'shared-worker-fixture-secret' },
+    }));
+    assert.equal(response.status, 200);
+  };
+  try {
+    await tick();
+    await tick();
+    assert.deepEqual(new Set(processed), new Set([pilotReply.runId, outsideReply.runId]));
+    assert.equal(processed.length, 2);
+    const reentry = new ConversationService(outsideActor);
+    assert.equal((await reentry.run(String(outsideReply.runId))).status, 'succeeded');
+    assert.equal((await reentry.messages(outsideId)).items.filter(message => message.authorKind === 'assistant').length, 1);
+    await assert.rejects(service.detail(outsideId), /assistant_resource_not_found/);
+    assert.equal((await outside.run(String(background.runId))).status, 'queued');
+
+    const disabledId = String((await outside.create('shared-worker-revoked')).id);
+    const disabled = await outside.send(disabledId, 'shared-worker-revoked', content());
+    const setOutsideEnabled = (enabled: boolean) => withTenantTransaction(outsideActor.enterpriseId, tx => tx.execute(sql`
+      update app.assistant_enterprise_settings set enabled=${enabled} where enterprise_id=${outsideActor.enterpriseId}`));
+    await setOutsideEnabled(false);
+    try {
+      await tick();
+      assert.equal((await outside.run(String(disabled.runId))).status, 'failed');
+      assert.equal(processed.length, 2);
+    } finally { await setOutsideEnabled(true); }
+  } finally {
+    if (previousSecret === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = previousSecret;
+  }
+});
+
 test('independent worker script calls authenticated handler, persists health and restarts', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'assistant-worker-test-'));
   const health = path.join(directory, 'health.json'); const oldSecret = process.env.CRON_SECRET;

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction } from '@/db/transaction';
 import { one, rows } from '@/db/repositories/assistant-repository';
+import { assistantQueueFilter, type AssistantQueueScope } from './worker-scope';
 
 /** Read-only dry-run of the assistant job queue used before a Worker starts.
  *
@@ -98,7 +99,7 @@ export type PreviewJobItem = {
 
 export type AssistantQueuePreview = {
   generatedAt: string;
-  scope: { mode: 'global' | 'enterprise'; enterpriseId: string | null };
+  scope: { mode: 'global' | 'enterprise' | 'pilot_and_shared_consultations'; enterpriseId: string | null };
   counts: {
     queued: number;
     queuedReady: number;
@@ -140,13 +141,14 @@ function asDate(value: unknown): Date | null {
 /** Read-only queue preview. The transaction is opened with PostgreSQL
  * `READ ONLY`, so even an accidental write in this path is rejected by the
  * database instead of changing production state. */
-export async function previewAssistantQueue(input: {
-  enterpriseId?: string | null;
+export async function previewAssistantQueue(input: AssistantQueueScope & {
   now?: Date;
 } = {}): Promise<AssistantQueuePreview> {
   const now = input.now ?? new Date();
   const enterpriseId = input.enterpriseId?.trim() || null;
-  const scoped = enterpriseId ? sql`and j.enterprise_id=${enterpriseId}` : sql``;
+  const scoped = assistantQueueFilter(input);
+  const scopeMode = !enterpriseId ? 'global' : input.includeSharedConsultations
+    ? 'pilot_and_shared_consultations' : 'enterprise';
   return withPlatformTransaction(async tx => {
     const counts = (await one(tx, sql`select
       count(*) filter (where j.status='queued')::int as queued,
@@ -206,7 +208,7 @@ export async function previewAssistantQueue(input: {
     const expiredWithKnownAgentOutcome = int(counts.expired_known_outcome);
     return {
       generatedAt: now.toISOString(),
-      scope: enterpriseId ? { mode: 'enterprise' as const, enterpriseId } : { mode: 'global' as const, enterpriseId: null },
+      scope: { mode: scopeMode, enterpriseId },
       counts: {
         queued: int(counts.queued), queuedReady,
         running: int(counts.running), runningExpired: int(counts.running_expired),

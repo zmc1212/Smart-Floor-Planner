@@ -214,17 +214,19 @@ async function main() {
     const globalEnterpriseIds = new Set(globalQueue.items.map(item => item.enterpriseId));
     check('dryrun.scope_preview', preflight.safetyGate.status === 'open'
       && preflight.sideEffects.scope.enterpriseId === pilot.eid
-      && scopedQueue !== null && scopedQueue.items.every(item => item.enterpriseId === pilot.eid)
-      && scopedQueue.counts.queued === 1 && globalQueue.counts.queued >= 1
+      && scopedQueue?.scope.mode === 'pilot_and_shared_consultations'
+      && scopedQueue.counts.queued === 2 && globalQueue.counts.queued >= 2
+      && scopedQueue.items.some(item => item.enterpriseId === pilot.eid)
+      && scopedQueue.items.some(item => item.enterpriseId === outside.eid)
       && globalEnterpriseIds.has(pilot.eid) && globalEnterpriseIds.has(outside.eid)
-      ? 'passed' : 'failed', 'dry-run 同时显示全局队列与试点企业队列，范围外 queued 只出现在全局队列',
+      ? 'passed' : 'failed', 'dry-run 显示全局积压，以及 Worker 可领取的试点任务与两家企业的业主咨询',
     { gate: preflight.safetyGate, scoped: scopedQueue?.counts, global: globalQueue.counts,
       globalEnterpriseIds: [...globalEnterpriseIds] });
     const taskOf = (name: string) => preflight.sideEffects.tasks.find(task => task.task === name)!;
-    check('dryrun.side_effect_counts', taskOf('assistant_jobs').pending === 1
+    check('dryrun.side_effect_counts', taskOf('assistant_jobs').pending === 2
       && taskOf('site_publications').pending === 1 && taskOf('public_consents').pending === 1
       && taskOf('portfolio_copy').pending === 0 && taskOf('knowledge_batches').pending === 0
-      && taskOf('assistant_jobs').scope === 'pilot_enterprise'
+      && taskOf('assistant_jobs').scope === 'pilot_and_shared_consultations'
       ? 'passed' : 'failed', 'dry-run 逐项显示试点范围、候选数量与副作用；范围外 Portfolio 任务不计入',
     { tasks: preflight.sideEffects.tasks, second: preflightAgain.sideEffects.scope });
 

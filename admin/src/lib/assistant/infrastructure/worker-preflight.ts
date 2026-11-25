@@ -1,6 +1,7 @@
 import { withTenantTransaction } from '@/db/transaction';
 import { previewAssistantQueue, type AssistantQueuePreview } from './job-preview';
 import { previewWorkerSideEffects, type WorkerSideEffectsPreview } from './worker-side-effects';
+import { workerTaskScope } from './worker-scope';
 import { type WorkerSafetyGate } from '@/lib/xiaok-v1/worker-safety-gate';
 import { checkPilotWorkerAlignment } from '@/lib/xiaok-v1/pilot-worker-alignment';
 import { resolvePilotScope, tenantPilotScopeRead,
@@ -68,10 +69,12 @@ export async function assistantWorkerPreflight(input: {
   }
 
   // The global preview keeps out-of-scope backlog visible. The scoped preview
-  // shows exactly what a started Worker may claim in pilot mode.
+  // shows the active Worker's pilot jobs and shared consultations.
   const queue = await previewAssistantQueue({ now });
   const scopedQueue = safetyGate.enterpriseId
-    ? await previewAssistantQueue({ enterpriseId: safetyGate.enterpriseId, now })
+    ? await previewAssistantQueue({
+      enterpriseId: safetyGate.enterpriseId, ...workerTaskScope(safetyGate).assistantQueueScope, now,
+    })
     : null;
   const sideEffects = await previewWorkerSideEffects({ env, now, deployment });
 

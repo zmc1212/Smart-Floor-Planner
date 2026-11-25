@@ -20,6 +20,7 @@ import { explicitNeedWriteStatement } from '../agent/memory';
 import { agentConfig, agentCapabilityFingerprint } from '../agent/config';
 import { assertKnowledgePolicy, runKnowledgeEnabled } from '../knowledge-policy';
 import { assertRunLocationCurrent } from '../location/run-context';
+import { assistantQueueFilter, type AssistantQueueScope } from './worker-scope';
 
 export const workerTiming = { providerMs: 90000, leaseMs: 150000, requestMs: 180000, heartbeatMs: 30000 };
 export type Lease = { enterpriseId: string; jobId: string; runId: string; token: string; actor: ActorContext };
@@ -67,24 +68,23 @@ const boundedConcurrency = (value: string | undefined, max: number) => {
 };
 export const workerConcurrency = () => boundedConcurrency(process.env.ASSISTANT_WORKER_CONCURRENCY, 8);
 export const enterpriseConcurrency = () => boundedConcurrency(process.env.ASSISTANT_ENTERPRISE_CONCURRENCY, 4);
-export async function claimJob(scope?: { enterpriseId: string; runId?: string }): Promise<Lease | null> {
-  // The optional scope narrows candidacy to one enterprise/run for drivers that
-  // own exactly that fixture (acceptance harnesses); production callers never
-  // pass it, so the global oldest-eligible scan stays unchanged.
+export async function claimJob(scope?: AssistantQueueScope & { runId?: string }): Promise<Lease | null> {
+  const scoped = assistantQueueFilter(scope);
+  const runFilter = scope?.runId ? sql`and j.run_id=${scope.runId}` : sql``;
   const candidates = await withPlatformTransaction(tx => rows(tx, sql`select enterprise_id,id from (
-    select enterprise_id,id,available_at,row_number() over (partition by enterprise_id order by available_at,id) rn
-    from app.assistant_jobs where kind='chat_turn'
-      and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now()))
-      ${scope?.runId ? sql`and enterprise_id=${scope.enterpriseId} and run_id=${scope.runId}`
-        : scope ? sql`and enterprise_id=${scope.enterpriseId}` : sql``}
+    select j.enterprise_id,j.id,j.available_at,row_number() over (partition by j.enterprise_id order by j.available_at,j.id) rn
+    from app.assistant_jobs j where j.kind='chat_turn'
+      and ((j.status='queued' and j.available_at<=now()) or (j.status='running' and j.lease_expires_at<=now()))
+      ${scoped} ${runFilter}
   ) candidate where rn=1 order by available_at,id limit 50`));
   for (const candidate of candidates) {
     const lease = await withTenantTransaction(String(candidate.enterprise_id), async tx => {
       // The settings lock is the common ordering point for API, claim, completion, and cancellation.
       const settings = await one(tx, sql`select id from app.assistant_enterprise_settings where enterprise_id=${String(candidate.enterprise_id)} for update skip locked`);
       if (!settings) return null;
-      const job = await one(tx, sql`select * from app.assistant_jobs where enterprise_id=${String(candidate.enterprise_id)} and id=${String(candidate.id)}
-        and ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now())) for update skip locked`);
+      const job = await one(tx, sql`select j.* from app.assistant_jobs j where j.enterprise_id=${String(candidate.enterprise_id)} and j.id=${String(candidate.id)}
+        and ((j.status='queued' and j.available_at<=now()) or (j.status='running' and j.lease_expires_at<=now()))
+        ${scoped} ${runFilter} for update skip locked`);
       if (!job) return null;
       // Same-enterprise conversations wait for the enterprise's slot instead of
       // failing; another enterprise's live lease never blocks this one.
@@ -391,23 +391,20 @@ export async function completeSafeFallback(lease: Lease, code: SafeFallbackCode 
     throw error;
   }
 }
-/** Oldest eligible kind prevents chat/index starvation. Up to the configured
- * worker limit is claimed per request: different enterprises run concurrently,
- * while the claim check keeps each enterprise serial.
- *
- * `scope.enterpriseId` narrows every candidate scan, claim and knowledge
- * fallback to one enterprise. It never changes the tenant transaction, RLS or
- * per-job authorization checks. */
+/** Claim the oldest eligible work within the configured batch and tenant
+ * limits. Shared customer consultations use the same lease and authorization
+ * path. Knowledge processing and receipt delivery use the original scope. */
 export async function processAssistantJob(processRun: (lease: Lease) => Promise<void> = processAnswer,
-  limit = workerConcurrency(), scope?: { enterpriseId?: string }) {
+  limit = workerConcurrency(), scope?: AssistantQueueScope) {
   const enterpriseId = scope?.enterpriseId?.trim();
-  const scoped = enterpriseId ? sql`and enterprise_id=${enterpriseId}` : sql``;
-  const next=await withPlatformTransaction(tx=>one(tx,sql`select kind from app.assistant_jobs where
-    ((status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now())) ${scoped}
-    order by available_at,id limit 1`));
+  const scoped = assistantQueueFilter(scope);
+  const enterpriseScope = enterpriseId ? { enterpriseId } : undefined;
+  const next=await withPlatformTransaction(tx=>one(tx,sql`select j.kind from app.assistant_jobs j where
+    ((j.status='queued' and j.available_at<=now()) or (j.status='running' and j.lease_expires_at<=now())) ${scoped}
+    order by j.available_at,j.id limit 1`));
   const leases:Lease[]=[];
   if(next?.kind==='chat_turn') for(let index=0;index<limit;index++){
-    const lease=await claimJob(enterpriseId ? { enterpriseId } : undefined);
+    const lease=await claimJob(scope);
     if(!lease)break;
     leases.push(lease);
   }
@@ -422,8 +419,8 @@ export async function processAssistantJob(processRun: (lease: Lease) => Promise<
   // behind the blocked chat head. In pilot scope the fallback stays inside the
   // same enterprise.
   const knowledgeClaimed=['knowledge_index','knowledge_parse'].includes(String(next?.kind))||!leases.length
-    ?await processKnowledgeJob(scope):false;
-  const cleanupClaimed = !next && await processManagedKnowledgeCleanup(undefined, scope);
+    ?await processKnowledgeJob(enterpriseScope):false;
+  const cleanupClaimed = !next && await processManagedKnowledgeCleanup(undefined, enterpriseScope);
   await deliverMetrics(enterpriseId);
   return { claimed: leases.length>0 || knowledgeClaimed || cleanupClaimed };
 }

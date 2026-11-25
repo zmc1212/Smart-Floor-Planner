@@ -88,11 +88,9 @@ function nativeScope(ids: readonly string[], pilotEnterpriseId: string | null,
  * The reminder and weekly-report workers must resolve to the same explicit
  * pilot before any business task runs. When the safety gate is closed no task
  * with a notification, model-call or business-write side effect is invoked, so
- * a direct tick cannot start authorized work without a pilot. When the gate is
- * open every task is narrowed to the pilot enterprise: assistant jobs,
- * knowledge batches, site/public notifications, portfolio copy, metrics
- * receipts and native workflow. Existing tenant transactions, RLS,
- * idempotency and per-job authorization stay unchanged. */
+ * a direct tick cannot start authorized work without a pilot. An active
+ * Worker also handles user-initiated customer consultations across tenants.
+ * Reminder, report and other background work keeps its pilot scope. */
 export async function runAssistantJobsTick(
   input: AssistantJobsTickDependencies = {},
 ): Promise<AssistantJobsTickData> {
@@ -176,8 +174,8 @@ export async function runAssistantJobsTick(
     stageReminderChecks = skippedBusinessTasks;
   }
 
-  const data = businessTasksEnabled
-    ? await assistantJob(assistantRun, undefined, taskScope)
+  const data = execution.assistantQueueScope
+    ? await assistantJob(assistantRun, undefined, execution.assistantQueueScope)
     : { claimed: false, skipped: true, reason: 'worker_safety_gate' as const };
 
   let nativeWorkflowDelegations: unknown = null;

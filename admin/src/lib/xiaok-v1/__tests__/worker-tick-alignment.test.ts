@@ -121,8 +121,8 @@ test('I7.5.9 B. enterprise ids without a pilot skip every business task', async 
   assertNoBusinessTask(counts);
 });
 
-// C. One aligned pilot runs all tasks with that enterprise as the only scope.
-test('I7.5.9 C. aligned pilot scopes every side-effect task to the pilot enterprise', async () => {
+// C. The queue also handles user-initiated replies from authorized tenants.
+test('an aligned pilot keeps its background scope and enables shared customer replies', async () => {
   const { counts, scopes, tick } = harness(pilotEnv);
   const data = await tick();
   assert.deepEqual([data.workerSafetyGate.status, data.workerExecution.businessTasksEnabled,
@@ -131,7 +131,7 @@ test('I7.5.9 C. aligned pilot scopes every side-effect task to the pilot enterpr
   assertFourCalls(counts, 1);
   assertAllSideEffectTasks(counts, 1);
   assert.deepEqual(scopes.knowledge, [{ enterpriseId: '1454' }]);
-  assert.deepEqual(scopes.assistant, [{ enterpriseId: '1454' }]);
+  assert.deepEqual(scopes.assistant, [{ enterpriseId: '1454', includeSharedConsultations: true }]);
   assert.deepEqual(scopes.siteNotifications, [{ enterpriseId: '1454' }]);
   assert.deepEqual(scopes.publicConsents, ['1454']);
   assert.deepEqual(scopes.portfolioCopy, [{ enterpriseId: '1454' }]);
@@ -307,7 +307,7 @@ test('I7.5.9 an injected route handler runs the tick with a fixed clock and pilo
       pilotId: 'first-pilot', taskScope: 'pilot_enterprise',
     });
     assert.deepEqual(counts, { knowledge: 1, assistant: 1 });
-    assert.deepEqual(scopes, [{ enterpriseId: '1454' }, { enterpriseId: '1454' }]);
+    assert.deepEqual(scopes, [{ enterpriseId: '1454' }, { enterpriseId: '1454', includeSharedConsultations: true }]);
   } finally {
     if (previous === undefined) delete process.env.CRON_SECRET;
     else process.env.CRON_SECRET = previous;
