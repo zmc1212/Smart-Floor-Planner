@@ -1,0 +1,14 @@
+.notebook-chat {
+  .composer-dock.ai-notice-dock:not(.keyboard-open) { padding-bottom: 10rpx; }
+  &:not(.embedded-chat) .composer-dock.ai-notice-dock:not(.keyboard-open) {
+    padding-bottom: calc(10rpx + env(safe-area-inset-bottom));
+  }
+  .ai-generation-notice {
+    display: block;
+    margin-top: 4px;
+    color: #4b6458;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+  }
+}

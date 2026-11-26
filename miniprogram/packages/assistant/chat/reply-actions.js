@@ -24,14 +24,14 @@ const replyActionsMethods = {
     if (!text) return;
     const conversationId = this.controller.conversationId;
     wx.setClipboardData({
-      data: text, showToast: false,
+      data: '【AI 生成】\n' + text, showToast: false,
       success: () => {
         if (!this._alive || !this._shown || this.controller.conversationId !== conversationId) return;
         this.setData({ copiedAnswerId: id });
         clearTimeout(this._copyAnswerTimer);
         this._copyAnswerTimer = setTimeout(() => { if (this._alive) this.setData({ copiedAnswerId: '' }); }, 1800);
       },
-      fail: () => { if (this._alive && this._shown) wx.showToast({ title: '复制失败，可长按选取文字', icon: 'none' }); },
+      fail: () => { if (this._alive && this._shown) wx.showToast({ title: '复制失败，请重试', icon: 'none' }); },
     });
   },
   markHelpful(event) {

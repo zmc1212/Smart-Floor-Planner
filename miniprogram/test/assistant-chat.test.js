@@ -1945,6 +1945,32 @@ test('owner message sharing hands only the previewed text file to WeChat and cle
   } finally { global.wx = previous; }
 });
 
+test('copying a readable XiaoK reply adds a source line to the clipboard', () => {
+  const { replyActionsMethods } = require('../packages/assistant/chat/reply-actions');
+  const { copyableReplyText } = require('../packages/assistant/lib/message-markdown');
+  const reply = {
+    authorKind: 'assistant', available: true, replyActions: {},
+    content: { blocks: [{ type: 'text', text: '**门口收边**先和师傅核对。' }] },
+  };
+  const previous = global.wx;
+  const clipboard = [];
+  const page = {
+    _alive: true, _shown: true, data: {},
+    controller: { conversationId: '12', answerText: id => copyableReplyText(id === '4' ? reply : { ...reply, available: false }) },
+    setData(fields) { Object.assign(this.data, fields); },
+  };
+  try {
+    global.wx = { setClipboardData: ({ data, success }) => { clipboard.push(data); success(); } };
+    replyActionsMethods.copyAnswer.call(page, { currentTarget: { dataset: { message: '4' } } });
+    replyActionsMethods.copyAnswer.call(page, { currentTarget: { dataset: { message: '5' } } });
+    assert.deepEqual(clipboard, ['【AI 生成】\n门口收边先和师傅核对。']);
+    assert.equal(page.data.copiedAnswerId, '4');
+  } finally {
+    clearTimeout(page._copyAnswerTimer);
+    global.wx = previous;
+  }
+});
+
 test('editing a saved question restores it to the composer only after confirmation', async () => {
   const { replyActionsMethods } = require('../packages/assistant/chat/reply-actions');
   const previous = global.wx;
