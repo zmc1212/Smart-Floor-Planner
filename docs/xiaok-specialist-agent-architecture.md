@@ -18,11 +18,11 @@ I6.15 在 `xiaok-native-executor-v1` 和 LangGraph 装配同一 `delegationToolF
 
 I6.16 的 @2 候选由显式发布的 Workflow revision 选中。子作业以当前 Run 的审核原页及获权项目上下文为输入，省去副作用无关的委托状态历史选择。Evidence Assessment 匹配实际选中引文与 Workflow 已读原附件的指纹、页码及标准编号。公开原页技术内容和同版现行性各有独立状态，托管检索不可用时也分别留痕。独立登记和混合问题的回执均重验原事务事件，混合终稿被拒时退回其实际失败码。
 
-节点、操作及验收见[防水工作流](xiaok-waterproof-workflow.md)和[集成审查](xiaok-integration-audit.md)。
+节点、操作及验收见[防水工作流](xiaok-waterproof-workflow.md)和集成审查（Git `d28c6ccb:docs/xiaok-integration-audit.md`）。
 
-I6.12 把照片观察的结构化从模型工具参数移到服务端：图像轮仍只提交 \kind\/\	ext\，正文七节固定文本由服务端解析；解析失败时执行一次独立文本归一化调用，结果再经固定信封 Schema 与语义校验。该调用复用同一 \AgentModelGateway\、加密配置、用量台账和请求回执，不新增网关或生产默认值。真实回执见 \dmin/tmp/i6.12/photo-01/\；真实工地照片、真机与 BLE 仍未验。工作流、四端与冻结标识见[防水工作流](xiaok-waterproof-workflow.md)和[第一版交付](xiaok-waterproof-agent-v1-release.md)。
+I6.12 把照片观察的结构化从模型工具参数移到服务端：图像轮仍只提交 \kind\/\	ext\，正文七节固定文本由服务端解析；解析失败时执行一次独立文本归一化调用，结果再经固定信封 Schema 与语义校验。该调用复用同一 \AgentModelGateway\、加密配置、用量台账和请求回执，不新增网关或生产默认值。真实回执见 \dmin/tmp/i6.12/photo-01/\；真实工地照片、真机与 BLE 仍未验。工作流、四端与冻结标识见[防水工作流](xiaok-waterproof-workflow.md)和第一版交付（Git `d28c6ccb:docs/xiaok-waterproof-agent-v1-release.md`）。
 
-I6.13 复核：知识解释的单次修复改为精确诊断——按 Q/段号列出未由本段引用支持的数字、量数与同轮 citationId 候选；`standard_status_unverified` 同样返回状态候选，避免删除真实状态结论。语义复核承认服务端对 `advice` 的“一般建议”展示标签。PDF 页引用在 Stable 业主会话完成点击与重进；施工端/业主授权 UI 本轮未重跑，保持 `limited`/`not_run`。证据见[集成审查](xiaok-integration-audit.md)。
+I6.13 复核：知识解释的单次修复改为精确诊断——按 Q/段号列出未由本段引用支持的数字、量数与同轮 citationId 候选；`standard_status_unverified` 同样返回状态候选，避免删除真实状态结论。语义复核承认服务端对 `advice` 的“一般建议”展示标签。PDF 页引用在 Stable 业主会话完成点击与重进；施工端/业主授权 UI 本轮未重跑，保持 `limited`/`not_run`。证据见集成审查（Git `d28c6ccb:docs/xiaok-integration-audit.md`）。
 
 ## I6.18 专业回答守卫边界
 
@@ -34,7 +34,7 @@ I6.13 复核：知识解释的单次修复改为精确诊断——按 Q/段号�
 - 原生项目快照可支撑没有自身 CITE 的阶段观察；该快照仅限 `kind=project` 且无 material/followup 的服务端聚合来源。
 - 无引用段落无法生成修复诊断时返回可定位修复问题，不再直接抛出 `ungrounded_response_scope`；修复后仍执行原有数值、承诺、引用与范围校验。
 
-上述边界由 `parameter-provenance.test.ts`、`formal-claim-scope.test.ts`、`synthesis-source-roles.test.ts`、`dialogue-web-tools.test.ts` 与 `agent-runtime.test.ts` 覆盖。真实模型仍保留 E 单段引用超限与 G `<think>` 协议失败，详见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。
+上述边界由 `parameter-provenance.test.ts`、`formal-claim-scope.test.ts`、`synthesis-source-roles.test.ts`、`dialogue-web-tools.test.ts` 与 `agent-runtime.test.ts` 覆盖。真实模型仍保留 E 单段引用超限与 G `<think>` 协议失败，详见V1.1 交付报告（Git `d28c6ccb:docs/xiaok-waterproof-agent-v1.1-release.md`）。
 
 ## I7.0 水电专业 Agent
 

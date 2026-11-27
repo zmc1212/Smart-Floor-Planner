@@ -198,7 +198,7 @@ Phase 2 made `POST /api/miniprogram/codes/resolve` classify join/promotion token
 
 ## 7. Authorization and first valid attribution
 
-Phase 3 implements this server contract. `POST /api/miniprogram/referrals/authorize-and-create-lead` accepts either a phone-authorized `customer` token or direct WeChat `loginCode + phoneCode`; the direct path links the base user, locks attribution, creates the lead, and records assignment facts in one PostgreSQL transaction. `Idempotency-Key` is required, and the same customer/key returns the original lead. A partial unique index plus a customer-scoped transaction lock protects the active attribution. Closing a lead through `LeadRepository.update` releases the active lock in the same transaction.
+Phase 3 implements this server contract. `POST /api/miniprogram/referrals/authorize-and-create-lead` accepts either a phone-authorized `customer` token or direct WeChat `loginCode + phoneCode`; the direct path links the base user, locks attribution, creates the lead, and records assignment facts in one PostgreSQL transaction. `Idempotency-Key` is required. A replay returns the original file while it is the current service, or the active replacement through `existing_attribution`. When service has ended and no active file exists, the replay returns `customer_service_changed`. A partial unique index plus a customer-scoped transaction lock protects the active attribution. Closing a lead through `LeadRepository.update` releases the active lock in the same transaction.
 
 Scanning has two stages:
 
@@ -211,7 +211,7 @@ Concurrency and idempotency:
 - A partial unique constraint on active `customer_attribution_locks` is the final concurrency guard.
 - Another code cannot overwrite an open lead's enterprise/referrer. Return the existing project summary without disclosing the newly scanned enterprise.
 - Closing the original lead releases the lock transactionally before a new attribution is allowed.
-- The authorization endpoint accepts an idempotency key and returns the same lead on retry.
+- The authorization endpoint uses the customer's current service for old claim keys.
 - Notifications run after commit and never roll back the lead.
 
 ## 8. Automatic assignment
@@ -463,7 +463,7 @@ Update this status table incrementally and update both module inventories and af
 
 ## 17. Test and acceptance matrix
 
-Internal-test pack (preferred split): everyone first reads [internal-test/00-所有人先看.md](./internal-test/00-所有人先看.md) (with workflow diagrams), then the matching `internal-test/角色-*.md`. Send non-technical testers the Word files `internal-test/装修服务内测-所有人先看.docx` and `internal-test/装修服务内测-角色-*.docx`. Legacy combined entry: [referrer-network-internal-test-handbook.zh-CN.md](./referrer-network-internal-test-handbook.zh-CN.md).
+Internal-test pack (preferred split): everyone first reads [internal-test/00-所有人先看.md](./internal-test/00-所有人先看.md) (with workflow diagrams), then the matching `internal-test/角色-*.md`. Send non-technical testers the Word files `internal-test/装修服务内测-所有人先看.docx` and `internal-test/装修服务内测-角色-*.docx`. Legacy combined entry: `d28c6ccb:docs/referrer-network-internal-test-handbook.zh-CN.md`.
 
 - Identity: ordinary customer account creation; no forged enterprise context; stale tokens expire after relationship change.
 - Dual codes: type isolation, immediate rotation invalidation, one staff enterprise, default three referrer memberships, historical ownership retained after leave.

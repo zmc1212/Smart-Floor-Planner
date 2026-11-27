@@ -1,6 +1,8 @@
 # 小K第二期：需求整理与人工交接
 
-通用小K沿用原生对话执行器、签名入口、持久运行和用量台账。平台专用存储范围内，只有当前参与者可读本人咨询。执行器提供公开网页工具与找设计师的类型化服务入口。已保存的入口只标记原问题。认证的扫码确认服务决定企业归属，客户在企业会话明确发送选中的内容。交付与配置见[后台清单](admin-system-modules.zh-CN.md)。
+此前的分版本实测、独立测试批次和停测依据见二期历史交付与验收记录（Git `d28c6ccb:docs/xiaok-assistant-phase-2.zh-CN.md`）。
+
+通用小K沿用原生对话执行器、签名入口、持久运行和用量台账。平台专用存储范围内，只有当前参与者可读本人咨询。企业入口继续打开企业会话，通用历史走独立入口。通用回复支持复制和反馈。执行器提供公开网页工具与找设计师的类型化服务入口。已保存的入口只标记原问题。认证的扫码确认服务决定企业归属，客户在企业会话明确发送选中的内容。交付与配置见[后台清单](admin-system-modules.zh-CN.md)。
 
 **可复用阶段工作流。** 十阶段注册共用一个运行时，企业配置按模板 ID、发布版本和 SHA-256 绑定。宿主提供当前获权阶段的解答、现场核对事项、下一阶段准备和是否匹配常见问题。模板可据此分支、返回文本。原生咨询按当前 Agent 的绑定暴露工具，核对项目、阶段和配置版本，并把实际调用写入 `assistant_run_steps`。确定性阶段回复与工作流回执在同一事务落库。专业流程、企业知识 Evidence、成员授权、模型用量和业务写入继续使用原服务。参考 FastGPT 把定义与每次运行状态分离的方式及工具调用结构，复用项目内的类型化编排引擎。[FastGPT 工作流调度源码](https://github.com/labring/FastGPT/blob/main/packages/service/core/workflow/dispatch/index.ts) · [LangGraph 子图持久化测试](https://github.com/langchain-ai/langgraph/blob/main/libs/langgraph/tests/test_subgraph_persistence.py) · [调用重试、项目撤权和停用复核](../tmp/stage-agent-workflows-20261123/authority-4849b79d/report.json)。
 
@@ -10,7 +12,7 @@ C01 由获权施工快照生成业主可读的 Markdown。原生执行器交给�
 
 **普通咨询路由（Implemented，正式版本 `20261118-003`）。** 已配置的客户普通咨询先进入本轮快照保存的原执行器，由现有 LangGraph、Native 或 RAG 执行器沿原授权和证据管线处理当前问题。旧阶段回退复用需求引导已有的提问/陈述区分，含「准备」的装修意向陈述保留普通咨询。房屋提取去掉单独的「面积」触发词，颜色偏好不再覆盖房屋信息。定向路由及引导 28/28、需求服务兼容 24/24 通过。获准正式测试业户在 `002` 完成 11 轮自然聊天，覆盖厨房/卫生间问题、更正、回顾及真实阶段读取，该批暴露房屋投影错误。`003` 的 4 轮定向聊天和管理员回读确认房屋、居住、风格和时间正确，全程无需确认或共享。后台房间汇总仍为 Limited：私聊回顾记住的洗碗机未进入当前仅显示卫生间的单来源字段。原生页面发送仍未验证。本次复用项目已有 Agent 执行与上游动态 Agent 模式。[LangGraph 工作流和 Agent 模式](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents)、[正式实证与原始失败](../tmp/staff-profile-housing-correction-20261118/production-verification.json)。
 
-**I6.16 已发布清单候选（Limited）。** Workflow revision 4 显式选择 `waterproof-specialist@2`。清单取本轮引文并绑定发布摘要，托管检索和公开规范现行性分别留状态。混合咨询的模型终稿被拒后，原 C01 仍按授权展示独立登记回执。[集成验收](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。
+**I6.16 已发布清单候选（Limited）。** Workflow revision 4 显式选择 `waterproof-specialist@2`。清单取本轮引文并绑定发布摘要，托管检索和公开规范现行性分别留状态。混合咨询的模型终稿被拒后，原 C01 仍按授权展示独立登记回执。集成验收（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i616-防水-agent-v11-候选`）。
 
 Native 预读沿本轮授权与原文目录。独立引用标记只解析本轮签发 ID。LangGraph 配额核验排除本次待派发记录，历史未知结果继续保留。
 
@@ -22,11 +24,11 @@ Native 预读沿本轮授权与原文目录。独立引用标记只解析本轮�
 **R3 网页来源（Limited）。** 合资格的原生会话由现有 LangGraph Worker 经 R2 工具注册表派发。独立搜索服务提供公开候选，受保护的读页服务将原文交给现有 Evidence 和引用链。百炼 Responses 承载检索工具调用与回传，终稿轮使用既有结构化通道。[协议、配置与验证](bailian-responses-adapter.md#11-r3-应用联网搜索)。
 <!-- /xiaok-r3-web-contract -->
 
-**I6.7 证据与追问（Limited）。** 保留首稿、同轮唯一修复及真实供应商回执。首轮 DeepSeek 对比用了历史公告，首次带入已核 PDF 的请求在派发前超限。原联网回执和引用目录承载核过的原页和版本状态，模型投影去除重复元数据。重进时同一原件只做一次有界读取。追问可用近期客户原话理解指代，项目事实仍按当前权限读取。明确要求保存独立沟通偏好时，沿原记忆工具要求主题、类别和原话。工具及校验顺序沿现有框架做法。[集成验收](xiaok-integration-audit.md#i67-专业规范证据链limited) · [Agents SDK 工具守卫](https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md)。
+**I6.7 证据与追问（Limited）。** 保留首稿、同轮唯一修复及真实供应商回执。首轮 DeepSeek 对比用了历史公告，首次带入已核 PDF 的请求在派发前超限。原联网回执和引用目录承载核过的原页和版本状态，模型投影去除重复元数据。重进时同一原件只做一次有界读取。追问可用近期客户原话理解指代，项目事实仍按当前权限读取。明确要求保存独立沟通偏好时，沿原记忆工具要求主题、类别和原话。工具及校验顺序沿现有框架做法。集成验收（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i67-专业规范证据链limited`） · [Agents SDK 工具守卫](https://github.com/openai/openai-agents-python/blob/main/docs/guardrails.md)。
 
-**I6 业主项目进度。** 新准入的本人房屋文字咨询沿原 `query_business` 读取施工实际节点。指定房间时读取当前项目中向本人发布的该房间记录。只读入口要求唯一在施工项目，重进复核已存来源版本。正式图纸与现场决定沿既有流程。配置模型已在固定对话中回读两条进度答复，完整装修问答仍为 Limited。[I6 证据](xiaok-integration-audit.md#i6-真实模型与获权知识验收limited)。
+**I6 业主项目进度。** 新准入的本人房屋文字咨询沿原 `query_business` 读取施工实际节点。指定房间时读取当前项目中向本人发布的该房间记录。只读入口要求唯一在施工项目，重进复核已存来源版本。正式图纸与现场决定沿既有流程。配置模型已在固定对话中回读两条进度答复，完整装修问答仍为 Limited。I6 证据（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i6-真实模型与获权知识验收limited`）。
 
-**I6 现行规范与房间更正。** 预期用适用的公开条款做对比，并说明企业摘录的缺项。现行标准首问及复测读到的是历史发布公告。公开对比与房间纠错的终稿仍填入无据量数。纠错的实际检索已换成卫生间，且没有长期记忆写入。公开原文可读性归联网链，回答中的结论、未知项和当前房间归 Agent。下一次判别先核对适用条文可进入 Evidence，并检查模型所选引文，再决定是否重开实调。原首稿、修复和用量保留，停止同据复采。[I6 证据](xiaok-integration-audit.md#i6-真实模型与获权知识验收limited)。
+**I6 现行规范与房间更正。** 预期用适用的公开条款做对比，并说明企业摘录的缺项。现行标准首问及复测读到的是历史发布公告。公开对比与房间纠错的终稿仍填入无据量数。纠错的实际检索已换成卫生间，且没有长期记忆写入。公开原文可读性归联网链，回答中的结论、未知项和当前房间归 Agent。下一次判别先核对适用条文可进入 Evidence，并检查模型所选引文，再决定是否重开实调。原首稿、修复和用量保留，停止同据复采。I6 证据（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i6-真实模型与获权知识验收limited`）。
 
 **I6.9 阶段专业 Agent（Limited）。** 现有 LangGraph Worker 按注册表选择 `waterproof-specialist`，在原咨询授权内缩小工具及知识范围。当前房间进度、技术解释和企业原文各走对应读取，保留最新更正与原 Evidence、承诺校验。Native Agent 节点通过 `assistant_jobs` 的独立目的派发，绑定原消息、项目、精确房间、已发布工作流及 Agent 版本。检查项沿原终稿引用及当前 Construction 记录版本。Worker 复核权限并沿原网关及用量台账。开发启用沿百炼 `deepseek-v4.1-flash-1017` 和现有 Responses 适配器。[架构、采用依据及限制](xiaok-waterproof-workflow.md)。
 
@@ -52,7 +54,7 @@ Native 预读沿本轮授权与原文目录。独立引用标记只解析本轮�
 
 C01 正式知识问答在文本调用失败时复用当次成功的 `knowledge.search.v1` 回执。回答提交事务绑定租户、会话和当前项目上下文，复核每份有效审核来源后引用完整短摘录，分别标注企业/项目和平台公共来源。消息保存 `content.answerMode=facts_only`，任务回执保留检索步骤、原始模型错误及可用的调用状态。资料低相关、有冲突或已失效时，根据原因使用 `insufficient_evidence` 或既有上下文、检索错误。
 
-消息和引用沿既有租约原子提交。超时保留原调用和待核对的计费状态。相同请求键返回原任务，新请求重新取当前来源并可使用已恢复的模型。重开引用时再次检查版本、项目、阶段和权限。[I7.5.20 验收](xiaok-i7520-facts-only-ai-acceptance.md)。
+消息和引用沿既有租约原子提交。超时保留原调用和待核对的计费状态。相同请求键返回原任务，新请求重新取当前来源并可使用已恢复的模型。重开引用时再次检查版本、项目、阶段和权限。I7.5.20 验收（Git `d28c6ccb:docs/xiaok-i7520-facts-only-ai-acceptance.md`）。
 
 降级复用 LangGraph 按错误类型处理与 LangChain 按资格切换的做法。图重放可能重复已执行步骤，小 K 以 PostgreSQL 任务回执恢复。百炼接口分别标识凭据、权限和限流错误。[LangGraph 错误处理](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-graph-api) · [LangChain 源码](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/runnables/base.ts) · [LangGraph 恢复问题](https://github.com/langchain-ai/langgraph/issues/9185) · [百炼 RAG 错误码](https://help.aliyun.com/zh/model-studio/rag-api-errors)。
 
@@ -63,11 +65,11 @@ C01 正式知识问答在文本调用失败时复用当次成功的 `knowledge.s
 - 原 Outbox Worker 从施工事件解析房间与事项范围。获权复核委托锁定原事项，暂停及重进保留绑定。同房间、同事项只有一份匹配的已对客发布记录时，可提示有候选原图待关联。人员沿现有方案和落实复核服务关联精确版本与原件。有权团队结果实际写回原 C01 后才完成委托，原件依回传和发布权限开放。工程质量由有权人员复核。
 - 原来源工具重读相关私有记忆，仅用委托的房间与事项检索有效工艺。Outbox 回执保存工具结果、来源、知识 epoch、项目上下文哈希和可用的请求 ID。`GET /api/miniprogram/assistant/conversations/:id/long-term` 可返回 `standardCheck`，记录 `sources_found`、`no_match`、`unavailable`、`disabled` 或 `outdated`；引用实时失效。标准查询回执记录资料情况，人工复核结论仍由施工服务记录。
 - Stable 沿批准的 C01 消息、结果及媒体组件。验收使用有标记的合成企业、隔离 PostgreSQL 与应用角色。八类施工事件和四端权限沿现有业务服务和数据表。
-- Integration I5 为 `start_delegation` 提供当前获权项目、阶段及房间。整条业主原话只登记一项委托时，可以用已持久化的登记回执结束本轮。跟进和控制归原咨询，另开的咨询各自保留委托和回执。Native 在 PostgreSQL Durable Task 中先领取事件，有效租约保护状态及原咨询回执的写入事务。[集成验收与原始失败](xiaok-integration-audit.md#i5-业主原咨询与持久执行)
+- Integration I5 为 `start_delegation` 提供当前获权项目、阶段及房间。整条业主原话只登记一项委托时，可以用已持久化的登记回执结束本轮。跟进和控制归原咨询，另开的咨询各自保留委托和回执。Native 在 PostgreSQL Durable Task 中先领取事件，有效租约保护状态及原咨询回执的写入事务。集成验收与原始失败（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i5-业主原咨询与持久执行`）
 
 在 `admin` 运行 `node --env-file=.env.local --import tsx scripts/xiaok-r6-acceptance.ts --label=<label>`，将 `XIAOK_R6_DATABASE_URL` 指向已迁移的空隔离库。默认使用托管接口与对话模型替身。`--live-model` 使用真实百炼 Responses 及本地 pgvector/Embedding。`--hosted` 使用已配置的专用工作空间和真实托管接口；与 `--live-model` 同用可验证真实托管加 Responses。原始证据保存在 `admin/tmp/r6/` 与 `tmp/r6/`。[百炼 RAG 鉴权](https://help.aliyun.com/zh/model-studio/rag-api-authentication) · [LangGraph ToolNode](https://langchain-ai.github.io/langgraphjs/reference/classes/langgraph.prebuilt.ToolNode.html)
 
-I6 的 `--local-knowledge --durable-integration` 使用真实本地检索及现有 Durable Task，保留模型替身。业主及团队各自按项目和受众取原文。旧版本和撤回资料在重开和委托复核时失效，后续项目事件重新取当前标准。托管缺配置保留预检失败，PPT 未覆盖的管根做法和施工放行条件保持缺项。[I6 实库证据](xiaok-integration-audit.md#i62-本地企业知识与持续委托)
+I6 的 `--local-knowledge --durable-integration` 使用真实本地检索及现有 Durable Task，保留模型替身。业主及团队各自按项目和受众取原文。旧版本和撤回资料在重开和委托复核时失效，后续项目事件重新取当前标准。托管缺配置保留预检失败，PPT 未覆盖的管根做法和施工放行条件保持缺项。I6 实库证据（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i62-本地企业知识与持续委托`）
 
 分层验收：
 
@@ -75,7 +77,7 @@ I6 的 `--local-knowledge --durable-integration` 使用真实本地检索及现�
 - 北京空间及专用凭据缺失，配置预检返回 `bailian_knowledge_not_configured`，真实托管请求0。`live-01` 保留一份实际带引用答复和一份终稿 HTTP 400；打开 Stable 导致私有项目显示名变更，该批有源码绑定漂移。去掉空枚举后，`live-02` 真实 Responses 三次成功、两次超时；实际工具结果已回传模型。两组首问均为 indeterminate，R6 实模终稿、记忆召回及创建委托未通过本轮验收。原始尝试与已知用量分别保留。
 - 后台定向单元153/153、小程序107/107、R4 托管协议替身回归12/12、R5 数据库回归10/10。改动文件 lint 通过；全仓保留基线 `fastgpt-rag.test.ts:22` 的1个错误和56个警告。TypeScript 与基线同为290项。Webpack 编译通过，完整构建停于既有 `scripts/fastgpt/setup-unified.mts:113` 类型错误。
 
-**I6.10 终稿校验（Limited）。** 房间更正应按更正后的房间解释获权条文。179、185 实读正确前提且保留厨房，但首稿及唯一修复仍在后续条件复述处触发共用承诺守卫。183 已读所问条款，附带发布日期却只引条文页。零调用逐段回放证实可保存的有据段落及独立拒绝点。剩余答复缺口归 Agent，下一项判别检查是脱离固定措辞验证选中原文和条件谓词之间的结构绑定，并保持发布日期、正式状态和项目发现各自的权威来源。174、177 在原文读取阶段已失败。原固定问题两轮结束，失败及费用保留。[原始回执及用量](xiaok-integration-audit.md#共用终稿校验收尾)
+**I6.10 终稿校验（Limited）。** 房间更正应按更正后的房间解释获权条文。179、185 实读正确前提且保留厨房，但首稿及唯一修复仍在后续条件复述处触发共用承诺守卫。183 已读所问条款，附带发布日期却只引条文页。零调用逐段回放证实可保存的有据段落及独立拒绝点。剩余答复缺口归 Agent，下一项判别检查是脱离固定措辞验证选中原文和条件谓词之间的结构绑定，并保持发布日期、正式状态和项目发现各自的权威来源。174、177 在原文读取阶段已失败。原固定问题两轮结束，失败及费用保留。原始回执及用量（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#共用终稿校验收尾`）
 
 <!-- site-capture-current -->
 ## 现场上报与送达合同
@@ -859,226 +861,9 @@ D1当前原生证据（有界，整体Limited）：用户已批准现有Codex CL
 
 **OS-CONTRACT-11保留Limited语义边界。** 金额未定和明确维持原值回合只提供单个`final_response`；服务端显示回执如实说明草稿不变，C01仅在提案仍匹配来源/epoch/基础摘要时投影待处理入口。`tmp/agent-runtime/services-review-multiturn-os11-2026-10-26T16-03-48-617Z.json`确定性Worker10/10，`tmp/agent-selection/services-2026-10-26T16-04-11-064Z.json`需求选择22/22、`tmp/agent-review-next/services-2026-10-26T15-49-28-260Z.json`接待26/26隔离实服通过。纯SDK `tmp/agent-contract/review-native-os11-sdk-current-20261027/report.json`通过C01/C02待处理、失效、预算选择实写及重进6/6、5张截图、drift[]/清理，无新编译。配置模型原始首稿仍未达到仅回复语义：`trial-review-multiturn-os11-2026-10-26T15-40-21-789Z.json`供应商尝试不可用写工具，并说未批准更改已确认；修复为唯一最终工具后，`trial-review-multiturn-os11-2026-10-26T15-42-40-805Z.json`仍在无写入时说“已记录/已确认”。期望输入输出是追问缺失金额，或告知原草稿未变；实际原文虚称记录/确认。两轮修复都未通过相同首稿期望，停在第三次模型采样前。缺陷属Agent消费/表述域，KnowledgeRetriever/Evidence正确；保存的请求证明已指定唯一`final_response`，仍有虚称，因此区分了工具协议与语言行为。只有新机制级变更才能重开该期望。末尾分类优先级修复只有确定性证据，不追认先前实模通过。OS11三批合计30次已知调用/213779tokens，原首稿失败保留；安全显示回执不授权默认Agent或生产上线。
 
-## 历史交付：OS-CONTRACT-10实际聊天运行时组合（2026-10-26）
-
-**OS-CONTRACT-10：候选实际聊天闭环Implemented，默认迁移及完整咨询仍Limited。** 客户在C01自然说出已有需求的更正；真实`agent/worker.ts`经`runRenovationAgent`调用官方LangChain类型`businessReviewTools`，形成未批准提案及服务端真实回执。C01只在获权候选会话存在待处理提案时，沿台账批准的`design-references/xiaok-p4b-public-sites-v1/README.md`既有底栏文字按钮进入C02；C02沿唯一slide06-needs.png行/铅笔、批准的原生保留/采用菜单，默认保留，客户选字段后才用原`POST /api/miniprogram/assistant/conversations/:id/requirements`写草稿。所选预算更正不改变瓷砖、地暖、面积原值/ID/来源，不代表正式确认。新行为仅对本人`customer_consultation`且`agentReviewCandidate=true`、`requirementReviewMode=true`、`requirementWorkflow=langgraph`并在run policy绑定`candidate-business-review-v1`的会话开放；普通会话与默认Agent不迁移，无新表、路由、角色、知识存储或设计方向。
-
-**组合及验收边界。** Worker隐藏候选中的旧`record_need`/直写`request_designer`，从当前客户分句/已存条目构造类型工具目录，提案使用run确定性键并在事务中重验lease、来源/epoch、摘要版本及租户。提案时只调用原RequirementService；待外层Agent图结束再准备独立LangGraph审批图，避免嵌套interrupt提前中断回执。工具步骤只存协议/ID/hash，最终回复由当前获权提案重读生成；客户批准时才恢复原Command/PostgresSaver，规范`selectedFields`/body哈希、原键恢复、未选保留和草稿/正式分离沿OS09。两条自然预算更正各重复2次、每份只允许一次配置Qwen3.7-Flash首稿：`tmp/agent-contract/trial-review-runtime-os10-2026-10-26T14-12-31-709Z.json` 4/4提案/客户选择/实写/回执通过；`tmp/agent-runtime/services-review-runtime-os10-2026-10-26T14-12-20-096Z.json`确定性实际Worker4/4，均drift[]、合成企业停用/自有checkpoint清理。原生`tmp/agent-contract/review-native-os10-sdk-final-20261026/report.json`在既有Stable2.02.2608080/base3.17.2、逻辑390×844/PNG348×752通过C01按钮→C02仅选预算→真实草稿→重进及他客拒绝；3张包含宿主层截图已审看，transport/会话/锁/夹具清理，drift[]。仅纯SDK连接现有9420；无Computer Use、桌面新编译、真机、真实微信、完整光学校准。末次源码绑定重跑模型4次/29266 tokens；初批tmp/agent-contract/trial-review-runtime-os10-2026-10-26T14-02-08-123Z.json的4次/29296 tokens单独保留首稿评分，OS10合计新增8次/58562 tokens，累计1378614 tokens、保守费用上界¥5.170407/实付未知，低于¥100；原OS08/09错误瓷砖首稿和失败计数不改判。候选接待提案暂存事务同样运行Worker lease守卫；隔离接待26项实服含撤销租约不留提案，见tmp/agent-review-next/services-2026-10-26T14-11-23-761Z.json；不声称本批新通过Worker接待模型语义。知识域无变更，依赖只更新指针。下一交付尚需定义授权范围；本次不启用默认路径或生产。
-
-## 历史交付：OS-CONTRACT-09（2026-10-26）
-
-**客户掌握的字段审批Implemented，默认Agent组合Limited。** 用户明确批准复用C02行/铅笔，微信原生菜单“保留原需求／采用本次提案”，默认保留；保存按钮只提交选中的字段。设计源仍唯一slide06-needs.png，加本次批准的状态规则；未改Less、布局层级、素材或导航。新增/删除的可选字段也保留核对行，同一提案前后台保留选择，新提案清空选择；身份切换及迟到菜单/历史弹窗不能授权新上下文。
-
-**API及恢复。** 原POST requirements的apply_proposal新增可选selectedFields：非空、枚举、去重且限本提案实际变更字段，按固定字段序规范化。新客户端总是显式提交，全部保留不POST；省略仅兼容原整份审批客户端/旧checkpoint。服务先重验完整提案、来源hash/seq/epoch/base版本，再按客户所选字段编译原命令，未选字段保留原存储对象及ID/文本/来源；只选历史字段才要求restoreConsent。原LangGraph interrupt/Command/PostgresSaver继续执行，decision及已应用标记绑定规范body哈希；checkpoint仍只有ID/哈希/决定，无字段值/聊天/选择数组。跨进程/写后丢checkpoint沿原body/键恢复，不同键也不能用不同选择重放。保存仍为draft/confirmedFields=null，正式确认另一步，回执投影真实当前状态。未新增表、路由、授权、模型审批循环或知识存储。
-
-**限定服务与代码证据。** `tmp/agent-selection/services-2026-10-26T11-18-29-342Z.json` 22项、`tmp/agent-workflow/services-2026-10-26T11-00-39-703Z.json`原需求兼容21项通过，均drift[]/清理完成/模型0；复用两份OS08真实首稿的错误room替换/删除，仅重绑定ID，不改原args含义、diff或失败评分。覆盖只选预算、原瓷砖/地暖否定/面积/来源不变、无效/未改字段拒绝、跨进程写后恢复、改选择幂等拒绝、租户/客户/身份、来源/版本/epoch撤回、所选历史确认及真实正式回执。19服务端/17客户端单元、1417依赖限定类型0、限定lint、完整隔离webpack构建通过；cssstyle可选依赖告警属既有打包范围。最终另修旧direct请求省略restoreConsent的哈希兼容，由22项实服/类型/lint覆盖。原生与webpack在此兼容修复前通过；新客户端本来显式传false/true、选择/UI/依赖不变，按影响核对复用，不宣称补丁后重跑原生/构建。源码/夹具只读复核tmp/agent-selection/audit.json通过：16个合成企业均禁用、身份递增、活动job/provider attempt/拥有的checkpoint各0，最终服务依赖drift[]。
-
-**原生证据分开保留。** `tmp/agent-contract/review-native-os-contract-09-sdk-01/report.json`完成第一份错误提案的6项真实SDK/HTTP检查后，驱动误用redirectTo跳首页，整批仍failed；已完成的预算选择/瓷砖保留/200丢响应/跨页原body原键恢复可按限定范围复用。只改驱动为reLaunch并选择second-only，`tmp/agent-contract/review-native-os-contract-09-sdk-02/report.json`补齐第二份错误记录及所选历史确认7项通过；两批业务源码相同，仅驱动hash不同，均drift[]、transport/会话/锁/checkpoint/夹具清理完成。新请求真实selectedFields=[budget]，丢响应重放同body/键，历史拒绝无写入、弹窗排除未选瓷砖。Stable2.02.2608080/base3.17.2，逻辑390×844/PNG348×752，已审看第一份选择/恢复与第二份持久草稿截图，沿原设计行/按钮/引用区。仅SDK、未抢焦点/移窗/桌面输入；实际新字段证明加载新控制器，freshCompileVerified=false。原生菜单/弹窗像素、完整宿主光学校准及真机未验证。早期测试缓存/类型/lint和只读审计CJS/NODE_PATH预检失败保留，不作业务通过或新增模型调用。
-
-**复用、预算及后继。** 复用[LangGraph原生审批/恢复](https://docs.langchain.com/oss/javascript/langgraph/interrupts)；客户编辑在原服务形成所选字段/body，框架只绑定哈希并恢复审批，不声称安装了新的HITL中间件。本批新增模型调用/tokens/费用0，累计1320052tokens/保守上界¥4.877597/实付未知，原未知现金预留不清零；费用硬上限¥100、旧token硬上限取消。完整问答、八轮记忆、原首稿语义和默认Worker迁移仍Limited；已继续OS-CONTRACT-10的实际运行时缺口审计，未启用默认路径。
-
-## 历史交付：OS-CONTRACT-08（2026-10-26）
-
-**OS-CONTRACT-08：结构守卫Implemented，完整需求提案旅程Limited。** 用户动作是改已有草稿并保留未修改事实；LangChain类型工具/原生LangGraph审批仍调用原租户/来源/epoch/幂等RequirementService，C02结构/API和默认Worker不变。模型自报的保留/修改分区不等于真实客户授权；不能将本交付标完成或启用受影响的默认编辑路径。
-
-**两组冻结结果，不合并评分。** 原操作协议`tmp/agent-contract/trial-requirement-proposal-os08-2026-10-26T09-30-02-332Z.json`：4次已知Qwen3.7-Flash/7421tokens，混合更正2/2通过，预算恢复0/2，瓷砖被改写成“瓷砖留着”或删除。机制改动后的`tmp/agent-contract/trial-requirement-plan-os08-2026-10-26T09-57-16-189Z.json`：4次已知/8939tokens，混合1/2、恢复1/2；一份保留与修改冲突在暂存前被拒，另一份结构合法仍误改保留的瓷砖。测试侧客户没有确认错误提案，错误变更未写入需求草稿；每份首稿原样保留，无评审/纠错/强制工具调用。两组均drift[]、checkpoint/夹具/锁清理完成。混合准备问答及隐含历史指代未评分；成功的明确预算恢复引用本轮明确12万原话，不是新增“选择旧来源”的恢复确认语义通过，旧服务/原生证据单列。
-
-**具体守卫与验证。** `requirements/plan.ts`要求现有ID完整且互斥地归属保留/修改，保留项按原ID/文本/来源引用不变；删除须有本轮客户分句，编译到原业务命令。`agent/review-tools.ts`另绑定捕获的summary版本及来源/epoch，无模型同意/执行参数。7项计划单元、5项费用单元、25真实服务（`tmp/agent-review-next/services-2026-10-26T09-49-26-416Z.json`）、1457/1434源限定类型0/限定lint通过。未变范围复用21需求兼容、C01纯SDK12、C02原生15及既有构建；无UI/路由/运行时打包改动，不宣称新原生通过。批后仅测试驱动新增“已关闭协议禁止再次live”守卫，在DB/供应商派发前拒绝，已验证新增调用0。第一组原命令虽用例失败却退出0，驱动现已修为失败live退出1；这个汇报/封批修正不修复或改判已保存输出。
-
-**归属、共因与停测。** `tmp/agent-review-model/{reversal-diagnosis,retention-plan-diagnosis}.json`将预期/实际I/O归于Agent意图/提案。原模型args已经含错误room操作，提供了完整原话/条目目录，供应商回执已知且无截断；不是知识或checkpoint执行问题。分区可拒绝自相矛盾，但不能让同一个模型自报的“可改范围”成为可信授权。两次机制组仍未满足保留瓷砖预期，第三轮提示词/schema/模型采样停止，由封批守卫执行。知识无需修改，原失败仍失败。
-
-**费用与边界。** 用户现已批准累计¥100，明确取消旧批次/累计tokens硬上限。`assistant-review-budget.ts`统一汇总所有原试验账及保留的869762micros现金基数/未知预留；未知至少按完整reserve记账并阻止新派发，每批案例/调用次数/单次上限仍固定。本交付8次/16360tokens，连同OS-CONTRACT-07本次接续共12次/18138tokens；累计1320052/保守费用上界¥4.877597，实付仍未知。保留历史每token5micros的保守口径，绑定小上下文Qwen价格已核对[官方价格页](https://help.aliyun.com/zh/model-studio/qwen3-7-flash)，不对旧调用重定价。禁止Computer Use/窗口/焦点/桌面按键；无生产发布、知识入库重建或三框架矩阵。
-
-**下一决策：先支持客户编辑审批，再组合运行时。** 唯一批准C02源仍为`design-references/xiaok-assistant-phase1-ppt-v1/sources/slide06-needs.png`，已有逐行铅笔/编辑/原话/确认组件可复用。当前WXML在提案中明确隐藏铅笔、控制器拒绝编辑，只能整份确认或回聊天。[LangChain HITL](https://docs.langchain.com/oss/javascript/langchain/human-in-the-loop)已有approve/edit/reject，拟借其编辑决策模式接现有ID-only interrupt/Command，不把原聊天存进框架checkpoint。下表是可审阅的新交互提案，未实现为UI/API，也不是另一组模型通过；后续编辑完成必须与原首稿失败分开评分。
-
-| 状态 | 可见反馈/操作 | 写入权限与恢复 |
-| --- | --- | --- |
-| 打开提案 | 原C02需求行及原值→提案原话；结果默认保留已存值 | 不写入已接受草稿 |
-| 点变更行铅笔 | 微信原生菜单“保留原需求/采用本次提案”，复用已有行控件 | 只执行客户最终选择的变更字段；未选择字段的原ID/文本/来源完全不变 |
-| 保存所选更改 | 原确认按钮及真实草稿回执；选择旧来源恢复仍需明确同意 | 绑定选择/body哈希、来源/epoch/base版本和原键；不自动正式确认 |
-| 拒绝/过期/未知 | 既有返回/错误/未知组件 | 拒绝不新写草稿；过期重验；未知重进沿原选择/原键读真实结果 |
-
-剩余OS-CONTRACT-09为客户掌握的编辑范围，须先选择这项新增提案审核交互；应先用已保存错误提案走真实C02/客户端/服务选择及恢复，新增业务Agent调用0。完整问答、八轮记忆、正式编辑值来源、实际Worker组合和生产仍Limited。
-
-## 历史交付：OS-CONTRACT-07（2026-10-26）
-
-**OS-CONTRACT-07：配置模型的限定接待/取消提案Implemented，完整对话/默认迁移Limited。** `1f542032`提供未变业务基础。`admin/scripts/business-review-model-acceptance.ts --live`将原“找设计师但别给手机号”“取消但保留需求”各试2次，每次独立合成会话、一次Qwen3.7-Flash首稿请求。复用既有ChatOpenAI1.7.0/core1.3.0测试适配器，业务工具仍core1.2.18/Zod4.3.6，审批用LangGraph1.5.0/PostgresSaver1.1.2；默认生产运行时未切换。默认预检供应商调用0，按实际body字节/输出预留，禁止重试和语义评审调用。
-
-**原始结果与真实效果。** `tmp/agent-contract/trial-proposal-os07-2026-10-26T09-08-38-432Z.json`固定四份首稿全部通过：都只选正确的原生零参数提案工具，正文为空、无无效调用；工具只暂存提案，确认前接待状态及已有需求不变；另由测试客户确认，才写真实waiting/cancelled并回数据库回执，手机号为空、contactConsent=false、原草稿完整。请求/响应/usage/首稿均保留，无纠错、评审、强制工具或继续采样。源码drift[]、checkpoint/夹具/锁清理完成。四次200且用量已知，共1778tokens（443/446/443/446），累计1303692，原批准批次累计193414；含原未知预留的保守费用上界¥4.795797，实付仍未知。两次零调用预检均保留；首次失败仅因SDK包装了故意抛出的本地拦截异常。
-
-**验证、范围及预算变更。**1431源限定类型0、脚本lint通过。本交付只加测试驱动/证据，无路由/API/权限、默认Agent Worker、C01 UI或知识入库变化，复用有效24服务/21需求兼容/12纯SDK，不改还原台账。只证明这两类动作选择及确认链，未证明八轮记忆、问答、隐含历史指代或原全部场景。本次执行完成后用户提高累计费用至¥100并明确取消原200000/1400000tokens限制；`contract-scope.json`保留新费用/固定案例政策及历史批准，原OS-CONTRACT-07证据仍绑定当时预算/源码。该已闭合原预算驱动仅为历史，后续需求试验使用新政策，旧矩阵仍禁用。
-
-## 历史交付：OS-CONTRACT-06（2026-10-26）
-
-**OS-CONTRACT-06：候选业务机制Implemented，配置模型语义/默认迁移Limited。** 沿用C01客户“找设计师”和取消按钮，接入需求已有的LangGraph interrupt/Command/PostgresSaver；接待专页仍仅员工使用。RequirementWorkflow与HandoffWorkflow共用`core/review-graph.ts`，原RequirementService/HandoffService继续负责真实事务；仅entry_snapshot.requirementReviewMode=true且entry_snapshot.requirementWorkflow=langgraph选择候选机制，无生产迁移或默认运行时切换。
-
-**提案与确认合同。** 直接用官方LangChain tool和严格Zod schema，提供有客户原话依据的需求改动、零参数接待/取消提案。客户source/target枚举及来源hash/epoch复核与企业引用分开；模型没有同意、手机号或执行参数。原明确联系快捷分支改为待确认提案，不直接授予接待；原运行时工具也不能绕过服务内部的原生审批能力。客户POST `/api/miniprogram/assistant/conversations/:id/handoff`绑定expectedVersion、完整原body哈希、来源hash、epoch、上下文revision及原请求/状态。C01点击明确提交接待同意，contactConsent=false、phone为空；只有可信客户点击能恢复graph并调用原服务。checkpoint只留ID/digest/决定，成功回执读当前获权状态及真实接待人可用性；旧接待/取消重放不会重新打开或取消更新的接待。需求草稿、正式确认仍分开；同时统一需求apply/readback省略restoreConsent时的false规范值，避免同一操作哈希冲突。
-
-**限定证据。** `admin/scripts/handoff-workflow-acceptance.ts`复用`tmp/agent-contract/trial-2026-10-25T06-01-28-936Z.json`的createAgent联系/取消动作。原正文、错误企业引用及旧预算恢复失败保留，不改判；这里只回放业务动作。`tmp/agent-review-next/services-2026-10-26T08-54-17-192Z.json`通过24项真实隔离服务，含独立进程批准/写后恢复、改body拒绝、不分享手机号、重复/过期原键、租户/身份/来源边界、需求不变和接待人失效回执。原“找设计师但别给手机号”复合原话仍需模型解释，未算语义通过。早期驱动失败均保留；另查前四次服务的8个夹具：provider attempts/活动jobs均0、已禁用。需求未变路径的21项兼容通过：`tmp/agent-workflow/services-2026-10-26T08-20-00-627Z.json`。本轮Server9/Mini53通过、1456源限定类型0、限定lint和全仓lint0errors/26个范围外warning；隔离webpack构建通过，之后的接待人失效回执/擦除型返回声明有服务/类型/lint证据，复用未变打包/UI范围。
-
-**客户端与用户限制。** 沿唯一批准C01源`design-references/xiaok-p4b-public-sites-v1/README.md`、原按钮/未知提示/取消弹窗/气泡，无结构、样式、素材或视觉层级新设计。用户明确禁用Computer Use后，停用窗口/焦点/桌面按键回退。`tmp/agent-contract/review-native-os-contract-06-sdk-04/report.json`在原Stable2.02.2608080/base3.17.2通过12项真实SDK/HTTP：自然语言只提案、客户点击、接待和取消回包丢失、新页面原body/原键恢复、弹窗拒绝、持久重进、草稿不变、身份拒绝及真实1接待/1取消/0模型run。实际version/consent字段证明执行了新控制器；源码drift[]，transport/会话/锁及夹具清理完成。逻辑390×844/PNG348×752的等待/取消截图已审看。桌面重新编译、完整宿主/光学/弹窗像素、真机及配置模型理解仍未验证。早期最小化/焦点/截图和驱动源码canary、消息字段、HTTP状态断言失败独立保留，不算业务通过。
-
-**复用与下一交付。** [LangChain官方tools](https://docs.langchain.com/oss/javascript/langchain/tools)负责类型工具，[LangGraph interrupts](https://docs.langchain.com/oss/javascript/langgraph/interrupts)负责暂停/恢复；显式固定已安装core1.2.18/Zod4.3.6和既有LangGraph1.5.0/PostgresSaver1.1.2，不另建Agent、事实库、审批循环或重做知识入库。本交付新增模型调用/tokens/花费均0，旧批191636、累计1301914、保守费用上界¥4.786907不变。下一OS-CONTRACT-07固定联系/取消各2次配置模型提案测试，受已批准批次/累计/费用余额约束；不恢复三框架矩阵，也不采样到通过。
-
-## 历史交付：OS-CONTRACT-05（2026-10-26）
-
-**OS-CONTRACT-05：隔离审批链Implemented，新模型语义及默认迁移Limited。** 用户授权固定LangChain/LangGraph，直接复用原生审批/恢复，先重放已有失败记录，不再反复换框架跑整套矩阵。入口仍为批准的C02需求页和原GET/POST `/api/miniprogram/assistant/conversations/:id/requirements`；既有候选review会话另设`entry_snapshot.requirementWorkflow="langgraph"`，普通会话保持原行为。下一OS-CONTRACT-06为有界的类型化提案工具/咨询回答接入，未启动；不恢复三框架矩阵、付费采样、旧R0–R4/知识入库或生产部署。
-
-**复用与状态合同。** 直接使用已装`@langchain/langgraph@1.5.0`的StateGraph、`interrupt`、`Command`及官方`@langchain/langgraph-checkpoint-postgres@1.1.2`。提案仍由RequirementService生成；图在接受前暂停，仅由获权客户请求恢复，apply节点调用原租户/参与者/来源hash与水位/epoch/摘要version/幂等事务。另一次正式确认才写confirmed字段。新工作流HTTP成功增加可选`receipt.effect/summaryId/text`，从真实获权数据库记录组成；模型原话不再充当执行回执。同键、不同键和并发重试均保留同一业务实体。每次操作重建进程内图，由官方Postgres checkpoint恢复，不自写推理/恢复循环或另一套业务库。
-
-**持久化与边界。** 显式官方setup在`assistant_requirement_workflow`建四张checkpoint表，客户请求不执行DDL；本轮仅用既有owner连接初始化批准隔离库，给予app角色schema USAGE及表CRUD，不授schema CREATE或public访问。checkpoint仅保存提案/digest/摘要ID、决定和原request key，不复制聊天、需求值、企业资料或模型答复。每次访问沿原身份/参与者/租户守卫；共享tenant advisory事务串行跨进程恢复，业务写入早于checkpoint时仍由原服务幂等保证。已知错误仅留code，SQL参数错误先净化再进入checkpoint。来源epoch失效、他客/他租户及身份撤销均不能恢复接受。清理用官方deleteThread；不宣称生产建库/迁移或全量保留策略运营接入已完成。
-
-**固定保存输入验证。** `admin/scripts/requirement-workflow-acceptance.ts`重放`tmp/agent-contract/trial-2026-10-25T06-01-28-936Z.json`中createAgent第一组save/mixed/reversal原始首稿；只按相同原话及条目field/value重绑定资源ID，不修补动作、字段、值或原答复。企业问答引用是独立且仍未验证的通道，不再连带阻断本来合法的预算提案；原记录/hash及逐项映射均保留。`tmp/agent-workflow/services-2026-10-26T07-16-25-908Z.json`21项真实隔离服务通过，drift[]/清理完成，实际provider attempts和active jobs均0。这证明确定性业务/恢复链，不把原模型答复修复或改判为新语义通过；早先建库权限、驱动/命令预检失败保留。
-
-**客户端、验证与限制。** 继续复用唯一批准`design-references/xiaok-assistant-phase1-ppt-v1/sources/slide06-needs.png`的C02布局/素材/动作，不改Mini markup/样式/文案或新设视觉。Server13/Mini13单元通过，限定1888源类型0及限定lint通过；Admin全仓lint退出0、26个warning位于本次变更范围外。隔离webpack生产构建通过；Turbopack的Windows junction失败保留，未替换现有开发输出。原生`tmp/agent-contract/review-native-os-contract-05-native-03/report.json`15项真实HTTP/页面/写入/重进/故障检查通过，drift[]/清理完成/实际模型0，使用既有Stable2.02.2608080/SDK3.17.2副屏窗口；旧9431查询端口不可用时由用户核实确切目录，沿既有native助手编译同一窗口，未替换窗口。逻辑390×844/PNG348×752，已对照批准源审看pending及恢复后草稿截图。历史弹窗决定使用SDK回调；弹窗像素、完整光学校准和真机登录未验证。本轮无新增模型调用；原191636tokens批次及累计1301914tokens/费用上界¥4.786907记账不变。
-
-**维护中来源与采纳。** [LangGraph审批/恢复](https://docs.langchain.com/oss/javascript/langgraph/interrupts)提供实际interrupt/Command，[官方Postgres checkpoint例](https://docs.langchain.com/oss/javascript/langgraph/add-memory)提供持久化。按上游重放警告，将副作用放在批准后且保留业务幂等。固定依赖、逐批绑定源码/配置/驱动、保留旧失败，不把旧模型评分混入本轮零模型验收。KnowledgeRetriever/Evidence及资料发布/入库未变。
-
-**最终影响与闭合。** 21项服务另证明两个独立Node进程恢复，以及旧操作回执随之后的正式确认/清理而投影当前状态、不缓存私密正文。末次运行时修正仅选择这些后续状态的receipt effect/text，由最终服务/类型/lint覆盖；未变C02/UI/普通草稿路径及依赖/打包形状复用先前有效原生/构建证据，不宣称最终小分支重跑原生/构建。历史三Agent驱动的live模式已在数据库/供应商调用前拒绝，拦截检查通过，原trace/预算不改。本轮保存输入的提案→确认→写入→真实回执切片闭合，新配置模型的语言理解仍未验证。
-
-## 历史交付：OS-CONTRACT-04（2026-10-25）
-
-**OS-CONTRACT-04：候选机制Implemented；配置模型整链Limited。** 用户已授权三层分离、已有草稿幂等、历史值恢复确认及重测AnythingLLM、官方createAgent、PydanticAI。本次按批准预算闭合有界测试：计划54轮、实际发出52轮，没有候选完整达标，不据此迁移默认运行时。下一项OS-CONTRACT-05是基于保存trace的共享协议/回答组成决策，未启动；旧R0–R4、企业知识入库及生产仍暂停。
-
-**实现与权威。** 聊天记忆仍保存在原messages；候选会话`entry_snapshot.requirementReviewMode=true`停止自动建摘要。内部`RequirementService.propose`只在既有entry snapshot存一份待核对diff，绑定已存摘要/version、客户sourceSeq、有序来源消息整体hash和knowledge epoch。需求GET新增`reviewMode/proposal/sourceSeq`，读取隐藏hash或绑定已失效的提案；POST `apply_proposal`仅接收提案ID/digest/consent/restoreConsent，在原租户/参与者事务内重验来源并重算diff。模型没有apply/confirm工具。客户接受后只创建`confirmed_fields=null`的draft；另一次正式确认必须绑定GET展示的`reviewedSourceSeq`。未新增表、权限权威、Agent、facts库或KnowledgeRetriever/Evidence管线。
-
-**幂等与限制。** 提案request key仅保存标识，不缓存私密正文；重放只返回当前授权内容或superseded标记，不能复活已被替换/处理的提案。已有同值草稿的确认回执清理旧pending；精确重复add、同键回放、不同键确认同一提案及并发确认均不重复建摘要。Mini journal跨页恢复原key/body以核对丢响应的同一次操作。客户正式确认时自己修改的值受到保护：目前Agent非空变更若无法保留其来源则明确拒绝，不改回旧摘录。精确引文重复已处理，语义等价归一化和无标点多事实拆分仍Limited。
-
-**历史恢复与客户端。** 用较早原话替换较新条目，包括remove+add等价写法，必须额外确认恢复。C02沿`design-references/xiaok-assistant-phase1-ppt-v1/sources/slide06-needs.png`既有卡片/原话区/按钮/原生弹窗展示当前值、拟改值和来源，样式素材未改。提案、已存草稿、正式确认分开；接待/取消也仅是提案，执行仍走原客户接待动作，waiting、接通、预约、手机号同意彼此独立。默认运行时未迁移。
-
-**开源借鉴。** 参考[LangChain approval/resume](https://github.com/langchain-ai/docs/blob/main/src/oss/langchain/human-in-the-loop.mdx)和[PydanticAI deferred tools](https://pydantic.dev/docs/ai/tools-toolsets/deferred-tools/)的外部决定模式，保留原生类型输出/已知拒绝纠错，AnythingLLM仍用custom skill且不补丁核心。持久确认由既有业务服务承担，不宣称已完整集成框架checkpoint。模型原文与真实回执并存并独立审计，冲突状态措辞判失败，不用在线裁判悄悄改写。
-
-**工程证据。** Server13/13、Mini13/13、限定1551源类型0及限定lint通过；Admin全仓lint退出0，25个既存warning。真实服务`trial-2026-10-25T05-19-55-994Z.json`30项、旧兼容`tmp/agent-comparison/trial-2026-10-25T05-55-29-577Z.json`10项、原生SDK协议`trial-2026-10-25T05-25-14-324Z.json`6项均通过，模型调用0/drift[]。Stable原生`review-native-os-contract-04-native-05/report.json`15项真实HTTP/页面/写入/重进/故障检查通过，逻辑390×844/PNG348×752、drift[]；已审看pending、草稿、历史取消/接受及正式确认截图。弹窗决定用SDK回调，真机/BLE/真实登录/完整光学还原未验证，不变成手测推进门槛。两本还原台账保留唯一C02源。早先断言错误、21项但源码漂移的服务批、窗口位置/运行时预检和原生驱动断言错误均保留失败。旧兼容断言改为严格比较已存业务实体，同时单独断言新增聊天水位增长，未修改导入的运行时辅助函数。
-
-**固定实模结果。** `trial-2026-10-25T06-01-28-936Z.json`：54条case记录、52轮实际dispatch、91调用/191636tokens、34个已交付且结构校验通过的输出、4928前后绑定/drift[]/unknown0。AnythingLLM实际16/18轮、状态通过9；createAgent18/18、状态通过10；PydanticAI18/18、状态通过10。六次重复整理均维持同一草稿；六套首次保存+混合修改共12份草稿，均在独立测试侧客户确认后创建。所需预算恢复/联系/取消路径均未完整交付；AnythingLLM第二组最后联系/取消两轮因剩余本批额度不足以覆盖保守预留而未dispatch，应记未执行而非模型能力失败。每候选计划范围整链仍0/2；测试没有修好错误提案再代为接受。
-
-**审计与共同原因。** `confirmation-review-2026-10-25T06-01-28-936Z.json`v2把缺少安全检查点和断言失败分开，原v1保留。41行有确认边界直接读回；13行SDK异常没有当轮原始读回，不能宣称其逐轮安全观察通过；独立只读`review-final-effects.json`通过16项：数据库恰好12个摘要ID逐一匹配客户接受草稿的12份回执，全部仍为draft/confirmed=null，最终保留90平/10万/瓷砖/不做地暖，六会话均无接待；清理、空闲jobs和3109关闭已核对。累计审计不能补造13行缺失的逐轮快照。三份`semantic-*-review-01.json`保留原回答/被拒提交。43次已知拒绝是`source_not_authorized`，多为把客户`c...`编号填入企业Evidence字段。预期：客户原话用于需求修改，企业结论只用当前资料目录；实际：反复混用引用命名空间、确认前说已保存/更新/安排、撤回后自行编出1–2小时或30–60分钟时长，PydanticAI一份首稿还把仅恢复预算扩大成恢复木地板。真实数据库回执不能证明相邻正文真实。归Agent契约/回答消费，不是已证实的知识入库缺陷。下一判别工作先离线复放类型化引用目录、拆开咨询正文和服务权威状态文案，不进行第三轮措辞/regex修补、放松守卫或另一轮广泛付费采样。
-
-**预算与清理。** 用户批准本批≤200000、累计≤1400000tokens、累计≤¥5。本批191636tokens/上界¥0.958180，累计1301914tokens/上界¥4.786907，包含未变的旧unknown预留，实付仍未知。本批剩8364tokens不足以覆盖最后请求的保守预留，不自动加预算或付费回退。合成企业AI停/身份撤权、临时API key撤销、skill停用、桥和验收锁释放；仅停止自有18089隧道PID201004。付费运行中源码/配置冻结；付费后代码复查另发现提案键重放跳过调用方guard及epoch/base检查，已单独作确定性修补：重放也核对guard、会话模式/状态、epoch、来源hash/水位及草稿ID/version。`review-replay-final.json`隔离服务8项通过，drift[]/模型0/清理完成；从admin运行`node --import tsx scripts/agent-contract-replay.ts`。最终1551源类型0及限定lint通过，早先驱动写错mode的失败另保留。付费/原生证据继续绑定原源码；经影响核对复用未变的客户端/apply路径，新增重放分支用本次服务证据覆盖，不宣称最终guard补丁再跑过付费或原生；运行后评分修正只影响报告，不改判原回答或补造缺失快照。
-
-**合并影响核对（2026-10-26）。** 暂停期间基线进入独立作品集/推荐提交69d103b0；其client新增仅格式化推荐消息，AssistantClient写入/journal方法及C02需求页未变。候选对照仍调用RequirementService/HandoffService，不走被改动的正式Agent worker。保留该提交及其他既存脏改动。合并源码上Server13/Mini13单元、8项确定性重放服务（新合成fixture、清理完成、模型0/drift[]）、限定1551源类型0及限定lint通过，日志见`review-*-integrated.log`。付费/原生证据保留原绑定，仅复用未变范围，不混合不同版本的结果。
-
-## 历史对照：OS-CONTRACT-03（2026-10-25）
-
-**OS-CONTRACT-03：隔离对照完成／产品迁移Limited。** 用户要求参考成熟开源Agent改功能设计，再重测AnythingLLM、官方createAgent和PydanticAI。复用KnowledgeRetriever/Evidence、RequirementService、HandoffService及隔离合成库。用户范围仍为自然咨询、明确整理草稿、局部更正、撤回/重进、接待与取消；旧计划/R0–R4继续暂停，正式默认运行时未切换。下一项OS-CONTRACT-04提案/同意设计决策未开始，不自动推进生产迁移。
-
-**采纳的设计。** 区分客户对话和已存业务状态；在现有draft_fields JSON内存带出处的独立条目，add/replace/remove只针对一个条目。保留汇总text兼容现有小程序摘要与确认。宿主提供完整限定资料句子，沿真实服务绑定来源/版本/参与者/租户检查，并给原答复附真实读回回执。安全近期话语与持久客户需求分别处理撤回；不增加新表、公开REST提案入口、事实库、权限权威、前端设计或正式对话/任务迁移。
-
-| 维护中的参考来源 | 复用方式 |
-| --- | --- |
-| [LangChain middleware](https://docs.langchain.com/oss/javascript/langchain/middleware/built-in) | 官方createAgent的afterModel、匹配ToolMessage及jumpTo:model恢复已知拒绝，beforeModel结束已核验终态。 |
-| [PydanticAI output function](https://github.com/pydantic/pydantic-ai/blob/v2.61.0/docs/output.md) | 原生有类型终态和ModelRetry；未知结果终止，不自动重放。 |
-| [AnythingLLM固定源码](https://github.com/Mintplex-Labs/anything-llm/blob/3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba/server/utils/agents/aibitat/index.js) | 现有custom skill对已知拒绝保留skipHandleExecution=false，核实成功/未知终态才结束，不改核心。 |
-| [Agno session state](https://docs.agno.com/state/agent/overview)／[memory](https://docs.agno.com/memory/overview) | 借鉴对话、记忆、应用状态分离；不安装第四候选或第二存储。 |
-
-**撤下的机制与持续修复计数。** 新增在线LLM裁判被否决，不是从框架采纳的基础能力。首批trial-2026-10-25T01-58-42-956Z.json消耗32533tokens，384输出截断，缺操作/状态/历史上下文导致误拒；补齐目录与上下文后trial-2026-10-25T02-03-43-940Z.json仍返回空函数参数，2936tokens。trial-2026-10-25T02-05-38-942Z.json四次保存输入对照中，指定工具与严格JSON均两次格式有效，不能证明指定工具存在确定性缺陷。结构化输出批trial-2026-10-25T02-06-39-756Z.json消耗101761tokens，仅八轮AnythingLLM和createAgent一条未完成输入，最终裁判2048输出仍截断。裁判还对同意与否自相矛盾、重复要求回答历史问题，并要求将“预算改成10万”等带出处原文改写后才能保存。这是共用试验评估器的失败，不是框架排名。两个机制修复已耗尽，不进行第三次语义提示词/正则修补；原调用、失败与费用全保留。
-
-**新机制与固定验收。** three-agent-native-contract-4把执行与评估分开：原八轮自然问题、原断言、每引擎两组均保留，不删除或改判历史失败。原生框架负责执行/恢复，宿主确定性检查与真实读回保留；语义授权/答复质量在测试侧评估，不伪造通过标志，verdict为null。此有界比较接缝限SFP_COMPARISON_ISOLATED隔离环境，不是生产同意策略；误保存/误联系仍按原断言失败，绝不等于获权，生产意图/租户/来源守卫不变。第二组真实制造版本冲突；仅有保存回执且恰好新增一个摘要，才记实际保存恢复。重进加载试验话语和真实业务状态，不宣称小程序迁移/原生验收。当前以标点形成来源条目，无标点多事实仍有限制；默认旧字段提案未悄悄迁移。
-
-**已完成范围与判断。** OS-CONTRACT-03完成隔离原型与固定原生对照，产品迁移仍Limited。每候选两组原八轮，共48条、63次配置模型调用、119829tokens，43条输出与真实服务核验结果绑定、5条输出失败。六次混合更正均恰好新增一份真实摘要，保留10万/瓷砖/90平/不做地暖；六次撤回均无旧时长输入/输出，需求保留。六次waiting、六次取消有真实状态，contactConsent=false且无手机号；30条回执均匹配实际实体。完整链三者仍各0/2：六次咨询擅自建草稿，随后六次明确整理均未新增写入（一次如实返回已有草稿、四次SDK重试失败、一次本地上限），createAgent第一组还恢复旧木地板却声称保留瓷砖。保存失败部分是误保存的连锁影响，不能说六次都证明“从未保存”。另有把量房追问答成施工、waiting措辞过度承诺、等价瓷砖条目重复；真实回执不验证相邻全部措辞。
-
-**证据与覆盖。** 原生trial-2026-10-25T02-15-21-855Z.json共4923绑定、drift[]、无新增未知供应商结果。review-v2比较接待业务状态/mode；初版派生评分误比随用户消息递增的会话version，原文件保留。semantic-review.json逐条审看48原文；参数/服务核验不冒充语义通过。实模“版本冲突保存恢复”未通过：两次仅在第三次action=none才触发冲突并耗尽容量，另一个SDK始终未过参数校验。trial-2026-10-25T02-31-55-523Z.json的10项条目服务另验真实SAVE过期写入前拒绝、重试仅一写、幂等重放；tmp/agent-comparison/trial-2026-10-25T02-30-08-569Z.json的10项旧兼容通过。这些是工程证据，不替代失败实模链。
-
-**检查、费用与清理。** 服务端9/9单元、小程序8/8控制器、20真实服务、6原生SDK恢复、1093源码类型0错误及10文件限定lint通过。末次服务首次启动有重复局部变量、未开始执行，保留console并修复后通过。本任务含被否方案共136调用/262470tokens，保守费用上界¥1.312350；含旧hold累计1110278tokens/¥3.828727，未超新30万/累计120万/¥5。实际账单未知、旧hold未动。旧pilot/对照/诊断守卫已补计全部新实验，不提高旧额度；只改账务不改导入助手；反向还原services回归块能精确重建原生冻结driver哈希，见impact-final.json。合成身份停用/递增、临时key撤销、本人技能停用、桥与验收锁释放。按批准记录恢复原18089→8089并验health/profile后，仅停本人SSH PID580912，无远端服务/端点/凭据变更。02-14-12零调用Embedding预检在绑定前失败，不算模型成绩。
-
-**下一功能设计OS-CONTRACT-04：提案，未实施。** 采用提案/确认流程：对话笔记沿现有消息保存，创建业务需求为独立可审核提案；已有相同草稿应返回真实状态；修改显示当前值/拟改值及出处，恢复历史值前需确认。接待请求、实际接通、预约、手机号共享维持独立状态/同意，服务仍为权威。参考[LangChain原生批准/恢复](https://github.com/langchain-ai/docs/blob/main/src/oss/langchain/human-in-the-loop.mdx)，不另建Agent/权限库。本段不新增画面，不批准未经复核的UI/生产迁移；不再跑宽付费矩阵或第三次裁判提示词修补。上述消费/编排缺陷无需改知识解析/检索。
-
-供应商参考：[Qwen官方Function Calling](https://help.aliyun.com/zh/model-studio/qwen-function-calling)不保证required一定调用工具，末批用auto；[结构化输出](https://docs.modelstudio.console.alibabacloud.com/en/model-studio/qwen-structured-output)不等于语义正确。四次对照不能证明指定函数有确定性缺陷，改JSON格式也未修复被否裁判的业务理解。
-
-## 历史诊断：第三候选与共因（2026-10-25）
-
-**当前交付 OS-DIAGNOSE-02：有界诊断已交付，原固定矩阵部分未验，产品迁移仍Limited。** 用户要求第三候选实测并判断功能/共因问题，取代历史“不新增第三个平台”的建议。选用[PydanticAI](https://github.com/pydantic/pydantic-ai/tree/v2.61.0)2.61.0官方Agent及output function；未切换正式运行时。旧Agent/企业知识计划、R0–R4和OS-MIGRATION-04继续暂停。
-
-**选型与归因结论。** 现有证据不支持为提升业务智能迁到PydanticAI，也不能把三套试接失败概括为开源项目本身无能力。自然咨询、局部更正、否定接待和真实回执是合理的用户目标；已证实的问题在共用需求存储、授权/回执边界及试验接缝，模型仍有错误选择和虚报。全部试接使用同一Qwen3.7-Flash，未做跨模型对照，因此不能分离模型本身的责任；小样本也不是原生产品排名。
-
-| 已验证共因 | 证据与归属 |
-| --- | --- |
-| 复合字段替换会删掉其他事实 | 零模型真实服务对比：room存“木地板，地暖不做”再替换为瓷砖，地暖必丢；同一地暖原话独立存devices则保留。PydanticAI原协议两次真实更正均复现，拆工具的一次真实更正也复现。归需求更新契约，不应靠换SDK或重建知识入库解决。 |
-| quote不是语义授权 | 合成试验接缝允许逐字否定原话通过出处检查并真实写入waiting；这证明来源检查不等于同意。此接缝故意测模型选择，生产意图守卫没有放宽，不代表生产已允许否定请求。 |
-| 回执直出只覆盖成功调用路径 | 11条交付回执均与最终回复及真实实体一致，但四条纯文本仍虚称存在草稿、已取消或已更新。原始供应商message无tool_calls，排除框架漏执行已有工具调用；正式完成答复还需要覆盖纯文本路径。 |
-| 已知参数错误被当作最终回复 | 三次咨询误选保存，片段删掉前置量房限定，被invalid_answer_evidence正确拒绝；适配器却统一输出“无法核实”并终止，未提供参数修复机会。本轮沿旧契约关闭验证重试，不能算PydanticAI原生纠错能力的失败。保留原文守卫，后续需区分已知拒绝与真正结果未知。 |
-| 撤回过滤正确不等于接续完整 | 两次撤回后的供应商输入都无失效90分钟原文，但答复未完整回答当前政策与地暖问题；context只投影客户原话/已存需求/当前资料，未保留可安全接续的助手话语/来源状态。归Agent消费/投影，知识原文与检索正确。 |
-
-**固定范围与结果。** scripts/agent-comparison/diagnosis.json在付费前固定原协议2×8轮及拆工具2×4轮；用户问题与旧scenarios.json相同，预期不进入模型。只将action统一工具拆成四个命名工具，保留其余参数、系统指令、真实服务与模型设置；Qwen3.7-Flash、temperature0.2、关闭思考、2048输出、auto工具选择、无传输重试/付费回退。复用KnowledgeRetriever/Evidence、RequirementService、HandoffService及原合成企业工厂；Python官方Agent拥有循环，业务output function直接返回服务回执。SDK/依赖完整锁定，使用隔离Python3.12.14，不影响Admin依赖。
-
-| 本轮首稿范围 | 原协议 | 拆工具对照 |
-| --- | --- | --- |
-| 已完成自然答复 / 调用 / tokens | 13 / 13 / 18694 | 8 / 8 / 21549 |
-| 完整流程 | 第一组8轮失败；第二组仅5轮，后三轮未验，不能记0/2完整流程 | 两组4轮均失败，0/2 |
-| 更正时保留地暖否定 | 0/2；预算/瓷砖实际更新但地暖丢失 | 一组真实更新后丢失；另一组没更新却声称更新，不能算保留成功 |
-| 真实回执一致 | 8/8 | 3/3 |
-| 纯文本错误完成回执 | 1条：无草稿却列为待审核草稿 | 3条：两次虚称取消、一次虚称已更新 |
-
-原协议第一组真实联系/取消与不分享手机号通过，只是该子项1/1；不能填补第二组未执行项。拆工具没有显示改善，反而加大schema与token成本；本次不再改提示、路由句式或追加采样。
-
-**证据与检查。** tmp/agent-diagnosis保留所有原始请求、供应商message、SDK轨迹、逐次工具/读回、fixture及绑定，review只派生结果，不改写trial。审看[官方output/ModelRetry机制](https://github.com/pydantic/pydantic-ai/blob/v2.61.0/docs/output.md)、[工具测试](https://github.com/pydantic/pydantic-ai/blob/v2.61.0/tests/test_tools.py)、[Agent重试隔离测试](https://github.com/pydantic/pydantic-ai/blob/v2.61.0/tests/test_agent.py)及[多output执行问题](https://github.com/pydantic/pydantic-ai/issues/3485)；本轮parallel关闭、每答复单调用，没有该上游缺陷的触发证据，不能用它解释本次失败。
-
-| 证据 | 结果 |
-| --- | --- |
-| trial-2026-10-25T01-23-55-856Z.json | 初次零模型驱动被55秒外层超时终止，未完成、不算通过；0供应商调用。后续在验收锁内回收这份报告所列合成身份，原报告保留。 |
-| trial-2026-10-25T01-25-49-973Z.json | 跨租户拒绝及三项共因真实服务复现通过，3606绑定无漂移；全部合成身份停用。 |
-| trial-2026-10-25T01-27-40-492Z.json | 两种工具schema的官方SDK本地模拟传输/回执直出均通过，0付费调用，3606绑定无漂移。 |
-| trial-2026-10-25T01-28-29-319Z.json | 唯一固定付费批：21首稿/21调用、40243tokens、provider unknown0、3606绑定drift[]。第二组reversal请求在本地预留守卫409被拒，未调供应商；该轮及其contact/cancel保持未验。 |
-| review-2026-10-25T01-28-29-319Z.json | 独立核对11/11回执、四条原始纯文本虚报及真实读回、撤回输入、预算；node scripts/agent-comparison/review-diagnosis.mjs可重算。 |
-| tmp/agent-comparison/trial-2026-10-25T01-34-41-644Z.json | 当前组合的原10项真实服务兼容回归通过，0聊天模型调用、drift[]，合成身份停用；旧入口已把40243tokens诊断用量计入共享额度。 |
-
-最终限定TypeScript覆盖1539源文件、诊断0；新增/调整TS限定ESLint通过，10项当前服务兼容回归通过。付费批后仅修改旧comparison入口的跨脚本预算聚合及新增离线review，不改变任何模型输入、协议、服务或客户状态逻辑；原批证据沿其固定版本保留。旧303项对照中另有既存的业务repository/技能启停差异，旧批只作历史、不拼接通过率；本轮冻结的是当前组合版本。文档只更新本当前记录与四份模块清单，不纳入同文件已有的其他领域脏改动。
-
-**核账、清理与复现。** 新增21调用/40243tokens，保守费用上界¥0.201215，实付null。两次旧对照93363＋本轮40243＝133606/140000，余6394不足下一次完整预留，按原规则停止而未提额。含旧预留累计847808tokens/¥2.516377上界，旧unknown/hold保持。全部本轮及中断批合成身份已停用，桥已关闭，未创建供应商/AnythingLLM新密钥，无生产写入。安装Python3.11+隔离venv及scripts/agent-comparison/pydanticai-requirements.txt；默认tmp/agent-diagnosis-venv/Scripts/python.exe，可由SFP_PYDANTIC_PYTHON指定。node admin/scripts/agent-diagnosis-run.mjs services/transport为零聊天模型检查，live消耗剩余额度，不能无变化重跑；沿原共享验收锁、空闲队列和唯一localhost:55432/xiaok_embedding_eval限制。
-
-**下一项 OS-CONTRACT-03（仅建议，未实施）。** 优先复用现有需求模型实现独立需求条目/局部更新、主机绑定已知身份与版本参数、区分已知拒绝/未知结果及可修复反馈、所有完成声明以真实回执为准，并保留撤回后的安全对话指代。稳定后再对照模型能力，暂不继续换第四个框架。知识侧无须重建解析/索引/检索；没有新增产品路由/API/model/权限/UI，无小程序迁移或原生验收声明，不恢复旧队列/生产部署。
-
-## 历史对照：AnythingLLM 与官方 createAgent（2026-10-25）
-
-**当前交付 OS-COMPARE-01：有界对照已Implemented，产品迁移仍Limited，未通过正式接入。** 用户明确保留AnythingLLM，只增加LangChain官方createAgent，使用同一模型、企业资料和业务工具，以自然语言测试追问、更正、反悔和混合请求。旧Agent/企业知识计划及R0–R4继续暂停，OS-MIGRATION-04宿主集成尚未开始；下方历史“当前/下一项”不派发任务。
-
-**选型结论。** 保留AnythingLLM作为当前试验基线。本轮受控样本没有证明换成createAgent能改善业务智能，不据此开展替换迁移，也不再增加第三个平台。保留隔离createAgent适配器供复现；两者完整业务流程都未通过。下一项有价值的范围是共用的本轮意图授权、完整需求更新及带来源的上下文接续，应先于持久会话/计量和小程序集成。这是建议，不代表恢复旧队列或批准生产发布。
-
-**对照实现。** AnythingLLM继续固定v1.18.0、源码3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba和原镜像。独立scripts/agent-comparison包锁定langchain 1.5.19、@langchain/openai 1.7.0、@langchain/core 1.3.0及解析出的@langchain/langgraph 1.5.2，直接使用[官方createAgent](https://docs.langchain.com/oss/javascript/langchain/agents)的工具循环和returnDirect，没有拿项目手写StateGraph冒充。AnythingLLM使用原生导入技能及[直出分支](https://github.com/Mintplex-Labs/anything-llm/blob/3e4f9411b67f2dd7fa9fc6f2b95dfacbda0633ba/server/utils/agents/aibitat/index.js)。参考了[官方returnDirect修复及测试](https://github.com/langchain-ai/langchainjs/pull/11712)、[已报告的Qwen工具解析问题](https://github.com/langchain-ai/langchainjs/issues/9450)，不能据此认定本次失败来自这些上游问题。
-
-- 两边均用既有DashScope的Qwen3.7-Flash，temperature 0.2、关闭思考、max_tokens 2048、自动选择工具，无provider降级或传输自动重试。业务桥提供相同系统指令、JSON工具schema、获权上下文结构，保留框架本轮原生工具消息。这是同一业务契约下的宿主集成比较，不是比较两个应用所有开箱功能。
-- 每个候选固定两组合成企业/会话，发布相同企业原文，复用同一KnowledgeRetriever/Evidence、RequirementService和HandoffService；第二组反转引擎执行顺序。每组8次普通自然提问，scenarios.json中的预期只用于验收、不进入模型指令。@agent仅是原版激活前缀。
-- 共用客户逐字原文/sourceSeq、租户/参与者/身份、事务内epoch/version、幂等、持久读回、不给手机号及取消机制。成功动作/状态回复直接来自真实业务回执；混合回复可附经校验的当前企业完整原文句子。没有另建生产API、知识入库或权限解析器。
-- 试验接缝只在admin/scripts，校验隔离数据库和synthetic-agent-comparison企业标记；生产源码没有引用它。本轮刻意不用此前按句式判断意图、强制选择工具的适配逻辑，而是独立评判模型选择。逐字quote只证明来源，不能证明语义授权，因此模型把否定误作同意时，可以在合成库中观察到真实错误写入。生产意图守卫没有放宽；此接缝不能作为真实客户授权机制开放。
-- 历史客户原话保持带编号的获权数据；企业资料撤回后排除旧原文，AnythingLLM按epoch换线程。原版历史UI仍未接入生产级撤回；本轮createAgent各次调用之间无持久checkpointer。两者均不宣称已迁入小程序。
-
-**固定范围与一次共因机制修正。** 8轮依次覆盖：量房时长咨询；带“先别联系设计师”的追问；保存待审核需求；12万/木地板改成10万/瓷砖并询问准备事项；撤回企业资料后的接续；预算改回12万且保留瓷砖、暂不找设计师；请求接待但不分享手机号；取消接待且不改需求。没有把测试句子加入路由规则。
-
-第一完整配对批暴露共同输入问题：历史原话重复作为连续user角色消息，两边频繁把整段历史拼成当前授权quote。其32次首稿及费用独立保留。只做一次机制变更：移除重复的历史user消息，历史仍是编号数据，仅本轮输入保留user角色及原生工具协议。问题、系统指令、工具定义、服务守卫和模型参数均未变，然后两边重跑同样固定两组；没有第三轮补丁/采样循环。
-
-| 最终固定范围（18-05-24-632Z） | AnythingLLM | createAgent |
-| --- | --- | --- |
-| 完整8轮业务流程 | 0/2 | 0/2 |
-| 遵守否定的联系设计师请求 | 1/2 | 1/2 |
-| 更正需求并保留“不做地暖” | 0/2 | 0/2 |
-| 真实取消接待、保留当时已存需求 | 2/2 | 2/2 |
-| 已交付服务回执与最终回复/读回一致 | 9/9 | 7/7 |
-| 模型调用 / observed tokens | 16 / 22215 | 16 / 22386 |
-
-取消子项可以在此前错误发起接待后通过，不会修复整段流程得分。每个引擎都有一组将“先别联系设计师”真实写成waiting，随后保存被既有人工作业模式守卫阻止。另一组都把地暖否定混入room地面字段，改瓷砖时该字段被替换，导致地暖需求丢失。AnythingLLM混合回复选到了相关准备资料，但仍丢需求；createAgent选了泛化流程句，也丢需求。撤回后AnythingLLM只回状态未回答两个问题；createAgent一度错误否认先前说过时长，并暴露sourceMessageId内部字段。这些属于Agent/上下文/工具契约问题，企业检索正确，不应因此重建知识入库。最终输入均无撤回的90分钟原文。真实回执能证明执行结果，还必须核对用户是否授权了这个动作。
-
-**证据与验证。** tmp/agent-comparison保留原始provider输入/输出、每次工具尝试、读回、fixture IDs和绑定。
-
-| 证据 | 结果 |
-| --- | --- |
-| trial-2026-10-24T17-55-22-314Z.json | 10项零聊天模型真实服务检查通过：获权检索、跨租户拒绝、伪造出处不写入、幂等、旧version、稀疏合并/混合回执、epoch撤回、取消、waiting控制及脱敏。 |
-| trial-2026-10-24T17-57-10-790Z.json | 自有容器未就绪的启动失败原样保留，无付费调用、无fixture。 |
-| trial-2026-10-24T17-58-16-836Z.json | 两个真实框架均通过本地模拟模型的传输/工具/回执直出检查，零付费调用；只证明接线，不算语义验收。 |
-| trial-2026-10-24T17-59-27-775Z.json | 原诊断批32答复/调用、48762tokens，无成功业务回执；20次当前quote、3次需求原文、3次回答资料校验拒绝。4个最后的取消答复均虚称已保存/取消，而数据库requirements与handoff为null。旧报告receiptProjection=true是空集合计算，实际回执0条，不能算通过。 |
-| trial-2026-10-24T18-05-24-632Z.json | 最终批32答复/调用、44601tokens，16条真实回执一致，语义失败如上。AnythingLLM全部16条回复重进可读；createAgent写入证据文件的trace不等于产品持久会话。 |
-| negative-handoff-original.png | AnythingLLM原版UI可见否定请求及随后真实waiting回执。 |
-
-两个付费批分别绑定303项源码/测试/配置/已部署技能，drift[]，provider unknown为0；不同版本结果不拼接通过率。共因修正仅改变驱动上下文投影/报告统计，复用未变服务证据。最终限定TypeScript覆盖1087源文件，诊断0；两个新增TS脚本限定ESLint通过。不宣称全仓tsc或原生小程序验收。先前OS-MIGRATION-03回执验收（提交da6ca806、8答复、13服务检查和20单测）仍是限定历史证据，不能代表本轮更广表达通过。
-
-**核账与清理。** 用户明确同意本次最多增加14万聊天模型tokens，原累计100万tokens/¥5上限不变。实际新增64调用/93363 observed tokens，新增上限余46637；保守费用上界¥0.466815，不是实付。加旧试接195717、旧observed/reserved 518485，合计807565tokens；计入旧869762micros后上界¥2.315162。旧unknown/hold未结清；本地Qwen3-Embedding-0.6B用量单独记录。全部合成身份停用、临时API key撤销、业务桥关闭；历史保留可读。冻结批结束后停用已安装的对照专用技能，prepare会显式重新启用。
-
-**复现与限制。** npm ci --ignore-scripts --prefix scripts/agent-comparison安装独立锁定依赖。空闲的自有试接环境运行node scripts/agent-comparison/prepare.mjs，确认sfp-anythingllm-pilot健康。node admin/scripts/agent-comparison-run.mjs services和transport执行非付费检查；live执行固定语义矩阵，将全部既有对照尝试计入剩余上限。沿用共享验收锁、空队列守卫，只允许127.0.0.1:55432/xiaok_embedding_eval；不要无变化重跑求通过。未改变默认运行时、产品UI/API/schema、生产配置或旧计划。迁移所需持久身份/会话映射、任务/计量、投递/历史撤回、未知结果恢复和已批准小程序完整流程仍未实现或未验证。
-
-<a id="当前架构复盘与重构计划2026-10-23仅计划待批准实施"></a>
-
 ## 当前架构复盘与重构计划（2026-10-23，已批准实施）
 
-**实施决策：保留 LangGraph 和现有业务内核，对咨询链路作有界重构。** 本节是方案/协议/预算的详细权威；[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)负责顺序，[知识计划第1节](./xiaok-enterprise-knowledge-plan.zh-CN.md#1-当前判断与可复用基础)只登记知识依赖。用户已授权R0–R4自动顺序实施；最新授权将免费短测与Qwen长链分账，具体双上限见下文，覆盖旧“全部DeepSeek/现金0”表述。无自动付费回退、模型矩阵或生产部署；CONSULT-02/KDEP-CONSULT-02仍Limited。
+**实施决策：保留 LangGraph 和现有业务内核，对咨询链路作有界重构。** 本节是方案/协议/预算的详细权威；Agent计划第1节（Git `d28c6ccb:docs/xiaok-agent-engineering-plan.zh-CN.md` § `#1-范围与优先级`）负责顺序，知识计划第1节（Git `d28c6ccb:docs/xiaok-enterprise-knowledge-plan.zh-CN.md` § `#1-当前判断与可复用基础`）只登记知识依赖。用户已授权R0–R4自动顺序实施；最新授权将免费短测与Qwen长链分账，具体双上限见下文，覆盖旧“全部DeepSeek/现金0”表述。无自动付费回退、模型矩阵或生产部署；CONSULT-02/KDEP-CONSULT-02仍Limited。
 
 ### 当前执行：R1小交付（恢复闭环已实现，网页接续已独立验证；原固定验收未通过）
 
@@ -1275,101 +1060,6 @@ Stable DevTools沿现有唯一项目/窗口/锁/空闲队列纪律串行，使�
 
 **批准边界与当前交付。** 用户已批准R0–R4自动顺序实施及上述免费短测/Qwen长链双预算，最新分流覆盖旧“全部DeepSeek/现金0”限制。任何其他新模型/供应商、更高费用或token上限、新视觉设计、知识迁移/重新发布或生产部署仍需另行授权。R0内部完成；R1已集成但业务验收未完成，状态以本节当前记录及真实客户端/服务/模型证据为准。
 
-## 历史：2026-10-23停止对照时的证据
-
-**当时用户指令：停止当前对照，另开GPT-6 Astra / Max任务制定重构计划。** 以下保留原结果，不再派发旧“下一项”；当前执行仅按上文及两计划第1节。
-
-**停止时状态。** 新continuity机制只做了零模型检查：真实原厂PDF经原版Tool读取后签名/全文持久化、跨轮沿服务端所属人/分支重建原版目录、内容篡改及跨用户/跨聊天重放拒绝通过；RapidOCR3.9.2从相同两张PNG识别5400mm/4200mm且尺寸类型unspecified。它们不是DeepSeek语义通过。208实际依赖类型0/无漂移，业务runs0；4506企业AI停/6身份撤权/作业空，配置投影/profile/task恢复，288原版核心未改。close-01确认读取器/SSH437604及200652停、两辅助容器移除、原UI/向量停并保留卷、3006/5432/55432/18089/18090保持。本轮新增百炼模型调用0；额度起点436.37K，用尽即停开启，不新增已核账业务费用。此前51调用/251487tokens/日账单¥0及所有失败/unknown独立保留。
-
-**复用与未验证代码。** scripts/openwebui-comparison/的public_web_tools.py/research_filter.py/crawl4ai_reader.py/requirements.txt现为未实模验证的continuity改动，含多查询、Crawl4AI实际链接标题/解码路径排序、带服务端签名的公开来源接续、本地OCR尺寸辅助；原图仍输入模型、未预写图纸答案或厂家URL。原型不等于成熟组件已解决业务。原51调用测试字节仍在tmp的openwebui-mature-*保留；不要拿当前canonical字节冒充旧验收。新证据为tmp/xiaok-intelligent-consult/openwebui-continuity-{mechanism-check-01.log,ocr-02.json,preflight-04-prepare.json,live-04-prepare.json,close-01.json}。没有产品路由/API/schema/权限/UI/Worker/.env变化，模块清单无新的运行行为影响，不新增Mini/租户/撤回验收；无实施提交或暂存。后续只按两计划第1节和最新交接执行。
-
-**当前成熟开源对照已完成（2026-10-23），完整可行性仍未通过，小K保持不变。** 用户要求直接复用成熟免费搜索与网页读取，同DeepSeek Flash、企业/本人项目资料、装修/图纸及追问，记录实际费用后再决定产品接入。本轮复用原版Open WebUI0.12.3（288核心未改）、独立SearXNG百度/360和Crawl4AI0.9.2浏览器/Markdown/真实链接、pypdf6.21.2；不是换模型、重写Agent或企业知识迁移。
-
-**机制与独立判别。** 百度真实启用后返回验证码，360能发现原厂全球入口。沿实际链接到有效繁体中文官网安装页，再到同一份2026年9月版6页中文地暖PDF，原件SHA256553258c147a1934d9822f4ab3e4fedd42dec9a867d639e9a3297deb46a568edd；原版Tool零模型实读5662字符并通过原生引用提取/私网拒绝。该路径、URL和条款未预塞模型，不能算自主业务成功。本机fake-IP由远端未修改的Crawl4AI egress_broker/proxy处理；SDK0.9.2即使ignore_https_errors=False仍默认加忽略证书参数，实例启动保护移除它并启用Chromium sandbox，自签名实测ERR_CERT_AUTHORITY_INVALID。有效官网重跑后才计入安全原文路径；int.quick-step.com证书吊销、旧.cn域握手失败保持拒绝。保留导航后再由成熟组件裁正文、关闭破坏性overlay删除；未绕过验证码。httpbingo重定向被上游站拦截，不计本地恶意重定向通过。
-
-**固定执行及配置错误。** 16轮/两组原题与原PNG先完成；新增搜索先占用原向量地址的0模型准备失败，已按原容器顺序恢复。首批网页RPC又因容器127.0.0.1配置错误而连接失败，保存全部首稿/用量，不冒充模型能力问题。确定性修正为host.docker.internal:18096并保留逻辑Host127.0.0.1:18094，实际Tool零模型读原文和引用通过后，仅复测受影响综合首问/追问4轮。系统提示、函数schema、搜索引擎和解析器不改；一般4/图纸8的无网页范围可复用，原失败不能改为通过。研究上限固定3搜索/6页面、9结果后收回工具、原版逐请求cap12/relay12，首批一条失败路径实际触发收回；不是全面压力测试。
-
-**实际业务结果。** 修正后两组首问均能读公开渠道正文并结合正确企业/项目给出条件性建议，但没有走到已可获取的原厂技术说明，厂家原文链0/2。追问仍引用上一轮网页[4][5]或[5]，当前来源表只有企业/项目2项，原版界面出现undefined，引用接续不通过。两组图纸能识别S5新增、书桌左移、T1东→西，继续修正建议且不认定安装/验收；两组首稿仍擅称5400×4200为净尺寸，trial0还算22.7㎡并在V2说书桌仍窗下，实际位于窗左侧。一般追问保留清洁权重，但有瓷砖不怕划、随便挪家具等过强保证。不能仅据有用片段升级完整通过。
-
-**完整性、账务与清理。** 20保存重进、32内部非空白全文核对、8图像实际输入hash、两条8消息图纸链通过；两批206实际TypeScript运行依赖/显式输入类型0、首尾无漂移，139读取器源码及依赖版本/remote配置镜像稳定。绑定范围在首个dispatch前固定为实际运行图，未把Mini/无关摄像头路由纳入本轮，也未事后缩小。51成功调用232422输入/19065输出=251487tokens，新unknown0；额度687.85K→436.37K，显示差7tokens。百炼2026-10-23具名DeepSeek日账单为免费额度费用、应付¥0；这是日汇总，不改写逐attempt费用null。34次既有Embedding调用单独记录。4504/4505企业AI停、12身份撤权，两库jobs0、平台配置投影/profile/task恢复、Filter停；原UI/向量精确停并留卷，2自有辅助容器移除、SSH363836/307228与本地读取器停，原3006/5432/55432/18089/18090及Worker未改。HEAD6596fc734fda71a384c0b654786f6efc8f426125/index8fdd8cf5b226129dcf09583121d1e4a06d803b20为已有摄像头工作状态，本任务未暂存/提交无关内容。
-
-**采用边界与下一项。** 当前只保留隔离原版实验代码：scripts/openwebui-comparison/{public_web_tools.py,research_filter.py,crawl4ai_reader.py,egress_proxy_server.py,profile.example.json,requirements.txt,upstream.manifest.json,prepare_reader.mjs}，与测试字节一致；bootstrap校验上游hash并只准备tmp运行目录，0模型。完整业务仍Limited；新机制本轮及一次传输修正后停止第三次提示/正则/采样。下一机制候选是受控权威来源发现、跨轮来源目录重建及未定尺寸/状态的明确消费约束，先在原版对照证明；不据此直接改小K或重做KnowledgeRetriever/Evidence入库。原段落2/书桌2/预算1、前两次手写修复、1430/3862/8673/1948/1949 unknown及此前Flash别名开关限制均保持。仅同一批合成资料，非真实施工图、Mini、租户ACL/源撤回或生产验收。
-
-证据：tmp/xiaok-intelligent-consult/openwebui-mature-{review-01,close-01,ui-01,acquisition-02}.json、openwebui-mature-native-read-01.log、原/transport计划与preflight/live全部首稿、bailian-mature-{bill-01.json,quota-before-01.png,quota-after-01.png}。采用依据：[Crawl4AI0.9.2](https://github.com/unclecode/crawl4ai/tree/v0.9.2)、[浏览器默认参数源码](https://github.com/unclecode/crawl4ai/blob/v0.9.2/crawl4ai/browser_manager.py)、[上游地址固定代理](https://github.com/unclecode/crawl4ai/blob/v0.9.2/deploy/docker/egress_proxy.py)、[原版Tools](https://docs.openwebui.com/features/extensibility/plugin/tools/)、[原版Filter](https://docs.openwebui.com/features/extensibility/plugin/functions/filter/)。既有Open WebUI/Dify源码与LibreChat配置合同研究保留；未迁移框架。
-
-**以下是前次修复与比较的历史证据，不是当前待办。**
-
-**当前原版DeepSeek Flash修复已收口（2026-10-23），CONSULT-02仍Limited，小K保持不变。** 用户指定同一DeepSeek Flash、国内免费搜索、同企业/本人项目资料、装修/图纸与追问，确认完整链路后再改小K；随后要求参考成熟开源实现。本轮已实际对照Open WebUI、Dify、LibreChat的源码/合同并复用原版扩展接口，完成16轮固定答复和4轮受影响复测。**完整目标厂家技术原文链路仍未通过，未开始产品实施。**
-
-**采用与保留。** 不改官方Open WebUI0.12.3的288个核心文件，不重写Agent；用原版查询生成器先做公开搜索发现，DB Tool复用原配置SearXNG及上游SSRF安全会话/BeautifulSoup，返回正文与实际链接、URL/内容去重、明确失败；逐次request Filter在6项当前轮工具结果后移除工具，为最终答复保留调用。相同原PNG另外登记独立文件来源，描述只含身份和边界，不预写图中事实。精确测试字节保存在[scripts/openwebui-comparison/public_web_tools.py](../scripts/openwebui-comparison/public_web_tools.py)、[research_filter.py](../scripts/openwebui-comparison/research_filter.py)及受限profile示例；没有厂家URL/答案硬编码。这里只是原版实验能力，不是小K模型配置或知识服务迁移。
-
-**固定验收和未通过项。** v1同原题完成16轮/29次模型调用：综合trial0在任何Pergo证据前自行搜索Pergo，随后把该品牌当快步；trial1仍报7次循环上限。图纸两组能识别S5新增、书桌左移和T1东→西并延续追问，原图[3]/[4]可在原版界面跳到同字节文件，但trial1首轮擅称5400×4200为“净尺寸”、推22.7㎡，trial0还一度把待核对说成必须调整，均保留首稿。v2仅复测两组综合首问/追问4轮/12调用，包含同模型原查询生成2次；不改系统提示，原版请求Filter和链接空格编码是机制差异。两组识别回Quick-Step、0循环报错，明确缺原文，**两组都未读到目标厂家技术正文**：一组为渠道/问答/空文档站，另一组仅第三方问答。六次结果后的收回由零模型协议检查覆盖，本次定向答复未实际耗尽六次结果，不能夸成全面循环压力通过。
-
-27项零模型检查（10安全/解析、17预算/保存轨迹复用）、20保存重进、32项内部非空白全文核对、两条8消息图纸链通过，8份图像实际请求逐次核对原始PNG哈希；一般4轮/图纸8轮在v2两个Filter钩子下为无变化复用，**复用不把视觉失败改为通过**。1297/1298依赖类型0、各批首尾无漂移；288原版核心无变化。所有准备错误均为0模型并单列（本地工具spec接口只支持MCP、Function不存在返回401、缺失文案不等于not found），未消耗语义修复次数。审计初稿错误读取RAG未闭合示例source标签/查询任务输入，已改为实际带name/resource的业务输入后验证，原始答复、范围和失败不变，没有重采模型。
-
-**两次修复失败收口。** 期望是“实际目标厂家技术原文＋正确企业/项目＋有用追问”，实际v1品牌替代/循环、v2如实声明原文缺失；归Agent消费/检索托管，不是已证明的KnowledgeRetriever/Evidence入库故障。两版均未满足同一期望，停止第三次措辞/正则/提示补采。保存轨迹支持共享原因是国内召回、权威来源导航与模型事实落地，而非全局DNS故障；下一项须先独立验证可用的免费搜索/读取机制，再重新打开受影响实模验收。零模型判别：同360“快步地板 官方网站”返回quick-step.cn，原站经现有curl仍TLS握手失败；baidu覆盖请求回落已配置搜狗/360，不算百度测试通过。Jina公开匿名Reader探针返回401/IP信誉要求认证，未配置Key、未采用该服务、未付费回退或降TLS/SSRF。共享搜狗302/next_request兼容错误仍未修复，不能称免费搜索/DNS全部解决。
-
-**实际费用和清理。** 新41次成功调用观测194122输入/18633输出，共212755tokens，新unknown0；额度900.61K→687.85K，界面舍入差5tokens。百炼2026-10-23具名deepseek-v4.1-flash-1017日账单为免费额度费用、应付¥0，逐attempt费用null不改为虚构发票。用完即停本轮保留开启。close-01通过4501–4503三企业AI停、18用户context撤权、两库jobs0、开发/隔离55432配置与投影/profile/task恢复、非全局Filter停用；精确停原UI/向量ID与SSH69160，保留卷及3006/5432/55432/18089/18090/Worker。此前Flash别名开关无法恢复的限制未改变，不声称账号全部还原。未改产品代码/UI/API/.env/Worker、未生产部署；未通过业务故无小K实施提交，保留无关脏改动与暂存。
-
-证据：tmp/xiaok-intelligent-consult/openwebui-deepseek-repair-{review-01,close-01,ui-01}.json、bailian-deepseek-repair-{bill-01.json,quota-after-01.png}、v1/v2计划、preflight/live及全部原稿。旧段落2/书桌2/预算1和1430/3862/8673/1948/1949 unknown保持。仅合成资料，不新增真实施工图、Mini、租户ACL或来源撤回验收。采用依据：[Open WebUI Tools](https://docs.openwebui.com/features/extensibility/plugin/tools/)、[Filter](https://docs.openwebui.com/features/extensibility/plugin/functions/filter/)、[Dify官方SearXNG](https://github.com/langgenius/dify-official-plugins/blob/main/tools/searxng/tools/searxng_search.py)、[LibreChat搜索/读取/排序配置](https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/web_search)。
-
-**最新原版对照已完成（2026-10-23），CONSULT-02仍Limited。** 用户授权先用Qwen3.7-Flash做隔离按量对照，随后测试账号免费额度页中适用于本装修Agent的全部候选，确认可行后才改小K。现已完成Flash16条业务首稿、2次独立required单跳诊断，以及6款额度模型72条固定问答/图纸/追问；**没有模型在本配置下通过完整企业规则＋本人项目＋厂家技术原文的首问与追问链路**。本轮不改小K代码、模型配置、UI/API/.env或Worker，不迁移或生产部署。
-
-**材料与固定范围。** 原版Open WebUI0.12.3、同collection和3份合成企业/本人项目文件及byte hash、国内搜狗/360、仅原生search_web/fetch_url。原两类装修题逐字复用，各2次独立首问＋追问；3款纯文字各8条，3款图像各16条，图像新增同V1/V2未审核合成草图的4轮链各2次。图为1440×1040、5400×4200尺寸标注/S1–S4，V2新增S5、书桌北墙左移、T1东墙到西墙；**不是用户真实施工图验收**。所有首稿、拒绝、原错误与0调用前置失败单独保留，没有改提示补采或用修复稿替换。
-
-| 百炼额度模型 | 固定答复 / 模型调用 | 实际搜索 / 请求fetch | 主要结论 |
-| --- | --- | --- | --- |
-| glm-5.3 | 8 / 22 | 9 / 6 | 会自动用工具；两综合首问均触及7次循环上限，追问有核对清单；无可用厂家条款。纯文字，不测图。 |
-| deepseek-v4-pro-0813 | 8 / 20 | 7 / 5 | 资料建议和追问可用部分较多；一稿如实缺厂家原文，另一稿把第三方营销与排放说法当厂家地暖依据。纯文字，不测图。 |
-| qwen3.8-2.4t-a95b | 8 / 20 | 6 / 6 | 能搜索/读渠道正文并追问，但有渠道归属、错引企业规则及未知联系人说成无联系人。按思考模式用SSE，8项0模型聚合检查通过、raw stream保留；非延迟排名。纯文字，不测图。 |
-| deepseek-v4.1-flash-1017 | 16 / 30 | 8 / 6 | 两综合首问循环上限；两组图纸链能识别主要变化、修正近桌插座理由且不据草图认定装好/足够/验收，仍有个别来源缺失的过强表述。 |
-| qwen3.8-max | 16 / 16 | 0 / 0 | 没联网却写“经查询”和27–28/28°C、2%CM等未核实参数；图纸主变化可读，仍有图片/旧投影来源混淆。结论限预定非思考/8192配置，不泛化全部Max能力。 |
-| qwen3.8-omni-flash | 16 / 30 | 7 / 9 | 会搜索但两综合首问循环上限；图纸/追问较完整，但图像事实错引本人项目[2]，网页占位引用和阶段未知误述仍有。 |
-
-**Flash与问题归因。** Flash的16次auto业务调用均未联网，有图纸变化识别和追问，但有图片事实挂企业引用、插座足够性和未知条件误述，以及过强清洁建议。充值前16次FreeTierOnly拒绝、两required的Arrearage和免费GLM首个Arrearage均保留，不作模型质量评分。用户充值¥5后，两次required探针的真实请求与原综合首问**仅tool_choice不同**，均返回有效search_web并实际执行国内搜索；预定单跳预算阻止后续模型回答，不能算业务通过。这排除了“Flash完全不会原生工具调用”，但未单独证明RAG模板为唯一原因。
-
-**检索与抓取是独立缺口。** 免费矩阵37次真实搜索、32个fetch请求，7个非空返回中含1个错误JSON、3次官网导航/空主体和3份渠道正文，不是7份厂家技术原文。搜狗HTTP302的next_request AttributeError仍在，360能返回候选；部分URL有TLS握手/过期证书错误，未关闭校验或SSRF。零模型判别中，模型猜测路径空正文；独立找到的正确厂家FAQ经同原版get_content_from_url读取6742字符/hash26ea775f…；再向同国内实例固定查询正确域名只得7候选、0目标FAQ。独立发现结果未补进或追认任何模型答复，不能宣称DNS全坏、全修或单靠换模型已可行。
-
-**费用已分层核对。** Flash18次成功调用观测46114输入/9127输出、共55241tokens，缓存输入2048；按量与百炼2026-10-23日账单应付均为**¥0.01619672（约1.62分）**，不是¥5充值金额。未取得逐attempt发票，不伪造旧cost_micros；API拒绝无usage不填0。免费组138个HTTP200调用、441064 observed tokens，新增unknown0；全部调用时用完即停为true，剩余额度均正、扣减与记录一致。已到具名账单的GLM/DeepSeek Pro为¥0，另4款具名日账单尚未显示，匿名“-”行不归给它们。额度有期限，不代表永久免费。
-
-**证据与收尾。** 免费72重进、24文字四消息链和6图纸八消息链/24图像答复；48带资料请求的96项企业/本人项目非空白全文核对通过，byte hash独立核对。免费Embedding96次6648tokens，Flash及required28次1992。各批1294/1296/1299项完整依赖类型0、首尾无漂移，288原版文件未改；跨批共有绑定也无差异，外部摄像头提交把HEAD更新为22024698、index8566565e，不改写原版本或宣称本聊天提交。close-01确认11合成企业AI停、50身份撤权、两库jobs0、开发/隔离配置与投影/profile/GLM9 registry恢复，精确停自有UI/向量及SSH548188，保留卷和原3006/5432/55432/18089/18090服务。账号DeepSeek临时false→true→false已恢复；**Flash别名用完即停原true，按量测试关闭后官方界面为“不支持开启”/disabled，未能恢复**，其日期快照开关仍true；不能声称账号设置全恢复，全部测试调用已停止。
-
-主要证据在tmp/xiaok-intelligent-consult/openwebui-qwen37-{review-01,ui-review-01}.json、openwebui-bailian-{review-01,close-01,review-manual-01}.json、bailian-{billing-reconciliation-01,account-final-01,quota-after-01}.json及openwebui-{url-diagnostic-01,search-recall-diagnostic-01}.json。原段落2/书桌2/预算1及1430/3862/8673/1948/1949 unknown保持。新Mini、企业ACL/源撤回、真实施工图或生产未验；正确原文后的编排/引用/答复归Agent，未证明KnowledgeRetriever/Evidence入库新缺陷。**下一项先固定低成本候选和原题，验证检索导航/引用的机制方案；本次结果不批准直接切换小K或重建知识。**
-
-参考原版[Agentic Search合同](https://docs.openwebui.com/features/chat-conversations/web-search/agentic-search/)、[Flash官方能力/价格](https://help.aliyun.com/zh/model-studio/qwen3-7-flash)和[独立FAQ判别页](https://int.quick-step.com/en/frequently-asked-questions/laminate/general/can-i-use-quick-step-laminate-in-combination-with-underfloor-heating)。采用原生两工具及现有LangGraph/KnowledgeRetriever/Evidence边界，无框架迁移。
-
-**以下为前次13款免费替代对照的独立证据。**
-
-**免费替代模型对照已完成（2026-10-23），CONSULT-02仍Limited。** 用户已授权测试当前账号可核实的全部免费文字候选，继续不改小K。tmp/xiaok-intelligent-consult/openwebui-free-plan-01.json在调用前固定硅基流动7个新候选与智谱6个候选；旧GLM9精简工具证据单独复用、不重放。原版Open WebUI 0.12.3、同3个企业/本人项目文件及hash、搜狗/360、仅search_web/fetch_url，逐字复用两类题各2次首问＋追问，共104条固定用例。**没有候选通过企业规则＋本人项目＋厂家联网原文的完整首问/追问链路；繁忙/限流不判为模型无能力。**
-
-| 候选模型 | HTTP结果 | 实际搜索 / 读页 | 业务审读 |
-| --- | --- | --- | --- |
-| siliconflow / Qwen/Qwen3.5-4B | 8×200 | 0 / 0 | 资料问答和清单追问部分有用；未联网；把未知施工说成未施工。 |
-| siliconflow / Qwen/Qwen3-8B | 8×200 | 0 / 0 | 能结合资料与偏好继续解释；未查厂家；部分通用材料说法过度。 |
-| siliconflow / Qwen/Qwen2.5-7B-Instruct | 8×200 | 0 / 0 | 能复述规则和核对项；未查厂家；选材建议较浅。 |
-| siliconflow / deepseek-ai/DeepSeek-R1-0528-Qwen3-8B | 8×400 | 0 / 0 | 8次400明确不支持Function Calling；普通无工具聊天未评价。 |
-| siliconflow / XingChenAGI/Xing4.0-29B | 8×200 | 0 / 0 | 未联网；出现厚瓷砖更软、踢脚线改善脚感等不可靠建议。 |
-| siliconflow / THUDM/GLM-Z1-9B-0414 | 11×200 | 3 / 0 | 只有综合首问1/2搜索；未读原文；凭空给2%/15%含水率及错引。 |
-| siliconflow / tencent/Hunyuan-MT-7B | 8×400 | 0 / 0 | 8次400明确不支持Function Calling；翻译能力不属本次范围。 |
-| zhipu / glm-4.7-flash | 2×200 / 6×429 | 0 / 0 | 2次追问有资料建议，6次429/1305繁忙；联网能力未验证。 |
-| zhipu / glm-4-flash-250414 | 8×200 | 0 / 0 | 8次正常文字答复与追问；未联网，厂家查询遗漏。 |
-| zhipu / glm-z1-flash | 3×200 / 5×429 | 0 / 0 | 3次答复、5次429/1302限流；只建议用户调用工具；夹带无来源阈值。 |
-| zhipu / glm-4.6v-flash | 8×429 | 0 / 0 | 8次429/1305繁忙；模型能力未能评价。 |
-| zhipu / glm-4.1v-thinking-flash | 8×200 | 0 / 0 | 8次文字答复；综合首问因上下文无厂家资料而拒答/回避；追问部分有用。 |
-| zhipu / glm-4v-flash | 8×200 | 0 / 0 | 8次文字答复及核对项；未联网；部分通用铺装建议未核实。 |
-
-**调用与事实边界。** 本组直接转发原版消息/工具，不经过小K Agent解析器或2048上限；预定输出8192，GLM-4V-Flash为1024，思考/温度按plan预先记录。因此不与旧GLM9的2048组作严格模型排名。107个新attempt为72传输成功、35明确拒绝、0新增unknown；69条有文字、35条错误，104次保存/重进、52条完整四消息追问链均核验。52条综合请求均收到原企业与本人项目内容，104项来源核对的全部非空白字符一致；原文件byte hash另核，原版RAG仅把项目段落空白改为Markdown换行。真实搜索仅GLM Z1 9B的3次（一般首问2次、综合首问1次），360返回4/4/7候选；**0次fetch_url、0厂家安装原文读取**。摘要/官网首页不能冒充厂家地暖说明，2%/15%等阈值及ISO要求不在知识/项目来源中。
-
-**搜索独立故障。** sogou.py:56处理HTTP302时读取resp.next_request触发AttributeError，360仍可返回；见openwebui-free-search-diagnostic-01.json。该错误不是大模型错误；未捕获Location目标，不把CAPTCHA当已证实，也不绕过验证。本轮保持搜索配置不变，不能宣称所有DNS/超时已修复。
-
-**源码、用量与收尾。** 1290项绑定与完整类型检查0诊断、288原版后端文件未改。06批捕获摄像头schema注释0093→0094漂移，原preflight失败不改；drift-impact-01在稳定新版本补验全部1290项、类型0及编译后运行时hash完全一致，0新模型调用，附此限定复用原答复，未缩小原绑定或重放。新观测模型tokens116107，query Embedding104次/6916tokens；费用全null，35拒绝未给usage，不把未知用量/费用填0。close-01确认13合成企业AI停用、52身份上下文递增、两库jobs0、平台配置/投影恢复、13测试profile清理/原GLM9 registry恢复；精确停止自有UI/向量、SSH439148及只读501248，卷镜像保留，原3006/5432/55432/18089/18090服务未动。
-
-**复用和下一项。** 完整证据为tmp/xiaok-intelligent-consult/openwebui-free-{catalog-01,plan-01,preflight-01..13,live-01..13,matrix-01,matrix-02,drift-impact-01,review-manual-01,review-01,search-diagnostic-01,close-01}.json。原矩阵因06源码绑定失败停止，续批与零模型影响核验分开保留；所有首稿/错误均未修复或抽样替换。原1430/3862/8673/1948/1949 unknown及段落2/书桌2/预算1计数仍保留。本轮无KnowledgeRetriever/Evidence入库检索新缺陷，不重建知识。快照等价不证明原版企业ACL/撤回，旧混合网页/知识撤回空集合不计通过，Mini新窗口/新网页生成仍未验。后续只可基于原始trace区分可用性、RAG提示/自动工具选择和托管实现；保持产品实施、迁移、付费回退与生产暂停。
-
-免费范围按[硅基流动当前价格](https://www.siliconflow.cn/pricing)、[模型广场](https://cloud.siliconflow.cn/open/models)及认证目录核对，智谱6个ID按[官方输入/输出定价](https://docs.bigmodel.cn/cn/guide/start/pricing)核对并实际请求。LongCat现行输入/输出付费；Gemini账号计费层级未证实，Pollinations积分不证明零价，均未发推理。原版Native配置/读取语义参考[官方工具调用合同](https://docs.openwebui.com/reference/server-side-tool-calling/)；未采用产品重写。
-
-**执行入口（2026-10-22）：** 当前交付、完成条件和下一项只取[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)与[知识依赖记录](./xiaok-enterprise-knowledge-plan.zh-CN.md#1-当前判断与可复用基础)，按[交付执行规则](../AGENTS.md#xiaok-delivery-execution)执行。下文能力顺序、历史版本中的“当前/下一步”、旧停止通知与测试矩阵均不另设执行队列。已完成业务复用证据；原失败及未验范围仍有效，不因调整顺序改成通过。
-
 ## 当前CONSULT-02：智能装修咨询与联网来源（Limited）
 
 **2026-10-23前次用户顺序：在原版 Open WebUI 精简工具，保持同GLM9、国内免费搜索、同企业知识/本人项目及装修题和追问，先别改小K。** 固定8条业务答复及2次required检查已完成。前轮测试缓存/默认类别配置遗漏已修正，真实Provider请求只剩2工具，仍0业务联网；两required原始响应无效。当前硅基流动GLM9在本场景的原生工具链未达可用，未证明模型权重本身无能力。CONSULT-02/KDEP-CONSULT-02仍Limited；不改小K、不迁移、不换模型/付费或补采到通过。
@@ -1460,64 +1150,6 @@ Stable DevTools沿现有唯一项目/窗口/锁/空闲队列纪律串行，使�
 
 原生复用Stable2.02.2608080/SDK0.13.0/基础库3.17.2、副屏原项目、9420/9431及新编译。两咨询C01实际重进、异客户/跨企业拒绝、更正来源撤回后相关答复不可用均完成；4张路由确认图已逐张查看，逻辑390×844/编码348×752。首次启动路径斜杠比较、CLI关闭成功但未关闭的拼写问题均在保护检查处停止，使用已登记的正斜杠路径确认旧窗口消失后才auto，无重复窗口；证据分别保留。第一咨询全项及第二咨询重进已通过，随后第二负控沿用了已被第一咨询清理递增的身份版本，401不是404通过；`native-final.json`读取真实版本只补第二负控和撤回，0模型调用、供应商尝试集合不变、独立绑定无漂移。最终AI停用、身份版本12/13、队列0、transport/auth/controller/锁清理。批准C01/台账、路由/API/角色/schema/VLM/1454均未改；无新视觉还原、全仓类型、真机/真实微信授权/完整宿主光学或生产通过声明，也不设人工手测门槛。当前CONSULT-02仍Limited：普通照抄与完整历史叙述保留未通过，已验证的长聊、更正回读和压缩范围不再重跑。
 
-## 前序独立建议与候选证据（历史绑定）
-
-前序限定改动为原Agent循环中的`independent-advice-context-v1`。明确独立的一般建议从首调用起仅投影任务规则、当前原话及同轮知识/修复，完整原检查点和来源依赖仍权威；工具收窄为search_knowledge/final_response，系统规则6030→517字。不代写答案、不删数放行、不放宽守卫，不新增Agent/存储/知识管线；混合及有事实前提的请求保持原路径。批准C01组件/设计源、路由/API/角色、Mini文件和还原台账状态不变。以下原35/60等未完成表述保留其当时绑定，不替代本节当前结果。
-
-当前证据统一见`tmp/xiaok-consult-02/task-context-final-review.json`：241项真实依赖稳定下67单元/lint通过；全量tsc294/涉及0（较原292新增3/移除1条，涉及无关camera测试和生成类型，不称全仓通过）。早期check-03的7项服务观察、1项空检索修复前提失败及外部源码漂移独立保留，不算组合通过。用例已改为读取实际发布的完整办公原文并移除无用导入，但不虚报补修后的宽套件通过：共享施工清理已引用55432尚不存在的摄像头表。后续真实链路用独立标记夹具且不依赖该无关清理，不丢弃历史必需失败。
-
-当前配置Qwen1431/1432均完成真实知识查询后仍补无据色温（2700–3000K/3000–3500K），被守卫阻止且无客户答复；4次accepted尝试/4515 observed tokens及2条query_embedding，费用null，241项稳定。说明收窄上下文不足以解决本题，不推断模型普遍能力。用户明确选择评估现有渠道其他免费模型后，固定独立对照中：Xing1433/1434为畸形空白结构（协议失败）；Qwen2.5-7B1435/1436选择继续查询（非终态，不判专业语义失败）；GLM91437/1438给出有用的非量化建议，无无据量数。6次调用的首稿、实际计量及null费用均保留；目录/配置URL/适配表示前置失败均为0推理调用，分别保留。
-
-选定GLM9在隔离正常服务8666/8668沿原持久Agent/Provider/配额执行，验证答复实写/重进/幂等、已存需求不变、同企业异客户/跨企业拒绝及原需求来源撤回。两次各2条真实provider attempt，共4次/4250 observed tokens/费用null，无最终修复，245项源码/测试/驱动/配置稳定。初始化record_need明确标为确定性合成夹具，不冒充模型提取。两稿照明建议核心切题且非量化；第二稿附带的“增加私密性”无单独来源，保留措辞质量限制，不证明完整专业语义。`glm-integration-resources.json`证明隔离LLM配置及托管投影精确恢复，共享开发模型/VLM/1454未改；两合成企业AI关闭/context2/active0/unknown0。无新原生验收或阶段提交。
-
-参考采用[LangChain临时模型上下文](https://docs.langchain.com/oss/javascript/langchain/context-engineering)及其[中间件覆盖测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/tests/middleware.test.ts)，沿原按调用投影而不迁移框架。[issue9426](https://github.com/langchain-ai/langchainjs/issues/9426)仅提醒schema重试边界，不证明本供应商故障原因；[硅基当前价目](https://www.siliconflow.cn/pricing)与实时目录共同限定免费候选，Xing官方支持工具不代表当前托管适配已可用。原本段计数2、旧数值/8B失败、1430/3862 unknown/reconciling及未验长聊/原生全部保留。下一先核对GLM9接入涉及的既有探针、工具/图片/VLM边界，再只固定剩余事实输入，不再扩大候选矩阵或改措辞重测。
-
-### 当前事实前置与有界恢复
-
-先读AG-01，再固定`tmp/xiaok-consult-02/normal-history-plan.json`：两条全新咨询、三条初始原话、61条独立正常客户讨论、持久更正、35/60轮回顾与重进，以及固定的新咨询隔离题。每条客户消息均真实HTTP发送并等待现有Worker，不插入历史或模拟答复。首批在讨论前停止：1392–1395保存书桌/收纳及客厅否定要求；1396/1397各把空room的timeline拆成两次写入，整批被拒后又重复两次，最后假称已记录，均被unsupported_model_commitment拦截。日期0/2、记忆v3未变。12次供应商尝试/12条observed token记录/75021 tokens、费用全null，无unknown。源码/配置首尾稳定，2734/2735已停AI、身份撤权、active0。这是正常聊天前置失败，不是35/60轮、更正、压缩或原生验收通过。
-
-Agent负责的`need-batch-conflicts-v1`是这项故障的第1次机制修复。原needWriteFeedback重新解析已拒绝的整个批次，导致提交参数的诊断也丢失。现用仍为invalid_message422的类型化错误，只保留逐项结构已合法的模型参数和重复room/field的精确位置；沿原配对工具结果返回批次冲突，区别于原话子串错误。重复批次仍原子失败，任何修正参数仍由模型选择；无自动合并、推断字段/值/房间、放宽quote枚举、增加工具/轮次、第二Agent/存储、回执绕过或知识改动。原日期题及旧建议失败全部保留。
-
-各版本证据分别保留：normal-check.json绑定70/70单元、9项服务通过，另2项测试断言失败原样保存（现有保存回执快路径实际2次调用却期待3次；旧断言依赖“更正”文案词）。normal-check-02.json的修正后两项服务、涉及lint和tsc基线比较通过：292项原有错误/涉及0，诊断行与advice-types.log完全相同。仅修正这两处断言及尚未派发的r1驱动入口；70单元和9项未改服务正文通过影响核对复用，不合并成新一批11/11。两批源码无漂移、供应商调用0；更早未绑定的70单元观察不加入统计。
-
-原输入不变、预定两次的normal-history-r1-plan.json已在固定配对1410/1411失败后结束；不重启脚本、不替换采样。这是诊断修复迭代1，日期恢复2/2，1396/1397及跨聊天计数不清零。CONSULT-02/KDEP-CONSULT-02保持Limited且未提交，1390/1391数值建议及用尽的8B对照继续停。无UI/API/角色/模型/设计/部署变化，C01沿唯一批准design-references/xiaok-p4b-public-sites-v1/README.md组件，还原台账完成状态不变。
-
-r1最终14个run：12个技术终态成功、2个失败，不能称12个语义通过。日期1402/1403最终恢复2/2、首提案0/2；各拒绝两次重复键提案后，在原第3次调用选择一条合法timeline写入，记忆v3→v4、各一次实写和真实回执（仅两日期共6 attempts/39046 tokens）。随后每咨询只完成3条正常讨论。1410/1411当前段落明确不保存、不查资料/工地，却各两次query_materials，把数字1398/1399（历史run号）填作leadId，invalid_message失败、无答复/写入。1409虽技术成功仍追加未请求的固定插座/灯光/收纳前提，范围语义失败；1408只部分切题、超句数并附加假设判据，不算语义通过。整批23 attempts/23 observed token记录/149219 tokens、费用null、unknown0，源码/配置稳定。2736/2737已停AI/身份撤权，active jobs/锁/自有进程0。35/60阈值、更正、压缩、原生均未验。工具/来源投影及1408/1409原稿已在current-message-review.json审读；本批结束，不重启或归因知识。详见normal-history-r1.json和normal-conflict-review.json。
-
-当前实现为`current-message-scope-v2`：明确仅回应本条消息时，不开放查询/保存/转人工；临时模型视图用实际user角色逐字传递当前原话，来源编号/原始包装和完整历史仍留服务端；保留同轮修复、general格式、租户/租约/来源重验、真实回执、用量及原预算，混合请求沿原路径，不派发无关摘要/视觉调用。最新`current-message-check-03.json`通过79单元、3项当前范围服务、lint及原292项类型基线/涉及0，首尾无漂移；7项未变兼容按原绑定复用，不称新10项全跑。check.json的首批7项测试类型错误及错误JSON键/空值记忆断言，与check-02修正后3服务分别保留。
-
-固定v1前段1412–1425已结束：6项真实需求保存、8项范围守卫通过，usage-process及钥匙题各2/2，餐桌1422/1423仅部分切题，纸质书1424/1425均答成人、语义0/2。18 attempts/18 observed token行/68161 tokens，费用null、unknown0，2289项源码/配置稳定。随后只改变当前原话的角色呈现，未改客户字句；v2固定原题1426–1429均技术成功、无查询/写入/摘要且记忆未变，餐桌仍部分，纸质书1428/1429仍答成人、0/2。4 attempts/4 observed行/2903 tokens，费用null、unknown0，2298项源码/配置稳定。去掉JSON包装不是充分原因；保留读者/所读内容二义性与模型理解假设，不以此断言通用能力。当前段落机制修复计数2，停止第三轮措辞/正则/呈现/模型采样；两批原稿和各自版本不合并，原prefix/tail语义gate仍false。
-
-测试夹具撤权声明另有真实校正：current-message-raw.json在身份前置处停止、模型调用0，租户事务看不到app.users，旧identityRevoked=true并非更新证明。`fixture-context-repair.json`核对2730–2739的精确合成企业/昵称后，在平台事务用RETURNING将context1→2，并真实HTTP验证10个旧令牌均401；历史报告保留并由此记录纠正。v2最终2738/2739平台回收至context3，postflight再验context2令牌401，2730–2737保持context2；全部AI关闭、队列/验收锁/controller0，无真实客户或业务内容修改。
-
-CONSULT-02/KDEP-CONSULT-02保持Limited。顺序owner01a162a7-3655-7743-9ca6-fb9530b58f3f核对咨询776/777实际持久记录：各9 runs/18消息/4个不同话题/记忆v4的4项事实，core2282/e1328e98及继承源码/文档无漂移。旧失败段落无读写、不提供所存事实，因此以`factual-history-plan-02.json`另固定剩余原话、更正/35/60回读各两次；不重开旧r1/prefix/tail的false gate、不改旧失败判定。零调用前置失败保留：审计最初遇到继承的已删除文件；数据前置随后发现pg Date毫秒与repository PostgreSQL微秒时间戳表示不同。递归比对仅created_at/updated_at存在等价表示差异，新绑定保留repository完整数据，不删除字段。
-
-首个新输入为原计划index7/discussion-4/run1430，仅产生1次accepted模型尝试3862；91415ms后`PROVIDER_TIMEOUT`，结果为`unknown`/`provider_outcome_unknown`/`indeterminate`，无输出消息、无observed计量。实际token和费用未知；reconciling的1请求/72000 tokens/1000000 cost_micros是预留，不是实际费用。批次立即停止，第二次及后续输入均未派发。`factual-history-through35-02.json`绑定2308项源码/测试/配置/数据且首尾不变，平台配置和记忆不变。没有回答不能判语义通过或失败，35/60、更正/回读/压缩仍未验。
-
-`unknown-recovery.json`在2310项稳定绑定下通过9项真实HTTP、模型调用0：run/会话/消息重进仍为同一unknown且retryable=false；同键重试两次409，异租户读取404，实际平台RETURNING/回读撤权后两组旧令牌401。runs/attempts/usage/记忆前后逐字等价。2738/2739最终AI关闭/context5，2730–2737仍context2。原生仅做只读前置：精确原项目Stable CDP目标/9420/9431仍在，但screenX/Y=-32000、outer160×28表明窗口最小化，无法确认副屏窗口；未接入SDK controller、编译、导航或截图。真机/真实微信仍未验且非开发阻塞。产品源码/UI/API/角色/知识/Evidence/模型配置及还原状态不变，未阶段提交、push或生产部署。
-
-当前证据与后续边界见`tmp/xiaok-consult-02/factual-final-review.json`，旧语义计数2/失败仍见`current-message-final-review.json`。两个已结束驱动不重跑、1430不重放、不无据消除reconciling或补采替代双次。未来获权事实接续须按实际持久数据仅固定未执行输入/核心次数，保留诊断重复、失败和版本分离。原生待精确原项目恢复到可核对的副屏窗口，不复制项目、不设置例行人工验收。知识未发现缺陷，不重建入库/检索。输入形式参考[Qwen官方消息示例](https://huggingface.co/Qwen/Qwen3.5-4B)，不据此证明故障原因。
-
-参考采用：已检查[LangGraph ToolInvocationError与模型可控参数诊断](https://github.com/langchain-ai/langgraph/blob/main/libs/prebuilt/langgraph/prebuilt/tool_node.py)、其[错误处理/注入参数测试](https://github.com/langchain-ai/langgraph/blob/main/libs/prebuilt/tests/test_tool_node.py)及此前记录的[schema重试issue9426](https://github.com/langchain-ai/langchainjs/issues/9426)。沿原持久工具循环保留精确参数诊断，注入身份不进入模型参数；采用校验实践，不迁移框架，也不推断Qwen具有该issue。实际配置模型行为仍以本项目原稿为准。完整I/O、用量、边界与下一命令见`tmp/xiaok-consult-02/normal-conflict-review.json`。
-
-当前范围还检查[LangChain上下文工程](https://docs.langchain.com/oss/javascript/langchain/context-engineering)、[AgentNode工具身份校验](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/nodes/AgentNode.ts)及[中间件测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/tests/middleware.test.ts)，沿现有端口采用每次模型调用的临时上下文/工具投影；不迁移框架、增加Agent/存储或重试。schema服从仍由服务端核验，issue9426不证明本次Qwen故障原因。
-
-| 已执行范围 | 结果与边界 |
-| --- | --- |
-| 当前history/budget依赖 | 11/11单元、8/8真实隔离服务通过，服务注入模型适配器，无供应商调用。保存的1381/1383步骤无摘要/裁剪：估算11996→13871→14173/14125，消息未变、omitted IDs为空；两次检索均ready/零来源且低于0.3，未证实KnowledgeRetriever/Evidence缺陷。 |
-| 配置Qwen3.5-4B历史 | 两个固定合成归档各105行、各两次触发阈值的提问：1384–1387均保留不拆墙/夜间不用音箱/比较不代表同意。每次选到recent60之外早期原文、裁去11条近期消息；四稿都另用recall_history，不能把成功单独归于摘要。两次摘要还选入无关厨房原文。实写回读、同键重发、重进及原文撤回通过；未测更正写入或原生。12次尝试/12条observed usage/79785 tokens，费用全null。 |
-| 明确授权Qwen3-8B对照 | 严格两次固定合成原输入，重建后匹配1381/1383首稿指纹；仅改model，不执行工具、修复调用或客户交付。1388通过解析器，却把收纳/阅读角/书桌位置/预算原话引用到LED/调光建议，语义失败；1389仍编造3000K，被unsupported_model_commitment拒绝，另有台灯建议自相矛盾。语义0/2，不替代默认模型验收。2次尝试/2条observed usage/17122 tokens，费用null；目录免费不等于账单已证实为零。 |
-
-预期与实际：保存的1388用真实但无关的客户原话给LED/调光建议背书。`question-source-scope-v2`仅对明确独立的一般建议排除未经请求的历史/项目引用，模型投影、最终schema和服务端审查共用该范围；明确事实前提、混合请求及结合项目条件的建议保留原路径，知识原文/条件和已查来源撤回保持。这是有界来源范围，不是任意语义蕴含判断。唯一有界修复可在目录收窄后移除原错误ID，不增加来源或重试；离线重放1388现被`ungrounded_response_scope`拒绝。
-
-已执行65/65单元；integrated-02的五项兼容服务通过，新增服务仅因测试错误地在history source_refs寻找全文而失败。修正后分别检查消息/hash依赖和独立synthesis快照，service-03单项通过真实写入、唯一修复、幂等、重进、异客户/租户拒绝及原话撤回。不同版本不合并成一批六项全通过。受影响lint通过；tsc仍292项基线错误/受影响0，与OPS-01错误行完全一致。原测试失败及版本绑定保持。
-
-预先固定的配置Qwen3.5-4B两稿1390/1391（attempt3803/3804）复用原1381/1383合成回答输入，仅应用新投影/策略/schema。两稿均已空引用，但仍编造色温/照度/亮度数值，均被`unsupported_model_commitment`拒绝，语义0/2。无工具执行、修复调用、客户交付、补采或替代样本；2 attempts/2条observed usage/9373 tokens，费用null，全局配置未改，原输出不覆盖。来源收窄修复了独立归因缺陷，却不是无据量数的共同原因。保留v119/v120首稿/唯一修复及已用尽的8B对照；停止这条补丁/重测循环，不继续措辞/照明正则变体或第三次采样。
-
-CONSULT-02内下一独立范围：沿获权个人事实完成正常35/60轮、持久更正和原话回顾；它不依赖自由技术建议，之前四稿配置模型合成历史结果只支持该有限独立性，不是正常长聊验收。先读AG-01并固定有界试验再执行，不重跑归档历史代替正常对话。KDEP仍无需知识代码改动。未取得新控制器/原生证据，无付费fallback、push或生产；交付未完成，相关变更不提交，无关脏改动保留。
-
-实现参考：已检查维护中的[LangChain结构化输出](https://docs.langchain.com/oss/javascript/langchain/structured-output)、[响应策略](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/responses.ts)、[对应测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/tests/responses.test.ts)及[schema修复问题9426](https://github.com/langchain-ai/langchainjs/issues/9426)。复用既有工具schema、应用校验和一次修复；框架结构有效不证明语义支持，不迁移框架、不新增引用管线或重试循环。历史issue仅作参考，不声称当前Qwen发生同一供应商缺陷；配置模型事实以1390/1391为准。
-
 ## 已交付OPS-01：双工地事实简报（限定Implemented）
 
 经理从原项目总览进入`packages/construction/brief/brief`，比较获权工地的实际节点、最新已发布记录和持续事项，再进入原S04明确发送“事项编号现在在等谁？为什么？”。接手、转交、回复、核对与正式处理沿原命令；简报重读同一事实。GET `/api/miniprogram/construction/brief`复用ConstructionService租户及管理权限，admin/super_admin继承所选企业owner；普通成员不获管理简报。最多20项目/各50事项并标明截断，no-store。最新记录署名取原作者，不能把发布管理者显示成作者。
@@ -1555,128 +1187,6 @@ CONSULT-02内下一独立范围：沿获权个人事实完成正常35/60轮、�
 
 **已执行证据。** 保存的run-2449首稿现收到有界修复（`removeUnsupportedNumbers:["4"]`，沿用原citationId），修复稿通过全部原守卫；新增3项回归测试通过。同一自然问题经运行中服务的两次真实配置模型旅程（conversations1514/1515，runs2484/2485）均成功并交付依据“本人项目实际节点、已发布现场记录”的回答；两次均为首稿通过（`validationRepairs:0`），证明用户可见完成，但未实际触发派生计数修复轮；该路径由保存首稿回放证明，不由本次模型输出证明。4次observed文本调用/14164 tokens，费用null/unknown。原run2449及三次调用/11890 tokens/null费用保留为失败，conversation1471未被改动。修复/测试/夹具hash为`515743dfb3fbdff14d82b94edc2e3e4229ab4bfd871fa59564df5095a839e11b`、`f0434c0b43bc0b4f4aaec648d5028a7a71f65abb3ff0759bf653cbb30173aab2`、`d93f926ad5c23dbee12922a9428fdb64ad68eeb7e78e08f57226f1838a55437c`；无知识、摄取、Embedding、路由/API/schema、小程序结构/素材或还原台账改动。见`tmp/xiaok-business-numeric-repair-20261109/verification.json`。
 
-## 历史v119：材料/建议数值引用的既有修复
-
-**历史v119：有界材料/建议数值引用修复；整体Limited。** 当前客户原话/正式主户型来源中的数值漏引可进入原有唯一一次绑定稿件hash的最终编辑修复：evidence段每个缺失数字均须存在于这些实际原文；advice中的无据量数可删除。该诊断前仍检查完整结构/引用和既有承诺守卫，最终数值/来源/范围校验保持严格。正文、引用和编辑均由模型选择，不增工具/轮次、不服务器填答案、不降级general绕过校验、不换模型或付费兜底。v118仅原文上下文保留。项目/历史来源沿既有“本轮依据”类别摘要及服务端精确原文绑定，不是知识文件引用行/弹层。未改解析/检索、路由/API/schema/权限、记忆/任务/用量及批准C01/C02/C05/U01标记/样式/素材/固定文案/导航/几何，无还原台账影响。
-
-**v119已执行证据。** 工作区源码/测试/配置5795e4353dec55d72b80fe456a5769cb6595005a179609b59c2bc1e22361fbbc（2269项，含原有脏依赖）下，387/1/2项Agent单元/定向隔离服务/受影响兼容及scoped lint通过；全量tsc仍292/涉及0，完整诊断与v118逐字节一致。服务通过真实预算保存、当前正式v4户型、模型明确编辑、忽略修复拒绝、记忆/写入不重复、跨客户/租户拒绝及解除主户型关联后的撤回/重入。三组red由2失败/1通过转为3通过。pre-service-review1/2保留测试回调断言导致的8285/8287未知状态，无真实聊天provider派发；review3保留误把项目来源当知识引用行的错误预期，均不计最终检查，也未重评产品/模型结果。两次原生窗口各核验官方freeOnly目录，并各执行一次相同户型/建议题，均用既定Qwen/Qwen3.5-4B。1373交付一次限定资料元信息解释；1375仅列户型，没有回答尺寸核实问题。1374/1376各在唯一修复后失败（重复引用且数值未改；错段且数值未改）。无需求写入、记忆仍v6；10次实际accepted尝试3769–3778对应10条observed token记录，费用均null。源码/测试/配置及驱动哈希稳定，五张原生截图已查看，解除主户型关联后旧答复重入撤回。复制脚本误把非原文题断言为原文专答协议，作为脚本失败保留，不是源码漂移或项目引用API故障。本批正常路径仍失败。v118原文件1371/1372首稿、来源弹层/撤回及98小程序对未改客户端/原文路径保持独立有效；v115原通过和全部旧失败/真实unknown/费用保留。证据`tmp/xiaok-material-citation-v119/`。独立P3B当前授权负责人接续缺口已实施并经真实原生结束/重新授权/原咨询回传重进验收；专业咨询/F-06/F-07仍受v119工具结果收口和唯一修复遵循问题阻塞，不扩新模型/提示词矩阵或兜底。 pre-type-review另保留两处测试类型错误，修复后重新完成最终同源387/1/2/lint/tsc批次。
-
-**独立保留的v117证据。** 最终工作区源码/测试/配置55fb104e38d89d76fbb0f4dc3d0f2302702e513b4df71735e070c5d6b69a0b2f（2267项，含保留的原有脏依赖）下，379项Agent单元/4项定向隔离服务/8项知识兼容/98项小程序及scoped lint通过。全量tsc仍exit2/292/涉及0，完整诊断与v116一致。服务涵盖1363/1366原稿六类basis变体、真实唯一编辑修复/忽略修复拒绝、来源/权限/重入/撤回及受影响保存回执；较早pre-scope-review和red2独立保留，不计最终检查。新免费Qwen/Stable1369/1370均实际读取文档370/版本376并选择正确第2页，同时回答未请求的第1页、添加项目缺项/查询段。实际第1页的批准否定句及额外项目段触发unsupported_model_commitment，修复反馈入口抛出，未提供既有唯一修复；无答案交付、无来源弹层、未到达原生撤回。两份首个最终稿均失败，无最终修复调用，无需求写入，记忆v6。4次actual accepted Qwen3.5-4B调用/4条实测token记录，4条费用保留null，不按零。2张原始C01/U01失败PNG已逐张实看，逻辑390x844/编码348x752；fresh compile/SDK/精确路由及transport/controller/锁清理通过，不算业务验收。复制后的helper拒绝未观察citation ID，代码仅放行自有会话真实HTTP消息返回的ID；因无交付，其正向引用通路仍未执行。会话HTTP本人200/同企业他客404/跨企业404通过，不新增引用HTTP通过声明。夹具清理=true；原生=false、逐条语义=false。parser-diagnostic.json离线接受孤立第2页段、定位第1页/项目段失败，仅作诊断，不是修复后实模或重评通过。证据`tmp/xiaok-answer-scope-v117/`。v115预算通过、全部v116原失败及历史unknown/费用独立保留。下一步用1369/1370实际原稿修仅原文model context/相关性及现有反馈路径，再修F-07材料引用组合/独立建议；不得放宽数值/承诺，也不能误报引用API故障。
-
-保留[LangChain结构化输出/校验反馈](https://docs.langchain.com/oss/javascript/langchain/structured-output#schema-validation-error)和[维护中的配对工具测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)的既有协议能力，应用掌握唯一修复预算、权限及持久化，未迁移框架；DeepSeek reasoning_content上游问题不当作Qwen已复现缺陷或通用规避。当前实测失败须由上述真实轨迹继续定位，不能用上游示例宣称效果。
-
-**历史v115已完成预算恢复：按当前预算范围收窄最终修复并拦截内部编号；整体Limited。** 既有唯一最终修复携带可信、绑定原稿hash的current_budget_available/unavailable格式范围：有预算沿general，无预算沿一个synthesis uncertainty段与空citations。答案仍由模型生成，不提供预算值/服务器答案，不加工具/轮数、不换模型、不恢复旧预算、不放宽租户/来源/回执检查。当前预算正文拒绝内部来源/消息编号及无据更正日期；用户/工具副本、被改原稿与未知控制不能授权范围，v1无范围checkpoint及catalog编辑兼容。稳定370/3/8/98项Agent单元/定向隔离服务/知识兼容/Mini与定向lint通过；服务涵盖十个撤回分支、四个日期/内部ID分支及受影响回执回归。全仓tsc仍exit2/292/涉及0，完整诊断与v114一致。新免费Qwen/Stable保存1353/1356、回顾1354/1357、撤回1355/1358：原生=true、逐条语义=true、实际最终修复run=1355/1357/1358、语义未通过=none。13次attempt实际均Qwen3.5-4B，accepted=true；13条token费用保留null。12张独立命名、精确路由原生PNG已逐张实看，逻辑390x844/编码348x752。原始输出与失败保留，不重放、不混合计数。C01/U01结构/样式/素材/固定文案/导航/几何、公开API/角色/数据库schema、KnowledgeRetriever/Evidence及PostgreSQL job/授权/计费保持，无还原台账变更。证据`tmp/xiaok-budget-repair-scope-v115/`及[二期合同](./xiaok-assistant-phase-2.zh-CN.md)。本批不代表F-06/F-07、全PPT、真机或生产验收完成。 各run真实写入/重进证据：1353:v6/writes1,1354:v6/writes0,1355:v6/writes0,1356:v6/writes1,1357:v6/writes0,1358:v6/writes0。U01读错误/重新连接恢复=2组，权限结果={"positiveOwn":200,"sameTenantOther":404,"crossTenant":404}；首个最终候选仍被拒绝=1355/1357/1358，修复后通过不计首稿通过。已执行的来源撤回及未到达/出错分支保留在live.json/native.json，未执行状态不记通过。
-
-**独立保留的v116证据。** 稳定源码2538066e5d25d413fb37ecad5d19c214391b4a9fcb894c8a5a2be16b99f0308d（2266项）下，Agent单元/定向隔离服务/知识兼容/小程序分别375/3/8/98及scoped lint通过。覆盖原1360/1362首稿的六类绕过、真实空读取、真实预算保存/回顾/来源撤回、普通只读重入及失败回执恢复。全量tsc仍exit2/292/涉及0，完整诊断与v115一致；较早测试/范围调整批次单独保留，不计入稳定批次。新免费Qwen/Stable1363/1366均先实际search_knowledge，再引用文档369/版本375/第2页；但两次均在advice新增无据关闭条件，1366还写入结算/签字确认，逐条语义验收失败。真实引用HTTP本人200/同企业他客404/跨企业404且原文为实际第2页；现有synthetic transport拒绝/citations/:id，两次原生来源弹层等待超时，仍未验证。1364/1367查询真实材料后，最终同段版本/金额缺对应引文；1365/1368对独立照明建议仍检索，生成无据色温/流明/Ra量数；四次均被unsupported_model_commitment拦截、无交付。六条原题均只执行一次，无需求写入、记忆保持v6、未触发最终修复，无本批原题漏执行。 原生=false，逐条语义=false；实际配置Qwen3.5-4B attempt共12次，实测token记录12条，其中费用null为12条，未知费用不按零处理。8张原始且路由核对的PNG已逐张实看，逻辑390x844/编码348x752。首个最终稿失败=["1363","1364","1365","1366","1367","1368"]，不与修复后通过合并。夹具/transport清理=true。证据：`tmp/xiaok-source-read-v116/`。既有v115预算原生恢复及原1359/1361安全宽度记录独立保留；1360/1362仍为原始失败，不重放或改判。
-
-**历史v115原题来源失败：Limited。** 在同一已提交v115源码（摘要20f7e6309ceb881de521d9571675fafa91af58d30d3df3156b2e156b5a03aac5）下，新免费Qwen/Stable run1359/1361展示实际水电记录及缺少现场量测/验收完成记录，不虚构宽度或批准、不新增需求写入，记忆保持v6。原`合成手测点位说明.pdf`字节/文件名/hash保持，新文档368/版本374经真实服务导入、解析到实际第2页、审核、索引、发布，并下载核对字节一致。两次确切第二节提问均绕过search_knowledge：1360生成无据关闭流程，被unsupported_model_commitment拦截且无交付；1362虽技术成功，却给出无引用的一般解释，新增原文未支持的费用结算等关闭条件，逐条语义及确切版本/第2页验收失败。由于未执行检索，不能据此认定解析/索引/检索缺陷。6次attempt实际均Qwen3.5-4B且accepted，6条实测token费用保持null；4张原生PNG已逐张实看，逻辑390x844/编码348x752，未到达来源弹层。两组户型/首个长聊问题均因PDF失败尚未执行。本人200/同企业他客404/跨企业404、源码/配置/driver hash不变、transport恢复、合成AI/员工停用、身份撤销及自有队列/controller空闲见`tmp/xiaok-original-sources-v115/`。离线基线脚本最初未处理原有已删除文件，现以null记录且保留原删除，当时未触发模型。本验收窗口无产品代码/UI/API/角色/数据库schema或还原台账变化；前一v115预算恢复与其首稿失败单独保留。
-
-**后续已授权范围。** 先用实际1363/1366首稿继续一项有界Agent最终范围修复：advice标签或真实PDF引用不授权原文未支持的业务前提。复用现有工具/收尾schema及唯一修复/四轮预算，正文/引用仍由模型选择，保留数值与承诺拒绝。下一新原生窗口前，将已验证helper复制到新证据目录，只放行当前自有合成会话实际返回的citation ID，保留串行SDK/CDP/精确窗口/锁/finally纪律。随后按实际输入修复F-07引用组合与独立建议过度检索，不改解析器、不补造引用或服务器答案，也不通过降级general绕过数值校验。 来源表达覆盖、完整F-07长聊/压缩、全部PPT/专业能力/真机/BLE/真实微信/生产验收仍未完成。1132/3196及1184/3327仍未重放/新审计且费用未知，本批夹具不结清历史全局未知任务。不付费/换模型兜底、不push或部署。
-
-复核维护中的[LangChain结构化输出](https://docs.langchain.com/oss/javascript/langchain/structured-output)、[LangGraph ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[配对工具测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)与[历史1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。沿用结构化工具及应用自有授权/持久化/预算，保留配对结果并独立校验模型实际输出；不迁移框架，不把历史ToolMessage状态问题当成本次Qwen原因。最初context-mode抓取结构化文档遇证书错误，官方网页读取成功；未放宽证书或供应商边界。
-
-prompt xiaok-renovation-v115保留need-source-input-v2、原子写入/回执、工具对、current_request/history_original身份及既有免费Qwen。final-answer-repair-v2仅给紧邻原稿hash控制添加服务端校验器拥有的格式范围，有/无预算分支收窄同一个final_response，不替模型选答案文本、事实值、来源或引用。服务端授权与完整最终校验仍是权威，生成后重新检查来源；旧v1无范围控制兼容，未知/伪造范围、被改原稿及v1携带范围不能改变工具。catalog synthesis-edit-v1优先且合同保持。初始两个红测、一次过宽断言及测试角色类型未收窄分别保留；最终2265项摘要20f7e6309ceb881de521d9571675fafa91af58d30d3df3156b2e156b5a03aac5下重跑相关检查。参考维护中的[LangChain结构化输出](https://docs.langchain.com/oss/javascript/langchain/structured-output)、[LangGraph executor](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/react_agent_executor.ts)及[工具/消息测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)复用有界工具schema；供应商是否遵守以本批实际Qwen输出为证据，不从文档推定。无框架迁移或额外编排/事实库/引用管线。共享验收锁、idle guard、精确Stable项目、fresh compile、副屏与finally传输/controller清理保持。
-
-真实范围：1330:succeeded/1写入/v6；1333:succeeded/1写入/v6。回顾1331:succeeded；1334:succeeded；撤回1332:succeeded。真实来源重试反馈run无、数值修复run无与单元/服务分支覆盖分开记录。attempts 3689,3690,3691,3692,3693,3694；无付费备用或重放。源码/测试/配置2265项，摘要f835fab2e2bc8a6c977ff6d4cd34fc09a3c08dbcedf7d6011acd3555f93a39b4，最终检查/原生前后相同；模型配置b8e4c1e06526f9ec6ad9552b56ebcad81488e8eb641f952587811fd044c47ef7。C01/U01截图核对已有批准框架及真实反馈/重进，不宣称新视觉还原。真机/BLE/真实微信、完整原多域题及生产仍未验证。
-
-服务端仅经availableNeedMemory与needSourceRefs构建内部currentNeeds；history来源须匹配H+消息ID、完整原话hash、当前记忆版本，包含实际保存quote/value，且value确有本段缺失的阿拉伯数字。原话其他位置的假设量数或相同单位不能开启恢复。来源仍由currentSynthesisContext读取重验，不信任模型/客户端包。模型沿既有synthesis-edit-v1明确编辑被拒稿；最终全量校验、四次模型/四项写入/一次修复、真实回执、撤回与持久计量保持，不增加事实库或知识职责。
-
-原未改动v107批次先真实保存1325；1326虽读对18万元，却在附加20→18比较段漏引当前原话，最终unsupported_model_commitment无交付。1327在预算单项保存中反复带入无关书桌参数，0写入，未执行安排的预算回读；两故障分开，原批HTTP恢复/撤回均未执行。保留1326 raw hash c92c354abab5defc12edd1f62a2d7fcf0f3f93224dd1ef822a19b206f323ccf3，离线诊断仍拒绝同一原稿、仅给反馈，无provider/业务重放或改分。初始单元2/5红测、两次服务callback/夹具失败和涉及类型2/全仓294均保留，最终证据另绑定。新增测试措辞“当前记录的预算”触发了既有现场记录范围守卫；服务夹具已改为1326逐字原句，因此本批不证明该额外措辞已通过。
-
-历史v110失败证据。新开发企业2688/2689、用户3762–3764、咨询703–705按原1223前五项canonical desk/storage/客厅/budget准备记忆v5，并提供真实获权正式v4户型；为新夹具准备，不重放旧模型run。两次真实预算更正1328/1329均在预算原话下反复选择desk/靠内墙，need_source_mismatch整体拒绝；最后原稿错误暗示已保存，被unsupported_model_commitment阻止，0写入/记忆v5。两道原预算回顾未派发，撤回/U01及新当前需求数值修复真实分支均未执行。本人200/同企其他客户404/跨企404和既有失败UI独立通过。8次provider attempt全成功，非供应商连接故障。下一原话字段恢复归Agent AG-04/05，不改知识解析，保留唯一工具/schema协议及原写入权限。
-
-历史v110失败证据。真实答复run attempts3681,3682,3683,3684,3685,3686,3687,3688状态{"succeeded":8}，observed用量{"tokens":8}，其他用量{}，费用全null。原失败及unknown1132/3196、1184/3327未重放或重新审计。2265项源码/测试/配置摘要eb8004a653820bcd2622f6ec955ce40494b8956f267e59f04a61747da522b3f2，六项完整检查与原生首尾同源。Mini markup/styles/artwork/固定文案/导航/几何及还原台账无变；本失败批次U01恢复未执行。
-
-复查维护中的[ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，沿成对工具/结果、模型显式选择及已有绑定编辑；Postgres仍负责权限/来源/job/计量。安装LangGraph1.5.0/core1.2.18保持。1440为历史问题，非本provider根因；API403检索已回退实际问题页。
-
-## 历史v108：原始F-02追问在未改动v107上复测通过
-
-**当前v108验收记录：F-02原始缺尺寸追问两次通过，整体Limited。** 产品源码与prompt保持xiaok-renovation-v107，包括其绑定本轮原话的数值恢复。新免费Qwen/Stable1321/1324在两次书房原题后，各一次模型调用回答同一道原始追问：无现场尺寸不能直接确定插座位置，无编造点位/验收或需求写入。新合成企业2684/2685复现原KA/KB正文及v4墙图，不重放旧完整夹具。历史GLM1242首败/1243通过分开保留；旧范围拒绝分支本轮未触发，不重评分。6次安排的原生对话/重进、2次HTTP U01重连、本人/同企业其他客户/跨企业隔离及实际知识退役通过；11张截图均已审看，逻辑390x844/PNG348x752。10次Qwen attempt3663–3672均成功accepted，答复run含10条observed token及4条observed query_embedding记录，费用全null；索引job用量不在该合计。2264项摘要0a954f285087bb47140b44e86f0d5069ebed6a52a8d94a2c5ee322969cb06c54未变，352单元/27服务/8兼容/98 Mini/lint明确复用v107结果、没有重跑；全仓tsc仍失败292/涉及0。KnowledgeRetriever/Evidence、路由/API/角色/schema及批准C01/U01 markup/styles/assets/固定文案/导航/几何保持，无还原台账影响。夹具AI关闭/身份撤权、队列0/自有锁释放。无新产品功能，不宣称完整F-02/F-04/PPT/专业/真机/生产完成，无push/部署。下一F-06原始预算/宽度与验收/指定文件题，再F-07。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、`tmp/xiaok-missing-dimensions-v108/`。
-
-两次原始追问均用kind=general、无读写工具/修复；不同provider request/attempt身份保留。它们证明当前配置模型的一般缺量测边界，不是对旧混阶段稿的修复。前四次书房问题为真实前置对话，不作广泛专业质量认证。trial0经既有版本API实际退役364/365，依赖答复变不可用，独立一般F-02答复仍可用；两次既有U01重连恢复持久历史且无新run。真实合成项目/知识/消息/回复写入、重进、权限和错误路径见live.json与semantic-review.json；没有新增运行行为或设计。原失败及preparation-error-1.json保留。代码/文档影响核对确认只更新验收记录。
-
-## 历史v107：绑定已保存本轮原话的数值恢复
-
-**有界内部实现，F-04及整体Limited。** prompt xiaok-renovation-v107将服务端已知trigger ID/content hash加入内部综合校验上下文。只有唯一获权history来源与本轮ID、hash、完整问题一致，且每个数值缺引段都有原话实际出现的缺失数字，才进入既有单次最终修复；“万元”单位相同不能开启恢复。来源仍为既有保存回执的原话，经过currentSynthesisContext重新校验，不以标题或旧历史授权。反馈定位正文路径/已有citationOptions，由模型明确补引或删除无据旧金额/附加段，并保留独立取舍回答。不服务器选引、不改稿/引文、不重放保存、不加工具/轮数/Agent/事实库/引用管线或DB/API schema。原最终数值/承诺/来源/租户/房间/版本/回执校验保持。
-
-已复查维护中的[LangGraph ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭issue1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，继续标准成对工具结果、JSON Schema与既有有界编辑最终协议；安装LangGraph1.5.0/core1.2.18及框架保持，不把1440当本provider已证根因。初次错仓库1440检索已弃用。
-
-| 核验 | 实际结果 |
-| --- | --- |
-| 稳定检查 |2,264项源码/测试/配置摘要`0a954f285087bb47140b44e86f0d5069ebed6a52a8d94a2c5ee322969cb06c54`，352 Agent单元、27隔离真实服务、8知识兼容、98 Mini和定向lint通过。全仓tsc退出2/292，涉及0，完整诊断集与v106相同；定向5项为单元子集，不另累加；初始/中间红测分别保留 |
-| 定向恢复 |原1311首稿hash4eb0b6b3adb42338fb2250f8015fead24ca1a1720acaed8df7cb676bf3020f66仍被数值校验拒绝；离线v107现返回绑定当前原话的反馈，无provider/业务重放或旧run改分。真实服务补引/删段/仍非法/撤回分支保留取舍，仅提交一个两项批次，非法交付被拦；错误身份/hash/文字、无关量数、正向承诺仍关闭 |
-| 免费模型/原生 |再次只读实时官方目录确认Qwen/Qwen3.5-4B为8免费候选之一，0连接探针/配置写入。新Stable1314/1317各一次按原文提交书房desk靠内墙+全局budget18万元、v5→v7，交付有界通用取舍与现场未知；1315/1318重进回顾书桌/收纳/阅读角/预算，0新写入。5项题均通过，0未执行。两组自然混合题均未触发数值最终修复/不完整重试，不称真实provider相应分支已通过 |
-| 撤回/恢复 |1316模型原稿在撤回后错误保留“靠内墙”；既有step1011/unavailable-desk-view-v1重建获权部分视图，仅交付书桌当前位置无法确认和独立收纳。首稿/实际交付分开：运行交付通过，不给原模型语义改分。重进后旧依赖答复已隐藏。两组各注入一次HTTP读取失败，用真实U01重连恢复持久历史，无新run/写入；不是provider故障恢复。本咨询200/同企业他人404/跨企业404 |
-| 原生/设计 |复用副屏唯一Stable2.02.2608080/automator0.13.0/base3.17.2窗口，新鲜DOM编译及SDK/system/page正控。10图全部实际审看，C01精确route/stack、逻辑390x844/PNG348x752；批准来源design-references/xiaok-p4b-public-sites-v1/README.md C01/U01。Mini markup/styles/assets/固定文案/几何/导航保持，无视觉还原或台账影响 |
-| 用量/清理 |attempt3651–3662均succeeded/accepted=true/实际Qwen/Qwen3.5-4B；12条实测token+2条query_embedding(unavailable)，费用全null，两条agent_need_write另计。v106交接此前把2条query_embedding误称需求操作用量；原始v106实为8 token+2 query_embedding和独立2写入步骤，原证据不覆盖。enterprise2682/2683 AI关闭，user3752–3754上下文撤权，咨询693–695保留；fixture active0/unknown0不是全库审计。session/transport恢复、SDK断开、自有锁释放；模型配置hash b8e4c1e06526f9ec6ad9552b56ebcad81488e8eb641f952587811fd044c47ef7及8驱动稳定 |
-
-证据tmp/xiaok-current-numeric-v107/的baseline、各次原始红测、六类检查manifest、live/native、diagnosis、semantic-review和verification。历史v1061311失败、v105/模型失败及未知1132/3196、1184/3327分别保留，不重放、不改分、不把未知费用补0。KnowledgeRetriever/Evidence、API/角色/DB schema及部署环境保持。
-
-**下一有界项：** F-02原缺少现场尺寸的追问，再F-06/07；保留1242首败和1243通过，继续已授权单owner流程，容量轮换按两计划执行。完整F-04/PPT/专业/真机/BLE/真实微信/生产验收未完成，无push/部署。
-
-## 历史v105：原文quote选项内部已验证，原生被供应商拒绝
-
-**内部可恢复检查点；F-04及整体仍Limited。** prompt `xiaok-renovation-v105` / `need-original-quotes-v1`从已有明确断言块提供最多四个连续原分句、每句最多1,000字符；主字段与additionalNeeds的quote使用同一字符串enum，已有错误反馈返回quoteOptions。既有断言范围排除独立假设问题。每项room/field/value/quote仍由模型选择；未修正参数、补缺项、推断事实或增加工具/轮数/Agent/存储/引用管线。超界/无明确块输入沿原自由quote schema及独立持久校验。原四项原子/原话/值/房间/租户/版本/回执、完成断言后耗尽写工具与单次最终修复保持。
-
-| 核验 | 实际结果 |
-| --- | --- |
-| 稳定源码 | 2,263项源码/测试/配置，SHA256 `ef6276d00135ae565b3b688e67fe13948ba873b16b7e674d233c333e0677b49a`；六类检查及原生前后相同，8份原生驱动及数据库模型配置hash未变 |
-| 自动检查 | 344 Agent单元、25隔离服务、8知识兼容、98 Mini及定向lint通过；涉及类型0/全仓292，整体tsc未通过。新增服务验证真实原子写入/重进、两个schema位置实际派发、改写原话拒绝、原始错误参数保留及无服务器填参的恢复 |
-| 红测证据 | 首次19项16过/3败仅保留工具输出计数：后次调用误覆盖首次原始red日志，不声称已重建原始日志。修后red19/19、定向服务1与完整检查分别记录；定向1已含在25内，不累加 |
-| 原生执行 | 唯一Stable2.02.2608080、SDK0.13.0、base3.17.2；实际项目路径/可执行文件/标题、副屏、新鲜DOM编译及SDK正控已核实。C01真实输入1307/1308（trigger10149/10150）各一次provider attempt3633/3634被拒绝：HTTP_402、accepted=false，应用provider_payment_required。请求模型仍THUDM/GLM-4-9B-0414，不证明模型已执行 |
-| 结果 | 无模型稿、实测用量记录、需求写入或助手交付；两咨询记忆仍v5/预算20万元。原生题0通过/2失败/3未执行（recap-0/withdrawn-0/recap-1）；两项预备读取故障/重连未执行。没有可评语义答复；供应商拒绝与v104原始语义失败分开 |
-| 客户端/权限 | 本人HTTP200、同企业其他客户404、跨企业404。两张精确route/stack、390x844/PNG348x752失败图已审看：既有“这次回答没有完成”，无虚假成功。批准来源 `design-references/xiaok-p4b-public-sites-v1/README.md` C01/U01及既有markup/styles/assets/固定文案/导航/几何保持，未作新视觉还原或台账修改 |
-| 清理/用量 | 合成enterprise2676/2677 AI关闭、user3743–3745上下文撤权、咨询684–686保留为标记证据，仅fixture active0/unknown0。session/transport恢复、SDK断开、验收锁释放。attempt estimated_cost/actual_cost为空对象且无用量记录，不推断零tokens/费用/结算。旧1132/3196及1184/3327未重放或重新审计 |
-
-复核[LangChain工具schema转换](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/utils/function_calling.ts)、[LangGraph ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)与[已关闭issue1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，并检查已安装LangGraph1.5.0/core1.2.18及当前传输。复用JSON Schema、成对可控错误和独立服务校验；不假设供应商严格遵守schema，不把上游issue归为GLM根因；未迁移框架/配置/供应商。
-
-证据：`tmp/xiaok-original-quotes-v105/`的baseline/check/validate/verify、六类result manifest、initial-red-observation.json、native.mjs/ts、live.json、semantic-review.json、provider-rejection.json及两trial目录。v1041305/1306原稿、v103/v102失败与未知账务分别保留。下一项仍Agent F-04：须供应商实际恢复（或用户明确指定新配置），再用新证据目录/新夹具执行两组同配置GLM9/Stable；不重放1307/1308、不自动重试HTTP402、不自行换模型/购买或仅凭单元宣布验收。先完成原子保存、实用采光收益+风险、持久回顾/撤回、权限及U01恢复，再F-02/06/07。已告知用户外部恢复条件，未回复不算恢复。接近容量按两计划顺序轮换新聊天；完整PPT/专业/真机/BLE/真实微信/生产验收仍未完成。
-
-## 历史v104：获权当前回顾已验证，混合原生验收失败
-
-**内部可恢复检查点；F-04及整体仍Limited。** prompt `xiaok-renovation-v104`把真实当前问题传给原完成态更新守卫，普通与synthesis两个最终提交均用`availableNeedMemory`。明确只回顾聊天原话时，允许描述前run仍获权的当前书桌/预算目标；“本次/本轮/刚刚”、助手代办、错误/失效目标及通用“已保存/已记录”不能借只读作用域放行。“已将”完成态与“将”未来表达区分。保留已有有界历史/否定/未来与旧书桌键控制，不新增事实抽取/存储/引用管线；原四字段原子合同、来源/租户、同run幂等回执、工具关闭及唯一最终修复保持。
-
-| 核验 | 实际结果 |
-| --- | --- |
-| 同一完整稳定窗口 |341 Agent单元、24隔离真实服务、8知识兼容、98 Mini单元及涉及lint通过；涉及类型0、全仓292，整体tsc未过 |
-| 版本绑定 |2,263项源码/测试/配置，SHA256 `c2613485f9946d0002e9c1175d11e8d65f48c820dad7071fbe634e95fa439222`；六类检查及原生前后逐项一致，8份原生驱动hash一致 |
-| 原离线误判探针 |传入真实只回顾问题后accepted；合成纯校验，无客户端/供应商/数据库写入 |
-| 前窗口失败 |初始red16项14通过/2失败；首轮完整341单元340通过/1失败，发现“我已将”被误认未来；首轮24服务23通过/1失败，注入回调误把追加的user当前问题当工具结果，形成注入indeterminate，后改按role=tool/精确H来源取值。red.log及attempt-1原日志/快照保留，不并入最终窗口或称真实供应商失败 |
-| 新Stable/GLM9 |run1305/1306均unsupported_model_commitment失败、0需求写入，记忆仍v5/实际预算20万元；各4次真实provider attempt成功，合计3625–3632，用量observed保留，cost仍null不填0 |
-| 原生语义 |模型题0通过/2失败/3未执行：recap-0、withdrawn-0、recap-1未执行；两个预备的读取失败恢复子项也因前置失败未执行 |
-| 权限/清理 |本人咨询正控200、同企业其他客户404、跨企业404；合成2674/2675企业AI关闭，3740–3742身份context撤销，新夹具active0/unknown0；原会话/transport恢复、SDK断开，不重放unknown |
-
-两组实模均把quote写成`更正：书房书桌改为靠内墙。`和`更正：预算改为18万元。`，实际连续原话是`更正：书房书桌改为靠内墙；预算改为18万元`。重复的原话/参数诊断未纠正标点/前缀，初稿还试图保存独立假设问题；各三批原子尝试全拒。最终稿均虚认18万元并把“假设不保存”当成不回答取舍，原守卫在原四轮预算内拦截交付。完整性保护有效不等于业务动作验收通过，不重放失败run、不把拒绝当成功。
-
-实际审看两张348×752原生图，逻辑390×844：C01沿现有U01显示“这次回答没有完成”，没有虚假成功稿。唯一批准来源仍`design-references/xiaok-p4b-public-sites-v1/README.md`，Mini结构/样式/素材/固定文案/导航/几何及还原台账未改，不新增还原/完整宿主/光学/真机通过声明。KnowledgeRetriever/Evidence、知识生产、公共API/schema、权限、人工接续、lease与用量边界保持。
-
-上游沿安装LangGraph1.5.0/core1.2.18复核[ToolNode实现](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭issue1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，继续成对工具结果和有界应用校验，不迁移框架，不据该issue推定GLM根因。
-
-证据/命令：`tmp/xiaok-current-recap-v104/check.mjs`（unit|service|compat|mini|lint|types）、`validate.mjs`、`verify.mjs`、`read-boundary.ts/json`、`native.mjs/ts`、`live.json`、`semantic-review.json`、`prior-observations.json`、两个trial目录及原attempt-1。v103两个稳定窗口及原失败探针仍在`tmp/xiaok-mixed-reply-v103/`；v102原1301/1304与历史unknown1132/1184不改。新夹具unknown0不代表全库unknown0。
-
-**下一项仍是Agent F-04：** 在原工具/schema/结果协议内让精确连续原话quote选择/恢复有效，不由服务端补需求、不增加轮数。有界原话quote enum/catalog仅是待检查候选，尚未实现或验证。保留原子/来源/房间/租户、真实回执与唯一最终修复，实际回答独立假设问题；按新完整版本重跑相关检查及两组新配置实模/Stable夹具后，再处理F-02/06/07。按两计划容量规则顺序轮换唯一负责人，不启动竞争聊天/worktree/并行测试，不生产发布；完整PPT/专业/真机/BLE/真实微信及生产未完成或未验。
-
-**内部限定改进；F-01/F-04及整体Limited。** 明确更正块在“另外/此外/顺便”等独立问题前可跨分号/句号保留多条断言；完整性仅检查该块，不保存假设尾句。模型仍须提交逐字value/quote及字段，服务器不补写漏项。同包全是record_need时沿原四字段原子合并，原provider包单独保存。预算只取自身分句作用域，拒绝借用书桌分句的书房。完整保存后沿既有exhaustedTools关闭重复record_need；底层相同run/原话/room+field/value/quote复用当前事实和回执，不增加版本/归档/事项补充。原键、来源/租户、事务回滚及当前视图/撤回保持，无schema/API/知识生产/权限/批准UI变化。版本xiaok-renovation-v102、same-turn-need-batch-v2；紧凑策略v13/最终协议v3保持。
-
-检查：初始5项红测3通过/2失败保留。首轮服务17项15通过/2失败，新增测试误用了不存在的lease.triggerMessageId；改用sent.messageId，原日志在attempt-1。最终330单元、17真实服务、8知识兼容、98 Mini、涉及文件lint通过；涵盖漏项整批回滚、完整保存后问答、同包原稿、预算错房间拒绝、跨租户、跨轮/原键不增版本、失效恢复及旧复合other/错键style当前回读。涉及类型0，全仓292错误，整体tsc未通过。所有最终检查与原生前后2,263项源码/配置完全相同，摘要eeff7af618a6607efeecc1d135cb6661f2234d312605ad800e6bb47ddc20ed49；8份驱动及模型配置hash稳定。测试针对实际工作树/配置，不是仅干净HEAD。
-
-Stable2.02.2608080/SDK0.13.0/基础库3.17.2、副屏唯一原项目、DOM唯一按钮新编译、390×844/PNG348×752；未另开窗口/项目或桌面输入回退。沿用siliconflow THUDM/GLM-4-9B-0414，不改收费/VLM。合成企业2672/2673、用户3737–3739、咨询678/679/680，种子原话/ID保留于live.json；本人200，同企业其他客户/跨企业404。
-
-| run | 实际结果与结论 |
-| --- | --- |
-|1301|3次provider调用，错误quote先被拒，后一次原子保存desk=靠内墙及全局budget=18万元，记忆v5→v7。但最终只说假设未保存，没有解释靠窗取舍：混合问答失败。|
-|1302|2次调用、0写入；内墙/收纳/阅读角/18万元齐全，20万元明确为历史，重进一致：限定回读通过。|
-|1303|4次调用、0写入；实际撤回1301更正原话后，旧派生答复失效。现有服务器受限投影说无法确认位置、保留收纳，不复活旧位置/18万元：限定恢复通过，不算原模型首稿正确。|
-|1304|4次调用、三批参数被拒、0保存，记忆仍v5/预算20万元；canonical回复却说“书桌位置已更改”“预算也调整为18万元”，仍漏答取舍：虚假更新确认与漏答失败，不能按succeeded算通过。|
-
-语义核对2通过/2失败/1未执行：1304记忆5≠7导致第二组回读未派发。1301驱动/光|反光|眩光|窗/误把重复“靠窗”计作回答，semantic-review.json明确否定该命中，后续须检查实质答复。1304有真实原生输入/HTTP/Worker/provider/持久证据，但断言在最终截图/重进前失败，未声称其视觉通过。已审看trial-0四张图（保存、回读、旧回复失效、受限恢复）；沿唯一批准design-references/xiaok-p4b-public-sites-v1/README.md及既有C01组件，未改Mini结构/样式/素材/固定文案/导航/几何或还原账本，无新还原完成声明。
-
-下一项仍是Agent F-04：以1301/1304原输入补精确原话/预算作用域参数恢复；按本run真实回执验证完成态更新措辞，覆盖已更改/调整为，同时保留历史更正/否定句。assertRecordedReply收到parseAgentReply解码后的文本，标准JSON Unicode转义不是根因。沿现有唯一最终修复和有界循环补答独立假设问题，不新增保存、循环、Agent或引用管线。先修复再进入F-02/F-06/F-07，尚未完成。
-
-核对[ToolNode源码](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[已关闭status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)：复用配对结果、受控错误与现有持久幂等，未迁移LangGraph1.5.0/core1.2.18，上游问题不是本批GLM根因证据。
-
-证据与命令：tmp/xiaok-mixed-needs-v102/的check.mjs（unit|service|compat|mini|lint|types）、*-result.json、red.log、attempt-1、native.mjs/native.ts、live.json、trial-0/1/native.json、原provider/用量、semantic-review.json、verification.json。finally恢复transport、断开SDK并释放验收锁，9420 established=0。合成企业AI关闭、身份context撤销、新夹具active0/unknown0，不表示全库unknown0；原失败/unknown/费用不重放、不结零、不混合不同版本或修复后成绩。按两计划前部规则顺序移交新对话继续，非完成交付或发布。完整PPT/专业、真机/BLE/真实微信及生产仍未完成或未验。
-
 ## v101：空引用目录的身份与引用约束
 
 **内部限定修复，整体Limited。** v100的1296在真实撤回后取得空Evidence，却伪造默认引用，因此本期归Agent输出协议，知识管线不改。保留v100按真实配对结果选择synthesis的机制；仅当知识收尾且实际引用目录为空时，模型schema将basis限制为advice/uncertainty、citations限制为[]，描述及可信紧凑指令明确ready不代表有依据。仍有获权项目/历史引用时保留evidence能力，不误禁其他来源。服务端继续拒绝伪造ID，不自动删引用、改basis、猜出处或放宽数值/权限/撤回校验。提示词`xiaok-renovation-v101`、策略`trusted-synthesis-v13`、最终协议`source-final-kind-v3`，配置仍为siliconflow的THUDM/GLM-4-9B-0414，未更换模型/计费或VLM配置。
@@ -1688,62 +1198,6 @@ Stable2.02.2608080/SDK0.13.0/基础库3.17.2、副屏唯一原项目、DOM唯一
 **原生前置失败与恢复。** attempt-1在fresh compile的Input.dispatchMouseEvent超时；attempt-2遇窗口最小化而guard计0；两次均0新文字模型请求、三题未执行，原日志和夹具保留，不并入最终业务分母。随后先核验唯一同仓project/CDP与已验证exe/title，程序化恢复其最小化窗口到副屏，再通过唯一“编译”按钮DOM click进行fresh compile，SDK systemInfo/page.data正控通过。临时native-helper仅替换原编译点击方式，产品脚本与UI未改，不关闭/重启其他窗口、不新建项目副本。Stable 2.02.2608080、SDK 0.13.0、base 3.17.2、逻辑390×844/PNG348×752；前后7份驱动及配置hash相同、2261项源码无漂移，真实provider step均绑定v101/v13/v3。单controller与既有锁仍在finally释放。最终夹具active0/unknown0、AI关闭、身份上下文撤销、资料已退役，transport restored；这不改变全库历史unknown。
 
 证据：`tmp/xiaok-empty-catalog-v101/`中的`*-result.json`、`live.json`、`native.json`、截图、前后manifest、provider原稿/用量、`attempt-1/`、`attempt-2/`及`recompile.json`；命令为`node tmp/xiaok-empty-catalog-v101/check.mjs <unit|service|compat|mini|lint|types>`和`node tmp/xiaok-empty-catalog-v101/native.mjs`，使用既有隔离锁与开发合成夹具。旧1296及更早失败/unknown保留，不重放、不结零、不与修复后成绩混算。C01批准设计源与既有渲染组件保持，本期仅约束模型数据，未改markup/styles/assets/固定文案/导航或恢复账本；已检查原生一般建议状态，无伪来源chip，来源/撤回状态按既有路径通过。KnowledgeRetriever/Evidence、解析/检索/发布/权限/API保持，无生产发布。下一有界任务回到Agent的F-01/F-04更正与混合问答完整性，再处理F-02/F-06/F-07；完整PPT、专业质量、真机/BLE/真实微信与生产仍未完成或未验。上下文轮换按两个计划前部的用户新指令顺序移交新对话。
-
-## 历史v100：知识结果使用一个适用的最终结构
-
-**内部限定修复，整体Limited。** 1292/1293真实原稿取得正确PDF Evidence却混用knowledge/segments，故归Agent，不改知识管线。`finalToolForMessages`只根据当轮已配对的真实工具结果收紧生成schema：search_knowledge具有synthesisSources且没有其他真实业务/案例resultKey时，顶层只保留kind=synthesis与必需的segments，至少一段；专业解释和原文查询共用原引用段落。空结果也沿这个结构保留一般建议/待核实能力。已有真实展示resultKey继续保留原格式；用户文本、未配对消息和未执行的参数失败不能扩大格式。唯一修复的synthesis_repair仍优先，当前citationOptions原ID和完整来源不改。服务器的旧格式兼容、引用/数值/承诺/租户/撤回校验保持，不把模型选择当授权，不把错误kind改名、猜ID或丢弃顶层未校验正文后交付。
-
-prompt v100 / trusted-synthesis-v12 / source-final-kind-v2同步工具结果、紧凑合同和最终schema；同轮所引实际PDF页码继续与工程量分开。新测试通过可选第四参数requestTools观察真实provider收到的最终/修复工具，原前三参数的业务工具含义保留；真实provider路径无额外测试适配。最终323单元、12服务、8兼容、98 Mini和涉及文件lint通过，本次类型0/全仓292；各窗2,261项源码/测试/配置无漂移，最终组合版本检查已重跑。12服务含真实两页PDF的解析/核对/embedding/发布/召回、页码交付/重进/撤回、无据工程量拒绝、参数错误恢复/真实展示键和原稿混合格式仍拒绝。命令`node tmp/xiaok-final-envelope-v100/check.mjs <unit|service|compat|mini|lint|types>`。
-
-最初schema红测3失败；服务首轮10通过/2失败来自新增测试误用旧注入参数读取final_response，回调在返回结果前断言抛错，Worker保守标unknown。这些注入回调未调用远端文字模型，真实embedding仍执行；原日志、状态与hash保留在service-attempt-1，不回填成功，不重放历史unknown。修正测试观察接口后使用新夹具完整重跑；原测试after清理只作用隔离合成资料。较早8兼容和最终8兼容分别记录，不混作一次结果。
-
-Stable2.02.2608080 / SDK0.13.0 / 基础库3.17.2、副屏、同仓唯一项目、新编译、精确C01及390×844（PNG348×752）。最终2664/2665企业、3725–3727用户、665–667会话；文档360/版本366、原件102、片2787只提供人工核对的实际第2页，quote没有数字2。1294/1295为与v99相同的两条询问，各3次provider调用、首个最终答复均只有kind/segments且0修复，正文与来源面板实际第2页、逐字原文和重进通过。真实退役后两条旧回复/引用均不可用，原生来源面板和撤回截图已审看。1296再问一般布置：两次实际检索均ready但Evidence=0，模型仍把通用建议标evidence并捏造current_citation_1，4次调用后invalid_model_citation失败；错误截图/原稿/用量保留，整批2/3，不能算原生全部通过。三题0需求写入、记忆v0不变；本人200，同企业其他客户/跨企业先正控再404。AI关闭、context撤销，active0/unknown0，原件退役，传输恢复；LLM配置、源码、两驱动前后相同。
-
-原生attempt-1仅窗口前置失败，未发新模型请求：同一项目处于最小化，尺寸守卫误计0，不是项目关闭。验证CDP路径/Stable版本和唯一exe/句柄后恢复原窗口，没有关闭/重建其他窗口。2662/2663身份已撤销/AI关闭，文档359追加真实退役一次；清理首断言误以为published指针清空，原失败保留，随后只读审计确认status=retired/v3、历史指针365保留，未重复退役或重发任务。最终使用新夹具与固定驱动。证据`tmp/xiaok-final-envelope-v100/live.json`、`native.json`、attempt-1及各结果。原C01批准`design-references/xiaok-p4b-public-sites-v1/README.md`保持，无Mini结构/样式/素材/固定文案/导航或还原台账变更。
-
-参考[OpenAI Agents JS工具schema/输入校验源码](https://github.com/openai/openai-agents-js/blob/main/packages/agents-core/src/tool.ts)及[测试](https://github.com/openai/openai-agents-js/blob/main/packages/agents-core/test/tool.test.ts)：采用适用object schema与独立服务校验的边界，复用原Gateway/LangGraph与持久步骤；未迁移SDK、未给当前供应商增加未经验证的strict/联合schema参数。已验证配置GLM9的上述有限结果，不推断其他模型可靠性。下一有界修复是Agent在当前引用目录为空时仍可选择evidence/伪造引用的生成约束；知识返回0条正确，不能放宽引用校验或另建管线。F-01/02/04/06/07、完整PPT/专业质量、真机/BLE/真实微信与生产仍保持原未验/未完成状态。
-
-## 历史v99：可信PDF实际页码与工程数值分离
-
-**内部限定修复，整体Limited。** 真实故障是PDF定位页码不在原段文字中，却被当成无依据工程量。Agent的`engineeringClaimText`仅从本段实际引用的knowledge Evidence中读取`format=pdf`和有效正整数`file.page`，识别精确“第N页”（允许横向排版空白）；不把页码加入quote或通用数字白名单，不改原文、引用ID、原始定位和公开DTO。无引用、其他来源/格式、非法页码、不同页码及裸数/尺寸/金额/时长仍沿原校验；不声称字面数值校验已解决所有语义归因。提示词v99同步这一区别。知识解析、索引、检索、发布和撤回无生产代码变动。
-
-分窗证据为320单元、9真实文件服务、8知识/Agent兼容、98 Mini及涉及文件lint通过，执行窗内2,261项源码/测试/配置均无漂移。本次类型0、全仓292，不能声明全仓类型通过。最初新增页码红测1失败/2通过；服务前置隧道断开时未执行数据库操作；类型首轮新测试可选字段1错修复为String断言后，最终9服务/lint/types重跑通过。单元/兼容窗早于该测试断言的类型修正，生产实现相同，保留各窗hash，不拼为一次未执行的全仓结果。命令`node tmp/xiaok-pdf-page-v99/check.mjs <unit|service|compat|mini|lint|types>`。新服务用实际两页PDF的无数字原文，经过上传/本地解析/核对/真实embedding/发布/召回，交付第2页、重进和撤回；附加“厚度2mm”在原一次合法修复后仍失败且0需求写入；原K02/03/06/07/08覆盖继续通过。
-
-Stable2.02.2608080 / SDK0.13.0 / 基础库3.17.2，唯一同仓项目/副屏/新编译/精确C01路由/390×844（PNG348×752）。新2660/2661企业、3719–3721用户、659–661会话，真实知识358/364、原件100、片2785仅含人工核对的实际第2页（排除原第1页b1），quote不含数字2。配置GLM9的1292/1293均已检索到正确原文和页码，最终却输出`kind=knowledge`与`segments/text`混合结构，以`invalid_model_answer`失败，分别3/2次provider调用；原稿/尝试/用量保留，不记成页码守卫失败、成功首稿或整批业务通过。两个预定题均只提交一次，0需求写入、记忆v0不变。原生来源面板和成功答复撤回因无成功答复未执行；仅完成夹具真实退役与错误反馈/重进截图，不能以空循环补成撤回验收。本人200、同企业其他客户/跨企业正控后404；fixture AI关闭、context撤销，active0/unknown0；传输恢复，LLM配置、源码与两份驱动前后相同。证据`tmp/xiaok-pdf-page-v99/live.json`、`native.json`及各结果，已审看错误截图。
-
-原C01批准设计`design-references/xiaok-p4b-public-sites-v1/README.md`继续权威；Mini结构、样式、素材、固定文案、导航和还原台账均无修改。核对[LlamaIndex节点元数据/正文源码](https://github.com/run-llama/llama_index/blob/main/llama-index-core/llama_index/core/schema.py)和[对应schema测试](https://github.com/run-llama/llama_index/blob/main/llama-index-core/tests/schema/test_schema.py)：参考元数据与正文分离，保留本项目Evidence/权限/撤回/持久任务/用量，不引入框架或把定位拼进原文。上游元数据分隔回归不是GLM格式失败的根因证据。下一有界工作归Agent最终回复协议，处理本批真实`knowledge+synthesis`混用；知识返回正确，不另建检索、权限或引用管线。历史unknown、F-01/02/04/06/07、完整PPT/专业质量、真机/BLE/真实微信和生产保持原状态。
-
-## 历史v98：只读咨询、需求完整性与知识兼容
-
-**限定内部修复，整体Limited。** 2026-10-21按用户要求恢复统一推进。`need-write-intent.ts`共用“不新增或修改我的需求”“我想问/了解”等已登记表达，工具列表与`applyNeedDelta`同时拒绝错误写入；原话quote/value不能绕过。保留明确保存与先更正再提问，沿原Graph/PG步骤、原键、租户/参与者、来源撤回和用量。已有未提交的同轮四字段原子投影、缺项整批回滚/反馈作为相关依赖一并纳入；完整复合value可把room单列，不能因此漏掉另一房间。当前提示词v98针对咨询补充一般建议/知识证据的区别，不放宽引用或数值守卫。
-
-最终工作区分窗记录317单元、5定向服务、8知识/Agent兼容、98 Mini及涉及文件lint通过；本批类型0、全仓292。每窗2,261项源码/测试/配置前后无漂移；原生另绑定两份驱动。早期26服务通过/7实模开关跳过仅属于早期版本；原红测、合法复合原话红测及前置缺失/旧版号导致的兼容失败分别保留，不拼成最终全量成绩。K08夹具改为实际读取文档版本，保持必须`context_changed`，另断言真正撤回一次和版本+1；知识生产服务及权限未改。重复入口`node tmp/xiaok-write-intent-v98/check.mjs <unit|service-final|compat|mini|lint|types>`与`native.mjs`。
-
-Stable 2.02.2608080 / SDK 0.13.0 / 基础库3.17.2、副屏新编译、精确C01路由、390×844（PNG348×752）中，GLM9 run1287实际保存书桌靠窗；1288/1289“不改需求”、1290/1291普通询问均0需求写入，工作记录版本始终1。1288/1290/1291交付并重进；1289捏造`current_citation`，以`invalid_model_citation`失败，原错误反馈/重进截图保留，不能算整批业务通过。已审看原生一般建议和错误反馈，原C01气泡/输入/来源组件及批准`design-references/xiaok-p4b-public-sites-v1/README.md`保持，无Mini结构、样式、素材、固定文案、导航或还原台账变化。本人200、同企业其他客户/跨企业先正控再目标404。新2658/2659企业AI关闭、3716–3718身份context撤销，active0/unknown0，LLM配置一致。
-
-原1283不当证据/数值失败保留在attempt-1；1284–1286窗口因队列切换期间驱动修改仅作诊断，1286格式失败及未执行题不覆盖。固定驱动最终窗口前后源码、配置和驱动均一致，四题全部执行；不混入上述漂移窗口。证据`tmp/xiaok-write-intent-v98/live.json`、`native.json`、各`*-result.json`、`compound-red.log`和attempt-1/2。历史1132/1184等unknown不重放、不结零。正式图、知识版本/epoch/audience/原始定位器、KnowledgeRetriever/Evidence、原API/菜单/角色与生产保持。
-
-核对[LangGraph ToolNode源码](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[工具协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[历史status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)：沿现有受控工具和真实结果协议，不把模型选择或状态字段当授权，也不将旧上游问题认作GLM根因。未迁移框架或增加Agent/事实库/知识管线。F-01/02/04/06/07、引用/收尾稳定性、完整PPT/专业质量/真机/BLE/真实微信及生产仍未关闭；下一有界修复是可信PDF页码被当成工程量。
-
-## 独立自动化接续收尾（2026-10-21）
-
-**2026-10-21独立自动化接续已收尾，整体仍为Limited。** 当前HEAD为`f1f40339cde71238c3601321ed3e74b0e6cb4d37`，1693项相关源码/测试/配置绑定摘要`b339d685e11ddcfe6c880a92d7911186aab7077dc1c7103a2c9c193528b3bc1f`，沿用siliconflow / `THUDM/GLM-4-9B-0414`。有效子窗口首尾及模型配置无漂移；父调度文件曾发生短暂独立驱动编辑，原启动字节已恢复，D10明确不声称父窗口连续hash未变，各子窗口独立绑定。未纳入另一工作树的v96开发。后端纯测试316/316、Mini客户端单元98/98；31/31维护服务文件337通过/18失败/16跳过。当前合同副本、诊断及补充控制单列，不覆盖维护断言或并入其通过数；本轮未重跑lint/全仓类型，旧批次记录不充作新检查。
-
-实际Stable2.02.2608080 / automator0.13.0 / 基础库3.17.2在390×844执行原生输入、上传、引用、重进、接待及已记录业务分支；后台知识运营补充使用真实HTTP，不冒充Chrome页面操作。逐次客户run 126、管理员摘录run 0、现场记录run 4分层审读；技术终态不等于语义通过，生成前取消不计实模调用。146条完整索引的当前状态为failed=40、passed=31、not_executed=6、partial=30、area_regression_only=36、driver_failure=3，未覆盖条件逐例保留，未宣称全部146例或整PPT验收通过。已确认普通问询/明确不改仍写需求、多字段保存/更正漏项，以及历史顺序、引用支撑、阶段适用性、答复完整性和协议收尾问题；旧失败/原稿/驱动失败全部保留。详见`tmp/xiaok-auto-20261020-01a159e6/report.zh-CN.md`、`case-results.zh-CN.md`、`findings.zh-CN.md`及`model-run-results.zh-CN.md`。
-
-两个补充HTTP运营模式在空闲队列预检阻断，0/2派发；当前修复协议/读后补问对照、历史attempt4及遗漏分支的新原生窗口也未执行，准备文件不计成绩。详见本轮deferred-work.json。
-
-最终只读核对中的provider结果未知run为1132/1184；原1132/3196及本轮1184/3327不重放，不把未知费用填0。结果已确定但账务仍reconciling的run另列，不计为供应商结果未知。结束时队列/共享验收锁/DevTools连接为0，合成企业AI及员工已停用、上下文撤权，正式v4图hash未变；前轮305份原始文件逐份hash保留。真机、BLE、真实微信授权、语音转写/OCR、实际跨日及未触发条件维持未验证，不转为强制用户手测。此次文档仅登记独立测试事实，无产品源码、UI、API、模型、权限、数据合同、设计恢复或发布变更。
-
-## 独立自动化中断收尾（2026-10-20）
-
-**本轮未通过，且未完成全量用例；不是新的实现或发布批次。** 按`docs/manuals/xiaok-stage-tests/automation.zh-CN.md`在明确标记的开发/隔离夹具上执行，沿用siliconflow / `THUDM/GLM-4-9B-0414`。889项相关源码、测试及配置绑定摘要为`59c110642cd8659587f6483a4d6cb487e3a527e7f0e01f454138c55a8ebd12c0`，有效窗口首尾无漂移。独立后端纯测试300/300、Mini客户端单元98/98、4/31个服务文件62通过/7个实模选择项跳过/0失败，lint通过；全仓类型检查仍292处错误、40文件。这些数字不并入其他批次，也不替代Stable原生或实模语义验收。
-
-实际Stable页面输入、上传、引用、重进、共享、真人接续、精确V1/V2决定与原键恢复已执行。S04人工核对发布、同事项回传，以及另一明确完成措辞下的落实→解决→关闭→原件回传和撤回通过；原手册完成措辞被路由为`clarify`、没有草稿的失败仍保留。7项问题（3项P1）包括纠正后旧值回读、部分字段未保存却全量确认、完成原话无草稿、普通问答未交付、条件式澄清误拒、读取域偏离问题和`agent_input_limit`。全部原稿、人工改稿、版本和首次失败分别保留；未修改产品源码、UI、API、权限、设计或模型配置来覆盖失败，整体状态保持`Limited`。
-
-长聊只派发5/61条：4条输入预算失败，run`1132`/真实触发消息`9716`/provider attempt`3196`为`indeterminate/unknown`，未重放，预留保持`reconciling`、结算用量/费用为null。剩余56条、更正/历史依赖分支、后续阶段变更及27个服务文件未执行；584内被该未决运行阻断的后续尝试没有新消息或run，不能算模型回答失败或无泄漏通过。中断后在服务文件边界退出，主库/隔离库queued、running及共享验收锁为0；合成企业AI关闭、5名合成员工停用、上下文撤权，正式v4图哈希未改。真机、BLE、真实微信授权及未触发分支不升级为通过。
-
-本轮持久索引：`tmp/xiaok-auto-20261020-01a15876/`中的`report.zh-CN.md`、`case-results.json`、`findings.json`、`run-input-index.json`、`interruption-closeout.json`与`evidence-manifest.json`。触发消息以数据库`trigger_message_id`索引为准，原分页audit.input误取旧消息的元数据原样保留并单列纠正；不得据此重放模型。服务/单元、原生、配置实模、驱动故障和未执行范围分开记录，不宣称全部146条手册用例完成或整PPT验收通过。此次模块清单更新仅登记测试事实，无运行合同变更。
 
 ## Agent与知识库的开发边界
 
@@ -1764,254 +1218,6 @@ Stable 2.02.2608080 / SDK 0.13.0 / 基础库3.17.2、副屏新编译、精确C01
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 历史v95：按用户指令收尾并停止开发
-
-**Limited；代码封存，最终服务/原生验收未完成。** 用户要求“这个阶段收尾下，停止开发”。不再推进下一阶段，也不自动重启排队测试。原v93/v94已执行证据继续有效；本批不能作为完整用户阶段或生产验收。
-
-现有NeedMemory增加只读当前视图：有明确书房/书桌/位置及后续更正原话时，把旧复合记录中的位置片段与独立收纳要求分开；历史保留完整原话，不修改持久事实或补写缺项。覆盖旧other/style错键、再次更正回旧值及来源失效；显式仅回顾本次聊天不开放施工/企业知识工具。失效更正不泄露隐藏的新值或复活旧位置，当前书桌问题只返回经重新授权的受限服务器反馈，并记录`agent_need_unavailable_reply`，原模型输出、provider用量和失败证据单独保留。引用偏好请求仍保留`record_reference_preference`能力，不被纯记录回执抢占。
-
-参照[LangChain结构化输出实现](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/nodes/AgentNode.ts)、[结构化输出合同](https://github.com/langchain-ai/docs/blob/main/src/oss/langchain/structured-output.mdx)和[LangGraph工具协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)，在现有桥接层处理实际读工具与虚拟`final_response`同包：保留原provider包，只执行并配对真实工具，再反馈最终输出协议；不提前交付同包答案，不新增循环/预算或重放。只在应用桥接层生成`toolProtocolFeedback`，不把provider任意字段当可信控制信号。仍用原Graph、租约、来源撤回、租户、用量及接管围栏；KnowledgeRetriever/Evidence、知识版本/epoch/audience/原始定位器及发布操作均不改。未迁移框架，也不把观察到的同包输出推广为所有GLM问题的原因。
-
-最终275单元、98 Mini、涉及文件/全仓lint通过，889项源码/测试/配置前后一致；本批类型0，全仓292与v94错误集合一致。最终服务、兼容、原生三个进程均等待共享隔离锁，没有子用例启动，按停止指令取消并清除仅本批数据库等待连接。旧版本9服务/4兼容通过不能算作最终275单元源码的服务证明。早期红测、失败与不同源码窗口保留在`attempt-1`至`attempt-4`，不合并成功率。
-
-独立的上一原生窗口（274单元源码，免费文字GLM9）中，run1149当前需求、run1150当前与旧说法分别成功并重进；run1151在合成更正原话失效后仍提出旧靠窗，被围栏阻止，整批未通过。新增受限反馈只获得最终单元覆盖，未再运行最终服务/真实模型/原生验收。该窗口新2648/2649企业AI关闭，3693–3695身份context撤销，active0/unknown0，配置不变；最终排队原生未创建新夹具。批准C01及S04设计、Mini结构/样式/素材/导航/恢复台账未修改，旧截图只作对应旧源码的功能证据，不能代替本批最终渲染验收。
-
-收尾只读审计保留原1078/1080/1081/1084/1086/1092/1100/1132、错误回复9639与F-03原消息9636无草稿的状态；原3196仍unknown、reservation reconciling且结算null，不重放或结零。独立305文件manifest不改，其他聊天持有的锁/Worker/进程未终止。证据入口`tmp/xiaok-current-needs-v95/interruption-closeout.json`、`stopped-queues.json`、`stopped-database-waits.json`和`original-audit.json`。F-01最终当前值/失效恢复、F-02测量缺项、F-04提取完整性/混合回执、F-06其余来源域及F-07输入预算保留未完成；完整PPT、图片理解、真机/BLE/微信授权、全仓类型和生产均未通过。后续仅在用户重新要求后恢复。
-
-## 历史v94：纯记录请求的实际保存回执
-
-**内部限定Implemented，F-04及整体仍Limited。** 原F-04/run1084三次只保存靠窗，却由模型确认收纳也保存。新路径只处理当前明确、无问题/其他动作/引用/假设的纯记录请求：仅开放`record_need`，先执行完整工具批次并保留调用/结果配对，再由服务器从已有、仍获权的NeedMemory读取本run/本触发原话的current事实，列出实际保存内容，注明未列出内容不视为保存；不替模型补写缺项。混合更正+专业问题沿旧综合流程，不由此宣称其回执已修复。
-
-参考已检视的[LangGraph returnDirect实现](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/react_agent_executor.ts)、[工具协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[Agents SDK工具结束策略](https://openai.github.io/openai-agents-js/guides/agents/#forcing-tool-use)，采用工具结果可直接结束这一通用协议。保留现有Graph/PG租约、原键、来源撤回、用量和接管围栏，新增可选`resolveToolReply`与`durable-tool-reply-v1`、`finalFromTools`检查点标记和`agent_need_receipt`审计步骤；校验/恢复时重新授权读取，来源不再可用则拒绝，不回模型修复、不重放写入。服务器结果的provider/usage均null，原真实模型步骤/用量另存；不把它算作一次模型生成或免费结清。不是GLM专属reasoning补丁，也不迁移框架/增加Agent、facts库或引用管线。
-
-原问题在修复前红测重现；最终266单元、完整Agent服务18通过/7 opt-in实模跳过、4知识引用/撤回/租户及施工兼容、98 Mini、涉及文件/全仓lint通过，本批类型0/全仓292。包含部分保存、原子批量、混合提问保留、整组配对、恢复不重放、撤权和服务器结果不转模型修复的检查。889项源码/测试/配置前后一致；早期263单元窗口单列，不混源码计算成功率。重复入口`node tmp/xiaok-receipts-v94/check.mjs <unit|service|compat|mini|lint|lint-full|types>`及`node tmp/xiaok-receipts-v94/native.mjs`，沿共享隔离验收锁与双库空闲队列，仅新合成夹具。
-
-Stable2.02.2608080/SDK0.13.0/基础库3.17.2、副屏新编译、精确C01 route/stack和390×844下，真实免费文字GLM9 run1145/1146各一次provider调用并重进。第一条只实际写desk=靠窗，服务器未虚认收纳；第二条同轮两次record_need均完成后合并确认desk=靠内墙和budget=18万元，旧desk有真实supersedes。回复是持久实际操作反馈，不是模型首稿正确率；收纳仍漏提取，F-04不能整体关闭。合法本人200、同企业其他客户和跨企业先验证本人咨询后目标404。两张348×752原生截图已审看；原C01批准气泡/输入区数据路径不改结构、样式、素材、导航或恢复台账。helper通用容量/历史/撤回标签本批仅覆盖上述两次回执/更正写入/重进，不能计为其他原生场景通过。
-
-新2642/2643企业AI关闭，3684–3686身份context撤销、active0/unknown0，配置完全一致。只读复核原1084/1086及错误回复9639未改，1092仍失败、1132/3196仍unknown/reconciling且结算null，原F-03消息9636仍无草稿；305文件独立manifest不改。证据`tmp/xiaok-receipts-v94/core-freeze.json`（136631409fbed99be9623db1bd87997ad46e1b490eda83707cb79fbb3a05a66d）、`semantic-review.json`、`original-audit.json`。下一步仍处理F-01旧错键/复合记录更正投影及F-04提取完整性/混合问答，再推进F-02/F-06/F-07；完整PPT、图片理解、真机/BLE/微信授权、全仓类型和生产未通过。
-
-## 历史v93：完成记录待人工核对入口
-
-**内部限定修复Implemented，整体Limited。** 独立F-03原句“合成手测：书房本次调整已按当前获同意方案完成，待人工核对记录”被分为clarify而无草稿。`construction/site-queries.ts`只将已有`待核对`谓词扩展为`待(?:人工)?核对`；查询、跟进请求、普通确认优先级保持，图片不变成自动完成/正式同意依据。现有Mini/Admin项目chat API仍返回recordId/runId，沿原Worker、内部draft、作者/管理者编辑、版本与显式发布合同；不增表、迁移、接口或权限。
-
-修复前两项因果红测失败；修复后262单元、12施工服务、8 Agent兼容服务、98 Mini及涉及文件/全仓lint通过，本批类型0/全仓292。889项源码/测试/配置全窗一致，隔离服务及主库原生窗口沿共享验收锁/空闲队列。`node tmp/xiaok-completion-v93/check.mjs <unit|service|compat|mini|lint|lint-full|types>`与`node tmp/xiaok-completion-v93/native.mjs`为本批重复入口；仅新标记合成夹具，不重放旧run。
-
-Stable2.02.2608080/SDK0.13.0/基础库3.17.2副屏新编译，390×844下精确`packages/construction/chat/chat` route/stack；原生真实选图上传、输入原句后免费文字GLM9一次调用生成run1144/record205内部草稿，设计师重进同记录且无编辑权，管理者经既有“修改内容”核对再显式内部发布v4并重进。observer读200/写403、合法跨企业正控后目标404、客户内部会话403。模型把整句放在completed、pending空，字段语义整理质量不计通过；照片仅保留原件，不声称图片理解或正式方案批准/落实/解决/客户发布。相册与合成发布确认的SDK替身范围单列。
-
-批准设计仍为原PPT22/38、853×1844→390×844及既有S04组件；两张原生草稿/发布截图已审看，PNG348×752。不改Mini结构、样式、素材、文案、导航或恢复台账。原生helper只增加可选定向exercise和可输入状态等待，默认原场景保持。首轮响应断言错误与上传后输入前超时在attempt-1保留；当时无消息POST、run或provider调用，不算模型失败。
-
-原F-03消息9636仍无草稿；旧1092仍失败、1132/3196仍indeterminate/unknown，预留reconciling、结算null。新2640/2641企业AI关闭，3677–3683身份context撤销、员工停用、active0/unknown0，配置完全一致。证据`tmp/xiaok-completion-v93/core-freeze.json`（558ea394dad78612ba555d2b9141970eae5881ec025451ebcc29d016312f9c75）、`semantic-review.json`、`original-audit.json`；305文件独立manifest不改。下一步处理F-01/F-04需求更正与真实保存覆盖，再处理F-02/F-06/F-07；两计划、完整PPT/真机/生产及全仓类型仍Limited/未通过。
-
-## 历史v92：条件记录澄清
-
-**内部技术修复Implemented，整体Limited。** 独立F-05/run1092证明`assertRecordedReply`将条件未来动作误当保存完成。当前只在句界分析投影中识别完整条件能力/后续动作需求谓词，原回复/引文和同run持久操作ID不改。已覆盖的完成后缀、反问/双重否定、无条件回执和独立真实保存声明仍校验；来源/租户/人工围栏、预算、prompt版本、schema、公开API和批准UI保持。参考已检视的[LangGraph工具消息测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)和[Agents SDK输出守卫测试](https://github.com/openai/openai-agents-js/blob/main/packages/agents-core/test/guardrail.test.ts)，保留应用端领域校验，不迁移框架或新增判官循环。
-
-262单元、8定向隔离服务、73 Mini、涉及文件/全仓lint通过，本批类型0/全仓292，889项源码/测试/配置稳定。原句及过渡表达真实持久/重进，无写入/修复；独立完成声明仍拒绝，实际歧义写入被拒后可交付澄清，租户/引用/撤回保持。两个红测窗口分别保留。`attempt-1/`为驱动导入前置失败，尚无夹具/模型/原生派发；`attempt-2/`保留首版工程检查和实模1142因“然后我们可以帮您记录需求”仍失败的结果，不追认通过。
-
-最终新文字GLM9 C01 run1143共4次模型调用，交付“请先确认具体是哪一间房间的书桌需要改动，然后我们才能为您记录需求。”需求仍version0/空，无成功写入；真实重进、合法同企业其他客户/跨企业客户的拒绝及各自咨询正控通过。新稿用“为您”，被拒“帮您”形式的因果验证来自纯/服务，不是1092/1142的反事实原生通过。Stable2.02.2608080/automator0.13.0/基础库3.17.2核副屏、新编译、精确C01 route，逻辑390×844、PNG348×752，已按`design-references/xiaok-p4b-public-sites-v1/README.md`审看截图，无Mini源码或新还原变更。共用helper泛称容量/更正/历史/撤回的步骤本批只执行传入的F-05澄清/重进，不能推定这些额外原生业务通过。
-
-新合成企业AI关闭、身份context撤销、active0/unknown0，配置前后精确一致。原独立305文件manifest、未覆盖用例与整体未通过结论分开保留；只读审计确认1092仍失败、1132/3196仍indeterminate/unknown且预留reconciling/结算null，不重放或核清为0。证据`tmp/xiaok-clarification-v92/core-freeze.json`、`semantic-review.json`、`original-audit.json`。重复被拒工具和其余六项发现仍未解决，下一步沿既有S04组件修复F-03完成记录分流；完整PPT/图片/真机/生产及全仓类型不升级通过。
-
-## 历史v91：明确否定完成谓词与免费模型复测
-
-**内部技术子阶段Implemented，整体Limited。** `parseAgentReply`原有完成承诺守卫将资料原文“不证明点位已落实”误认为现场完成。先用v90 GLM9原稿对应的纯函数反例复现`unsupported_model_commitment`，记录`tmp/xiaok-denial-v91/red.log`。当前仅在明确句界投影有限主语后的“不代表/不证明/不能证明/不足以证明/不能说明/不意味着”及其紧邻完成谓词；原回复、引用和数据不改写。后续独立动作、双重否定、反问“吗”、报价/安全承诺继续交给原守卫，来源归属、原文、适用条件、撤回、租户和真实操作回执不放宽。没有新Agent、框架迁移、知识管线或权限解析器。
-
-259单元、13定向隔离服务、73 Mini及涉及文件/全仓lint通过，类型本批0/全仓292；173项源码/测试和各驱动执行前后稳定。服务覆盖真实发布、原文引用、持久重进、否定句无需修复、同段真实完成声明拒绝、租户与撤回。首次服务仅因另一整套回归占锁而55P03超时，子进程/夹具/模型尚未派发；独立保留后排队成功，未把它记作业务断言失败。证据`tmp/xiaok-denial-v91/core-freeze.json`、`queue-attempt-1.json`。两份旧稿纯校验不再误拒，人工加肯定声明仍拒绝；不重评或交付旧运行。离线诊断首次预期和审读首次漏纳既有bound-material快照的错误分别保留，后续修正只影响诊断驱动，不改原模型记录。
-
-用户明确允许测试已保存渠道免费模型。同版源码、原四轮/16000/2048、无故障注入下，GLM9/Qwen4各两个隔离夹具共8题/20次模型调用。GLM9四题均交付且审读合格，无最终修复；两份规程回答保留尺寸/插座/通道、水电阶段前提、点位图/现场记录、需求不等于落实验收、查无不等于现实没有及不承诺日期，原文引用/重进/撤回通过。其解释仍偏逐字复述规程，不代表更复杂个性化推理已完成。Qwen4四题交付3、直接审读合格2；一题结构通过却把缺项写成“已完成正式主户型”，另一题输出无据内部消息ID66912被原守卫拒绝。未交付题不冒充已审读的正确/错误语义；正式记录分别给尝试/交付/审读数，不混源码、旧稿或仅修复稿。20次响应无新增unknown job，各夹具AI关闭/管理员disabled/资料retired、active0，配置和两份投影精确恢复。现有结构守卫尚不能排除全部语义误述，该缺项留给AG-09，不因选模消失。
-
-核心窗口关闭后单列开发配置窗口：选硅基`THUDM/GLM-4-9B-0414`为当前免费**文字**基线，主后台已保存且真实连接回复“收到”；沿原配置服务复用凭据，独立VLM及企业1454授权/配额/原Qwen图片能力探针保持。`ASSISTANT_TEXT_MODEL`清为空值，SF关闭思考标记保留；核实PID/路径/命令/所有者和空闲主库后仅重载本地Next，原HTTP Worker续连jobs/run 200且重载后健康。`configuration-selection.json`/`configuration-post.json`保存配置、映射和环境标识，核心173项中只有此时明确修改的`.env.local`不同，不倒填核心窗口。切LLM不等于业务企业探针自动升级；新原生测试使用匹配GLM9文字合同的明确合成夹具，图片理解未通过，未默改企业1454或购买付费备用。
-
-验收绑定集成工作树实际源码/测试哈希，包含另一已结束任务的供应商/配置改动；单个本地提交不代表干净检出版本已独立验收。共享隔离库沿原锁与空闲队列守卫；独立测试聊天的窗口经用户明确授权协调，本批结束已显式交还，并承诺其新窗口期间产品/测试源码、环境和配置保持。其独立300纯测试/98 Mini与漂移窗口不并入本批数字。批准C01/C02/C05/U01/S04组件与结构/样式/素材/API/导航不改，本批无新增原生/真机/完整PPT/生产通过；整体两个计划仍Limited。旧v85/v89/v90未知任务/费用与员工发布/原件保持，不重放或核清。
-
-## 历史v90：免费渠道初筛与价格核对
-
-价格修复提交`7b6068654abd10ad1f01c560bd48cbd695f408c5`。硅基广场把`zai-org/GLM-5.3-Flash`展示为零价，但[官方价目表](https://www.siliconflow.cn/pricing)及[上线公告](https://www.siliconflow.cn/news/ok5ja7brf921kgf1644yyedz)列输入0.80/输出2.80元每百万token，因此未调用该争议型号。Chat目录现在交叉核对可见价目表，正价格覆盖展示零价；价目表不可用/格式不识别时不凭广场补判免费，原价格标签和控件保持。
-
-已保存智谱/硅基渠道的11个候选执行17次纯合成初筛，三款Qwen通过简化工具/来源题；不支持工具、下线或价格冲突型号单独排除。随后5个独立隔离企业/10道自然题/31次Agent调用为5成功、4失败、1unknown；它们是原结构/交付状态，不是专业或PPT通过率。Qwen8有一次超时（run6215/attempt1814）且原unknown保留；Qwen2.5重复错选保存/读取与格式失败；Qwen4和GLM9部分原稿遭完成守卫拒绝，GLM9逐字否定句已单独复现为应用误判，不追认旧运行成功。17项LLM、257项联合单元、12定向服务、73 Mini/lint通过，类型0/292，173项源码/测试无漂移；每个夹具AI关闭、管理员disabled、资料retired、active0，配置及两份供应商投影精确恢复，未改主开发配置/凭据或核清费用。完整原始结果和限定范围在`tmp/xiaok-free-models-v90/manifest.json`，后续另建v91，不覆盖本批。
-
-## 历史v89：会话绑定身份的只读工具上下文
-
-**AG-05/09内部技术子阶段Implemented，整体Limited。** 新运行的`conversation-read-v1`从获权咨询`entry_snapshot`取得房屋身份。绑定咨询向模型提供的`query_materials`仅要求`room`、`query_business`仅要求`domain`；模型携带的任何`leadId`（数字、字符串、空串或本人ID）均按额外字段拒绝，不丢弃或转换后执行。服务端在原工具适配器内注入绑定字符串ID，再走原严格应用解析器与租户/本人/参与者/来源校验；未绑定咨询继续使用原严格`leadId`合同，房间歧义和多项目规则保持。
-
-模型派发记录和原应用checkpoint的`input_summary.readContext`保存协议及绑定；模型派发后、预检/工具、来源校验、检查点与交付沿原`scoped`重复核对当前绑定。已派发但尚无checkpoint的恢复从原`agent_model`标记恢复相同格式；旧运行没有标记时保留原模型参数/缓存响应，不把旧数字ID自动转型。绑定变化或未知标记按`context_changed`停止；原同run读取复用、一次参数纠正、四轮、唯一最终修复和16000预算不变。知识`KnowledgeRetriever`/`Evidence`、原文/条件/版本/epoch/受众/撤回及公开API、schema、角色和批准UI保持。
-
-采用决定：对照[LangChain ToolRuntime注入测试](https://github.com/langchain-ai/langchain/blob/master/libs/langchain_v1/tests/unit_tests/agents/test_injected_runtime_create_agent.py)和[OpenAI Agents本地上下文](https://openai.github.io/openai-agents-js/guides/context/)的运行身份注入/模型参数分离方式，在现有应用ports与Postgres恢复基础内实施。现有[无效工具参数序列化问题11490](https://github.com/langchain-ai/langchainjs/pull/11490)主要涉及流式适配；本次应用侧绑定不是某供应商的自动转型或重试补丁，不迁移框架，不另建权限、记忆、知识或判官链路。v87/v88原数字ID实模失败及历史unknown证据保持。
-
-最终证据在`tmp/xiaok-bound-read-v89/manifest.json`：235单元/12定向隔离服务/73 Mini及涉及文件/全仓lint通过，类型本批0/全仓292；172项源码/测试、94项供应商/环境及711项Mini文件无漂移。早期完整窗口57通过/1失败/7跳过遇到配置层源码漂移，且新增组合测试误将项目来源计入公开知识引用列表；原结果在attempt-1保留排除。用例改为分别验证原综合来源合同内的K/B逐字依据和公开知识引用，新旧恢复、绑定漂移、真实需求/业务/知识组合、租户及撤回均在最终12项通过。attempt-2的235单元有两项配置文件漂移，attempt-3早于最终用例hash，也独立排除；不合并这些窗口的统计。新GLM企业3883/咨询5982/run6212仅一次真实请求，attempt1807为failed/accepted=false/HTTP_429，应用run/job仍按原合同保留indeterminate，未读取资料、未产首稿/交付，第二题未执行；不重放、不改旧费用结论，不是专业语义失败率或模型比较。隔离运行配置与两份供应商投影精确恢复。原自动清理错误使用inactive账号状态导致事务回滚，该错误仍保留在live.json；独立cleanup-restoration.json绑定原报告hash并按实际active/disabled CHECK禁用唯一合成管理员，确认AI关闭、资料retired、active0/unknown1、原job不变，不新增模型调用。原16项attempt、四份员工发布及2567内部原件均未变，v85/v87/v88报告不刷新。无新原生/完整构建/全仓类型/生产通过，批准C01及Mini结构/样式/素材/固定文案/API/导航保持。
-
-本窗口内用户明确把后续测试模型改为后台当前的智谱官方`zhipu / glm-4.7-flash`。自然实模启动前只读核对主开发配置，再将该配置临时投影到隔离库；测试子进程显式覆盖旧Qwen测试模型值，并移除只适用原供应商的关闭思考覆盖，使用当前供应商默认设置，保留16000/2048及原调用预算。不改主开发凭据、企业能力记录或部署配置；实际remote_model、首稿、调用用量和恢复凭证分别落盘，旧Qwen报告不重评、不混作模型比较。配置层另一任务的源码变化使此前完整回归窗口失效；保留原结果后在稳定集成上重跑受影响的兼容/租户/撤回检查。
-
-## 历史v88：可信字段诊断
-
-**AG-05/09内部技术子阶段Implemented，整体Limited。** v87受控模型收到整份schema后仍重复数字ID，v88沿原read-input恢复增加只来自已注册工具schema的issues：可信字段path、错误类型、expected及received类型，不复述参数值或未知字段名；应用解析器仍唯一判定有效性，超出schema的业务拒绝只给application_contract，不猜ID/房间。`read-input-v2`显式说明JSON字符串需双引号，旧v1 checkpoint错误身份兼容。仍一次参数纠正/原四轮/唯一最终修复/16000预算，不转换ID、不新增来源或工具，既有租户/来源撤回与KnowledgeRetriever/Evidence保持。新配置窗口先保存受限ACL下的原始加密配置及投影，再精确恢复，避免沿保存接口重加密漂移；原v87报告及模型失败保持。
-
-稳定源码232/232单元、8/8定向隔离服务、73/73 Mini及全仓lint通过；类型本批0/全仓292，79项source/test和92项provider/环境文件无漂移。新增字段诊断反例先在旧实现失败；参数错误值/恶意字段名不进入反馈，缺字段/类型/枚举/长度和JSON错误均有固定验证。真实知识创建/发布/检索、参数纠正后单次读取、原文引用/重进/撤回、修复撤权和跨客户/租户拒绝通过。只计本次8服务，不继承v87的55服务数。首次服务准备中18089隧道不监听，索引7892保守unknown导致8条hook失败、业务断言未执行；原记录保留attempt-1，现有测试清理其专属夹具，原任务未重放。按既有Embedding脚本恢复转发后使用新夹具通过，无端点/SSH配置更改。
-
-新独立隔离企业3874/咨询5893先固定Provider真实保存厨房保留冰箱，再以明确注入的数字ID故障开启run6116；当前Qwen3.5-4B只有一次真实调用6069输入/42输出，仍返回数字6722，被第二次错误终止。受控纠正/读取/交付0，active/unknown0，不算自然首稿或专业问答验收。原始加密配置快照受限ACL，运行配置与两份供应商投影精确恢复。原v87 live.json hash不变，v85的16项attempt/原job、四份员工发布及2567原件保持，1073 unknown不重试、不推定已核费用。证据tmp/xiaok-input-diagnostics-v88/manifest.json与live.json；本批稳定窗口已结束。公开API/schema/角色/KnowledgeRetriever/Evidence与C01/C02/C05/U01/S04批准UI不变，无新原生/真机/build/生产或全仓类型通过。下一项先核对由服务端注入会话已绑定身份、减少模型重复生成ID，不能自动转型错误ID或放宽租户/项目验证；话题选择、显式修复编辑及完整条件仍待接续。
-
-## 历史v87：执行前的只读参数恢复
-
-**AG-05/09内部技术子阶段Implemented，整体Limited。** v85 run1072的数字leadId反例继续保留。新增`read-input-v1`仅在query_materials、query_business和recall_history执行前复用现有严格解析器；JSON/字段/ID/房间/历史长度错误返回带原工具schema的配对tool错误，不自动转型、补ID或执行查询，不新增成功读回执。一个run最多接收一次此类错误反馈，`argumentFailures`沿原私有checkpoint持久化，恢复不重置；仍用原四轮模型预算和原一次最终格式修复，最后一轮只收尾。写操作、执行后的任何错误、越权/撤权/未知供应商结果不进入该恢复。
-
-非法查询不再被视为已取得来源，可沿原general组件最小澄清；同轮已有真实来源时仍收窄最终kind，不能借参数错误绕过来源校验。服务端原有参数、租户、本人项目、来源版本/撤回、原键/租约/用量检查继续执行。Agent消费知识Evidence的接口、解析/检索/发布、公开API/schema和批准UI均未改；无新增视觉设计，沿原C01/C02聊天与状态组件，本批不新增原生/真机/生产通过。
-
-参考并采用[LangChain工具错误反馈](https://docs.langchain.com/oss/javascript/langchain/tools#error-handling)、[结构校验错误](https://docs.langchain.com/oss/javascript/langchain/structured-output#schema-validation-error)与[LangGraph工具/消息测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)中的配对错误消息及有界继续模式，未安装/迁移框架或运行上游套件。当前直接使用已固定LangGraph StateGraph和应用PostgreSQL恢复；因此复用应用解析器的纯执行前端口，不照搬会捕获执行后异常、重试副作用的宽泛中间件。此能力是供应商无关的输入校验；Qwen4B的可信system投影仍仅限既有已验证型号，1073未知结果不重放。配置实模执行与失败范围如下，不由上游示例推定通过。
-
-稳定源码通过231/231单元、55/55隔离服务（另7可选实模未启用）、73/73 Mini及全仓lint；类型本批0/全仓292。79项source/test与92项provider/环境文件hash一致。服务真实创建/发布/检索知识并保存引用，参数纠正后只读一次、重进可见、撤回失效；连续错参不执行，纠正为其他客户/租户ID仍拒绝。纯离线预检识别1072原调用，原报告hash/评分不改。此验收窗口已结束。
-
-独立配置实模使用隔离企业3869/咨询5879：固定Provider先真实保存一条“厨房保留冰箱”需求，随后新run6104由明确标记的数字ID故障checkpoint起步，不算模型自然首稿。当前硅基流动Qwen3.5-4B仅一次真实调用，输入6017/输出42，收到反馈仍重复数字leadId，被第二次错误终止；查询/交付0，active/unknown均0，模型纠正未通过。旧1073不重放，旧16项attempt/原job状态、四份员工发布和2567内部原件前后相同。配置脚本最初重新保存导致临时profile/密文hash漂移，原失败报告保留；在原互斥锁内用既有隔离备份候选重建且完整哈希精确匹配后，仅恢复LLM配置，不回滚整库。中途5432/55432隧道中断，按既有remote-dev/tunnel.ps1恢复，端点/SSH配置未改；无新模型请求。原始报告、恢复证明、锁等待失败与manifest独立保存在tmp/xiaok-tool-input-v87/。下一批具体字段诊断、话题/修复编辑及完整条件仍待接续，历史业务评分不升级；原生/真机/完整build/全仓类型/生产仍未通过或未验。
-
-## 历史v86：引用文件名与工程量分离
-
-**AG-08内部技术子阶段Implemented，整体Limited。**
-
-原v85诊断把获权文件`03 金螳螂家施工工艺手册2.0.pdf`中的03/2.0列为无据数字：旧版号别名替换将扩展名当量数后缀，数字前缀也不属于别名。v86仅在工程量分析视图中识别本段已引用知识的可信title/file.name内、成对引号包围且逐字一致的`.pdf/.docx/.xlsx`完整文件名，支持书名号、中文/ASCII引号及字面标点，不规范化/剪裁原文。文件名外的数值/单位、未引用来源、项目名称、未知/部分/改写文件名、版本小数拆分及正式完成声明继续走原校验；不改变引用目录、存储正文、来源重验、工具协议或模型预算。
-
-真实反例先在旧实现中断言失败，记录见`tmp/xiaok-filename-v86/red.log`。稳定源码最终221/221单元、4/4定向隔离服务、73/73 Mini与全仓lint通过，类型本批0/全仓292；77项source/test、92项provider/环境文件hash一致。原服务用例真实创建/索引/发布、按完整文件名首稿交付并保留原正文/逐字引用，重进可读，资料撤回后引用/旧回答不可用；跨客户/租户及修复撤回路径也通过。公开API/schema/角色与批准的C01/C02/C05/U01/S04 UI不变，不新增视觉/原生通过。
-
-以v85原始报告hash绑定的三份未改首稿/完整历史来源做纯离线校验：1067/1070不再因文件名被拒，1071仍因真实无据数字失败。这里只验证解析器，不重新评分或交付已退役来源；两份防水首稿漏事先联系楼下等语义缺项仍存在，原v85交付0/5、完整条件0/3、余3题/9项未执行不改。本批新实模聊天调用0，未重放1073；只读重审确认16项provider attempt与原job ID/状态一致、unknown1保留，四份员工发布数据及原2567内部资料不变，两企业AI关闭/资料retired且无活动run/job。未切模型/配置，不核清未知费用。证据`tmp/xiaok-filename-v86/manifest.json`；后续先处理实际话题/工具参数与修复编辑、完整条件覆盖，再以新原键/新夹具运行实模，旧unknown保留，原生/宿主/高屏/键盘/真机/微信/BLE/build/全仓类型/生产仍未验或未通过。
-
-## 历史v85：模型投影末尾的绑定修复任务
-
-**AG-05/08/09内部技术子阶段Implemented，整体Limited。** `xiaok-renovation-v85` / `bound-repair-tail-v1`仅修改hash绑定的目录引用修复在模型视图中的末尾提醒。被拒绝的首稿、完整反馈、客户原问题、获权来源原文/目录及工具配对保持；固定应用任务明确要求纠正文稿，不再重复原问题。提醒不插入用户/工具值、不授新权限、不创建客户消息或run；普通回答、不可信控制副本及旧式修复保留原末尾。编辑解析器、全部校验、四次调用/一次修复及16000/48000预算不变。实际Worker步骤仅在应用时记录`current-turn-sources-v8`与修复投影版本。
-
-对八份未修改v84 checkpoint的离线投影确认：Qwen3.5适配将可信控制移到首部后，八次旧修复仍以原问题收尾；新投影保持绑定任务最后、完整反馈仍在。这是可复现的输入问题，不证明它导致所有业务失败。沿用[维护中的LangChain结构化输出指南](https://docs.langchain.com/oss/javascript/langchain/structured-output)中将具体验证反馈作为下一次模型任务的原则；本次定点修改保留现有权限、持久任务、未知费用及引用边界，不迁移框架或新增循环。
-
-技术收口：217/217单元、4/4定向隔离服务、73/73 Mini及全仓lint通过，类型本批0/全仓292，最终80项source/test hash一致。定向服务首轮3/4，一个旧有界编辑用例单独运行时缺少前序用例配置的施工阶段；现已通过原服务创建本用例的标记阶段夹具，首次失败独立保留，稳定源码重新通过全部受影响检查。
-
-窗口`2026-10-20T05:49:19.880Z–05:57:25.931Z`使用新企业2624(A)/2623(B)，各74原段/10向量批、两份员工编辑/发布观察，四个现场job取消且现场provider调用0。实际执行A1067/1071/1073、B1070/1072，计划8题中仅5题执行，交付/自动首稿0/5；三份可审读synthesis首稿完整条件覆盖0/3。三次修复均实际应用bound-repair-tail-v1/current-turn-sources-v8，却仍复制原文并重复add已有引用。两份防水首稿保留主要量数及检查/漏水处理，但漏事先联系楼下；厨房首稿将未量测屏蔽说成不完整、比较/数字建议未选本段引用，并写入无据记录199/版本3。文件名中的03/2.0误判已纯函数复现，不冒充工程量错误，下一批定点修复。完整原文、逐题审读与原修复见`review-view.json`/`semantic-review.json`。
-
-1072未产首稿：模型先在厨房问题查防水检索词，再用数字leadId调用query_materials，被原字符串ID合同拒绝为invalid_message，不转型ID；1073第三次模型调用HTTP_503，attempt为failed/accepted=false，运行仍以provider_outcome_unknown/indeterminate保留，未重放、不推定无费用。16次模型attempt中15次已知成功、1次503；请求预算峰值15271/16000，无输入超限。已知输入109581/输出2576，查询embedding483输入token，费用及一个unknown job未核清。父级9项实模租户/独立撤回断言全部未执行，不能拿清理当通过。两企业AI关闭、资料retired，活动员工/run/job/客户可读资料为0；四份员工数据及原2567内部原件保持。最终80项source/test、92项provider/环境与运行配置hash一致。证据`tmp/xiaok-repair-tail-v85/manifest.json`；阶段源码与四计划索引按原规则本地提交，不push/部署。
-
-公开API、schema、权限、`KnowledgeRetriever`/`Evidence`与批准的C01/C02/C05/U01/S04 UI保持。本批不新增原生/真机/真实微信/BLE/build/全仓类型或生产通过，v84/v82原始尝试和评分各自独立。
-
-## 历史v84：来源查询后的最终kind与问答隔离夹具
-
-**AG-05/08/09内部技术子阶段Implemented，整体Limited。** `xiaok-renovation-v84` / `source-final-kind-v1`将来源查询后的模型最终响应枚举与原服务端合同对齐：保留synthesis/business/knowledge/references；普通聊天、历史、记忆和图片仍保留general/vision/unavailable。当前引用目录ID、旧结果展示形式、完整原文、来源重验、四次调用/一次修复预算及全部服务端校验保持。沿既有[LangChain结构化输出参考](https://docs.langchain.com/oss/javascript/langchain/structured-output)对当前运行器作有界约束，不把schema当供应商遵循或语义保证。公开API、数据库schema、权限和批准UI保持。
-
-仅开发验收使用`--manual-site-fixtures`选项，合成员工通过原服务明确编辑/发布标记观察，复用已有生成中编辑取消路径，不接受/转型供应商草稿，不将现场生成计为通过；实际attempt/取消/未知用量保留。默认模型草稿验收不变，报告/恢复模式不可混用。真实客户HTTP/Worker运行必须实际记录本prompt/read/final协议，不能只看磁盘hash。新唯一`xiaok-final-kind-v84-live`窗口沿两企业、原两场景各两次，独立保存首稿/末稿审读、九项租户/撤回断言及精确清理；共享锁/非越权角色/空闲队列和原模型/配置边界保持。证据归`tmp/xiaok-final-kind-v84/manifest.json`，下列实际结果不继承v83/v82评分。
-
-v84收口：214/214单元、3/3定向隔离服务、73/73 Mini及全仓lint通过，类型本批0/全仓292；最终80项source/test及92项provider/环境文件hash一致。`2026-10-20T05:04:43.223Z–05:14:26.745Z`受控窗口使用新企业2621/2622，各74原段/10向量批和两份员工明确发布的合成记录。四个现场生成job经原编辑路径取消，实际现场provider调用0，不能计S04生成通过。A运行1058/1060/1062/1064，B运行1055/1059/1061/1063：八份首稿均为synthesis且实际记录v84/read/final协议；初次校验均unsupported_model_commitment，八次唯一修复均invalid_model_citation，交付/自动首稿/本对话原文语义首稿与末稿均0/8。26次模型响应全部已知成功，无输入超限、供应商未知或新增未知job，请求预算峰值15616/16000；观察到204018输入/6417输出token，查询embedding825输入token，费用未核清。引用目录成员均为本轮可用ID，但多段漏48小时条件、将未量测屏蔽判不符、计算无据日程或缺少本段实际/条款引用。八份修复都重复add原有ID，七份未实质改变正文/新引用，一份把段0改成安排结论，不能把结构或引用存在当专业正确。原文/引用及逐题审读分别见`review-view.json`/`semantic-review.json`，原始报告不改。
-
-父级只完成双企业/同原件/同源码1项准备核对，随后因没有可交付citation在`assert.ok(citation)`停止，计划其余8项实模跨企引用/独立撤回未执行；不能拿清理或确定性检查替代。独立审计确认两企业AI关闭、资料retired，活动员工/run/job/未知job/客户可读资料均0；四份员工发布数据未被取消的生成任务覆盖，原2567内部资料不变。当前4B运行配置hash及完整环境文件保持，没有切换模型或重放旧未知任务。Stable原生、宿主/高屏/键盘、真机/真实微信/BLE/build及全仓类型保持未验/未通过，不要求用户手测或截图。整体业务Limited，源码提交和两计划索引按既有规则本地保存，不push/部署；下一批先复现修复任务投影与原问题的末尾重复，保留完整原文、目录和唯一修复预算。
-
-## 历史v83：同一获权运行内复用成功只读查询
-
-**AG-05/09内部技术子阶段Implemented，整体Limited。** `xiaok-renovation-v83` / `same-run-read-v1`只识别现有应用明确列出的只读工具。查询成功后，私有checkpoint绑定工具名称、规范JSON参数hash及完整结果消息位置；相同调用收到指向原结果的`already_queried`工具回执，原文、条件、定位、引用和消息配对完整保留。不同参数或工具仍可查询。明确只读列表之外的操作正常执行，成功后清空已有读回执。不跨run缓存，不新增证据来源。
-
-复用前后、模型派发和最终投递仍逐次授权；原知识版本/epoch/受众及项目/历史来源检查可撤销复用。恢复时回执须匹配实际工具请求及配对结果；无回执的旧checkpoint保持可读，只在之后新成功查询时建立回执。失败/结果未知不标记完成。原4次模型调用/1次修复/16,000估算输入/48,000文字字节不变；模型诊断记录读协议，embedding/服务用量只按实际执行记录。参考[LangChain工具调用次数约束](https://docs.langchain.com/oss/javascript/langchain/middleware/built-in#tool-call-limit)及[LangGraph工具消息/恢复测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)，保留已装StateGraph与应用持久化，不另建运行器；上游[DeepSeek问题10883](https://github.com/langchain-ai/langchainjs/issues/10883)是独立供应商问题，不作为本缺陷的证明。
-
-KnowledgeRetriever/Evidence、解析/检索/发布及既有C01/C02/C05/U01/S04批准UI、公开API、角色和schema保持。固定验收覆盖同批/跨轮重复、不同查询、写入、恢复、撤权、损坏回执、旧checkpoint及原修复/未知结果边界；隔离服务须真实知识写入、单次检索、回复/引用持久重进和正式退役撤回。配置实模沿原两场景、每个合成项目各两次，首稿/末稿与未改原件证据分别保留。证据归`tmp/xiaok-read-dedupe-v83/manifest.json`。本批只收口内部确定性检查；新实模与原生未执行，下一最终协议组合窗口单独留证，不新增业务评分、真机或生产通过。
-
-最终收口：211/211单元、3/3定向隔离服务、73/73 Mini及全仓lint通过，类型本批0/全仓292；最终源码/测试与92项供应商适配/环境文件hash无漂移。真实知识创建/索引/发布、单次检索、完整引用/重进、正式退役和复用前撤权均已执行；三条旧超限原记录只离线回放，请求预算估算17,877–17,881降至15,860–15,864，原原件/报告/评分不变。`attempt-1/`保留旧预算测试漏用既有可信投影的210/211失败；`attempt-2/`保留51服务通过/1条新增断言错误/7跳过，错误把撤回引用应返回available=false写成抛错。按原接口合同校正后新稳定窗口3服务通过，不混算旧组。复现见本目录`final-checks.mjs`；已提交固定入口为`node scripts/assistant-memory-acceptance.mjs --unit --source-integrity --evidence=<new-prefix>`及带隔离锁的`--source-integrity --wait-for-lock`。没有新开发库实模夹具或配置实模业务问答、没有切换模型或修改旧未知job；原8B评分与原生限制独立保持。下一批接续最终输出kind及引用，并统一跑组合后的稳定版本。
-
-## 历史v82：有界原段校验与严格现场草稿
-
-**内部技术子阶段Implemented，整体Limited。** 由当前唯一集成人共同修改知识原段校验和Agent现场草稿序列化。`fileChunks`最多并发校验4个独立原段，结束后恢复原顺序、Unicode偏移、完整正文/条件及文件定位；首个失败停止新增派发，等待已在途校验结束后返回失败。每次原回调仍重验当前企业/job/版本并持久记录attempt；原80秒chunk/110秒embedding派发时限、租约、profile及未知调用不重放保持。未增加OCR、分块策略、第二检索器或发布能力。
-
-`xiaok-site-record-v2`复用既有明确指定`final_response`的输出传输，5个文本字段必填，`roomId`是当前获权项目的可选string枚举。没有明确房间时省略字段，序列化明确解码为既有null状态，不转型数字、不猜名称/外企ID；无房间的项目schema不暴露该属性。只解码一次同名输出调用，仍交给原严格`parseSiteDraft`，额外字段、未知/多个调用和截断均拒绝。持久checkpoint保留原provider响应，兼容历史纯JSON checkpoint，恢复不重发provider。这里只序列化，不执行业务工具、自动核对/发布或重试。已知安全拒绝标记终态失败，真实未知受理继续隔离；不为清零而改写历史1039/1040未知job。原作者/经理/成员、租户、来源和用量围栏保持。
-
-咨询prompt升级`xiaok-renovation-v82`，综合policy/catalog/transport/repair沿`trusted-synthesis-v10` / `source-catalog-v1` / `final-tool-choice-v1` / `synthesis-edit-v1`及全部原预算。沿用[LangChain结构化输出合同](https://docs.langchain.com/oss/javascript/langchain/structured-output)和[Qwen模型工具输出合同](https://huggingface.co/Qwen/Qwen3.5-4B)，不新增运行器，不把provider schema当授权或语义证明。未改Mini/Admin结构、样式、素材、固定文案、导航、路由、公开API、角色或schema。既有C01/C02/C05/U01、PPT22/38 S04及真实写入/核对/失败/重试/重进仍是客户端基线，不新增原生或部署通过声明。
-
-`tmp/xiaok-setup-v82/`首个准备批次的两份74段原件均索引成功，但新增末尾system指令引发硅基流动HTTP400/20015，咨询题0/8。独立合成探针保留精确拒绝，[Qwen官方模板](https://huggingface.co/Qwen/Qwen3.5-4B/blob/main/chat_template.jinja)确认system只能在开头。`qwen35-leading-system-v1`仅在已验证供应商/型号发送层合并可信system，不改运行器checkpoint/修复相邻关系、完整原文、其他角色或工具配对，不把user/tool内容升格。合并后仍验完整文本预算，其他模型/供应商保持原路径；这是provider/template兼容，不替换编排。nullable与纯string schema均保留数字ID失败，也有一次纯string成功；schema不能保证模型/provider始终遵循。[维护中的vLLM解析器测试](https://github.com/vllm-project/vllm/blob/main/tests/tool_parsers/test_qwen3coder_tool_parser.py)覆盖此类类型转换。硅基流动实际服务版本/解析器未知，不能断言它采用了某个上游bug。
-
-v82收口于`tmp/xiaok-setup-v82/manifest.json`：198/198单元、23隔离服务通过/1实模照片跳过、73/73 Mini/全仓lint通过，类型本批0/全仓292，源码/测试/provider首尾及收口hash一致。中途类型收窄修改造成漂移的服务批次保留并排除，只计final-*。2615/2616各74原段/10向量批成功但现场HTTP400失败，AI关闭/资料retired，历史2条保守未知job保留，provider实际failed/accepted=false。最终2617/2618导入超时，无文档/模型调用，咨询0/8、新实模隔离0项，活动/未知/客户可读计数全0。原2567未变，窗口2026-10-20T03:19:41.306Z结束释放，businessBatchPassed=false。窗口后核对队列/近期调用为空及进程身份，以原命令/配置恢复本地3006，鉴权401/56ms，未操作生产进程。
-
-用户要求的免费8B实际为Qwen/Qwen3-8B，不是Qwen3.5-8B。[官方目录](https://www.siliconflow.cn/pricing)列3-8B免费/仅文本/支持工具，无3.5-8B，3.5-9B收费。tmp/xiaok-free-model-comparison/独立保留Xing默认思考90s未知、4B数字roomId拒绝及8B草稿/工具往返探针成功。原单次lookup断言比既有最多4调用合同更窄，失败manifest保持；只接续明确已返回的lookup，未重放provider。探针未改配置或证明质量排行；后续明确8B业务窗口与原4B精确恢复记录如下。
-
-技术复现：在admin运行`node ../tmp/xiaok-setup-v82/check.mjs <mode> --final`，mode分别取unit、service、mini、lint-full或types；service沿既有隔离锁/角色/空闲守卫。相应测试源码已提交，包括`src/lib/__tests__/construction-site-contract.test.ts`及Agent运行器/文件测试；实模沿带守卫驱动、唯一新夹具及原文/模型边界。
-
-## v82接续：Qwen3-8B业务验证
-
-**独立验证、源码未改；业务未过，整体Limited。** 用户授权的硅基流动Qwen/Qwen3-8B临时文本模型试验以a88ed26d实现为基础，同时绑定实际工作树/provider/测试hash，不宣称全仓洁净重建；旧4B准备失败和探针独立保留。受控窗口2026-10-20T03:34:51.509Z–03:50:13.551Z持有共享隔离验收/开发锁，核验非super/非BYPASS角色及初始空闲队列。新2619/2620各用同一原件完成74完整段/10向量批索引；4份原生final_response现场草稿均为获权string房间ID、每份恰1次成功provider调用，再经合成企业主明确编辑/核对/发布。原响应/版本保留，不自动发布或转型ID。
-
-计划内8次客户请求均执行，固定/首稿通过0/8，未交付答案：1044/1048为invalid_model_answer；1047/1051为invalid_model_citation；1046/1049/1052为agent_input_limit；1050为indeterminate/provider_outcome_unknown。原4次调用/1次修复/16,000估算输入/48,000文字字节/6段/每段4引用保持。相同只读查询重复累积输入；两条kind=general防水原稿保留48h/20mm/24h/楼下检查/漏水停止等条款，但混用项目与手册而没有必需目录引用，也未明确带出记录中完工/保养未核实的限制。semantic-review.json直接核对原文/原稿；其他6次没有有效最终正文。0/8是集成通过数，不是通用智力排行或所有原句均错，未做独立人工认证或同条件完整4B业务对照。
-
-B的未知调用使其在parent隔离屏障前停止，计划9项实模跨企/引用/独立撤回断言实际执行0项，保持未验。provider attempt2953在91,165ms后记PROVIDER_TIMEOUT；原run1050/job1454保留未知，不重试或清零。两合成企业关闭AI/退役唯一文档/停用员工/撤销测试用户context；活动员工/run/job/客户可读资料全0，2620新增1条未知job保留。原2567和历史2615/2616未知job未动。实际用量保留，未知token/费用未核销；含排队耗时不冒充provider时延或P50/P95。
-
-tmp/xiaok-qwen8-v82/manifest.json绑定首尾稳定源码/测试/provider及原始输出；窗口释放后model-trial-restored.json/restore-proof.json验证平台原Qwen/Qwen3.5-4B配置及完整环境文件hash精确恢复、凭据/视觉保持、后续源码无漂移，重载后鉴权401。上文同hash的198单元/23隔离服务/73 Mini/lint技术检查沿用；本次未改源码/UI/API/角色/schema/知识边界，未新增原生/真机/微信/BLE/build/全仓类型/生产通过。下一Agent AG-05/08/09增量处理重复读工具/输入增长与最终协议/引用，本结果未建立新的KB解析/召回缺陷。
-
-## v81历史AG-08：唯一修复中的显式来源编辑
-
-**v81内部技术子阶段，整体专业客服仍Limited。** 当前`xiaok-renovation-v81`沿既有`trusted-synthesis-v10` / `source-catalog-v1` / `final-tool-choice-v1`加入`synthesis-edit-v1`。仅在本轮结构有效的目录式综合首稿已被原校验拒绝、且进入原唯一修复时，服务端控制消息与前一份完整首稿的hash绑定。模型按原段落下标显式修改text/basis、增删citationId、删除段落或追加必要段落；没有指明修改的正文和引用保持原值，不整体替换引用数组，不自动拼接候选。目录之外、换版/歧义ID、错误baseHash、重复段落编辑、越界、额外字段和首轮伪造修复均拒绝。
-
-完整重建结果仍通过原来源、数值、机理身份、状态、正式承诺和范围校验，以及6段/每段4引用/24,000字节限制。原4次调用、1次修复、16,000估算输入及48,000文字字节预算保持。保留原供应商回复和原checkpoint中的编辑响应，重启只重做确定性重建并重验当前来源，不重发模型或业务写入；最终综合上下文保存完整规范回答，历史与撤回沿原路径。旧逐字quote修复兼容；已明确提供编辑协议的目录首稿不能用整答重写绕过。项目来源继续保存在综合上下文及既有来源说明中，知识来源沿原引用卡，不改变C01可见结构。
-
-本批未改变KnowledgeRetriever/Evidence、知识解析/分块/检索/发布、版本/hash/epoch/受众、公开API、schema、菜单、角色或小程序WXML/Less/图片/导航。C01/C02/C05/U01沿唯一批准的`design-references/xiaok-p4b-public-sites-v1/README.md`与既有气泡/来源/错误重试/重进，不新增视觉还原或原生验收。本对话仍为两计划唯一集成写入者。复核[LangGraph消息/恢复测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[Agents SDK输出检查测试](https://github.com/openai/openai-agents-js/blob/main/packages/agents-core/test/guardrail.test.ts)，保留现有StateGraph、持久任务、租户/撤回/用量/人工围栏；没有引入第二Agent或模型判官。上游[DeepSeek工具元数据问题10883](https://github.com/langchain-ai/langchainjs/issues/10883)不作为本批已复现缺陷。
-
-用户于2026-10-20先手动保存硅基流动R1，再明确授权切回历史`Qwen/Qwen3.5-4B`并做能力探针。R1-0528-Qwen3-8B两次合成诊断均HTTP400，其中完整保留的供应商错误为`20037: Function call is not supported for this model.`；这是该模型的具体能力限制。Qwen的必需工具、工具往返/最终工具及合成红色图片3项探针通过；原硅基流动凭据保留，平台模型、本机助手覆盖和已批准开发企业1454同步，policy_version=4。企业图片/工具开关保持，其他旧夹具不批量改配置；探针不等于专业语义、原生或生产验收。新实模只能创建新前缀及独立合成企业，不复用已retired的2611/2612；测试驱动按当前显式模型建夹具，切模型后拒绝续接旧模型的夹具/报告。
-
-技术和新实模收口证据写入`tmp/xiaok-bounded-edits-v81/manifest.json`；执行命令仍沿`assistant-memory-acceptance.mjs --unit --source-integrity`、`--source-integrity --source-repair-only --wait-for-lock`及带共享锁/空闲队列/非越权角色守卫的本批`live.mjs`。既有真实手册、两企业/两场景各两次的固定标准保留；新模型不与v80合并评分。初次隔离回归7/8的唯一失败是测试误把知识引用卡数当作知识加项目全部依据数；按原合同修正断言并保留`attempt-1/`，不改UI或历史通过数。当前源码的最终结果与未覆盖项以本节收口记录及manifest为准；完整专业客服、1034归因/1035电话范围、run913普通指代及PPT整体仍未因此宣告完成。阶段完成后按两计划新增Git规则自动提交并回填提交号，不push或部署。
-
-v81收口：最终138/138单元、8/8隔离服务、50/50知识定向单元、73/73 Mini及涉及文件/全仓lint通过，类型本批0/全仓292；source/test运行内与收口均无漂移。原5份首稿离线回放中3份需要修复的请求估算15,667–15,748/16,000，未裁原文或改旧评分。硅基流动3能力探针通过后，企业2613/2614新窗口于2026-10-20T02:35:17.677Z结束并释放；0/8咨询题执行、0项新实模隔离断言执行。A原件仅完成20/74次原段校验即`index_deadline_exceeded`；B原件索引成功，现场草稿run1038将有效房间ID输出为JSON数字256，原严格string/null合同以`invalid_construction`拒绝。该次草稿用量实际407输入/113输出token，费用未核清；不能当咨询答题评分。两企业均AI关闭、原件retired，员工/活动run/job/未知job/客户可读资料均0，源企业2567未变。manifest的`businessBatchPassed=false`保持；下一内部子阶段采用有界并发原段校验与严格模型输出合同，不强制转型、抬高时限/预算、追加模型修复或绕过真实服务。新失败不得用旧首稿或探针补算通过。
-
-## v80历史AG-08：状态问句、机理身份与明确比较
-
-**限定校验Implemented，整体专业客服仍Limited。** 本对话单独负责两计划的共享写入、接口、集成和验收；当前模型可见规则为`xiaok-renovation-v80` / `trusted-synthesis-v10`，引用及传输仍是`source-catalog-v1` / `final-tool-choice-v1`。知识库继续通过原`KnowledgeRetriever`/`Evidence`返回完整获权原文，不修改解析、检索、发布、版本/epoch或受众合同，也不把本批计为KB-1～4新增交付。
-
-v80沿下方保留的v79失败继续：保养适用性等疑问形式的字段本身也可能缺资料，对象中的“是否”不再掩盖实际记录缺项断言；补正确节点后，试验/保养/检查记录缺项仍须选实际记录。有明确共享来源类型时，不因文字像现场记录而改成现场观察。这些仍是有限字段/来源检查，不是通用语义蕴含。`selectedCitationContext`只保留错误段原选项，合并数字/来源修复也一样；精确匹配应用自有可信规则后压缩重复表达，不改原文、检查点、身份/版本/条件、工具schema或服务端权威。16000输入/4轮/一次修复/6段保持。
-
-v80实模窗口已结束且未完成，证据`tmp/xiaok-source-scope-v80/manifest.json`：企业2611/2612计划8题尝试7题，交付4题，1032修复后丢记录依据被拒绝，1036/1037因`provider_payment_required`停止，a组第二轮厨房题未执行。自动首稿2/7、固定4/7与本对话审读分开：5份实际首稿仅1可用，4份交付仅2可用；1034把现场100mm/同槽主张只交给条款引用，1035保留引用但电话等待范围不清。`businessBatchPassed=false`，9项新实模隔离/独立撤回断言均未执行。只读清理核验AI关闭、资料retired，员工/活动run/job/未知job/客户可读资料均0。未记录新输入超限，估算峰值15946/16000余量仍窄，不是大上下文认证；原窗口source/test无漂移并已释放。未付款、切供应商或自动重试。
-
-窗口结束后发现定向验收仍要求6题，新增共享`assistant-manual-cases.mjs`场景注册，统一默认6题/定向4题的选择与不同场景/轮次完成判定，拒绝缺题/重复/失败，首稿严格模式独立。当前128单元/6隔离服务/73 Mini及涉及文件/全仓lint通过，类型本批0/全仓292；窗口后证据独立绑定于`tmp/xiaok-source-scope-v80-harness/manifest.json`，20个Agent运行文件与已结束窗口一致。原脚本字节保存在`tmp/xiaok-source-scope-v80/harness-at-window/`，原实模报告/manifest/语义不改，不宣称脚本改后新实模通过。供应商恢复后用新前缀/夹具，保留1032/1034/1035原文并补新实模隔离，不复用retired企业2611/2612或合并分数。后续可评估原一次修复中的模型显式增删引用/改正文操作，结构上保留未改依据，不能由服务端自动拼接候选；新协议本身不授予额外判官/修复或权限。
-
-`tmp/xiaok-source-scope-v80/budget-replay.json`绑定2份未变v79报告：1019/1025现拒绝；1021/1022/1024保留完整原文，估算输入从16291/16035/16124降为15420/15133/15349，无供应商/数据库调用或历史重判。原实模窗口125单元/73 Mini及涉及文件/全仓lint通过，类型本批0/全仓292。定向服务、新配置模型首末稿/语义、hash及清理见`tmp/xiaok-source-scope-v80/manifest.json`。新可选`--case-set=repair`保留原蓄水追问和厨房布线题，各独立企业各跑两次，计划8条新客户题，不当作新的12题/全场景分数；默认全量场景不变，恢复报告不能混用场景集。v79失败和原报告独立保留，不以新源码刷新。
-
-v79接续v78保存的引用选择失败：长来源的引用候选新增原完整text内精确UTF16 `[start,end)`范围，原文、目录ID及持久quote不变。原唯一修复提供各段原选项的`selectedCitationContext`，增加状态/条款引用时保留仍支撑保留主张的引用，不自动合并候选、改写quote或接受未知ID。显式节点断言同时按实际返回的字段值检查，不依赖具体连接动词；非数值记录主张及有界施工记录缺项须选记录摘录，不能用需求/图纸缺项或节点摘录替代。定性手册比较也须有本段实际条款。这些仍是有限检查，不是通用语义蕴含或专业认证。写作规则只在影响本题时说明节点/电话，不为展示查询而附加清单；输入/轮次/一次修复/6段和来源重验边界保持。
-
-采用决定仍是沿现有Agent路径执行最终回复检查，参考[Agents SDK检查边界](https://openai.github.io/openai-agents-js/guides/guardrails/)及其[测试](https://github.com/openai/openai-agents-js/blob/main/packages/agents-core/test/guardrail.test.ts)；已维护的[Parlant回复路径](https://github.com/emcie-co/parlant/blob/develop/src/parlant/core/engines/alpha/engine.py)只作对照，不引入新运行时。DeepSeek[问题10883](https://github.com/langchain-ai/langchainjs/issues/10883)涉及thinking/tool往返元数据，本批不宣称复现或修复；租户权限、持久任务、用量/未知费用和人工接续继续由本项目服务端控制。
-
-v79已收口于`tmp/xiaok-citation-selection-v79/manifest.json`：122单元、6隔离服务、73 Mini及涉及文件/全仓lint通过，类型本批0/全仓292。企业2609/2610的run1014/1016–1026共9/12服务及固定检查通过、自动首稿4/12；本对话原文/引用审读首稿4/12、末稿7/12，非独立人工复核，`businessBatchPassed=false`。1019仍用需求/图纸缺项解释试验/保养记录缺项，1025补实际节点后丢失本段记录缺项依据；1021/1022在修复调用前触及原输入上限，1024在首份综合稿前超限，不评分未见的修复或升级词检查。9项隔离/独立撤回通过，员工/活动run/job/未知job/客户可读资料均0，资料retired，source/test运行内及收口无漂移，稳定窗口已结束。120份离线原稿绑定10份未变原报告，不计新模型输出；中断服务尝试不计通过，释放锁后已精确删除其企业3819/3820及7名合成用户。v78及更早报告保持原状。下一批补记录缺项归因并移除可信规则/诊断重复开销，不提高预算、删原文或增加修复；普通回复run913/B918仍独立接续。
-
-`parseAgentReply`仅在内部办理断言投影中排除紧邻“是否”的具体状态谓词；原回答不改写，不整句删除。“楼下是否已联系，本次资料没有记录”可正常返回，同句或相邻句的真实已办理断言仍拦截，包含“联系完成”等无“已”字的完成表达。general/vision/unavailable及synthesis各basis共用此边界，不能借标签或修复绕过真实操作回执。
-
-`synthesis-review.ts`在原有限复核中补充非数值现场观察的来源检查、已观察机理词的evidence/advice身份，以及明确同单位量数与上下限的直接比较。知识条款不能证明现场；无关项目记录、需求意向、历史原话和正式方案不能替代对应现场观察。资料对照说明不算现场断言。条款没有解释的干扰/检修/返工等通用机理另放advice，不能由真实引文变成原文事实；未量测不能判为不足、不符或达标。比较只核对明确对象、同一单位和含等号/严格边界，不换算、推算、输出差值或判断整项工程合格；歧义、同义机理、房间对应和一般专业语义仍需实模复核，不是通用语义判官。
-
-v76在保存的run954–962上继续补回归：有界汉字量数也必须有本段原文，不能把原小时换成“两天/一天”；原文确实写汉字量数仍可引用，不做数值转换。明确现场与手册的高低比较须引用实际要求，标题或只引项目记录不够；总括不符不能带入明确未量测项。复用原量数/上下限提取作同单位精确小数对照，仅在原一次修复中给出原值、原边界、来源ID和未知项，不输出差值、推算值或工程合格结论。多项含糊/不同对象不充当通用判断。修复还给最多4个已有原文引用候选，优先实际项目资料，候选数值相同不证明主张；补对来源后保留正确数值，不简单删掉。机理合并为一个advice段，整答最多6段；未增加工具、检索、修复或模型轮次。
-
-本批问题与数值缺证沿原唯一一次修复一起反馈具体正文路径。原quote/目录/ID、提交时来源重验、企业/客户/项目/撤回、用量/未知费用、租约及人工围栏保持；现有final工具已经带当前引用ID枚举，未知ID仍拒绝，不作模糊修正。先以原保存文本和危险相邻断言复现失败，再修复；不改原始报告或把离线回放说成新模型回答。
-
-v77沿run967–978继续限定修正：有明确一般原理语境、条件因果、advice身份且同组分句没有现场主语时，“延伸不足会削弱效果”不算当前未量测现场不足；同句/相邻现场断言和确定无效结论仍核对来源。未量测不能推出“没形成有效屏蔽”，包括主语在前一分句的原失败。“两遍涂层/涂刷两遍”须有本段涂刷原文，普通“再说/核对两遍”不受影响；汉字量数可选原已有对应条款，候选不自动证明。已观察的“代价”因果也保留advice身份。修复只携带涉及比较/未知项的诊断，全局去重相同原值/边界/未知项并保留所有错误路径，不删除原文、历史或工具配对，不提高输入预算。最终写作规则强调本题必要段落、实际条款及通用风险身份，不添加业务固定答案。
-
-v78接续983–994的明确失败：非数值“记录只写了/只写到抽测高度”等说明也核对本段实际项目观察；显式当前节点和阶段电话状态须选包含同字段、同状态的原摘录，同一sourceId下的记录合集不代替它。提问、条件假设及普通阶段说明仍可用，不能用相邻否定或免责声明消除实际断言。原单次修复最多提供2个本轮已有状态引用候选，候选不是自动证明，未知ID不改写；未量测项也不能混进“全部不一致”。`assistant-acceptance-report.mjs`只对同一`.next`文件的瞬时EPERM/EACCES/EBUSY重命名最多尝试5次，累计等待最多150ms；持续失败保留旧完整报告和待提交文件，不重放业务/供应商、不补改991的原判定。报告工具和两实模驱动纳入source/test hash。
-
-v78已收口于`tmp/xiaok-source-roles-v78/manifest.json`：最终117/117单元、6/6定向隔离服务、73/73 Mini、涉及文件及全仓lint通过；类型本批0/全仓292，未跑完整构建。最终单元/服务在`tmp/xiaok-source-roles-v78-final/`；96份首/末稿回放绑定8份未变原报告，不能计为新模型回答。企业2607/2608、run999–1010共11/12服务及固定检查通过、自动首稿4/12；本对话逐条原文/引用审读首稿3/12、最终6/12，非独立人工复核，`businessBatchPassed=false`。9项隔离/独立撤回通过，员工/活动run/job/未知job/客户可读资料均0，资料retired，源/测试运行内及收口无漂移；本批稳定窗口已结束。未记录报告重命名失败、输入超限或第二次修复，原v77 run991的EPERM判定仍保留不改。
-
-当前未完成项有具体原文：1000补入实际状态摘录时丢失1600/1100mm观察引用，原唯一修复后被拒绝；1010补状态引用后丢失同段“整改/验收未完成”的非数值记录依据；1001/1008“节点只显示处于/只表示处在防水阶段”仍引用记录合集，当前有限句式检查漏检；1006重复的定性“与手册数值有差距”段只引现场；1007用需求/图纸缺项摘录解释施工时间/试验记录缺项。999/1002/1003/1004/1005/1009通过本批最终语义范围。下一批先处理修复时保留同段其他主张的引用、实际字段和引用的关系、定性比较与缺项来源，再补原run913普通general回复的历史指代及B918电话入口范围。正确原文已返回，职责仍归Agent，不把有限词句校验当成完整语义认证或转交知识解析；不增加修复预算或自动拼接候选引用。
-
-无schema、迁移、公开API、权限或视觉变化。C01/C02/C05/U01及原来源操作、失败/重试和持久重进继续对应批准`design-references/xiaok-p4b-public-sites-v1/README.md`；Mini结构、样式、素材、固定文案、导航、几何及Admin界面未改。历史v77最终110/110单元、6/6定向服务、73/73 Mini、涉及文件及全仓lint通过，类型本批0/全仓292；较v74多的5项来自`.next`生成路由，不宣称全量类型/构建通过。证据在`tmp/xiaok-risk-v77/manifest.json`及`tmp/xiaok-risk-v77-final/`。无新Stable原生/宿主/真机/微信/BLE证据，非开发阻塞，不要求人工截图或手测。
-
-v77企业2606/2605、run983–994共12条服务成功，固定检查11/12、首稿5/12；run991因Windows `EPERM`报告重命名失败，原固定/首稿判定不完整，不补改通过数、不重发模型。独立语义首稿2/12、最终3/12，整批`businessBatchPassed=false`。984/987/988通过本批语义范围，其余仍有只引知识说明现场记录、当前节点/电话选错摘录，以及994把未量测项概括为“与手册不一致”的问题。9项隔离/独立撤回通过，员工/活动run/job/未知job/客户可读资料均0、资料retired，源/测试运行内及收口无漂移；稳定窗口已结束。下一批由同一Agent负责人接续这些确定失败，完整原文和实际状态已返回的引用选择问题不转嫁知识解析服务。
-
-v76已独立收口于`tmp/xiaok-repair-v76/manifest.json`：最终103单元/6定向隔离服务/73 Mini/lint通过，类型本批0/全仓292。企业2603/2604、run967–978共9条服务成功/固定场景通过、2条首稿通过；独立原文/来源审读仅4条最终通过，业务未过。失败包括附带涂刷条款引错段、成本机理混入evidence、未量测屏蔽被判无效、一般风险建议误拦，以及重复修复诊断触发输入上限。9项隔离/独立撤回通过，源/测试无漂移，员工/活动run/job/未知job/客户可读资料均0、资料retired；保留失败、未知费用和`businessBatchPassed=false`，不改记v77验收。
-
-v75固定基线在`tmp/xiaok-grounding-v75/manifest.json`收口：94单元/6定向隔离服务/73 Mini与lint通过，原48/24小时被写成汉字天数、修复超过6段、比较来源不足、总括误判、正确现场数值被删除及未知引用仍使业务未通过。双企业2602/2601、run951–962中9条服务成功，8条通过固定场景检查、3条首稿通过；分开审读仅4条最终回复通过。9项隔离/独立撤回通过，源/测试无漂移，测试员工/活动run/job/未知job/客户可读资料均0，测试资料retired。原失败和`businessBatchPassed=false`保持，不转计v76通过。
-
-当前离线回放在`tmp/xiaok-risk-v77/replay.json`，绑定6份未变原报告和72份首/末稿JSON：run943状态问句保留，run971/977通用风险建议不再误拦，run967涂刷条款缺证、run970成本机理身份及run972未量测无效断言拒绝；不代表新增模型回答。v76的48份回放、v75原文回放及v74两份JSON保持。完整16项服务是v75最后收窄前的历史检查，不转记当前源码。沿[LlamaIndex引用实现](https://github.com/run-llama/llama_index/blob/main/llama-index-core/llama_index/core/query_engine/citation_query_engine.py)及其[测试](https://github.com/run-llama/llama_index/blob/main/llama-index-core/tests/query_engine/test_citation_query_engine.py)的来源映射，复核供应商工具协议问题，复用现有ID枚举和唯一修复，不迁移框架或新增模型判官。历史run913原话指代、B918电话入口范围仍是独立AG-08待补项。
-
-复跑在admin目录使用`node scripts/assistant-memory-acceptance.mjs --source-integrity --unit --evidence=<新的唯一前缀>`，服务另用`--source-integrity --source-repair-only --wait-for-lock --evidence=<新的唯一前缀>`。配置模型使用`node --import tsx scripts/assistant-citation-protocol-development.ts --development --evidence=<新的唯一前缀> --allow-bounded-repair`，不得复用完成/retired夹具或覆盖报告。规则投影变化已升级版本，新模型结果不能由历史回放替代。
-
-## v74历史AG-08/KB接口：版号排版与现场量数的来源身份
-
-以下是接续前已结束的v74固定批次及原始失败，不作为v75源码验收。原停止点见[交接入口](./xiaok-assistant-handoff.zh-CN.md#新对话接续入口与停止点)，当前实施与新证据见上节。
-
-**限定校验Implemented，整体专业客服仍Limited。** `citation-catalog.ts`只在内部工程数值校验投影中，将已引用知识的可信名称与版号之间的横向空白视为排版差异；普通空格、制表符及Unicode横向空格可匹配，不跨行、不拆版号数字、不匹配未获权版次。带工程量纲的标题不获版号豁免。原始标题、正文、quote、citationId、目录及`source-catalog-v1`保持不变。
-
-`synthesis-review.ts`对明确“现场记录/实测/这条记录”等量数或对照表达核对本段引用的实际`project`原文。手册碰巧含相同数字不能证明现场；需求意向和正式方案不能充当现场实测。量纲只作同单位文字归一，不换算、不推算。显式假设、提问、转述与本次无法确认的缺项说明保留原边界。这是有限表达的来源身份检查，不是通用语义判官，也不保证房间、因果或所有同义句均正确。
-
-原一次修复同时反馈数字缺证和现场来源错误：可补选本轮已经获权返回且支持主张的来源，保留其原文支持的正确现场数值；删数字后仍保留“现场低于要求”等比较也必须有现场来源。没有依据则撤去该现场断言，明确本次无法确认。引用校验、提交时来源重验、企业/客户/项目/受众、撤回、用量、租约与人工围栏保持；不增加检索、业务动作、修复次数或模型轮次。知识解析、检索及发布服务继续返回完整`Evidence`，不为生成问题另建事实库或Agent。
-
-无schema、迁移、公开API、权限或视觉变化。C01/C02/C05/U01及既有来源操作、失败/重试、重进状态沿批准`design-references/xiaok-p4b-public-sites-v1/README.md`；Mini结构、样式、素材、固定文案、导航和Admin界面未改。最终固定源码65/65单元、4/4定向隔离服务、73/73 Mini通过，运行内和收口哈希一致；本批类型0诊断/全仓287项，涉及9文件lint通过，完整生产构建未跑。15/15服务是合并修复反馈前的历史证据，不能升级为最终全回归。
-
-真实HTTP/Worker/DeepSeek最终组为企业2599/2600、用户3609/3610、项目165/166、run934–945：每家只发布同一份9页工艺手册测试副本和两条明确合成的真实服务现场记录，原企业内部资料未改。12条交付11条，首稿结构8条；9项本人可见/跨企业拒绝/分别撤回与重进检查均通过，最后测试员工、活动run/job、未知job及客户可读资料均为0，资料副本保留retired。`tmp/xiaok-source-integrity/manifest.json`绑定源码、测试、原始回答及独立`semantic-review.json`。整组业务/专业语义未通过：run938在一次修复内补上正确现场来源，但多条风险机理仍混入evidence；run939把200mm误说成满足300mm下限，并把未量测屏蔽判作不符；run943的“楼下是否已联系、本次没有记录”被既有已办理防护误拦。不得据引用/词命中改称语义通过。
-
-合并反馈前实模11/12交付、7/12首稿与唯一修复后的失败单独保留；两组导入HTTP超时发生在客户模型题执行前，清理后0资料/活动任务，不算通过。12组历史模型视图/24份JSON离线回放保留目录、schema和模型视图hash，接受结果变化只证明校验改变，不是新增模型成功率。Stable原生、真机/微信/BLE仍无新证据，非开发阻塞，不要求用户手测；未提交/推送/生产部署。该验收窗口已结束，下一批继续已观察到的状态问句误拦、机理身份及错误比较，历史指代/电话入口范围仍待核实。
-
-复跑：admin目录`node scripts/assistant-memory-acceptance.mjs --source-integrity --unit`、`--source-integrity --source-repair-only --wait-for-lock`；实模`node --import tsx scripts/assistant-citation-protocol-development.ts --development --evidence=xiaok-source-integrity-merged-recovered --allow-bounded-repair`。实模保留首稿与最终交付分别计数，`validationFailureCount`与唯一`repairAttempts`分别记录；不因修复后成功改写首稿率。参考[LlamaIndex引用引擎](https://github.com/run-llama/llama_index/blob/main/llama-index-core/llama_index/core/query_engine/citation_query_engine.py)的来源映射及[测试](https://github.com/run-llama/llama_index/blob/main/llama-index-core/tests/query_engine/test_citation_query_engine.py)，沿当前目录/引用协议校验，不迁移框架或放宽本项目权限。
-
-上述实模命令记录已执行组；后续实际复跑必须改用新的唯一`--evidence`前缀，不覆盖原报告或重新激活已retired测试资料。校验原证据/收口哈希用根目录`node tmp/xiaok-source-integrity/finalize.mjs`，不派发新模型调用。
-
 ## 当前AG-01/05/06：空历史查询与有界收尾
 
 **v74限定恢复闭环Implemented，整体专业客服仍Limited。** 原LangGraph/Worker在历史查询返回0条后，只在当前run关闭`recall_history`；非空结果仍可在原预算内细化查询。即使`hasMore=true`也不在空结果后换词重查，未命中不解释为客户没说过。`exhaustedTools`作为可选字段保存在原v1私有checkpoint，恢复/同批重复调用保留工具配对，不再次执行关闭的工具。下一用户轮次重新按权限选工具，不锁住咨询。
@@ -2023,28 +1229,6 @@ v75固定基线在`tmp/xiaok-grounding-v75/manifest.json`收口：94单元/6定�
 真实HTTP/Worker/DeepSeek最终企业2592、用户3602、咨询503的run910–913四条均成功：两次原子更正到version302/304，保留厨房冰箱且不保存假设；撤回当前原话后依赖回复重进失效；两次只读回答保持人数/位置未知，无新写入/转人。run912空查一次；run913先读到上一轮问题，再空查，空结果之后均不再查询，最后实际仅允许`final_response`。结束时AI关闭、活动job为0。用量、原文、哈希、耗时与费用未知见`tmp/xiaok-bounded-recovery/manifest.json`及`semantic-review.json`。结构通过不算专业语义通过：一般安装建议缺少机型依据，run913把上一轮问题称作本轮提问，仍归AG-08。两个真实协议失败及一次断言范围错误的报告独立保留，不与最终四条累加。Stable窗口/CDP9431/SDK9420不可用，原生预检在造数前停止，无新原生截图或生产批准。
 
 复跑：admin目录`node scripts/assistant-memory-acceptance.mjs --bounded-recovery --unit`、`--bounded-recovery --recovery-only --wait-for-lock`；实模`node scripts/assistant-history-development.mjs --development --bounded-recovery`，原生另加`--native`。沿原隔离目标/非特权角色/互斥锁/空闲队列及开发夹具保护。对照[LangGraph工具/恢复测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[DeepSeek工具选择合同](https://api-docs.deepseek.com/api/create-chat-completion/)及既有问题10883，采用应用层有界收尾与具名最终工具，不迁移框架或把供应商选择当授权。当前配置关闭thinking，其他模式/模型不据此宣称兼容。验收窗口已结束，继续下一授权批次。
-
-## v73历史AG-04/05：先更正、再提问的同轮接续
-
-**限定实现，整体Limited。** `xiaok-renovation-v73`复用C01/C02/C05/U01、原`record_need`四项原子批次、真实回执、LangGraph循环和引用目录。对以“更正/纠正”明确开头、随后用“另外/此外/顺便/再问/还有个问题”分开的独立问题，前部更正仍可保存；后部的假设、疑问不进入需求。仅在完整quote属于前部明确陈述且room也在该范围内时使用该边界；更正本身的条件、转述、疑问、回指前述更正的附带条件，以及全消息“不记录”仍拒绝。普通无明确独立边界的复合句不据此放宽。人数/位置分别保存，其他房间/设备保持；一个字段无效整批回滚，重试沿原操作键回读回执，不重新写入。
-
-同轮综合解释从本run已成功`agent_need_write`的真实回执及原`source_refs`读取完整触发原话，严格绑定企业、本人、咨询、run/trigger和原内容hash。该原话沿既有`HistorySnapshot`/H来源和`source-catalog-v1`进入模型及服务端目录，标题为“本轮已记录需求的客户原话”；完整原话中的后续假设仍是问题，不是savedFacts或正式批准。没有把当前原话伪装成`recall_history`旧消息，也未放宽该工具严格早于触发消息的截止边界。恢复、提交、重进和撤回沿原hash、memoryVersion、参与者/租约/人工围栏；未提交、其他客户/咨询/run或失效原话不能成为来源。无新schema、迁移、公开API、权限、队列、框架或额外模型判官；一次修复、轮次、预算、用量和未知调用规则不变。
-
-设计映射仍是`packages/assistant/chat/chat`唯一批准`design-references/xiaok-p4b-public-sites-v1/README.md`及既有气泡、来源片、失败/重试和重进状态；Mini结构、样式、素材、固定文案、导航及几何未改。本轮新增的原话引用沿既有来源操作，不新增视觉设计。Stable进程/9431 CDP及9420 SDK当前不可用，原生预检在夹具创建前停止，无新截图或桌面窗口；不升级历史原生证据或生产批准。
-
-固定验收：两次真实多字段更正后继续讨论厨房加洗碗机的一般进排水问题；分别核对真实两字段回执、当前人数/位置、厨房冰箱保留、假设未保存、重进和撤回后两次只读回答。一般建议不得冒称现场情况、企业规则或正式批准。隔离服务另验整批回滚/重试、原键回放、来源及客户/咨询/企业隔离。复跑：`node scripts/assistant-memory-acceptance.mjs --mixed --unit`、`--mixed --capacity-only --wait-for-lock`、`--mixed --regression --wait-for-lock`；实模`node scripts/assistant-history-development.mjs --development --mixed`，原生另加`--native`。证据独立存`tmp/xiaok-mixed-correction/`，最终检查以未漂移的status/manifest及逐轮原文审读为准，不累加失败/重叠组。
-
-开源复核沿[LangGraph记忆与作用域](https://docs.langchain.com/oss/javascript/langgraph/add-memory)、[上游工具/恢复测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[DeepSeek问题10883](https://github.com/langchain-ai/langchainjs/issues/10883)：采用同一有界循环、成功工具结果及应用持久化/授权权威，不迁移框架或新增事实库。供应商thinking问题仅作协议参考，本轮非thinking配置独立实测。完整复合字段、多房屋/无标记歧义及整个QA-05/08、专业客服/PPT仍未完整交付。
-
-本批固定基线检查：44/44单元、10/10隔离服务与73/73 Mini确定性通过，单元/服务绑定全部20个Agent文件，运行内及该批结束核对无漂移。后续校验器修改不能继承这些组为新源码验收。既有Agent/事项/保留期回归断言为24通过/0失败/8可选实模未启用，但运行中`citation-catalog.ts`变化，整组作废待重跑，不能计作当前源码通过。ESLint0错误/30既有警告；排除生成Next声明的全量类型程序287项，本批触及文件0诊断，不记全量类型通过；无路由/schema变更，本轮完整生产构建未运行。
-
-实模整组**未通过**：固定v73、20个Agent文件及驱动hash的真实HTTP/DeepSeek在合成企业2588/用户3598/咨询497执行run888/891，两次各一条真实原子回执保存use+desk（version302/304），厨房冰箱保持，洗碗机假设未保存，原话H引用交付且均无格式修复。撤回最新原话8045后，派生回复8050重进失效；后续run894连续四次`recall_history`返回0条/hasMore=true，模型换词重复查询导致`agent_iteration_limit`，没有最终客户回复。第二条撤回回答未执行。该故障属于Agent工具预算/恢复，不能把来源失效正确等同完整错误恢复通过。原文审读还发现run888把排水口高低直接推成需另装提升泵的通用工程结论，不能据此判专业质量通过；[制造商说明5.2节](https://media3.bosch-home.com/Documents/9001831461_A.pdf)使用机型相关的高位回路/空气间隙与允许管路高度，不支持该一概判断。此项留作Agent专业语义问题，不加洗碗机专用规则，完整QA/PPT仍Limited。
-
-本次10条观察到的模型用量合计输入58,760/输出1,300 token，费用null；两次成功完整回读为103.6/66.3秒，失败55.9秒，不是首字时延或生产SLA。`manifest.json`绑定各status/报告与源码，`semantic-review.json`保留逐条结论，`development-audit.json`只读核对四个本批合成企业2585–2588均AI关闭、活动员工/run/job为0、正式事件0；六条未知费用预留保持reconciling，不填零或释放。Stable SDK/CDP仍不可用，无新原生夹具/截图/桌面操作。真实微信、宿主/高屏/键盘/真机/BLE及生产保持未验。当前用户要求的领域划分只调整计划/开发归属，未把上述未完成Agent检查改记为知识库任务或验收通过。
-
-保留`live-attempt-1/-2/-3.json`：分别记录“考虑什么”漏开更正工具、已保存后的空引用格式失败、缺失import导致工具回滚；均不计最终实模。首次隔离包装器外层超时后，已核实原子测试子进程退出，并在共享锁/目标/角色保护内精确清理自己的合成企业3775/3776（`interrupted-cleanup.json`）；没有清理其他任务。较早9项漂移批次及未覆盖全部Agent文件的10项预检另存，不与最终10项累加。当前未完成项是Agent撤回后空召回的可恢复收尾、一般建议/主张的语义支持及当前源码的既有回归重跑；整体仍Limited。
-
-知识侧交接的Agent待修复项还包括：比较知识与现场时，每个主张分别具备知识/业务来源，不能因另一来源含相同数字就证明现场事实；可信文档版号和名称之间的排版空格不能误报未支持数字。通用负例`engineeringClaimText('厚度3.2可直接施工。', [title='厚度3.2 mm参数表'])`将工程量误作可信标题版号而豁免，已由原协议集成负责人完成两文件临时收尾并交回Agent，详见本合同引用协议的“通用守卫收尾”及`tmp/xiaok-citation-protocol/metadata-guard-after.json`；其余项继续由Agent复现、修复及通用回归。只改服务端校验且模型协议不变时，可绑定新源码hash逐条重放保存的首稿/最终JSON，同时保留原实模hash；改模型可见字段或prompt则另建实模批次，不重写历史验收。这不恢复两个聊天同时写Agent，也不扩成手册专用规则或数字全局放行。
 
 ## 当前AG-02：需求投影与不可变更正归档
 
@@ -2121,40 +1305,6 @@ v72共享引用目录接续中，实模run860因同一原话同时出现在摘�
 
 保留失败：首次测试启动误用了Bun，在执行测试前失败；随后统一使用Node。首次隔离启动器55秒超时，其精确合成企业3679/3680在确认无测试进程后、共享锁内按代码/身份核对清理，见`first-interrupted-*`。恢复夹具最初按裁剪前输入构造provider缓存，12/13后改为验证真正已持久化摘要的恢复，失败日志保留；最终14项包括工具关闭边界。包装器改为等待stdout/stderr关闭并要求非空测试计数，避免截尾日志误算通过。首组实模运行期间共享`synthesis.ts`改变，保留`live-mixed-source-attempt-1.json`但不计最新源码验收；工具关闭守卫前的成功组另存`live-before-tools-guard.json`，也不冒充最终源码组。当前检查以最终status/manifest及`live.json`为准，不能把重叠组或旧失败合计成额外通过数。
 
-## v68历史证据：完整回合预算与本咨询原话召回
-
-**限定实现，整体Limited。** prompt `xiaok-renovation-v68`复用原C01/C02/C05/U01聊天及API。Worker仍取最近30条消息，去掉窗口开头的不完整交互，在同轮来源去重后对每次实际模型请求计算预算。`complete-turns-utf8-third-v1`按消息/工具序列化UTF-8字节除以三估算，另计每图1,536、输出2,048及下次工具结果768；应用输入预算/触发/目标分别16,000/14,500/13,000。这是估算，不冒充供应商tokenizer或窗口。仅移除较早完整交互，最近三个客户回合、当前问题、系统规则、图片及当前工具/修复链保持完整，调用/结果成对。必要输入或单个工具结果超过硬预算时，在供应商调用前走既有可恢复`agent_input_limit`反馈；不裁剪/删除聊天原文、持久工具结果或checkpoint。`agent_model.input_summary.budget`保存策略、前后估算和省略原消息ID。
-
-`recall_history({query})`仅向已获权的本咨询客户开放只读原话查询。企业、客户、咨询及触发消息之前的序号上限由服务端绑定，参数不能选择身份或扩大范围。中文词面字面匹配最多25条候选，在7,000编码字节内返回最多四条完整原话，必要时标记`hasMore`/`oversized`。只读本人原文字，不读取生成回答、内部/项目员工消息、图片或已失效当前需求来源；更正来源不可用时，同时排除该房间/字段的更早原话，不能复活被替代值。原消息ID/hash及记忆修订保存在既有run step引用中；读取、恢复、模型调用、最终提交及客户/员工历史投影均重验依赖。当前有效更正优先；历史请求、假设和比较不产生新写入、转人或正式决定授权。此前生成的回顾在新轮仅保留问题指代并要求重读，避免旧记忆修订阻碍本轮合法保存。
-
-不新增schema、迁移、公开端点、租户授权、事实库或任务队列；`agent_history_context`使用step1007，与综合解释1006分开，沿现有保留期和企业删除流程移除/脱敏私有数据。查询来源后误用普通文本提交时，复用原四轮内单次无业务工具的格式修复，最终来源/引用校验仍执行；修复不重试未知供应商调用或业务写入。
-
-历史原话在原综合回答合同内使用明确`H<messageId>`、`kind=history`来源，只证明当时原话，不能证明企业规则、当前项目状态或正式同意。来源集仅由本轮已持久保存/获权的`recall_history`结果重建，并在恢复/提交/重进时复验；把原消息数字ID猜成综合引用ID仍拒绝，不放宽引用校验。答复沿现有来源文字/反馈组件展示，不新增历史来源界面。
-
-采用依据：已阅读维护中的[LangGraph记忆文档](https://docs.langchain.com/oss/javascript/langgraph/add-memory)及[上游消息/工具测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)。在既有供应商中立消息合同和PostgreSQL恢复链内采用完整交互与工具配对，不安装第二checkpointer、模型摘要服务或迁移框架。[DeepSeek问题10883](https://github.com/langchain-ai/langchainjs/issues/10883)涉及reasoning-content工具循环，仅作供应商兼容回归参考，不写成本项目已复现或通用规律；实际配置的非思考DeepSeek路径另验。
-
-复跑（`admin`目录）：`node scripts/assistant-history-acceptance.mjs --unit`；去掉`--unit`运行隔离服务真实写入，`--regression`回归既有Agent，`--image`仅跑单图重叠子集；`node scripts/assistant-history-development.mjs --development [--native]`运行批准开发库的真实HTTP/Worker/配置模型/C01。证据归`tmp/xiaok-history-v68/`，环境包装器先加载Next配置再导入JWT，开发写入严格限制loopback5432/`smart_floor_planner`。预登记要点包括早期不拆墙/夜间不使用音箱、位置比较不等于同意、实际电脑使用更正、不重复副作用、持久重进及来源撤回。
-
-| 执行组 | 实际结果与范围 |
-| --- | --- |
-| 单元与Mini确定性 | 45/45、73/73通过；预算覆盖工具schema/单图、两次实际阈值跨越、完整工具配对、H引用及否定谓词反例，分别计数，不替代实模/原生 |
-| 隔离服务与Agent回归 | 最终6/6真实写入/恢复/来源变更/越界/更正/唯一修复通过；既有Agent12通过、0失败、7项显式实模用例未启用。单图子集1/1通过，与12项重叠不累加；共享锁、空闲队列及non-super/non-BYPASS角色检查保留 |
-| 配置模型服务 | 最终5/5，run707–711，合成企业2557/咨询438/早期原话3158，45条前置消息；两次早期回顾、一次实际保存、两次当前更正回顾及撤回后重进，来源hash未变 |
-| Stable原生SDK | 最终8/8，含run712–714三条实际模型回答，合成企业2558/咨询439/原话3257；真实输入/保存/反馈/重进/撤回，原会话及transport恢复。四张C01截图逐张审看，精确route/stack、逻辑390×844、PNG348×752；品牌右214小于胶囊左296，输入/发送底799 |
-| lint / 类型 / 构建 | 全量lint零错误/30既有警告，最终八个相关文件零错误/警告；全量类型292项诊断，本批相关文件无诊断，不声称全量类型通过。完整构建未重跑，既有`AiDesignerLegacyPage`导出阻断保留 |
-
-源码范围：上述5条实模服务/8项原生、既有Agent回归对应v68/`current-turn-sources-v6`，运行内hash未变，且在当时的`development-audit.json`回读核验。此后共享工作区的`worker.ts`/`synthesis.ts`增加v7知识摘录投影；保留该独立改动。`checks-v7.json`补验记录单元45/45、Mini73/73、类型292及lint零错误，但运行期间综合解释源码再次变化，不能视为稳定最新版本验收；v7隔离复跑又被活动队列保护在测试前拦下（`service-v7.stderr.log`），未抢锁/清理他人任务。原6/6记录保留于`service-mixed-v6-v7-status.json`/原日志，不能升级为v7复跑通过。最新源码差异及本人夹具状态见`development-audit-latest.json`；v6实模/原生不升级为最新共享版本验收，未来仍只走SDK/CDP，不通过桌面输入补验。
-
-上述8个run/18次供应商attempt逐条原文审读见`semantic-review.json`；输入147,899/输出3,076 token有实际计量，另两条query_embedding计量不可用，费用保持null。服务完整回读26–34秒、原生29–33秒，原生已保存run首反馈1.64–1.67秒，仅为五条服务/三条原生样本，不是流式首字或生产SLA。`development-audit.json`对报告内精确11个本人合成企业复核AI关闭、活动员工/运行/任务及施工记录/正式事件0；包括旧失败的总29个run/66次attempt与上述8个run分开，29条预留沿原reconciling保留，不把未知费用清零。
-
-原生最终流程使用用户禁止computer-use之前取得的新编译证据，后续只走SDK；用户现已明确禁止computer-use。脚本已删除桌面焦点/键鼠编译回退及外部编译证明参数，未来仅走已核对绝对项目/Stable/9420的CDP9431编译和SDK3.17.2；CDP不可用时保留未验证，不聚焦、重开或打断用户窗口。四张截图及原生层胶囊已审看，但完整宿主光学、高屏/键盘、真机/BLE/真实微信授权/C01 Chrome无新增验证，不转成人工门槛。Mini设计源及几何未改，不新增光学还原完成声明。
-
-准备/JWT、格式、历史引用ID及“而不是已批准的方案”否定误拦截的失败各自保留；仅对该明确否定子句做窄化规范化，正向/双重否定与其他正式承诺守卫保留。单图预留从1,024校准为768后，单图及既有Agent回归通过。`before-final-freeze/`混入源码变更的流程、业务执行前的原生焦点准备失败均不计最终验收。尾轮隔离复跑首次接库因转发未运行失败，恢复原批准隧道后最终6/6通过；未抢锁或清理他人数据。旧中断本人隔离夹具3635/3636精确清理记录保留于`interrupted-fixture-cleanup.json`。
-
-语义/可重建摘要、归档规模语义召回、更广话题/房屋消歧、同轮先召回再写入组合、300条需求记忆容量及完整AG-01/02验收仍未交付或未验收；完整回合裁剪不等于语义压缩。run710/714仍多补一般建议；声学效果/骨传导等专业推荐未作工程验收，不能把本批约束回顾通过当完整专业问答质量通过。Mini结构/样式/素材/导航未改，路由设计源仍是`design-references/xiaok-p4b-public-sites-v1/README.md`，不新增还原完成或生产批准声明。
-
-<!-- continuity:start -->
-<a id="当前p3bp4a客户更正与原事项接续"></a>
 ## 当前P3B/P4A：客户更正与原事项接续
 
 ### 跨阶段明确接续待核对事项（2026-10-22；限定Implemented）
@@ -2223,7 +1373,7 @@ node admin/scripts/assistant-materials-acceptance.mjs --issues
 
 v67当前证据：55/55单元、2/2隔离服务、92/92 Mini确定性；22/22 Stable原生检查，含四条逐轮审读的配置模型回答及15张逐张审看截图。定向服务另有两条撤回回答及一次前置更正，均达到本批登记的有限标准。原生记录源码hash与最终文件一致；三组精确合成夹具测试AI关闭，活动员工/运行/任务及落实/关闭事件均0。费用仍为null，12条预留保留既有reconciling对账口径。首轮目标选择及类型失败明确保留；不代表完整PPT、AG-01或发布验收。
 
-在`admin`复跑，以下命令均附`--evidence=xiaok-response-scope-v67`保留本批独立证据（复跑可换另一个`xiaok-`前缀目录）：`node scripts/assistant-continuity-acceptance.mjs`（隔离核心）、`--unit`、`--scope`、`--response`（仅QA02/05修复及重进）、`--claims`（拒写后虚假回执反例）、`--regression`、`--agent-regression`（受影响Agent来源回归）、`--mini`；实模`node --import tsx scripts/assistant-continuity-development.ts --development`，Stable原生加`--native`；审计`node --import tsx scripts/assistant-continuity-audit.ts --development`；同源类型`node scripts/assistant-continuity-typecheck.mjs d0238543`。隔离用55432/xiaok_embedding_eval、共享锁及非superuser/non-BYPASSRLS角色；开发/原生用批准5432/smart_floor_planner、localhost:3006、原Worker及配置DeepSeek，二者串行。全部夹具明确合成；存量混合行的显式准备复用生产记忆校验，不计作AI或客户业务动作。实际次数、被拒原输出、装配/类型失败、逐轮语义审读、来源/用量及限制统一见[交接](./xiaok-assistant-handoff.zh-CN.md)与`tmp/xiaok-response-scope-v67/acceptance-summary.json`；结构或基本原生冒烟通过不等于完整专业/PPT或发布验收。 `--scope`只执行本批QA02/05及旧混合需求撤回后的修复/假设讨论/无副作用两项隔离服务验收。首反馈分记HTTP接收确认或原生已保存run状态，完整耗时含服务回读；不作为流式首字或生产SLA。 实模`--withdrawal`只执行一次前置更正及两次撤回后核心问答，前置回答单列、不冒充其他场景；默认完整服务流及原生`--native`流程不变，两者不能同时使用。
+在`admin`复跑，以下命令均附`--evidence=xiaok-response-scope-v67`保留本批独立证据（复跑可换另一个`xiaok-`前缀目录）：`node scripts/assistant-continuity-acceptance.mjs`（隔离核心）、`--unit`、`--scope`、`--response`（仅QA02/05修复及重进）、`--claims`（拒写后虚假回执反例）、`--regression`、`--agent-regression`（受影响Agent来源回归）、`--mini`；实模`node --import tsx scripts/assistant-continuity-development.ts --development`，Stable原生加`--native`；审计`node --import tsx scripts/assistant-continuity-audit.ts --development`；同源类型`node scripts/assistant-continuity-typecheck.mjs d0238543`。隔离用55432/xiaok_embedding_eval、共享锁及非superuser/non-BYPASSRLS角色；开发/原生用批准5432/smart_floor_planner、localhost:3006、原Worker及配置DeepSeek，二者串行。全部夹具明确合成；存量混合行的显式准备复用生产记忆校验，不计作AI或客户业务动作。实际次数、被拒原输出、装配/类型失败、逐轮语义审读、来源/用量及限制统一见交接（Git `d28c6ccb:docs/xiaok-assistant-handoff.zh-CN.md`）与`tmp/xiaok-response-scope-v67/acceptance-summary.json`；结构或基本原生冒烟通过不等于完整专业/PPT或发布验收。 `--scope`只执行本批QA02/05及旧混合需求撤回后的修复/假设讨论/无副作用两项隔离服务验收。首反馈分记HTTP接收确认或原生已保存run状态，完整耗时含服务回读；不作为流式首字或生产SLA。 实模`--withdrawal`只执行一次前置更正及两次撤回后核心问答，前置回答单列、不冒充其他场景；默认完整服务流及原生`--native`流程不变，两者不能同时使用。
 
 实施前复核[LangGraph记忆/工具消息配对](https://docs.langchain.com/oss/javascript/langgraph/add-memory)、[维护中的工具/检查点测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[已关闭ToolMessage status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。v62另对照[Parlant回答校验与缺项/重复表达处理](https://github.com/emcie-co/parlant/blob/develop/src/parlant/core/engines/alpha/message_generator.py)及[DeepSeek工具协议](https://api-docs.deepseek.com/guides/tool_calls)：采用先验来源/回答检查和有限修正的做法，不照搬第二套生成循环，不把工具响应状态当业务成功。沿已安装LangGraph及本项目唯一修复额度，PostgreSQL继续掌握租户/撤回/持久任务/用量/真人权威；不安装依赖、迁移框架或另建记忆库，不把已观察DeepSeek措辞泛化成所有供应商结论，配置模型端到端验证仍须实际执行。
 <!-- continuity:end -->
@@ -2246,7 +1396,7 @@ v67当前证据：55/55单元、2/2隔离服务、92/92 Mini确定性；22/22 St
 
 PPT23资料原件与PPT38关键事项由团队核实映射原C01/C02/S04/U01。设计仍以唯一还原台账、C01 `design-references/xiaok-p4b-public-sites-v1/README.md`及S04原PPT22/38为准；WXML/Less、素材、字号、导航和胶囊布局未改。Stable原生自动化核对唯一副屏窗口、新编译、真实输入/点击、上传/来源片、持久重进及撤回，逻辑/编码尺寸分记；不据模拟器推断Chrome、真机/真实微信/BLE通过。
 
-在`admin`复跑，以下命令均附`--evidence=xiaok-response-scope-v57`保留本批独立证据（复跑可换另一个`xiaok-`前缀目录）：`node scripts/assistant-team-materials-acceptance.mjs`、`--regression`、`--mini`；实模`node --import tsx scripts/assistant-team-materials-development.ts --development`，原生加`--native`；同源类型`node scripts/assistant-team-materials-typecheck.mjs 26a3664f`。隔离库固定55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS及共享锁；实模固定已批准5432/smart_floor_planner、localhost:3006及现有Worker/provider。场景依次比较未核对、明确回传关联、正式待决定、精确同意、新版与原话冲突及撤回；普通解释不产生落实/解决/关闭事件。业务/图片均为标记合成夹具，HTTP/模型/数据库真实；未知费用为null。实际检查、失败、截图和限制统一见`tmp/xiaok-team-sources/`及[当前交接](./xiaok-assistant-handoff.zh-CN.md)。
+在`admin`复跑，以下命令均附`--evidence=xiaok-response-scope-v57`保留本批独立证据（复跑可换另一个`xiaok-`前缀目录）：`node scripts/assistant-team-materials-acceptance.mjs`、`--regression`、`--mini`；实模`node --import tsx scripts/assistant-team-materials-development.ts --development`，原生加`--native`；同源类型`node scripts/assistant-team-materials-typecheck.mjs 26a3664f`。隔离库固定55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS及共享锁；实模固定已批准5432/smart_floor_planner、localhost:3006及现有Worker/provider。场景依次比较未核对、明确回传关联、正式待决定、精确同意、新版与原话冲突及撤回；普通解释不产生落实/解决/关闭事件。业务/图片均为标记合成夹具，HTTP/模型/数据库真实；未知费用为null。实际检查、失败、截图和限制统一见`tmp/xiaok-team-sources/`及当前交接（Git `d28c6ccb:docs/xiaok-assistant-handoff.zh-CN.md`）。
 
 本轮已执行：隔离服务15/15＋综合解释单元10/10，最终整组25项通过；Mini单元92/92；开发实模六种状态各两次，共12/12次回答；Stable原生20/20，另含六次真实回答。实模驱动末尾单页历史断言失败，单独以真实GET分页复核全部36条消息，确认12条回答均失效；没有重跑模型/业务写入。相关回归首组87通过/3失败/2显式跳过；确定性适配器改读精简后的模型视图，并另验完整持久来源后，材料整文件12/12复跑通过；按原测试标题去重为90通过/2跳过，不伪称单次92项全通过。全量lint0错误/30既有警告；同源类型诊断287→287无新增；Webpack仅编译通过，完整构建仍被既有AiDesignerLegacyPage非法导出阻断。原本地输入预算、编号引文及测试驱动失败均保留为失败，详见交接及原始日志。
 
@@ -2343,7 +1493,7 @@ GET版本快照为当前最多50项现场事项补足原记录的当前版本元
 
 在admin执行`node scripts/assistant-knowledge-operations-acceptance.mjs`运行隔离服务核心；`--unit/--regression/--synthesis/--unready/--mini/--lint/--types/--build/--compile`对应各检查。`--compile`仅验证Webpack编译/追踪，不代表完整类型或静态生成通过。构建复制源码/配置到忽略目录`tmp/xiaok-kb4-build`，不覆盖运行中`.next`。`node scripts/assistant-knowledge-operations-typecheck.mjs f2651bd6`与KB-4前基点对比同一源码程序，保留无关工作区文件，双方排除生成Next声明。迁移核验`node scripts/assistant-knowledge-operations-migration.mjs`；只有明确`--apply`才备份并迁移两个既有批准开发目标，已应用SQL不改写。
 
-实模`node --import tsx scripts/assistant-knowledge-operations-development.ts --development`，可加`--native`沿原Stable自动化。明确标记的合成企业/用户/知识，真实HTTP/Worker/Embedding及既有配置模型；后台试问与客户Agent解释分别登记，夹具中的核对写入是模拟运营操作，不是人类专业批准。当前结果、逐轮实测耗时、早期失败/修复及未验证项见[交接](./xiaok-assistant-handoff.zh-CN.md)和`tmp/xiaok-kb4/`。完整专业客服、全PPT和生产发布仍Limited。
+实模`node --import tsx scripts/assistant-knowledge-operations-development.ts --development`，可加`--native`沿原Stable自动化。明确标记的合成企业/用户/知识，真实HTTP/Worker/Embedding及既有配置模型；后台试问与客户Agent解释分别登记，夹具中的核对写入是模拟运营操作，不是人类专业批准。当前结果、逐轮实测耗时、早期失败/修复及未验证项见交接（Git `d28c6ccb:docs/xiaok-assistant-handoff.zh-CN.md`）和`tmp/xiaok-kb4/`。完整专业客服、全PPT和生产发布仍Limited。
 
 ## 当前 KB-3：实况综合检索（限定闭环，整体 Limited）
 
@@ -2386,7 +1536,7 @@ GET版本快照为当前最多50项现场事项补足原记录的当前版本元
 
 2026-10-18复核维护中的[Dify检索节点](https://github.com/langgenius/dify/blob/main/api/core/workflow/nodes/knowledge_retrieval/knowledge_retrieval_node.py)、[Haystack过滤测试](https://github.com/deepset-ai/haystack/blob/main/test/components/retrievers/test_filter_retriever.py)及[LangGraph工具/中断/恢复测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)。采用元数据适用判断与最终上下文选择分开、标准工具消息和恢复前重验；Haystack运行时过滤可覆盖默认条件的行为不能覆盖本项目硬授权。不安装/迁移其平台；当前配置DeepSeek协议/格式与已知引用修复限制仍以本项目实际回归为准，供应商示例或上游测试不当作本项目语义证据。
 
-复跑：admin下`node scripts/assistant-context-acceptance.mjs`（隔离数据库/真实Embedding/确定性模型），可选`--unit/--regression/--synthesis/--mini/--lint`；`node --import tsx scripts/assistant-synthesis-development-acceptance.ts --development --context`为现配置模型/真实HTTP/Worker，另加`--native`复用已授权Stable原生流程。固定必要来源、禁止推断、逐轮证据及执行结果见[交接](./xiaok-assistant-handoff.zh-CN.md)和`tmp/xiaok-kb3/`；实模与模拟、合成与真实资料分别记录。范围外复杂PDF/OCR、任意语义归因、真机/真实微信/BLE、认证后台视觉和生产仍未验证/非本批开发门槛，整体专业客服仍Limited。
+复跑：admin下`node scripts/assistant-context-acceptance.mjs`（隔离数据库/真实Embedding/确定性模型），可选`--unit/--regression/--synthesis/--mini/--lint`；`node --import tsx scripts/assistant-synthesis-development-acceptance.ts --development --context`为现配置模型/真实HTTP/Worker，另加`--native`复用已授权Stable原生流程。固定必要来源、禁止推断、逐轮证据及执行结果见交接（Git `d28c6ccb:docs/xiaok-assistant-handoff.zh-CN.md`）和`tmp/xiaok-kb3/`；实模与模拟、合成与真实资料分别记录。范围外复杂PDF/OCR、任意语义归因、真机/真实微信/BLE、认证后台视觉和生产仍未验证/非本批开发门槛，整体专业客服仍Limited。
 
 ## 当前 KB-2：企业文件入库与结构引用（限定格式，整体 Limited）
 
@@ -2581,7 +1731,7 @@ Chrome原超级管理员在合成企业2546、原720px Drawer核对已发布资�
 
 2026-10-18复核[Haystack过滤实现](https://raw.githubusercontent.com/deepset-ai/haystack/main/haystack/components/retrievers/filter_retriever.py)及[运行时过滤测试](https://raw.githubusercontent.com/deepset-ai/haystack/main/test/components/retrievers/test_filter_retriever.py)、[LangGraph JS工具消息测试](https://raw.githubusercontent.com/langchain-ai/langgraphjs/main/libs/langgraph-core/src/tests/prebuilt.test.ts)。采用检索/生成分离、可记录条件与测试方法；上游运行时filter可覆盖默认值的行为不能覆盖本项目硬授权。保留现有LangGraph/pgvector/Worker，没有安装或迁移另一框架。[DeepSeek JSON输出文档](https://api-docs.deepseek.com/guides/json_mode/)仍列出空内容/截断注意项；本批不放宽原解析、未知结果和用量合同，不把供应商问题泛化成框架规则。
 
-本批实际执行结果、合成夹具ID、逐轮必要来源和语义核对、原生截图、静态检查及剩余阻碍见[当前交接](./xiaok-assistant-handoff.zh-CN.md)及 `tmp/xiaok-kb1/`。复跑：从admin执行 `node scripts/assistant-professional-acceptance.mjs`、`--unit`、`--regression`、`--synthesis-regression`；`node --import tsx scripts/assistant-professional-admin-acceptance.ts --development`；`node --import tsx scripts/assistant-synthesis-development-acceptance.ts --development --professional`，加 `--native` 复用稳定原生流程。只允许批准开发/隔离库建明确合成数据，沿已有凭据/模型配置。
+本批实际执行结果、合成夹具ID、逐轮必要来源和语义核对、原生截图、静态检查及剩余阻碍见当前交接（Git `d28c6ccb:docs/xiaok-assistant-handoff.zh-CN.md`）及 `tmp/xiaok-kb1/`。复跑：从admin执行 `node scripts/assistant-professional-acceptance.mjs`、`--unit`、`--regression`、`--synthesis-regression`；`node --import tsx scripts/assistant-professional-admin-acceptance.ts --development`；`node --import tsx scripts/assistant-synthesis-development-acceptance.ts --development --professional`，加 `--native` 复用稳定原生流程。只允许批准开发/隔离库建明确合成数据，沿已有凭据/模型配置。
 
 小程序仍只有 `packages/assistant/chat/chat`，复用批准C01/C02/C05/U01及唯一设计源 `design-references/xiaok-p4b-public-sites-v1/README.md` 的原气泡、引用片和不可用状态，WXML/Less/字号/插画/导航未改。后台视觉源为双语Admin UI合同及原 `/assistant-knowledge`；本环境没有可调用Chrome连接器，现有Chrome未开启CDP，认证态Chrome视觉仍未验证，不以HTTP/API代替视觉通过。原生业务截图不升级完整宿主/光学/高屏/键盘、真机/真实微信授权/BLE状态；不转人工验收门槛。
 
@@ -2757,7 +1907,7 @@ preparePlanPublication让预览及executePlanCommand共享原发布锁／权限�
 
 ## 当前历史基础依赖审计
 
-基点 `b9f7bc4f5f4d7352445e5c68387441b9083843e3` 的已提交功能仍引用工作树中的未提交代码。本次按实际导入、Next路由、原生分包入口、Worker、迁移序列和权限合同核对；精确文件/片段名单见 `xiaok-assistant-foundation-manifest.json`。仅纳入小客核心及其工地、作品来源、角色/会话保护、清理和自动化基础，没有整体暂存工作树。`.agents/skills` 在本检出不存在，使用根目录及admin指令和已确认设计。
+基点 `b9f7bc4f5f4d7352445e5c68387441b9083843e3` 的已提交功能仍引用工作树中的未提交代码。本次按实际导入、Next路由、原生分包入口、Worker、迁移序列和权限合同核对；精确文件/片段名单见 `d28c6ccb:docs/xiaok-assistant-foundation-manifest.json`。仅纳入小客核心及其工地、作品来源、角色/会话保护、清理和自动化基础，没有整体暂存工作树。`.agents/skills` 在本检出不存在，使用根目录及admin指令和已确认设计。
 
 隔离源码快照从该HEAD归档，只覆盖名单中的文件/片段，不借用工作树src。测试用依赖目录和隔离库连接是本机设施，不作为可独立安装证明。快照发现的缺失 `scripts/xiaok-embedding/recall-fixture.ts` 已纳入依赖。密钥扫描命中的三份测试只有明确的合成凭据；环境、SSH、私有连接和本机DevTools配置均未纳入。
 
@@ -2828,7 +1978,7 @@ PPT16/35/37的“已知设备后补其他设备”仅在企业明确配置剩余
 
 ## 当前P4B：公开副本、精确同意与企业审核
 
-限定闭环Implemented，整体Limited；[总计划3.7](./xiaok-assistant-roadmap.zh-CN.md#37-p4b-公开工地具体授权与审核限定闭环)维护运行入口/API/5张新增强制RLS表/角色/状态/设计资产/验证/手测。C03/C05/S07经用户“确认”批准后实施，C01私聊和P4A内部工地仍隔离。三种管理角色审核不代替业主看全并同意精确版本；私人来源仍需原接待权限。新版本/来源失效收紧公开媒体、派生回答、历史与交接。本P4B交付使用prompt `xiaok-renovation-v15`，v14/v13为更早历史批次，当前版本见上方资料关联记录。原生/认证后台手测待测、非阻塞，未生产发布。
+限定闭环Implemented，整体Limited；总计划3.7（Git `d28c6ccb:docs/xiaok-assistant-roadmap.zh-CN.md` § `#37-p4b-公开工地具体授权与审核限定闭环`）维护运行入口/API/5张新增强制RLS表/角色/状态/设计资产/验证/手测。C03/C05/S07经用户“确认”批准后实施，C01私聊和P4A内部工地仍隔离。三种管理角色审核不代替业主看全并同意精确版本；私人来源仍需原接待权限。新版本/来源失效收紧公开媒体、派生回答、历史与交接。本P4B交付使用prompt `xiaok-renovation-v15`，v14/v13为更早历史批次，当前版本见上方资料关联记录。原生/认证后台手测待测、非阻塞，未生产发布。
 
 扩展前核对[LangGraph interrupts](https://docs.langchain.com/oss/javascript/langgraph/interrupts)、[官方检查点合同/测试入口](https://github.com/langchain-ai/langgraphjs/blob/main/libs/checkpoint/src/base.ts)、[持久化指南](https://docs.langchain.com/oss/javascript/langgraph/persistence)与[Redis has_writes问题1996](https://github.com/langchain-ai/langgraphjs/issues/1996)。保留现有消息/工具/有界恢复；授权审核仍用Postgres业务命令/outbox，不迁移框架、不用模型中断代替同意、不添加公开写工具。Redis案例是特定存储适配问题，本项目未采用该适配，也未加通用provider补丁。step1003 `agent_public_context`保存精确公开内容hash，恢复/工具/提交/投影重验；只读原文视为不可信来源，未输入照片就不声称视觉理解。注入与当前配置DeepSeek真实端到端回归分别9/9通过，不以示例代替质量评测。
 
@@ -2915,17 +2065,17 @@ native01有api.js漂移和失效页面节点；现场发现地址注释前15141�
 
 已执行：unit02 3/3、service03 7/7、compat01 25通过／0失败／1项明确可选旧实模跳过、绑定Mini62/62，前后绑定均drift[]。真实服务覆盖订阅／回执写入、房间更正／项目澄清、离线发布回读、全范围／指定／人工取消、事务回滚重试、幂等及项目撤权／跨企业／他客边界；现场整理输出为确定性注入，不作实模语义通过。最终原项目Stable2.02.2608080／CLI0.3.11 native02新编译，live390×844 system／data／element RPC、实际输入点击、丢包同键恢复、导航重进、原照片下载／渲染、取消和清理通过，4张核路由348×752截图已审看。native01元数据断言虽通过，图审发现桥漏接wx.downloadFile，保留原批及其照片旅程未通过；修复传输并补原件／元素断言后，native02单列通过。service01夹具初始化查询失败；前置核对确认0098原hash已存在、applied=false，已有前置服务2项通过，初始查询根因未证实，不宣称已证明缺列。同源service02 6/6与末版service03 7/7分别保留。一轮lint忽略glob转义错误，仅核实后停止本人进程树中的该lint；修正后的源码lint和完整类型诊断单列。最终lint／类型、完整绑定、原失败及复用见`tmp/d4-watch-20261028/final-checks.json`。无供应商调用／新增费用，D2次数2、D4原用量／unknown预留及部署边界不变，知识域no change required。完整D4两条固定旅程及单独施工补拍原生检查仍按唯一计划第2节维护，不宣称完整阶段或生产通过。
 
-实施/API/数据/权限/状态/设计映射及手测以[总计划3.5](./xiaok-assistant-roadmap.zh-CN.md#35-p4a-工地共享小k对话记录发布与关注限定闭环)为准；限定闭环Implemented、整体Limited。共享project_collaboration经数据库适配复用消息/运行/Worker/配额/用量，由应用装配层选择单步现场整理处理器；客户/员工接管及知识预览检查保持。客户Agent提示词xiaok-renovation-v14，现场整理xiaok-site-record-v1；来源撤回覆盖通知、业务查询和派生回答。
+实施/API/数据/权限/状态/设计映射及手测以总计划3.5（Git `d28c6ccb:docs/xiaok-assistant-roadmap.zh-CN.md` § `#35-p4a-工地共享小k对话记录发布与关注限定闭环`）为准；限定闭环Implemented、整体Limited。共享project_collaboration经数据库适配复用消息/运行/Worker/配额/用量，由应用装配层选择单步现场整理处理器；客户/员工接管及知识预览检查保持。客户Agent提示词xiaok-renovation-v14，现场整理xiaok-site-record-v1；来源撤回覆盖通知、业务查询和派生回答。
 
 选型依据核对[LangGraph原始状态/人工核对建议](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)、[维护中的消息/工具测试](https://raw.githubusercontent.com/langchain-ai/langgraphjs/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[历史已关闭ToolMessage状态问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。本批无需工具循环，不新增框架/checkpointer或Agent，不以ToolMessage.status推断业务成功；Postgres的权限、原材料/版本、租约、幂等及账务为权威。没有新增供应商专属协议补丁，真实配置模型回归与注入模型测试分开记录。下文P3B/P3A/v13及更早记录是各阶段历史基线。
 
 ## 当前P3B限定接续：节点补问、原聊天补充与设计师核对
 
-本批Implemented范围及API/数据/角色/状态/设计映射/手测统一见[总计划3.4](./xiaok-assistant-roadmap.zh-CN.md#34-p3b-节点需求补问与原聊天核对限定闭环)，整体仍Limited。复用C01/C02/S01/U01和原接待授权；普通回答/图片/内部核对不变成正式方案、费用或工期批准。无新增小程序界面/资源/路由、数据库表或迁移；默认节点不配置补问，不会自行替企业设置问题。P4A发布/关注改由3.5维护，P5正式变更未实现。
+本批Implemented范围及API/数据/角色/状态/设计映射/手测统一见总计划3.4（Git `d28c6ccb:docs/xiaok-assistant-roadmap.zh-CN.md` § `#34-p3b-节点需求补问与原聊天核对限定闭环`），整体仍Limited。复用C01/C02/S01/U01和原接待授权；普通回答/图片/内部核对不变成正式方案、费用或工期批准。无新增小程序界面/资源/路由、数据库表或迁移；默认节点不配置补问，不会自行替企业设置问题。P4A发布/关注改由3.5维护，P5正式变更未实现。
 
 Agent采用记录：已核对维护中的[LangGraph状态/上下文指南](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)、[消息/工具及恢复测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)和[已修复的ToolMessage状态问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。据此本项目沿用现有有界LangGraph及标准消息序列，只把已重验的节点问题投影为历史对话数据，不新增编排器、框架checkpointer或供应商特例。PostgreSQL仍负责租户/来源撤回、任务租约、工具幂等、用量及人工模式；`agent_construction_context`保存问题消息依赖，恢复/工具/提交和后续读取均重验。prompt版本`xiaok-renovation-v13`隔离旧缓存；真实配置模型由施工隔离专项覆盖，不能以工具status字段替代业务写入结果。
 
-当前P3A施工员工入驻、阶段员工关联及三端共用云工地基础闭环Implemented，整体Limited，权威合同见[总计划3.3](./xiaok-assistant-roadmap.zh-CN.md#construction-staff-contract)。设计师、施工员工、老板共用packages/construction/projects/projects，角色/工地授权区分数据与操作；施工扫码角色不参与设计/量房派单、获客或分佣。复用原PPT与当前已还原组件，姓名/工种/手机号归员工资料，阶段只存有效成员关联；旧手填电话保留证据但不拨号兜底。原PPT18/21“联系管家”仍只电话协调到场，不写意向/预约。保留xiaok-renovation-v12、LangGraph有限工具循环、SQL权限/来源撤权/用量/outbox，不修改模型或供应商协议。P4A记录发布按3.5实施；语音与P6简报仍未实现；本人资料/头像/密码沿用原接口校验；共用工地支持原生下拉刷新、版本冲突后重读及旧token写回执丢弃。原生视觉/真实拨号待人工验收、非阻塞。下文v10/v9为各批次历史边界。
+当前P3A施工员工入驻、阶段员工关联及三端共用云工地基础闭环Implemented，整体Limited，权威合同见总计划3.3（Git `d28c6ccb:docs/xiaok-assistant-roadmap.zh-CN.md` § `#construction-staff-contract`）。设计师、施工员工、老板共用packages/construction/projects/projects，角色/工地授权区分数据与操作；施工扫码角色不参与设计/量房派单、获客或分佣。复用原PPT与当前已还原组件，姓名/工种/手机号归员工资料，阶段只存有效成员关联；旧手填电话保留证据但不拨号兜底。原PPT18/21“联系管家”仍只电话协调到场，不写意向/预约。保留xiaok-renovation-v12、LangGraph有限工具循环、SQL权限/来源撤权/用量/outbox，不修改模型或供应商协议。P4A记录发布按3.5实施；语音与P6简报仍未实现；本人资料/头像/密码沿用原接口校验；共用工地支持原生下拉刷新、版本冲突后重读及旧token写回执丢弃。原生视觉/真实拨号待人工验收、非阻塞。下文v10/v9为各批次历史边界。
 
 P3A工具扩展已核对[LangGraph持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence)、上游[ToolNode错误/调用关联测试](https://github.com/langchain-ai/langgraph/blob/main/libs/prebuilt/tests/test_tool_node.py)及[JS历史status问题#1440（已关闭）](https://github.com/langchain-ai/langgraphjs/issues/1440)。Python测试仅参考协议行为，不据此假定JS API；历史问题不是本项目当前版本仍存在该缺陷的证据。本轮继续复用既有LangGraph有限循环、Postgres run/job/step/outbox、服务端权限/版本/幂等和用量，不增加第二套checkpoint或依赖ToolMessage.status判定业务成功。模型只能选工具，业务执行结果和完成文字由真实服务决定；一般模型“已记录”检查仍保留，已核验业务结果走专用来源校验。没有迁移框架或新增SDK。
 
@@ -3039,7 +2189,7 @@ GET/POST `/api/portfolio/works/:id/copy-drafts`及POST `adopt-copy`沿用原租�
 - `recommend_references`从最新200个可用发布案例按标题/标签匹配，最多返回3例；不推断图片相似度、不联网找图。企业政策检索排除案例。服务端展示精确案例原文及固定“不是你家的正式施工方案”说明；无匹配如实答复。客户在既有C01聊天提问，打开现有引用/U01底部面板看图片、出处与授权。复用420rpx照片组件，不新增布局、样式、插画或切割设计图。引用图片仅写临时本地文件，关面板/切后台/身份丢失即清理。
 - `record_reference_preference`只记录本轮明确、指向清楚的喜欢/不合适，保存客户原话/消息、案例/版本和不可变更正`supersedes`链至`entry_snapshot.referencePreferences`。打开、浏览、分享均不等于偏好、摘要收藏、方案选择或业务批准。多案例指代不明先问第几个，撤回案例不接收偏好；独立风格/预算事实仍走既有需求记忆。撤回/过期/可见范围变更使引用及相关AI衍生文本失效，也覆盖授权员工接续包/对话。保留私图撤权、正式图、审计计量、租约和人工接管边界。
 - P2C基础：新增`POST /api/assistant/knowledge/documents/:id/share`，接收`expectedVersion`及可选既有`entryCode`，必须Idempotency-Key。签发7天`referenceEntry`，绑定企业/文档/当前版本/哈希，不含客户、会话或私图。可绑定经校验的员工活动码/推广码来源；当前Admin复制动作生成公司来源。C01原生转发只转发内容入口。entry-context把它作为唯一入口依据，重查发布/渠道，持久化案例/渠道至会话及人工接续，并用既有欢迎文本说明上下文。过期/撤回后回到签名企业的普通咨询；签名无效则拒绝。来源只是审计/话题上下文，不改归属负责人、推荐/分佣、不建线索、不批准项目。档案仍使用既有S01受控候选关联/去重路径。
-- P2C已增加上方记录的独立后台发布及会话绑定公开读取基础；客户聊天按钮/PPT主页/联系/分享仍未实现。[总计划3.1](./xiaok-assistant-roadmap.zh-CN.md#31-p2c-当前范围与小区检索)仍为范围与次序依据，后台维护不增加小程序发布页；原生/人工及登录态Chrome视觉验收待测，无生产或供应商采购。
+- P2C已增加上方记录的独立后台发布及会话绑定公开读取基础；客户聊天按钮/PPT主页/联系/分享仍未实现。总计划3.1（Git `d28c6ccb:docs/xiaok-assistant-roadmap.zh-CN.md` § `#31-p2c-当前范围与小区检索`）仍为范围与次序依据，后台维护不增加小程序发布页；原生/人工及登录态Chrome视觉验收待测，无生产或供应商采购。
 
 工程证据：隔离参考套件5/5通过，含官方DeepSeek“推荐→明确喜欢→无匹配”；真实小程序controller/引用HTTP、员工来源撤回及重进复验2/2；P2C入口/过期/来源/接续2/2。日志`tmp/xiaok-vector/p2a3-live-test.log`、`p2a3-source-guard-test.log`、`p2c-entry-test.log`，最终合并复跑`p2a3-p2c-final-test.log`为7/7通过，新增真实同企业/跨企业/已停用活动码在`p2c-channel-test.log`的P2C复验3/3通过。Assistant纯测66/66、小程序参考/聊天/图片/接续/需求47/47通过；“只看参考不写需求/自动摘要”的修正以`p2a3-browsing-test.log`复验2/2（含真实模型），定向ESLint零错误/警告，涉及文件无TypeScript诊断，全仓保留291项既有诊断。离线WCC82WXML+2WXS/WCSC85Less、226JS/88JSON通过。Webpack编译通过，全量构建被既有`AiDesignerLegacyPage`导出类型错误阻断；默认Turbopack遇Windows junction错误。全仓TypeScript保留既有诊断，不宣称全量构建通过。未启用DevTools自动化，未增加长尾图片/语言评测。
 
@@ -3095,13 +2245,13 @@ P2M.0–P2M.3保持 **Limited**：开发企业1454已从现有小程序入口启
 
 ## 当前UI回查与设计来源
 
-用户要求回查并重做偏离源稿的已有UI；结果、工程证据和手测见[总计划3.6](./xiaok-assistant-roadmap.zh-CN.md#36-既有计划与ui回查修正)。chat沿用C01/C02校正版，handoff沿用S01-01/02/B01及共享状态，projects沿用原PPT26 manager.png的已实现子集。恢复品牌/身份、队列/作者头像、消息滚动和轻薄输入，移除客户常驻实现说明与孤立资料表；不把工地协作放进业主私人咨询。P4A另按每工地一份成员共享对话实施，不能由P3A/B完成推断已交付。
+用户要求回查并重做偏离源稿的已有UI；结果、工程证据和手测见总计划3.6（Git `d28c6ccb:docs/xiaok-assistant-roadmap.zh-CN.md` § `#36-既有计划与ui回查修正`）。chat沿用C01/C02校正版，handoff沿用S01-01/02/B01及共享状态，projects沿用原PPT26 manager.png的已实现子集。恢复品牌/身份、队列/作者头像、消息滚动和轻薄输入，移除客户常驻实现说明与孤立资料表；不把工地协作放进业主私人咨询。P4A另按每工地一份成员共享对话实施，不能由P3A/B完成推断已交付。
 
 原一期PPT5和旧P2A/P2B摘要/同意页是历史基线与兼容API证据，不能覆盖当前C01/C02/S01主稿。客户不先确认摘要、分类图片或填接续同意页；电话等真实后果仍按现行合同单独授权。旧“不能识图/仅规则/本轮还原”描述只代表当时批次，当前Agent状态以上方P3B/P2M为准。
 
 ## P2S第一批交付基线 — 2026-10-16
 
-智能核心以[总计划P2M与当前P3B](./xiaok-assistant-roadmap.zh-CN.md)和上方当前合同为准。以下保留P2S当时交互范围，不能把已交付能力重新标为规划，也不能把未交付功能视为已接入。
+智能核心以总计划P2M与当前P3B（Git `d28c6ccb:docs/xiaok-assistant-roadmap.zh-CN.md`）和上方当前合同为准。以下保留P2S当时交互范围，不能把已交付能力重新标为规划，也不能把未交付功能视为已接入。
 
 用户已明确授权按校正版实施 **C01/C02/S01/U01**。客户聊天、私有图片直发、聊天内直接接续、等待补充、员工核对及持久化操作恢复为 **Implemented**。自动理解仍是有边界的中文规则提取，标记 **Limited**；P2S整体 **Limited**。ASR、AI识图、参考推荐及后续批次不在本次交付中。原生视觉/业务手测待执行、非阻塞；未部署生产。
 

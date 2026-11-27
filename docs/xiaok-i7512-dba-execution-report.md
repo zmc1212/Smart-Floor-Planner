@@ -2,7 +2,7 @@
 
 ## I7.5.17 开发库正式执行
 
-2026-11-16（Asia/Shanghai）。用户授权在停写窗口内重做真实备份和 i798 恢复，并在通过判定后直接迁移。候选提交为 `5a312a304f02ca9e2191139755a35bcd55b9f701`。源库 `127.0.0.1:5432/smart_floor_planner`（系统标识 `7696770731622109222`）已由 `sfp_migrator` 执行十条迁移，账本 **119 → 129**。 [正式迁移执行单](./xiaok-i7512-v1-database-migration-runbook.md) · [迁移清单与 SHA](./xiaok-i7516-migration-final-review.md)
+2026-11-16（Asia/Shanghai）。用户授权在停写窗口内重做真实备份和 i798 恢复，并在通过判定后直接迁移。候选提交为 `5a312a304f02ca9e2191139755a35bcd55b9f701`。源库 `127.0.0.1:5432/smart_floor_planner`（系统标识 `7696770731622109222`）已由 `sfp_migrator` 执行十条迁移，账本 **119 → 129**。 [正式迁移执行单](./xiaok-i7512-v1-database-migration-runbook.md) · 迁移清单与 SHA（Git `d28c6ccb:docs/xiaok-i7516-migration-final-review.md`）
 
 ### 本窗口回执
 
@@ -24,7 +24,7 @@
 
 ## I7.5.12.2 和 I7.5.16 历史证据
 
-2026-11-16。12:44 的历史真实备份和 i798 完整逻辑恢复已通过。I7.5.16 于 14:37 只读复核同一归档和回执，129 项 Journal 的十条候选统一门禁通过。 [I7.5.16 最终审查](./xiaok-i7516-migration-final-review.md)
+2026-11-16。12:44 的历史真实备份和 i798 完整逻辑恢复已通过。I7.5.16 于 14:37 只读复核同一归档和回执，129 项 Journal 的十条候选统一门禁通过。 I7.5.16 最终审查（Git `d28c6ccb:docs/xiaok-i7516-migration-final-review.md`）
 
 ## 源库与独立实例
 

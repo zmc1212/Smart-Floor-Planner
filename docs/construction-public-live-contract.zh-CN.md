@@ -16,9 +16,9 @@
 
 已批准的 C05 封面卡只显示当前绑定和直播版本最近一次有效的定时 JPEG。待业主决定且来源有效时，每 15 分钟由公开直播 Worker 通过原抓拍表和 WVP JPEG 适配器最多认领一次。封面请求重验原咨询、待决定状态和当前来源。定时封面不会进入普通私有抓拍历史或公开材料；暂无封面时，获权用户仍可打开直播。
 
-从原咨询点击播放，通过现有摄像头 WebView 打开精确版本的 C05 无声只读 H5。播放器实际解码并推进后上报；服务端仅在同一获权会话已完整输出分片时接收。重新预览使旧回执失效。返回原咨询时重读资格；同意时再次核验当前业主、身份上下文、咨询、版本、修订号及未过期回执。公开仍需企业审核。H5 播放回执以同一短会话路径的 `POST .../media/:token/played` 提交。数据变更见迁移 0117。
+本地试用中，点原咨询卡片的播放图标，在原 16:9 封面位置起播无声原生 HLS。沿用原 `preview` 写入和精确修订号的 `webview` 媒体会话。原生播放时钟推进后提交 `POST .../media/:token/played`。服务端仅接收同一获权会话完整输出分片后的回执，同意时复验当前业主、身份、咨询、机位、版本、修订号及未过期回执。原咨询回读确认后才开放同意，重开预览会废弃旧凭据。「查看直播公开申请」可进入原有获权 H5。明确同意后仍需企业审核。回执沿用迁移 0117。 Stable 390×844 核对了 263×147.9375px 原画框、精确实播回执及业主决定重进回读。约 1.26Mbps 合成流推进并送完两段后中断，约 178kbps 无声 H.264 对照持续播放并完整送出至少四段。高码率持续播放和微信真机仍待验证。[原试用](../tmp/inline-camera-trial-20261126/stable-06/verification.json) · [持续出画](../tmp/inline-camera-trial-20261126/stable-consultation-rate/consultation-receipt.png) · [对照回执](../tmp/inline-camera-trial-20261126/stable-consultation-rate/verification.json)
 
-同一预览页在签名身份未变、会话未过期时，重新显示会保留 WebView 和观看回执；切换期间仍在申请的入口只请求一次。退出重进、身份变化或会话过期时仍走原入口鉴权，媒体和回执继续由服务端核验当前授权。连接期间禁用「开始播放」，实际解码推进或连接失败、超时后恢复可点。验证范围见[小程序功能清单](./miniprogram-system-modules.zh-CN.md)。
+H5 预览页在签名身份未变、会话未过期时，重新显示会保留 WebView 和观看回执；切换期间仍在申请的入口只请求一次。退出重进、身份变化或会话过期时仍走原入口鉴权，媒体和回执继续由服务端核验当前授权。连接期间禁用「开始播放」，实际解码推进或连接失败、超时后恢复可点。验证范围见[小程序功能清单](./miniprogram-system-modules.zh-CN.md)。
 
 Stable 390×844 已通过 C05 隔离合成旅程。业主看到 263×147.9375 的定时封面，通过原 WebView 实际播放 HLS，完整送出两个分片，再返回原咨询。提前提交回执和同意均被拒。实际 H5 回执启用明确同意，重进读到已同意、待企业审核。匿名播放和错误业主封面读取被拒。同槽抓拍只写一次，1553 项绑定零漂移，所属测试资源已清理。证据见 tmp/public-live-package/c05-webview-03/。
 
@@ -38,9 +38,9 @@ C03-05 只接受当前播放器的进度和解码错误。继续观看或续期�
 
 - `/construction-projects` → 项目Drawer → 原公开材料Tab → **直播公开**，沿Ant Design Form/Select/Card/Steps/Alert与共享操作反馈。摄像头管理者及所选企业管理角色可准备合法绑定、公开名称与机位别名，普通观看成员不能准备。只有`enterprise_admin`、`admin`、`super_admin`可审核当前业主的这一版同意；平台管理无需入职或成为项目成员。
 - 提交仍向绑定的私人咨询写入原持久服务事件和提醒。发送目的地缺失仍失败回滚。业主可从**工地 → 待我确认**或该提醒打开同一申请。独立 `packages/construction/live-authorization/live-authorization` WebView 在同页显示具体机位、16:9 无声预览、观看范围和决定。实际播放回执有效后才能明确同意。阅读、回复及沉默不构成同意。「稍后再看」保留待办；处理后从同一项目的**直播公开进度**读当前状态，获权时可撤回或停止。同意进入待企业审核，仍由已有权限的企业审核人公开。
-- `packages/construction/public-site/public-site`及原Agent详情纸页在当前批准存在时显示独立直播入口。`packages/construction/public-live/public-live`仅一个16:9完整画面，真实连接/播放/暂停/失败反馈、别名、全屏及返回/本人咨询动作；不提供进度条、音量、PTZ、抓拍、录像下载或历史回放。
-- 公开播放器下方提供整行原生「分享给朋友」按钮。当前公开元数据核对通过后，按钮及微信菜单使用获审的公开名称、独立静态封面和只带 `enterpriseId`、`key` 的目标路径。媒体连接、播放和暂停期间复验资格，资格失效会收起分享入口。好友点卡片从原路由建立自己的匿名观看会话，撤回后的旧卡片沿用停播反馈。[批准的分享设计与打包映射](../design-references/cloud-site-redesign-20261107/public-live-share-v1/README.md)
-- 批准源见 `design-references/xiaok-p4b-public-sites-v1/README.md`。业主待办与详情沿用 `owner-authorization-task-v1/01-owner-site-pending-v001.png`、`02-owner-live-authorization-v001.png`，C03 沿用 Agent 版 C03-04/C03-05 v001。853×1844 映射 390×844，真实预览为精确 16:9 等比容纳。工地行和导航用小程序原生控件，授权纸页和控件与真实视频在同一 WebView，复用既有样式、字体与获权媒体。
+- `packages/construction/public-site/public-site` 及原 Agent 详情纸页在公开资格有效时显示独立直播入口。`packages/construction/public-live/public-live` 共用 `native-live-player`，提供单个 16:9 无声画面、画内暂停/续播与全屏，以及居中的重试入口。续播新建公开会话。公开授权仍控制停播和返回工地反馈。公开端不提供进度条、音量、PTZ、抓拍、录像下载或历史回放。[共享播放器确认稿](../design-references/cloud-site-family-inline-live-20261126/family-inline-live-v002.png)
+- 播放器相纸框下方提供整行原生「分享给朋友」按钮。当前公开元数据核对通过后，按钮及微信菜单使用获审的公开名称、独立静态封面和只带 `enterpriseId`、`key` 的目标路径。媒体连接、播放和暂停期间复验资格，资格失效会收起分享入口。好友点卡片从原路由建立自己的匿名观看会话，撤回后的旧卡片沿用停播反馈。[批准的分享设计与打包映射](../design-references/cloud-site-redesign-20261107/public-live-share-v1/README.md)
+- 批准源见 `design-references/xiaok-p4b-public-sites-v1/README.md`。业主待办与详情沿用 `owner-authorization-task-v1/01-owner-site-pending-v001.png`、`02-owner-live-authorization-v001.png`。C03 页面布局沿用 Agent 版 C03-04/C03-05 v001，播放器使用上文的共享画内控件。853×1844 映射 390×844，真实预览为精确 16:9 等比容纳。工地行和导航用小程序原生控件，授权纸页和控件与真实视频在同一 WebView，复用既有样式、字体与获权媒体。
 
 围观引导复用 C03 播放页和 C01 原咨询。`GET /api/miniprogram/assistant/conversations/:cid/public-sites/:siteId/guide?versionId=…&liveKey=…&liveVersionId=…` 复验本人会话、获审的材料版本，以及同一项目独立版本的直播授权，返回已填充的首问或 `null`。来源失效、机位版本错误和项目不匹配都不返回首问。原 `POST .../:siteId/context` 持久化挂载的公开材料，并在本人会话排队交付同一句首问。交付后重进只显示已保存的气泡。首问无需模型。首个完成的回复消费这次引导，模型沿用现有 Agent 和来源规则，最多追问一次，或结束引导。开关、首问、追问方向和收尾在 `/assistant-knowledge` →「围观引导」配置。接口与存储见[管理后台模块](./admin-system-modules.zh-CN.md)。
 
@@ -63,6 +63,10 @@ C03-05 只接受当前播放器的进度和解码错误。继续观看或续期�
 Stable 在 390×844 使用已核对的原项目窗口和固定本地后台源码，验证微云 1454 标记项目、实际 640×360 无声 HLS、播放失败重试、同页同意、企业审核、两端重进及停播。错误业主、旧版本、错票据受众、提前同意、审核前访客访问均被拒。最终批访客首进曾进入播放，截图时转为连接失败，重进有可见实播；首页布局调整前的首播截图另保留。模拟器 WebView 无小程序返回桥，「稍后再看」保存待办后显示顶部返回提示。原生标题及胶囊沿微信宿主几何。绑定输入无漂移，已清理测试授权、媒体及控制器。[验收与截图](../tmp/owner-live-authorization-20261117/native-12/report.json)。
 
 ## 媒体与撤回
+
+公开直播播放器遇到 HLS 缓冲停顿时最多保留当前流八秒。播放时间继续前进后取消计时，持续停顿或播放器明确报致命错误时显示原有重试入口。恢复期间仍会复验公开授权并在撤回时停播。
+
+Stable 390×844 用合成无声 HLS 验证共享控件。SDK 实点暂停、创建新会话续播、全屏及 HTTP 503 后重试。模拟撤回后清除画面和分享入口，重进显示停播反馈。[原生控件与布局核验](../tmp/public-live-player-style-20261127/stable-02/verification.json)
 
 媒体流程在外部调用前持久保存唯一代理所有权意图，复用WVP play及`guardLiveWriter`，再创建仅属于本模块的`sfp_public_live` ZLM代理：`enable_audio=0`、`add_mute_audio=0`、`enable_mp4=0`、启用HLS、`retry_count=0`。须观察ready视频且没有任何音轨才授予观看会话，前端muted仅为补充。真实合成输入带AAC音轨；service04解码公开HLS并证实仅有视频、没有音轨。
 

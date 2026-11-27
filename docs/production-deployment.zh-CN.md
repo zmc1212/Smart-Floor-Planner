@@ -10,17 +10,47 @@
 
 ### 之前已验证的版本
 
-正式后台、抢单 Worker 和小 K Worker 运行 `20261125-001`，对应干净提交 `53756742`。该版在正式基线 `4c9f72bc` 上交付小K正文流式修复。镜像 config digest 为 `sha256:688533bad6dc5c6eecf01e455b43b510e7029bd163b472e599ec4dfc84119eeb`。服务器校验的发布包 SHA-256 为 `bacfcb0ad030f6d106f52c24c0ef739a8b4aa6657c71dcdb5daef97675dfefa8`。上一应用镜像为 `20261124-002`。[源码与构建绑定](../tmp/xiaok-live-reply-release-20261125/backend-binding.json) · [发布回执](../tmp/xiaok-live-reply-release-20261125/server-deploy.log)。
+正式后台、抢单 Worker 和小K Worker 已运行 `20261126-006`，对应源码 `47b575f0`。发布包 SHA-256 为 `38854ebfe4fc4f9a2a296a10f23713c35f9eec26239bb885d9b9ccce63621037`，镜像 config digest 为 `sha256:d7184275355b4c59fb6187dc74f9919098fde019f40650e00989f451f37d0f65`。本版上线平台控制的小程序 AI 入口，带上最新私有工地摄像头代码，并沿用线上已验证的无工地员工跟进处理。公开 AI 入口接口读回 `enabled: false`，平台接口拒绝匿名访问。公网 HTTPS、后台鉴权冒烟和两个 Worker 均通过。原 PostgreSQL 卷的迁移账本仍为 148 条。发布前备份 `smart_floor_planner-20261126T092550Z-pre-20261126-006.dump` 共 39,905,443 字节，已通过归档和 SHA-256 校验。后台可回退到 `20261125-006`。[发布包](../tmp/production-release-20261126-006/package-binding.json) · [服务端核验](../tmp/production-release-20261126-006/server-check.log) · [公网核验](../tmp/production-release-20261126-006/public-smoke.json)。
+
+独立摄像头网关也由同一份源码更新至 `20261126-006`，镜像为 `sha256:abfe14a8b52a4126ffca05922d666124ca651b3394038ab44392d7bfa7aff760`。业主工地封面返回当前机位绑定，网关在关闭媒体请求时处理延迟到达的流取消事件。网关健康、H5 资源哈希和匿名拒绝通过。隔离摄像头数据库套件 91 项通过。本次发布未复验微信真机播放。回退文件在 `/datas/smartfloor/backups/camera-backend-20261126-006.Cydlw3SU`，其中 `switch.sh` 的 rollback 操作用于恢复保留的 `20261126-005` 网关。临时 SSH 公钥撤销后重新登录已验证被拒。[网关核验](../tmp/production-release-20261126-006/camera/switch.log) · [摄像头数据库测试](../tmp/production-release-20261126-006/camera-db-tests.log) · [SSH 撤销](../tmp/production-release-20261126-006/ssh-reauth.log)。
+
+### 上一个已验证版本 20261125-006
+
+正式后台和两个 Worker 此前运行 `20261125-006`，对应提交 `46075f38`。发布包 SHA-256 为 `254083cf2c6a170dc9e749673734c87c17db1b972baef3897a47e51dac1aa87d`，镜像 config digest 为 `sha256:91ad7e76f31ec0e15a2ff03893cef5fa07d1ffc3e913cb9078ed49b105493d2f`。设计师和施工人员没有可跟进工地时，开启跟进返回 `409 construction_followup_no_project`。沿用原 PostgreSQL 卷，迁移账本为 148 条。备份 `smart_floor_planner-20261125T161609Z-pre-20261125-006.dump` 共 39,847,047 字节，已通过归档和 SHA-256 校验。公网健康、两个 Worker 和鉴权冒烟通过。原设计师账号在 Stable DevTools 重进首页，列表和管理读取返回 200，跟进显示无工地状态。临时 SSH 公钥已撤销，重新连接已验证被拒。[发布包](../tmp/production-release-20261125-006/package-binding.json) · [服务端核验](../tmp/production-release-20261125-006/server-check.log) · [备份](../tmp/production-release-20261125-006/backup-verify.log) · [首页复验](../tmp/production-release-20261125-006/native-designer.json) · [公钥撤销](../tmp/production-release-20261125-006/ssh-reauth.log)。
+
+用户确认微信退回 `20261125.6`，对应源码 `a4567879`。旧客户端收到 `enterprise: null` 会加载失败。正式通用小K已启用至 v2，使用专用系统租户 7、原百炼 `deepseek-v4.1-flash-1017` 与持久卷运行绑定。未关联企业的合成账号在正式 API 完成两轮问答，重进历史读回原会话与两条回复。候选源码 `12a107d0` 的 2,414 项测试和微信预览编译通过，原工程在 Stable 读回正式会话。测试凭证撤销后返回 401，临时 SSH 公钥已移除，重新连接被拒。微信开发版上传、重新提审和 Android 真机复验待完成。[专用租户配置](../tmp/xiaok-audit-20261126/production-stage-tenant.log) · [正式复验](../tmp/xiaok-audit-20261126/production-journey.json) · [服务端核验](../tmp/xiaok-audit-20261126/production-postcheck.log) · [候选包预览](../tmp/xiaok-audit-20261126/production-candidate-preview.log) · [SSH 撤销](../tmp/xiaok-audit-20261126/production-ssh-revocation.log)。
+
+### 上一个已验证版本 20261125-005
+
+正式后台、抢单 Worker 和小K Worker 此前运行 `20261125-005`，对应干净提交 `ec0400d6`。本版包含内置通用小K服务与配置页、普通咨询的扫码触发修正，并保留此前发布的咨询分流、按角色微信投递和日周报内容。发布包 SHA-256 为 `4a5ba2f7fd5379b47e05989a61a14a63efa8b39b587efa806f3c4af4f56a50d3`，运行镜像 config digest 为 `sha256:b442958bf8c7ebe50403ebf7b6f23784af46c65b704dc2c64fc7a597d29d1b35`。上一应用镜像 `20261125-004` 可用于回滚。
+
+原 PostgreSQL 卷的迁移账本从 147 条增至 148 条。迁移 `0151_assistant_public_agent_library` 已应用，应用角色对映射表只有读权限。备份 `smart_floor_planner-20261125T145106Z-pre-20261125-005.dump` 共 39,827,027 字节，通过归档和 SHA-256 校验。公网健康、后台鉴权和两个 Worker 健康检查通过。线上接口检查通过 17/19 项。精艺智家负责人留存凭据在后台与小程序均返回 401，发布前后该账号都标记待修改初始密码。平台配置通过权限和发布版本检查，通用咨询开关关闭且未配置独立租户映射。指定测试业主成功读回日报和周报原图。两轮项目装修咨询实际完成并重进读回，服务端记录到回复预览，客户端分段显示和个人微信送达待核。 临时发布公钥已撤销。[发布包绑定](../tmp/production-release-20261125-005/package-binding.json) · [发布回执](../tmp/production-release-20261125-005/server-deploy.log) · [服务端核验](../tmp/production-release-20261125-005/server-check.log) · [线上冒烟](../tmp/production-release-20261125-005/public-api-check.json) · [平台配置](../tmp/production-release-20261125-005/public-platform.log) · [业主报告](../tmp/production-release-20261125-005/owner-report-regression.json) · [小K流式服务端](../tmp/production-release-20261125-005/consult-stream-check.log) · [负责人改密基线](../tmp/production-release-20261125-005/boss-pre-release.log) · [公钥撤销](../tmp/production-release-20261125-005/ssh-reauth.log)。
+
+### 上一个已验证版本 20261125-004
+
+正式后台、抢单 Worker 和小 K Worker 已更新至 `20261125-004`，对应干净提交 `1732f82f`。本版包含小 K 咨询与需求记录分流，以及共享咨询 Worker 更新。服务器核验的 ZIP SHA-256 为 `6e848c0daecc818aec595ea7430110e943cd0311bdbfa7a3b8d9d835677309fb`，运行镜像 config digest 为 `sha256:a986aee39556491cd7daed62bfa8dadb9950e28ef6223b1dafb9169d1fe4cd43`。上一应用镜像 `20261125-003` 可用于回滚。[发布包绑定](../tmp/production-release-20261125-004/package-binding.json) · [发布回执](../tmp/production-release-20261125-004/server-deploy.log)。
+
+发布前后沿用原 PostgreSQL 卷，迁移账本均为 147 条。发布前备份 `smart_floor_planner-20261125T095042Z-pre-20261125-004.dump` 共 39,747,957 字节，已通过归档和 SHA-256 校验。公网 HTTPS 健康接口返回 200，两个 Worker 健康，后台登录及 `/api/auth/me` 冒烟通过。临时发布公钥已撤销，新连接验证被拒。本次发布覆盖后台与 Worker。[服务端核验](../tmp/production-release-20261125-004/server-check.log) · [公网健康](../tmp/production-release-20261125-004/public-health.json) · [公钥撤销](../tmp/production-release-20261125-004/ssh-reauth.log)。
+
+### 上一个已验证版本 20261125-003
+
+正式后台、抢单 Worker 和小 K Worker 此前运行 `20261125-003`，对应干净服务端提交 `7602883f`。本版上线微信按角色投递、业主周报 V002 长图，以及含小K正文流式修复的完整后台。服务器校验的发布包 SHA-256 为 `99bafb12f44b99e332203e755cd721092dd8d2cd55d6245ca9d765e73cc50c39`，运行镜像 config digest 为 `sha256:0f24732f48b67f115e92fd94eaf07a96d9f8fd35f36942675d1ee3723c959668`。上一应用镜像 `20261125-001` 可用于回滚。[发布包绑定](../tmp/xiaok-owner-weekly-image-20261125/binding.json) · [发布回执](../tmp/production-release-20261125-003/server-deploy.log)。
+
+迁移 `0150_xiaok_wechat_role_recipients` 将账本从 146 增至 147，保留原 PostgreSQL 卷，两张微信表继续强制 RLS。迁移前备份 `smart_floor_planner-20261125T082156Z-pre-20261125-003.dump` 共 39,708,943 字节，已核对归档。公网健康返回 200，两个 Worker 均健康，后台登录冒烟通过。本次发布覆盖服务端与 Worker。业主个人微信的实际长图送达待验。[服务端核验](../tmp/production-release-20261125-003/server-check.log) · [公网健康](../tmp/production-release-20261125-003/public-health.json)。
+
+### 企业 3 工地生命周期验收
+
+项目 5 的十个阶段均实际写入并读回，业主收到十条站内阶段提醒。水电和完工另外送达配置的到场提醒。工人上报、设计师远程核对、施工经理对客发布和工人重进读取审核通过均已核验。老板简报读到入住阶段和未排期状态。全屋上报未进入老板简报的最近记录，按房间上报的对照可见。项目恢复原水电阶段、进度说明和成员角色。[阶段和角色回执](../tmp/production-release-20261125-003/lifecycle-api.json) · [房间上报对照](../tmp/production-release-20261125-003/room-control.json)。
+
+测试经理角色还原触发成员审计规则，使既有报告原件不可读。取得授权后备份原测试审计 42，将该行标为测试还原。已签名测试业主重新打开日报 101、周报 89，读取两份长图并保存已读回执，业主阶段提醒也完成正文和已读回读。使用 Stable DevTools 中的线上业主服务核对，完整页面点按及个人微信送达待验，本户没有已验证微信绑定。临时 SSH 公钥已撤销，重新认证被拒。[审计恢复](../tmp/production-release-20261125-003/report-source-restore.log) · [业主服务回执](../tmp/production-release-20261125-003/direct-owner-report-acceptance.json) · [数据库读回](../tmp/production-release-20261125-003/post-restore-readback.log) · [公钥撤销](../tmp/production-release-20261125-003/ssh-reauth.log)。
+
+### 上一个已验证版本 20261125-001
+
+正式后台、抢单 Worker 和小 K Worker 此前运行 `20261125-001`，对应干净提交 `53756742`。该版在正式基线 `4c9f72bc` 上交付小K正文流式修复。镜像 config digest 为 `sha256:688533bad6dc5c6eecf01e455b43b510e7029bd163b472e599ec4dfc84119eeb`。服务器校验的发布包 SHA-256 为 `bacfcb0ad030f6d106f52c24c0ef739a8b4aa6657c71dcdb5daef97675dfefa8`。上一应用镜像为 `20261124-002`。[源码与构建绑定](../tmp/xiaok-live-reply-release-20261125/backend-binding.json) · [发布回执](../tmp/xiaok-live-reply-release-20261125/server-deploy.log)。
 
 PostgreSQL 沿用 `sfp-admin-release_postgres_data`，迁移账本为 146 条。发布脚本校验了备份 `smart_floor_planner-20261125T034538Z-pre-20261125-001.dump`，两项 Worker 及后台登录通过健康和冒烟检查。公网 HTTPS 网关返回 200。微信预览包源于 `056bf37f`，启用合法域名检查。小程序全量回归 2,404 项通过。[线上核验](../tmp/xiaok-live-reply-release-20261125/server-check.log) · [公网健康](../tmp/xiaok-live-reply-release-20261125/public-health.json) · [预览绑定](../tmp/xiaok-live-reply-release-20261125/preview-fresh.json) · [小程序测试](../tmp/xiaok-live-reply-release-20261125/miniprogram-tests-package.log)。
 
 四分钟真机观察窗口未收到精艺业主测试账号的新回复任务，待该账号扫码发问后确认设备上的流式显示。临时 SSH 公钥已撤销，新连接验证被拒。[真机观察](../tmp/xiaok-live-reply-release-20261125/handset-watch.log) · [测试账号回读](../tmp/xiaok-live-reply-release-20261125/handset-count.log) · [公钥撤销](../tmp/xiaok-live-reply-release-20261125/ssh-reauth.log)。
-
-### 完整后台候选 20261125-003
-
-本地候选从 `codex/xiaok-integration` 的干净快照 `7602883f` 构建，包含 `20261125-002` 的完整后台，并增加业主微信周报长图。发布包、迁移和 V002 海报素材已校验与源码一致。[源码和发布包绑定](../tmp/xiaok-owner-weekly-image-20261125/binding.json) · [上一候选包](../tmp/backend-full-20261125-002/binding.json)。
-
-隔离库应用 `0150_xiaok_wechat_role_recipients` 后，迁移账本由 146 条增至 147 条，重复执行仍为 147 条。受控投递端确认两种业主订阅发出的周报 PNG 与小程序同一期图版一致。上个候选已用 Stable 核对业主答复排版和历史重进。正式部署和真机复验待进行。[长图投递验证](../tmp/xiaok-owner-weekly-image-20261125/verified/service-binding.json) · [Stable 答复验证](../tmp/backend-full-20261125-002/run-81b2137e/report.json)。
 
 ### 上一个已验证版本 20261124-002
 
@@ -74,6 +104,14 @@ PostgreSQL 沿用 `sfp-admin-release_postgres_data`，迁移账本为 146 条。
 回滚前对照发布回执核对现行哈希。用 `/datas/smartfloor/backups/camera-cover-hotfix-20261120.Cr8r8RoU` 中的三份 `previous-*` 文件原子恢复 H5，沿用目标文件的属主和权限。将 `gateway.previous.cjs` 恢复到 `/datas/smartfloor/camera-gateway/gateway.cjs` 后重启 `sfp-construction-camera-current`。如仅回退定时抓拍流程，可恢复同目录的 `gateway-route.cjs`。恢复后核对网关健康、公网资源哈希和匿名拒绝。前版仅修复自动播放的热更新在安卓微信实测仍要求手势。[前版发布回执](../tmp/camera-autoplay-20261120/production/publish-2026-11-20T03-05-16-818Z.json)
 
 **2026-11-23 项目 5 合成调试机位（已部署）。** 正式后台保持 20261120-001。视频网关配合原 HTTPS 摄像头 include 接入项目 5 的业主封面、机位列表和入场三个精确路径，白名单只含企业 3 项目 5 的业主用户 2。内部源 `sfp-camera-debug:8080` 运行本地镜像 `sfp-camera-debug:20261123-003`，在私有视频网络提供合成 H.264 画面和同一段素材提取的 JPEG 封面。WVP 和实体设备记录沿用原流程。部署前后 SQL 回读一致，项目 5 的实体绑定为 0，项目 6 为机位 1、绑定 6。回滚按顺序恢复备份的 `nginx-before.conf` 并验证、重载 Nginx，停止新网关，将保留的 `sfp-construction-camera-before-project5-20261123` 恢复原名及运行，最后停止专用源容器。备份配置及网关包位于 `/datas/smartfloor/backups/project5-debug-20261123.HFQle7CD/`。[发布回执](../tmp/project5-debug-camera-synthetic/release/deploy-output.txt) 13:45 上线的封面子版本可独立回滚。停止当前网关，使用 `gateway-before.cjs` 恢复挂载文件。停止并改名当前合成源，将保留的 `sfp-camera-debug-before-cover-20261123` 改回 `sfp-camera-debug` 并启动，再启动网关。封面回滚文件位于 `/datas/smartfloor/backups/project5-cover-20261123.EL8cAlky/`。[封面发布回执](../tmp/project5-debug-camera-cover/deploy-output.txt)
+
+**2026-11-26 正式私有工地直播声音。** 独立视频网关 `20261126-005` 首次上线该音频链路，源码 `97453113`，镜像 `sha256:fb772ef25704a51b50eba3eac559f8c40001168ddd973d18ff4d713d1feabd66`。`CAMERA_LIVE_AAC_BINDING=3:6:6` 指定唯一线上测试机位，WVP 通道 `1` 已开启音频。FFmpeg 6.1.1 透传 H.264，将 PCMA 转成 48 kHz 单声道 AAC-LC 并输出 HLS。HTTPS 将手账 H5、原生起播续租停止、员工机位列表与兼容播放入口及 `/camera-media/native/` 转到同一网关。媒体访问日志避开含票据的原始路径。正式员工账号读取项目 6 机位列表和兼容入口均返回 200，匿名读取返回 401。[切换回执](../tmp/camera-aac-production-20261126-r5/switch.log) · [员工入口核验](../tmp/camera-aac-production-20261126/native-entries-after.json)
+
+指定机位起播时提前启动共享转码，最多预缓冲 6.5 秒。FFmpeg 要求输入音轨存在，对齐起始音频时间戳后编码 AAC。首份清单至少累积 10 秒媒体，原生清单同时要求三个完整分片。每个任务固定 `EXT-X-TARGETDURATION`，分片移出清单后仍继续保留供读取。`004` 线上实测原生端播完前五个带音频的分片后耗尽缓冲，第六片随后才到达。[原生请求](../tmp/camera-aac-production-20261126-r4/native-status-trace.json) · [4G 分片时序](../tmp/camera-aac-production-20261126-r4/native-fragment-clock.jsonl)
+
+`005` 线上 H5 开声后实际解码出现场音频，再点静音后音频归零且画面持续推进。获权原生地址从同一转码任务读到 H.264 和 AAC-LC，停止后旧清单和分片拒绝访问。Stable 从员工工地入口实测原生出画和开声，延长试播仍出现中断。直接在 WVP 主机测原始流，约 18 秒内收到约 15 秒媒体。WVP 音频保持开启，测试读者已退出。家人原生播放器 `20261126.2`（源码 `3f739c36`）已上传为微信开发版本，正式审核、发布与微信真机待完成。现行小程序可沿原 H5 入口开声。[H5 与 WVP 实测](../tmp/camera-aac-production-20261126-r5/production-audio.json) · [原生试播](../tmp/camera-aac-production-20261126/native-production-playback-r5.json) · [微信上传](../tmp/camera-aac-production-20261126/mini-upload.log)
+
+`005` 的发布及回退文件位于 `/datas/smartfloor/backups/camera-aac-20261126.abeveeHK`。回退时将保留的 `sfp-construction-camera-before-aac-buffer-20261126` 恢复为线上容器并核对健康。完整回退声音发布使用首批 `/datas/smartfloor/backups/camera-aac-20261126.cZhDguSE`，恢复 `wvp-audio-before.json` 记录的原通道音频、首批原 Nginx 片段和 `sfp-construction-camera-before-aac-20261126`。回退后复测线上 H5 与同一机位。[镜像核验](../tmp/camera-aac-production-20261126-r5/image-preflight.log)
 
 <!-- cloud-camera-cloud-mini-integration -->
 **私有SD时间接入：限定Implemented。** 新增sfp-wvp-sd-clock-20261106组件，复用原镜像/只读WVP日志，白名单/token私有配置位于/datas/sfp-wvp-sd-clock-20261106/；仅127.0.0.1:28083、UID10001/cap_drop/全只读挂载/无Docker socket、unless-stopped。经原WVP观察新DeviceStatus时间，原28容器、二进制/站点/配置保持。配置0400并私有备份；应用用CAMERA_SD_CLOCK_ORIGIN/TOKEN显式选择，不回退服务器时间。Mini仅列当前注册身份/时间可信窗口，缓存开播再核身份/时差。真实Mini宿主/H5 SD查询/播放/重进/故障重试/STOP通过，私有媒体/义务0；自有3417/3418/四端口转发/unit库/公钥已清理，保留副本/共享3017/D/SSH。新SQL/组件/站点备份与新SSH登录拒绝已验。[实证](../tmp/cloud-camera-mini-sd-20261106/assessment.json)。无正式业务/小程序发布，不冒称完整恢复/物理微信/PTZ/重连通过。

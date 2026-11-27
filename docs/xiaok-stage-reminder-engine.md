@@ -116,4 +116,4 @@ Tick 只在会话消息和提醒回执一起提交后计 `delivered`。`no_inbox
 - 业主端提醒卡使用 C01 签发 entry 读取提醒；点击提醒进入对应项目的私人周报。项目经理在工地「我的待办」读取同一提醒记录并打开真实事项/房间。无私聊时保留 `failed/no_inbox` 和空消息回执；`channel=workbench` 表示可见待办，不表示私聊送达或已读。事项关闭后下一次评估移入历史；具体事项只向本人负责人生成。
 - `construction_staff` 的路由白名单包含 `xiaok/reminders` 与 `xiaok/stage-answer`，与工地工作台权限一致。
 
-[I7.5.19 合成库回归与回执](./xiaok-i7519-business-defect-fix-acceptance.md)。
+I7.5.19 合成库回归与回执（Git `d28c6ccb:docs/xiaok-i7519-business-defect-fix-acceptance.md`）。

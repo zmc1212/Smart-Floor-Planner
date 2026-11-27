@@ -436,7 +436,7 @@ node --env-file=.env.local --import tsx scripts/xiaok-r4-bailian-embedding.ts
 
 R6 配置预检仍缺北京工作空间与专用 API Key，未提交真实托管请求。R6 隔离库及 Stable 证据、真实 Responses 与本地检索的结果见[原生复核合同](xiaok-assistant-phase-2.zh-CN.md#r6-原生施工复核与托管知识)。[百炼 Responses 协议](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-responses) · [百炼 Retrieve](https://help.aliyun.com/zh/model-studio/rag/channels)
 
-I6 在原 R6 验收入口使用 `--local-knowledge --durable-integration` 验证真实 Embedding/pgvector、项目权限、版本替换、撤回和原咨询回传。该模式的对话模型为替身。托管混合检索在授权后预检配置，缺项记录 `bailian_knowledge_not_configured` 并投影为资料暂不可用。已配置但无获权命中返回空证据。当前托管接入仍为 Limited。[I6 检索和委托证据](xiaok-integration-audit.md#i62-本地企业知识与持续委托)
+I6 在原 R6 验收入口使用 `--local-knowledge --durable-integration` 验证真实 Embedding/pgvector、项目权限、版本替换、撤回和原咨询回传。该模式的对话模型为替身。托管混合检索在授权后预检配置，缺项记录 `bailian_knowledge_not_configured` 并投影为资料暂不可用。已配置但无获权命中返回空证据。当前托管接入仍为 Limited。I6 检索和委托证据（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i62-本地企业知识与持续委托`）
 
 ## 14. I6 模型能力矩阵
 
@@ -460,7 +460,7 @@ I6 在原 R6 验收入口使用 `--local-knowledge --durable-integration` 验证
 | 长期记忆 | 首次写入调用 `35607879-7405-96b3-8606-df4fd4f809b8` 3,076/89 tokens，原会话保存真实本人偏好；新咨询读回 `f812ac4c-ec67-976b-b009-9b9d66bae883` 2,683/34。 |
 | Native Workflow | `00281f19-3c85-95b9-a2d6-0d21b698ee08` 6,985/963 tokens，Responses 选择 `start_delegation`，服务端保存主卧插座跟进并给原咨询登记回执。正式核对、授权回传与图片重进另在隔离业务链验证。 |
 
-逐请求协议、配置、首稿、修复和错误随 `turn-*.json`、应用联网原始回执及供应商报告保留。终稿结构化通道由现有网关选择。真实费用在这些回执中不可得。各批统计、失败和未执行项见[集成审查](xiaok-integration-audit.md#i6-真实模型与获权知识验收limited)。
+逐请求协议、配置、首稿、修复和错误随 `turn-*.json`、应用联网原始回执及供应商报告保留。终稿结构化通道由现有网关选择。真实费用在这些回执中不可得。各批统计、失败和未执行项见集成审查（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i6-真实模型与获权知识验收limited`）。
 
 ## 15. I6.7 起的实模开发与验收
 
@@ -477,11 +477,11 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 | Chat Completions | `live_verified`。基础请求 `9bfc1ba1-c600-92c4-a1a7-22183957b547`，13/37。 |
 | 流式、托管 RAG | 本轮未验证流式。托管 RAG 缺专用空间和凭据，保留 `retrieval_unavailable`。本地 Embedding/pgvector、长期记忆、项目和委托能力以各自应用验收为准。 |
 
-六次协议请求合计 21,903/1,439 tokens，缓存输入 11,520，实际费用未提供。目录与原始回执见 `tmp/i6.7/bailian-catalog.json`、`tmp/bailian-responses/report-i67-deepseek-{wire,functions}.json` 及其 raw 文件。固定装修场景、首稿、修复和环境缺项见[集成审查](xiaok-integration-audit.md#i67-专业规范证据链limited)。第 14 节及之前的 Qwen 记录是对应版本的历史结果，I1 超时结果保持 unknown。
+六次协议请求合计 21,903/1,439 tokens，缓存输入 11,520，实际费用未提供。目录与原始回执见 `tmp/i6.7/bailian-catalog.json`、`tmp/bailian-responses/report-i67-deepseek-{wire,functions}.json` 及其 raw 文件。固定装修场景、首稿、修复和环境缺项见集成审查（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i67-专业规范证据链limited`）。第 14 节及之前的 Qwen 记录是对应版本的历史结果，I1 超时结果保持 unknown。
 
 ## 16. I6.8 专业 Agent 模型绑定
 
-北京百炼配置键为 `bailian`，应用逻辑名为 `deepseek-flash`，供应商目录及真实回执使用 `deepseek-v4.1-flash-1017`。开轮目录查询对实际 ID 精确命中一项，逻辑名在百炼目录中没有同名模型。防水问答与 Native Agent 作业共用原加密配置、AgentModelGateway、用量和未知结果台账。Responses 通过既有配置启用。该固定模型的当前应用配置为文本输入，现场照片仍由 Construction 保存及授权回传。模型默认值沿现有生产配置。[模型目录](https://help.aliyun.com/zh/model-studio/list-models) · [DeepSeek 调用说明](https://help.aliyun.com/zh/model-studio/deepseek-api) · [集成验收](xiaok-integration-audit.md#i68-防水专业-agent-与工作流limited)
+北京百炼配置键为 `bailian`，应用逻辑名为 `deepseek-flash`，供应商目录及真实回执使用 `deepseek-v4.1-flash-1017`。开轮目录查询对实际 ID 精确命中一项，逻辑名在百炼目录中没有同名模型。防水问答与 Native Agent 作业共用原加密配置、AgentModelGateway、用量和未知结果台账。Responses 通过既有配置启用。该固定模型的当前应用配置为文本输入，现场照片仍由 Construction 保存及授权回传。模型默认值沿现有生产配置。[模型目录](https://help.aliyun.com/zh/model-studio/list-models) · [DeepSeek 调用说明](https://help.aliyun.com/zh/model-studio/deepseek-api) · 集成验收（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i68-防水专业-agent-与工作流limited`）
 
 ## 17. I6.10 北京百炼图像输入
 
@@ -500,7 +500,7 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 
 本轮已用本地开发库中加密的百炼配置（掩码 `sk-ws***mDW9`）在本轮新建的隔离库 `xiaok_r6_model_i611*` 上执行真实调用，未修改开发库或生产默认值。基础 Responses 请求 `69818dc5-4ffd-9b5b-b5f7-b8ea651c5a24` 通过，75/213 tokens，实际 `deepseek-v4.1-flash-1017`。固定对话 A–F 共 9 个回答保存，20 次供应商尝试，101,458 输入 / 4,140 输出 / 56,320 缓存输入 tokens，请求 ID 与实际模型齐全，unknown 0，结算金额未返回。场景 C 的公网原文读取未成功，答案保存为不确定；未重放。
 
-高分辨率图像探针和产品照片分析使用隔离库中的合成获权图（480×360 JPEG，3,843 字节），请求 `7e764e92-872f-9c09-a775-14d15de4efe1`，501/155 tokens（缓存 256），实际模型为 `deepseek-v4.1-flash-1017`。给 `final_response` 增加 `observation` 字段时，DeepSeek Flash 的 Responses/Chat 请求返回 `Invalid Responses API frame` 或 HTTP 400；恢复原 `kind`/`text` 工具 schema 后图像调用通过。因此结构化信封只保留服务端校验器与离线测试，不宣称模型已稳定产出该信封。真实工地照片仍为 `not_run`，合成图不作为真实工地通过。[集成审查](xiaok-integration-audit.md#i611-防水专业决策可信度与真实工地验证limited)
+高分辨率图像探针和产品照片分析使用隔离库中的合成获权图（480×360 JPEG，3,843 字节），请求 `7e764e92-872f-9c09-a775-14d15de4efe1`，501/155 tokens（缓存 256），实际模型为 `deepseek-v4.1-flash-1017`。给 `final_response` 增加 `observation` 字段时，DeepSeek Flash 的 Responses/Chat 请求返回 `Invalid Responses API frame` 或 HTTP 400；恢复原 `kind`/`text` 工具 schema 后图像调用通过。因此结构化信封只保留服务端校验器与离线测试，不宣称模型已稳定产出该信封。真实工地照片仍为 `not_run`，合成图不作为真实工地通过。集成审查（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i611-防水专业决策可信度与真实工地验证limited`）
 
 ## 19. I6.12 照片观察的结构化通道
 
@@ -512,13 +512,13 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 
 **I6.16.1 终稿协议。** `ModelTurnOutput.text` 只取 Responses 的 assistant `output_text` 或 Chat Completions 的 `message.content`。独立推理只记录通道标记，应用工具回执沿原授权管线。新答复和恢复中的字面 `<think>` 终稿整稿拒绝，纯终稿可用原有的一次修复。异常内容只留原私有审计，修复输入不携带被拒正文。适用的 Evidence、承诺与施工量数校验继续执行。 Responses 流式调用在终帧解析后才交付与正文一致的文本分片。通道标记和协议错误码可进供应商诊断，推理原文沿原私有审计策略。已配置的 Chat 结构化载体仍按实际协议记录。[百炼 Responses](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) · [百炼 Chat 思考字段](https://help.aliyun.com/zh/model-studio/deep-thinking/) · [OpenAI SDK 解析](https://github.com/openai/openai-node/blob/main/src/lib/ResponsesParser.ts)。
 
-同一份百炼回复中，已签发的本轮引用 ID 可从独立的 `(CITE id)` 标记恢复为原格式，随后仍校验引用、正文数量及业务承诺。授权前咨询复用了已审核官网原件通道。受控恢复和实模原稿见[集成审查](xiaok-integration-audit.md#i616-防水-agent-v11-候选)。LangGraph 配额准入只排除本次即将派发的尝试 ID，历史未知尝试继续要求对账。
+同一份百炼回复中，已签发的本轮引用 ID 可从独立的 `(CITE id)` 标记恢复为原格式，随后仍校验引用、正文数量及业务承诺。授权前咨询复用了已审核官网原件通道。受控恢复和实模原稿见集成审查（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i616-防水-agent-v11-候选`）。LangGraph 配额准入只排除本次即将派发的尝试 ID，历史未知尝试继续要求对账。
 
 ## 21. I6.18 防水 V1.1 实模边界
 
 固定 `bailian` / `deepseek-flash` / 实际 `deepseek-v4.1-flash-1017`，Responses 优先。两批共 42 次 Responses 与 2 次未标 wire 的规划调用，97,646 输入 / 23,704 输出 / 36,096 缓存输入 tokens，44 次尝试全部有实际模型与请求 ID，用量 unknown 0，结算金额 `unknown`。原始回执在 `admin/tmp/i6.18/final/case-batch1-*.json`、`case-batch2-*.json` 与 `model-usage.json`。
 
-本轮确认的协议边界：裸 `[id]`/`[id][id]` 只有在 id 为本轮签发引用时才归一；字面 `<think>` 终稿仍整稿拒绝；单个专业段落最多 4 条签发引用；企业托管检索 `retrieval_unavailable` 时回答必须写明本次未核实。E Run 44/53、G Run 55/57、B Run 51 的失败均为协议/结构边界，未通过放宽校验掩盖。未新增网关、Provider 或生产默认值。完整结果见[V1.1 交付报告](xiaok-waterproof-agent-v1.1-release.md)。
+本轮确认的协议边界：裸 `[id]`/`[id][id]` 只有在 id 为本轮签发引用时才归一；字面 `<think>` 终稿仍整稿拒绝；单个专业段落最多 4 条签发引用；企业托管检索 `retrieval_unavailable` 时回答必须写明本次未核实。E Run 44/53、G Run 55/57、B Run 51 的失败均为协议/结构边界，未通过放宽校验掩盖。未新增网关、Provider 或生产默认值。完整结果见V1.1 交付报告（Git `d28c6ccb:docs/xiaok-waterproof-agent-v1.1-release.md`）。
 
 ## 22. I7.0 水电 Agent 实模边界
 
@@ -532,4 +532,4 @@ Endpoint 使用该空间的 `https://dashscope.aliyuncs.com/compatible-mode/v1`�
 - K/L/M 工作流内的专业分析 Run 83 首稿因复述“已登记跟进/已订阅/到时会通知你”等承诺句式触发 `unsupported_model_commitment`；只修改水电专业提示词，要求不复述承诺句式，未修改共享承诺守卫。第二次 Run 成功。
 - 单个专业段落仍最多 4 条签发引用；企业托管 RAG 未配置时仍返回 `retrieval_unavailable`；公开已核对目录仍只有 `GB55020-2021` 给排水章节。
 
-完整验收见[水电工作流](xiaok-electrical-workflow.md)与[集成审查](xiaok-integration-audit.md#i70-水电专业-agent-完整纵向样板)。
+完整验收见[水电工作流](xiaok-electrical-workflow.md)与集成审查（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i70-水电专业-agent-完整纵向样板`）。

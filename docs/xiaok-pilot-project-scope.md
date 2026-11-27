@@ -355,7 +355,7 @@ npx tsx --test src/lib/construction/__tests__/report-worker-pilot.test.ts src/li
 - 范围从 `[101,205]` 收缩为 `[101]` 后，已排队老板报告被 `revoked`，report version、facts、facts_hash、历史消息和 Outbox 均不变。
 - 权限与故障 A–H 全部 fail closed；`enterprise` 模式仍可投递双项目老板报告。
 
-详见 [I7.4.5-F1 PG17 验收](./xiaok-i745-f1-live-acceptance.md)。限制：单企业单周、故障场景 facts 为合成最小事实、Resolver 故障通过临时权限撤销注入、未发送真实通知。
+详见 I7.4.5-F1 PG17 验收（Git `d28c6ccb:docs/xiaok-i745-f1-live-acceptance.md`）。限制：单企业单周、故障场景 facts 为合成最小事实、Resolver 故障通过临时权限撤销注入、未发送真实通知。
 
 ## 主动提醒双项目真实隔离验收（I7.4.5-F2）
 
@@ -367,7 +367,7 @@ npx tsx --test src/lib/construction/__tests__/report-worker-pilot.test.ts src/li
 - Pilot 不存在/停用/Resolver 失败零生成零投递；业主撤权取消；删除目标会话保持 failed/no_inbox，恢复后重试 delivered；enterprise 模式可投递 205。
 - F1 企业原始项目、记录和提醒不变。
 
-详见 [I7.4.5-F2 主动提醒 PG17 验收](./xiaok-i745-f2-reminder-acceptance.md)。
+详见 I7.4.5-F2 主动提醒 PG17 验收（Git `d28c6ccb:docs/xiaok-i745-f2-reminder-acceptance.md`）。
 
 ## 提醒与周报统一配置校验（I7.4.5-F3）
 
@@ -430,13 +430,13 @@ PG17 复用 `i745_f1_accept` 与 F2 合成企业 `5`、`f2-pilot`、项目 `8`/`
 
 I7.4.5-F4.1 补充完整 HTTP Route 一致配置验收：`createAssistantJobsPost()` 位于 `admin/src/lib/assistant/infrastructure/jobs-post-handler.ts`，只允许注入固定时钟、环境和确定性非目标 Job，四项提醒/周报始终使用真实实现，注入参数无法通过 HTTP 请求控制。在 PG17 同一合成企业上连续三次真实 POST 均返回 200，两次链路 scopeVersion 均为 `10`；第一次生成提醒并投递 2 条、排入 1 份老板周报，第二次投递该周报（message `59`），第三次零新增，业务计数保持 `42 / 4 / 4 / 4 / 35 / 61`；401、422、503 均保持原语义。未发送真实通知、未部署生产、未合并 `main`。
 
-详见 [I7.4.5-F4 统一 Worker 配置验收](./xiaok-i745-f4-worker-alignment-acceptance.md)。
+详见 I7.4.5-F4 统一 Worker 配置验收（Git `d28c6ccb:docs/xiaok-i745-f4-worker-alignment-acceptance.md`）。
 
 ## 通知边界
 
 `active` 状态供预检选择配置版本。保存和检查均无投递入口。现有提醒 Worker 的生成与投递按同一部署模式运行：I7.5.8 起，未配置模式或使用企业模式时，四项业务 Worker 不运行（安全门禁关闭）；只有显式 `pilot` 模式才按试点最新范围生成并投递，范围外 pending/failed 不查询、不投递、不重试，配置错误时跳过本轮提醒（见上节）。周报生成与投递均按独立的企业/试点模式运行：企业模式在 I7.5.8 中保持关闭；`pilot` 生成只取试点范围与企业 `project_ids` 交集，投递只允许 facts 快照全部项目都在最新试点范围内的 pending/held 报告，范围外或无法确认的待发送报告直接撤销投递，配置错误、试点不存在/停用/不可用或空范围时零生成零投递，不回退企业全量。已 `delivered` 历史、报告版本、facts 快照、消息和 Outbox 均不修改。I7.4.5-F1 已在独立 PG17 数据库完成双项目周报真实生成、投递和范围收缩验收；I7.4.5-F2 已完成主动提醒的双项目生成、站内投递、范围收缩、权限与故障验收；I7.4.5-F3 增加提醒/周报统一配置校验，不一致或非法时四个 Worker 入口均跳过（见 I7.4.5-F3 节）；I7.4.5-F4 已抽取统一 Worker 编排并完成四项任务端到端验收；I7.4.5-F4.1 已完成完整 HTTP Route 一致配置验收（见上节）。
 
-预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。
+预检列出现有规则可能覆盖的范围外项目及未完成提醒，另读取周报待发或挂起事实快照中引用的范围外项目。候选覆盖和排队记录都不是发送回执。已有规则或存量投递涉及范围外项目时会给出 `pilot.outside_delivery`。范围外原有规则继续运行，启用试点触达前须另行核定运行时范围及存量投递。详见[预检工具](xiaok-pilot-readiness-checker.md)和首家试点记录（Git `d28c6ccb:docs/xiaok-first-pilot-enterprise-readiness.md`）。
 
 ## Worker 安全启动门禁（I7.5.8）
 
@@ -453,4 +453,4 @@ I7.4.5-F4.1 补充完整 HTTP Route 一致配置验收：`createAssistantJobsPos
 
 队列预览在 PostgreSQL `READ ONLY` 事务中统计 queued、expired running、failed、indeterminate，并只把“已到期 queued、过期且未派发供应商、过期且 agent 步骤结果完整”标记为可安全领取；`provider_started_at` 已设置但结果未知保持 indeterminate，`failed`/`indeterminate` 不自动重试。预览不领取、不标记、不发送通知。
 
-验收：隔离 PG17 `i745_f1_accept` 21 passed / 0 failed；门禁、dry-run 不变性、重复启动、并发领取、心跳 fencing、provider start 幂等、未知结果不重放、failed 终态与未保存试点零生成零投递均通过。I7.5.9 进一步完成全任务副作用审查与双企业范围验收（13 passed / 1 limited / 0 failed）。详见 [I7.5.8 验收](./xiaok-i758-worker-safe-startup-acceptance.md) 与 [I7.5.9 副作用审计](./xiaok-i759-worker-side-effect-audit.md)。
+验收：隔离 PG17 `i745_f1_accept` 21 passed / 0 failed；门禁、dry-run 不变性、重复启动、并发领取、心跳 fencing、provider start 幂等、未知结果不重放、failed 终态与未保存试点零生成零投递均通过。I7.5.9 进一步完成全任务副作用审查与双企业范围验收（13 passed / 1 limited / 0 failed）。详见 I7.5.8 验收（Git `d28c6ccb:docs/xiaok-i758-worker-safe-startup-acceptance.md`） 与 I7.5.9 副作用审计（Git `d28c6ccb:docs/xiaok-i759-worker-side-effect-audit.md`）。

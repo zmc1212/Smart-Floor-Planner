@@ -198,7 +198,7 @@ closed 为终止状态
 
 ## 7. 客户授权与首次有效归属
 
-阶段 3 已实现本节服务端合同。`POST /api/miniprogram/referrals/authorize-and-create-lead` 可使用已授权手机号的 `customer` token，或直接提交微信 `loginCode + phoneCode`；直接授权路径在同一 PostgreSQL 事务中关联基础用户、锁定归属、创建线索、写入派单事实。接口要求 `Idempotency-Key`，相同客户与相同键返回原线索；活动归属由部分唯一索引和客户级事务锁共同保护。关闭线索通过 `LeadRepository.update` 在同一事务释放活动锁。
+阶段 3 已实现本节服务端合同。`POST /api/miniprogram/referrals/authorize-and-create-lead` 可使用已授权手机号的 `customer` token，或直接提交微信 `loginCode + phoneCode`；直接授权路径在同一 PostgreSQL 事务中关联基础用户、锁定归属、创建线索、写入派单事实。接口要求 `Idempotency-Key`。原档案仍是当前服务时，同键重试返回原档案。有有效替代档案时返回 `existing_attribution` 及当前档案。原服务已结束且无有效档案时返回 `customer_service_changed`。活动归属由部分唯一索引和客户级事务锁共同保护。关闭线索通过 `LeadRepository.update` 在同一事务释放活动锁。
 
 扫码分两阶段：
 
@@ -211,7 +211,7 @@ closed 为终止状态
 - `customer_attribution_locks` 的活动部分唯一约束是最终并发防线。
 - 同一客户存在未关闭线索时，其他推广码不得覆盖企业或推荐人；返回已有项目摘要，不泄露新扫码企业。
 - 原线索进入 `closed` 后，在同一事务释放锁，之后才允许新归属。
-- 授权接口接受客户端幂等键；相同键重试返回同一线索。
+- 授权接口的旧领取键按客户当前服务办理。
 - 通知发送在事务提交后执行，失败不回滚线索。
 
 ## 8. 自动派单
@@ -465,7 +465,7 @@ TabBar 使用角色白名单生成，不保留所有身份共用的固定中心�
 
 ## 17. 测试与验收矩阵
 
-内测材料（推荐分册）：全员先看 [internal-test/00-所有人先看.md](./internal-test/00-所有人先看.md)（含流程图），再按角色阅读 `internal-test/角色-*.md`。发给非技术同事用 Word：`internal-test/装修服务内测-所有人先看.docx` 与 `internal-test/装修服务内测-角色-*.docx`。旧合订本入口：[referrer-network-internal-test-handbook.zh-CN.md](./referrer-network-internal-test-handbook.zh-CN.md)。
+内测材料（推荐分册）：全员先看 [internal-test/00-所有人先看.md](./internal-test/00-所有人先看.md)（含流程图），再按角色阅读 `internal-test/角色-*.md`。发给非技术同事用 Word：`internal-test/装修服务内测-所有人先看.docx` 与 `internal-test/装修服务内测-角色-*.docx`。旧合订本入口：`d28c6ccb:docs/referrer-network-internal-test-handbook.zh-CN.md`。
 
 - 身份：普通客户可创建账号；角色切换不能伪造企业；旧 token 在关系变化后失效。
 - 双码：类型隔离、换码立即失效、员工单企业、推荐人默认三家上限、退出不改历史。

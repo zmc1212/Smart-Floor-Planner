@@ -1,6 +1,6 @@
 # Current topology P0 implementation and verification
 
-Status: **Implemented** for the four P0 defects; holes remain **Limited**; S4-B intersection precision is now **Implemented**. This implements P0 from the [optimization plan](./topology-algorithm-optimization-plan.zh-CN.md), not all of phases 1–3 or P1/P2.
+Status: **Implemented** for the four P0 defects; holes remain **Limited**; S4-B intersection precision is now **Implemented**. This implements P0 from the optimization plan (Git `d28c6ccb:docs/surveying-module/topology-algorithm-optimization-plan.zh-CN.md`), not all of phases 1–3 or P1/P2.
 
 ## Data and commit contract
 

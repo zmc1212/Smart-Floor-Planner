@@ -1,6 +1,6 @@
 # I7.5.15 百炼托管 RAG 主服务接入
 
-2026-11-16（Asia/Shanghai），在 `codex/xiaok-integration` 交付。开始时核对远端 HEAD `b7c0c0ba`，验收基线包含随后同步到当前分支的 `5b01295f`。沿用 [I7.5.13 批次与索引验收](./xiaok-i7513-knowledge-batch-acceptance.md) 和 [I7.5.14 本地向量与文本验收](./xiaok-i7514-real-ai-knowledge-acceptance.md)。I7.5.14 报告在仓库，所列的 `admin/scripts/xiaok-i7514-real-ai-knowledge-acceptance.ts` 在远端基线和当前工作区均未找到。本轮的可复跑入口是 `admin/scripts/xiaok-i7515-bailian-rag-acceptance.ts`。
+2026-11-16（Asia/Shanghai），在 `codex/xiaok-integration` 交付。开始时核对远端 HEAD `b7c0c0ba`，验收基线包含随后同步到当前分支的 `5b01295f`。沿用 I7.5.13 批次与索引验收（Git `d28c6ccb:docs/xiaok-i7513-knowledge-batch-acceptance.md`） 和 I7.5.14 本地向量与文本验收（Git `d28c6ccb:docs/xiaok-i7514-real-ai-knowledge-acceptance.md`）。I7.5.14 报告在仓库，所列的 `admin/scripts/xiaok-i7514-real-ai-knowledge-acceptance.ts` 在远端基线和当前工作区均未找到。本轮的可复跑入口是 `admin/scripts/xiaok-i7515-bailian-rag-acceptance.ts`。
 
 ## Provider 和授权
 

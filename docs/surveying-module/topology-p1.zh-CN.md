@@ -1,6 +1,6 @@
 # 拓扑 P1 当前实现与验证
 
-状态：**Implemented**。对应[优化计划](./topology-algorithm-optimization-plan.zh-CN.md)的七项 P1 缺陷；不代表 P2 或四个阶段的全部扩展已完成。
+状态：**Implemented**。对应优化计划（Git `d28c6ccb:docs/surveying-module/topology-algorithm-optimization-plan.zh-CN.md`）的七项 P1 缺陷；不代表 P2 或四个阶段的全部扩展已完成。
 
 ## 当前运行合同
 

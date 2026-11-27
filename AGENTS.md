@@ -314,7 +314,8 @@ or a roadmap do not replace the current module inventory.
   viewport. Merely avoiding overlap is not an acceptable substitute for the
   designed spacing. When native host UI participates in the composition (for
   example the WeChat menu capsule), validate both application-layer bounds and
-  a full host-window capture that includes the native layer.
+  a full simulator capture from the WeChat DevTools SDK or CLI that includes
+  the native layer.
 - When the approved design already contains the required raster artwork, icon,
   or cut region, reuse or extract that exact design asset for the production UI.
   Do not substitute a stock asset or an unrelated existing project icon for
@@ -789,6 +790,12 @@ staged change; split unrelated work.
 
 ### WeChat DevTools Window Discipline
 
+- User instruction, 2026-11-20: Use the official WeChat DevTools SDK
+  (`miniprogram-automator`) and the project-scoped WeChat DevTools CLI for all
+  Mini Program simulator interactions and captures. Computer Use and generic
+  desktop input are outside this workflow. A check that the SDK and CLI cannot
+  perform remains unverified. Use the existing read-only window inventory to
+  confirm project placement.
 - **Stable DevTools automation is the project default.** The user has given
   standing authorization for future Mini Program testing through this workflow;
   no repeated task-specific approval or routine human hand-test is required.
@@ -885,7 +892,7 @@ run the narrowest relevant tests (`cd miniprogram && npm test`, or the applicabl
 
 ## FastGPT 隔离开发实例凭据（开发用，勿提交明文）
 
-- 小K Agent V2 使用的 FastGPT 隔离开发实例（`http://127.0.0.1:18300`，企业 1454）
+- 小K FastGPT 隔离开发实例（`http://127.0.0.1:18300`，企业 1454，供 RAG/统一/native-knowledge 工作流使用）
   管理账号为 `root`。口令由用户在 2026-11-10 口头提供，明文保存在已被
   `.gitignore` 排除的 `tmp/fastgpt-admin.private.json`，请从该文件读取，不要写进
   受版本管理的文档或提交记录。
@@ -893,6 +900,8 @@ run the narrowest relevant tests (`cd miniprogram && npm test`, or the applicabl
   再 `POST /api/support/user/account/loginByPassword`，`password` 传
   `sha256(明文)`，从响应 `Set-Cookie` 取 `fastgpt_token` 写回
   `tmp/xiaok-fastgpt-rag-session-20261107/runtime.private.json` 的
-  `managementCookie`；之后才能运行 `admin/scripts/fastgpt/agent-v2-provision.mts --apply`
-  更新并发布 Agent V2 工具集。
+  `managementCookie`；该 Cookie 供 `scripts/fastgpt/setup-rag.mts`、
+  `setup-unified.mts`、`setup-native-knowledge.mts` 等管理 API 调用使用。原
+  `agent-v2-provision.mts` 工具集开通脚本已随 Agent V2 于 2026-11-19 删除，
+  不再由本仓库维护 V2 工具集。
 - 口令仅限本地开发环境使用；生产部署、跨环境复用或对外共享仍需用户明确授权。

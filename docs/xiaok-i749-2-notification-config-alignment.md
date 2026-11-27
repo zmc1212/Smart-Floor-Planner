@@ -6,7 +6,7 @@
 > 日期：`2026-11-15`（Asia/Shanghai）
 > 状态（I7.4.9.3 更新）：`migration_created = true`、`journal_updated = true`、`isolated_validation_passed = true`、`real_database_not_modified = true`、`real_migration_run = false`
 >
-> I7.4.9.2 完成设计与隔离验证；I7.4.9.3 已正式创建 `admin/drizzle/0131_platform_notification_config_not_null.sql` 并更新 journal。本文件保留设计依据与锁分析，正式迁移器验收结果见 [I7.4.9.3 0131 验收](./xiaok-i749-3-0131-migration-acceptance.md)。
+> I7.4.9.2 完成设计与隔离验证；I7.4.9.3 已正式创建 `admin/drizzle/0131_platform_notification_config_not_null.sql` 并更新 journal。本文件保留设计依据与锁分析，正式迁移器验收结果见 I7.4.9.3 0131 验收（Git `d28c6ccb:docs/xiaok-i749-3-0131-migration-acceptance.md`）。
 
 ## 1. 范围
 
@@ -243,7 +243,7 @@ FROM app.platform_configs;
 
 ## 6. 独立 PG17 验证
 
-I7.4.9.3 已把测试改为：先用正式迁移文件构建 127 条基线（`0000`–`0130`），再模拟真实 NULL 漂移，最后由正式迁移器应用 0131。完整 A–N 结果见 [I7.4.9.3 0131 验收](./xiaok-i749-3-0131-migration-acceptance.md)。
+I7.4.9.3 已把测试改为：先用正式迁移文件构建 127 条基线（`0000`–`0130`），再模拟真实 NULL 漂移，最后由正式迁移器应用 0131。完整 A–N 结果见 I7.4.9.3 0131 验收（Git `d28c6ccb:docs/xiaok-i749-3-0131-migration-acceptance.md`）。
 
 环境：本机可丢弃 PostgreSQL `17.10`，`127.0.0.1:55435`（非 `5432`/`55432`），`postgres` 库注释 `xiaok-i749-isolated-test`。每个场景创建独立数据库，模拟 1454 的字段状态：
 

@@ -1,6 +1,6 @@
 # 拓扑 P0 当前实现与验证
 
-状态：**Implemented**（P0 四项缺陷）；内洞能力为 **Limited**，S4-B 交点精度已 **Implemented**。对应 [优化计划](./topology-algorithm-optimization-plan.zh-CN.md) 的 P0，不表示阶段 1–3 或 P1/P2 全部完成。
+状态：**Implemented**（P0 四项缺陷）；内洞能力为 **Limited**，S4-B 交点精度已 **Implemented**。对应 优化计划（Git `d28c6ccb:docs/surveying-module/topology-algorithm-optimization-plan.zh-CN.md`） 的 P0，不表示阶段 1–3 或 P1/P2 全部完成。
 
 ## 数据与提交合同
 

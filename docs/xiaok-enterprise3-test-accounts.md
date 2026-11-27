@@ -16,7 +16,7 @@
 
 | 端 | 姓名 / 显示名 | staffId | 登录账号 | 密码 | 角色 | 所属企业 | 项目角色 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 老板（企业负责人） | 杨超 | 9 | `13886667288` | `JingyiTest2026!` | `enterprise_admin` | 企业 3 | 项目 5 `manager`（项目经理） |
+| 老板（企业负责人） | 杨超 | 9 | `13886667288` | 本机加密凭据 | `enterprise_admin` | 企业 3 | 项目 5 `manager`（项目经理） |
 | 设计师 | 精艺智家简勇 | 10 | `wx_10_4eea0a637b30` | `JingyiTest2026!` | `designer` | 企业 3 | 项目 5 `designer` |
 | 施工人员 | 精艺施工经理 | 31 | `staff_e3_jingyi_manager` | `JingyiTest2026!` | `construction_staff` | 企业 3 | 项目 5 `worker` |
 | 工人 | 精艺水电工 | 32 | `staff_e3_jingyi_worker` | `JingyiTest2026!` | `construction_staff` | 企业 3 | 项目 5 `worker`，工作标签「水电」，工种「水电」 |
@@ -30,6 +30,8 @@
 | 一线工人账号 | staffId 32 为带工种的一线工人（水电），用于施工人员端与「阶段分工」的普通工人场景；与 staffId 31 的区别是工作标签和工种，不是新角色 |
 
 ## 3. 凭据处理说明（如实记录）
+
+2026-11-25 16:23，员工 9 完成经授权的测试密码重置、首次改密和登录复验。[复验回执](../tmp/production-release-20261125-003/boss-reset.log)。16:48:06，后台员工密码重置接口对账号 9 执行成功，账号重新处于待改初始密码状态。账号和企业仍启用，留存测试凭据在后台和小程序复测均返回 `401`「手机号/账号或密码错误」。留存的 Windows 加密文件仅记录 16:23 的旧测试凭据。 [状态、登录和重置接口核验](../tmp/production-release-20261125-006/enterprise3-owner-auth.json)。
 
 - 老板（id 9）原密码哈希无已知明文，本轮按现有账号体系重置为上述测试密码：写入 bcrypt
   cost 10 哈希，并将 `must_change_password` 置为 `false`；未修改企业、角色、手机号、项目成员

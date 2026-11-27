@@ -1,6 +1,6 @@
 # 家客来 I7.5.12 第一版数据库迁移执行单
 
-状态 **I7.5.17 已执行并核验**。2026-11-16 在 `codex/xiaok-integration` 的开发库 `127.0.0.1:5432/smart_floor_planner` 完成 **119 → 129**。停写窗口的新备份、i798 独立逻辑恢复和五项迁移前门禁均通过。迁移后使用 `check:migration-preflight` 核对 129 条账本和 `pending=[]`。下列步骤记录这批迁移的执行条件和回滚流程。 [最终审查与 SHA](./xiaok-i7516-migration-final-review.md) · [I7.5.17 执行回执](./xiaok-i7512-dba-execution-report.md#i7517-开发库正式执行)
+状态 **I7.5.17 已执行并核验**。2026-11-16 在 `codex/xiaok-integration` 的开发库 `127.0.0.1:5432/smart_floor_planner` 完成 **119 → 129**。停写窗口的新备份、i798 独立逻辑恢复和五项迁移前门禁均通过。迁移后使用 `check:migration-preflight` 核对 129 条账本和 `pending=[]`。下列步骤记录这批迁移的执行条件和回滚流程。 最终审查与 SHA（Git `d28c6ccb:docs/xiaok-i7516-migration-final-review.md`） · [I7.5.17 执行回执](./xiaok-i7512-dba-execution-report.md#i7517-开发库正式执行)
 
 ## 审批和凭据
 
@@ -30,7 +30,7 @@
 | 9 | 0131 | `platform_configs.notification_config` 为可空 jsonb、无默认值，当前 8 行 NULL，已有一条非空 `default` 行，记录其摘要 | 8 行 NULL 回填为 `{}`，列为 `NOT NULL DEFAULT '{}'::jsonb`。复验 `default` 行全文摘要及模板指纹一致 |
 | 10 | 0132 | 接续 0124 的托管映射。引用表 owner、原租户策略、旧来源 FK 和历史行已核验。依赖企业主键、知识版本/分片复合键与 `admin_users` | 新增空的单例平台映射，`sfp_app` 只有 SELECT。引用表新增来源归属字段、CHECK、绑定触发器及平台映射 FK，替换两条来源复合 FK。历史行回填为原租户。引用与知识表继续 FORCE RLS，托管库索引身份加防改触发器 |
 
-前 119 行三元组 `(id, hash, created_at)` 原样保留，0021/0051 的批准历史哈希逐项核对。十条新增记录以 [最终审查的顺序和时间戳](./xiaok-i7516-migration-final-review.md#迁移文件与-journal) 及**实际执行检出字节**的 SHA-256 对账。预期新增 15 张 `app` 表，其中 14 张强制 RLS，整体为 167 张强制 RLS 表。平台映射是全局只读配置。运行器在同一事务内持有 advisory lock 并写入账本。0131 持有 `ACCESS EXCLUSIVE`，其本地 5 秒 `lock_timeout`、60 秒 `statement_timeout` 也适用于接续的 0132。保持十条同次提交。
+前 119 行三元组 `(id, hash, created_at)` 原样保留，0021/0051 的批准历史哈希逐项核对。十条新增记录以 最终审查的顺序和时间戳（Git `d28c6ccb:docs/xiaok-i7516-migration-final-review.md` § `#迁移文件与-journal`） 及**实际执行检出字节**的 SHA-256 对账。预期新增 15 张 `app` 表，其中 14 张强制 RLS，整体为 167 张强制 RLS 表。平台映射是全局只读配置。运行器在同一事务内持有 advisory lock 并写入账本。0131 持有 `ACCESS EXCLUSIVE`，其本地 5 秒 `lock_timeout`、60 秒 `statement_timeout` 也适用于接续的 0132。保持十条同次提交。
 
 ## 运维步骤与停点
 
@@ -38,7 +38,7 @@
 2. **批准后停写并备份。** 确认应用、作业、批量导入等写入源暂停，复核活动连接和长事务，保持停写直到校验和执行决策。对批准目录运行 `db:migration-backup`，记录退出码、实际候选 SHA、开始/结束时间及终端 JSON。归档目录应包含 `database.dump`、`database.dump.sha256`、`migration-backup-manifest.json`。摘要和 `pg_dump` 使用同一导出事务快照。序列不受 MVCC 快照约束，因此仍需停写。 [pg_dump snapshot](https://www.postgresql.org/docs/17/app-pgdump.html#APP-PGDUMP-OPTION-SNAPSHOT) · [PostgreSQL sequence functions](https://www.postgresql.org/docs/17/functions-sequence.html)
 3. **独立恢复。** 仅使用本窗口备份的 Manifest 和归档，选择一个全新的 `xiaok_migration_restore_*`。记录程序退出码、目标/角色、归档及 Manifest 摘要、`full_restore_passed=true`、账本/数据/RLS/权限/结构和清理结果。默认清理本次创建且 OID、owner 和运行标记仍匹配的库。保留失败回执。归档恢复使用一个事务。 [pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html)
 4. **正式放行。** 在同一停写窗口，以步骤 2、3 的文件重新跑统一门禁。要求 `overall_readiness=passed`、归档为本窗口生成、当前源账本与回执一致、停写继续有效，并记录负责人签批。使用已批准的开发端点执行一次 `npm run db:migrate`。遇到锁超时或出口状态不明转入下面的故障处理。
-5. **完成判定。** 保持停写，用 `npm run check:migration-preflight -- --enterprise-id 1454` 只读验证 `ledger.count=129`、`pending=[]`、历史哈希和 `integrated` 委托结构。核对账本前缀和实际 SHA 后缀、0131 NULL 为 0 且 `defaultRowDigest` 与模板指纹一致。执行下列 0132 结构及数据复核。负责人确认后恢复访问，Worker 与真实通知依单独审批。 [四端权限和回执验收](./xiaok-i7511-four-end-real-page-acceptance.md)
+5. **完成判定。** 保持停写，用 `npm run check:migration-preflight -- --enterprise-id 1454` 只读验证 `ledger.count=129`、`pending=[]`、历史哈希和 `integrated` 委托结构。核对账本前缀和实际 SHA 后缀、0131 NULL 为 0 且 `defaultRowDigest` 与模板指纹一致。执行下列 0132 结构及数据复核。负责人确认后恢复访问，Worker 与真实通知依单独审批。 四端权限和回执验收（Git `d28c6ccb:docs/xiaok-i7511-four-end-real-page-acceptance.md`）
 
 ### 0132 提交后复核
 

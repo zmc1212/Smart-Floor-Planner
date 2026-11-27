@@ -2,7 +2,7 @@
 
 业主在 C01 询问管根、基层、防水层、试验、保护层和验收。普通解释、企业工艺和本人项目进度沿本轮意图读取各自依据。明确提出持续跟进后，原咨询登记委托并绑定已发布的 `waterproof-inspection-v1`，施工团队从原工地入口处理现场材料与事项。
 
-I6.15 接通 Native Executor 与 LangGraph 的同一 `start_delegation` 服务。明确授权的防水委托与 PostgreSQL Run 同事务登记，原 C01 立即保存站内登记回执。`waterproof-specialist@1` 与已发布的 `waterproof-inspection-v1` 仍按冻结版本执行。I6.14 的原始验收、失败及当前验证见[第一版交付冻结](xiaok-waterproof-agent-v1-release.md)与[集成审查](xiaok-integration-audit.md#i615-统一执行器与正式防水委托limited)。
+I6.15 接通 Native Executor 与 LangGraph 的同一 `start_delegation` 服务。明确授权的防水委托与 PostgreSQL Run 同事务登记，原 C01 立即保存站内登记回执。`waterproof-specialist@1` 与已发布的 `waterproof-inspection-v1` 仍按冻结版本执行。I6.14 的原始验收、失败及当前验证见第一版交付冻结（Git `d28c6ccb:docs/xiaok-waterproof-agent-v1-release.md`）与集成审查（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i615-统一执行器与正式防水委托limited`）。
 
 ## I6.15 原咨询、运行与事项
 
@@ -51,7 +51,7 @@ I6.15 接通 Native Executor 与 LangGraph 的同一 `start_delegation` 服务�
 
 显式开启已核实的北京百炼图片能力后，C01 可读取本咨询获权照片，或同项目、精确房间已对该业主发布的现场照片。答复只报告图中可见现象和待核实项。撤回原图后，依赖该图的旧答复和媒体访问随来源失效。隐蔽工程验收和铺砖放行继续沿 Construction 正式回执。
 
-模板用活动注册的 Agent 版本、模板 ID 和公开规范 ID 装配同一节点图。现有旧版定义按原节点能力和摘要执行。仅防水注册为活动状态。开发验证、已知缺口和真实模型批次见[集成审查](xiaok-integration-audit.md#i610-防水专业-agent-可信度与现场资料limited)。
+模板用活动注册的 Agent 版本、模板 ID 和公开规范 ID 装配同一节点图。现有旧版定义按原节点能力和摘要执行。仅防水注册为活动状态。开发验证、已知缺口和真实模型批次见集成审查（Git `d28c6ccb:docs/xiaok-integration-audit.md` § `#i610-防水专业-agent-可信度与现场资料limited`）。
 
 ## I6.11 专业语义、房间作用域与清单
 
@@ -73,7 +73,7 @@ ot_run\；合成图只证明能力与权限链路。
 工作流三路径：有据清单（C01 \24\、事项 \190\、revision 1/digest \34557…\）、资料不足（C01 \27\、revision 3/digest \44f15a…\、\equest_material\）、直达整改（C01 \29\、事项 \233\、结果消息 \154\）。重复 tick、错房间、非经理复核、取消等待均按原合同。
 
 Stable \390×844\ 四端：业主 C01 \24\ 结果与重进、施工端项目 \10\ 管根事项、老板端复核结果、设计师端 0 个项目。真机、BLE、真实微信登录 \
-ot_run\。公开 PDF 原件 Hash 与 Reader 故障分类通过；已保存 PDF 页引用本轮未取得，标 \limited\。模板、节点版本、清单/Evidence/事项/复核/回传合同冻结见[第一版交付](xiaok-waterproof-agent-v1-release.md)。
+ot_run\。公开 PDF 原件 Hash 与 Reader 故障分类通过；已保存 PDF 页引用本轮未取得，标 \limited\。模板、节点版本、清单/Evidence/事项/复核/回传合同冻结见第一版交付（Git `d28c6ccb:docs/xiaok-waterproof-agent-v1-release.md`）。
 
 ## I6.13 根因修复与 PDF 页引用
 
@@ -87,4 +87,4 @@ ot_run\。公开 PDF 原件 Hash 与 Reader 故障分类通过；已保存 PDF �
 - 两批真实模型固定百炼 `deepseek-v4.1-flash-1017`，44 次尝试（42 Responses），97,646 输入 / 23,704 输出 / 36,096 缓存输入 tokens。第一批 B/D 通过，E 与 G 第 3/4 轮失败；第二批 B/D/E 与 G 第 1/2/4/5 轮失败，G 第 3/6 轮通过。未执行第三批。
 - 业务写入两批均为 0；企业托管检索持续 `retrieval_unavailable`，回答明确“本次未核实”。项目状态只来自服务端快照，未把阶段当作完工。
 - 第二批后离线修复记录元数据、归属录备注、裸引用载体、企业范围描述、原生快照观察与无引用段落修复诊断；D Run 52、G Run 54/58 原稿复验通过，E Run 53 仍受单段 4 引用上限，G Run 55/57 仍失败。
-- V1 不变；V1.1 为 `waterproof-specialist@2` + Workflow revision 4 digest `dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0`。隔离库 4 个 Run 绑定不变。交付边界见[V1.1 报告](xiaok-waterproof-agent-v1.1-release.md)。
+- V1 不变；V1.1 为 `waterproof-specialist@2` + Workflow revision 4 digest `dc9c3fda69b5762b312293dd40d6e93e2316571f9284f3a751487a69608e54f0`。隔离库 4 个 Run 绑定不变。交付边界见V1.1 报告（Git `d28c6ccb:docs/xiaok-waterproof-agent-v1.1-release.md`）。

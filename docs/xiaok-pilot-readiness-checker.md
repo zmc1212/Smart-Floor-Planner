@@ -25,7 +25,7 @@ cd admin
 npm run xiaok:env:check -- --require development,isolated-pg17,model,knowledge,worker
 ```
 
-环境级别未通过时，先按报告中的修复命令和复验方法处理，再运行本预检。`isolated-pg17` 只检查显式配置的 `XIAOK_ISOLATED_DATABASE_URL`；如果本次验收不涉及隔离库，从 `--require` 中移除该级别，不要用开发库结果代替。详见[开发环境统一体检](./xiaok-environment-check.md)。
+环境级别未通过时，先按报告中的修复命令和复验方法处理，再运行本预检。`isolated-pg17` 只检查显式配置的 `XIAOK_ISOLATED_DATABASE_URL`；如果本次验收不涉及隔离库，从 `--require` 中移除该级别，不要用开发库结果代替。详见开发环境统一体检（Git `d28c6ccb:docs/xiaok-environment-check.md`）。
 
 ## 报告
 
@@ -55,4 +55,4 @@ $env:PILOT_READINESS_TEST_MIGRATION_URL="postgresql://sfp_migrator:<local-only>@
 npx tsx --test --test-concurrency=1 src/lib/xiaok-v1/__tests__/*.test.ts
 ```
 
-迁移连接仅供隔离测试临时模拟表缺失和 FORCE RLS 缺失。`I7.4.2` 的初次验收记录见 `8b406246` 和 `tmp/xiaok-i742-pilot-readiness/`。当前验收范围和实际结果见[首家试点记录](xiaok-first-pilot-enterprise-readiness.md)。
+迁移连接仅供隔离测试临时模拟表缺失和 FORCE RLS 缺失。`I7.4.2` 的初次验收记录见 `8b406246` 和 `tmp/xiaok-i742-pilot-readiness/`。当前验收范围和实际结果见首家试点记录（Git `d28c6ccb:docs/xiaok-first-pilot-enterprise-readiness.md`）。

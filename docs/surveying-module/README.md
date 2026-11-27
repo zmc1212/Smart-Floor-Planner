@@ -1,5 +1,7 @@
 # 正式量房算法与拓扑可靠性优化计划
 
+正式量房当前数据和运行约束见[正式量房数据合同](./formal-surveying.md)。早期执行计划与原始性能基准见拓扑优化归档（Git `d28c6ccb:docs/surveying-module/topology-algorithm-optimization-plan.zh-CN.md`）。
+
 D2当前Agent资料/业务读取还通过`agent/formal-floorplan-context.ts`提供有效闭合房间内原图已保存的墙边`lengthMm`、层高`ceilingHeightMm`和门窗尺寸；不把坐标/渲染包围框或默认高度当作测量，缺项保持未知，墙边长度不代表房间净尺寸或照片与墙面的对应。不写正式墙图或旧版布局副本；原layoutHash绑定新增文字，图形/名称未变时保留旧资料依赖version，真实图变化仍失效。实际Worker/来源/租户/版本检查见`tmp/xiaok-d2-context-20261027/services-schema-formal/report.json`；配置模型验收只由开发计划第2节记录。
 
 小K P2A.2 为只读消费者：读取本人、同企业、未归档线索的已完成主正式v4户型，经既有适配器生成整屋/闭合房间快照，记录来源ID/layoutHash，私有读取时重验来源归属。后续编辑不替换既有咨询快照；不写 `FloorPlan.layoutData`、不创建旧版布局副本、不改派单/佣金。接口、同意、保留期和测试见[二期契约](../xiaok-assistant-phase-2.zh-CN.md)。 P2S员工核对只允许当前接待人在其既有档案范围内关联本客户的已完成主户型/房间标识，写入咨询内部标注；不更新快照或正式墙图。

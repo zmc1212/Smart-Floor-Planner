@@ -1,6 +1,6 @@
 # Current topology P1 implementation and verification
 
-Status: **Implemented** for all seven P1 defects in the [optimization plan](./topology-algorithm-optimization-plan.zh-CN.md). P2 and the broader four-stage extensions are not included.
+Status: **Implemented** for all seven P1 defects in the optimization plan (Git `d28c6ccb:docs/surveying-module/topology-algorithm-optimization-plan.zh-CN.md`). P2 and the broader four-stage extensions are not included.
 
 ## Current runtime contract
 
