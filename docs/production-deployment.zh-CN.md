@@ -4,6 +4,12 @@
 
 ## 当前正式发布
 
+正式后台、抢单 Worker 和小K Worker 已运行 `20261127-001`，对应干净发布提交 `ad54cf7e`，基于 `47b575f0`。本版将客户图片放入真人接续对话，并新增可查未转人工会话的企业咨询记录和查阅审计。发布包 SHA-256 为 `a13c5a41d9ae5f712a5953d881321942252120b5aaf9def47af8926a3d2e47b8`，镜像 config digest 为 `sha256:696d8e0048b29383315e0fcf3065039271e8ea92ceaa5a42b599d32b48478b63`。[发布包绑定](../tmp/xiaok-consultations-20261127/package-binding.json) · [发布回执](../tmp/xiaok-consultations-20261127/production-deploy.log)
+
+迁移 `0152_assistant_consultation_reads` 在原 PostgreSQL 卷将账本从 148 增至 149。发布前备份 `smart_floor_planner-20261127T050021Z-pre-20261127-001.dump` 共 40,012,593 字节，通过 SHA-256 与归档检查。线上已核验审计表强制租户 RLS、应用审计只追加、两个 Worker 健康、真实登录冒烟、两条路由就绪及匿名请求均返回 401。隔离接口和浏览器核对了未转人工咨询、审计读回和接续图片预览。应用回滚版本为 `20261126-006`。临时公钥已撤销，重新连接验证被拒。[服务端核验](../tmp/xiaok-consultations-20261127/server-check.log) · [公网验收](../tmp/xiaok-consultations-20261127/public-smoke.json) · [浏览器核验](../tmp/xiaok-consultations-20261127/browser-receipt.json) · [SSH 撤销](../tmp/xiaok-consultations-20261127/ssh-reauth.log)
+
+### 之前已验证的版本
+
 正式后台、抢单 Worker 和小 K Worker 运行 `20261125-001`，对应干净提交 `53756742`。该版在正式基线 `4c9f72bc` 上交付小K正文流式修复。镜像 config digest 为 `sha256:688533bad6dc5c6eecf01e455b43b510e7029bd163b472e599ec4dfc84119eeb`。服务器校验的发布包 SHA-256 为 `bacfcb0ad030f6d106f52c24c0ef739a8b4aa6657c71dcdb5daef97675dfefa8`。上一应用镜像为 `20261124-002`。[源码与构建绑定](../tmp/xiaok-live-reply-release-20261125/backend-binding.json) · [发布回执](../tmp/xiaok-live-reply-release-20261125/server-deploy.log)。
 
 PostgreSQL 沿用 `sfp-admin-release_postgres_data`，迁移账本为 146 条。发布脚本校验了备份 `smart_floor_planner-20261125T034538Z-pre-20261125-001.dump`，两项 Worker 及后台登录通过健康和冒烟检查。公网 HTTPS 网关返回 200。微信预览包源于 `056bf37f`，启用合法域名检查。小程序全量回归 2,404 项通过。[线上核验](../tmp/xiaok-live-reply-release-20261125/server-check.log) · [公网健康](../tmp/xiaok-live-reply-release-20261125/public-health.json) · [预览绑定](../tmp/xiaok-live-reply-release-20261125/preview-fresh.json) · [小程序测试](../tmp/xiaok-live-reply-release-20261125/miniprogram-tests-package.log)。
