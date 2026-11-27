@@ -12,6 +12,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/case-publishing': 'case-publishing',
   '/api/portfolio': 'case-publishing',
   '/assistant-knowledge': 'assistant-knowledge',
+  '/api/assistant/consultations': 'assistant-knowledge',
   '/api/assistant/stage-agents': 'assistant-knowledge',
   '/api/assistant/knowledge': 'assistant-knowledge',
   '/api/assistant/preview': 'assistant-knowledge',

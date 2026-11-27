@@ -17,9 +17,10 @@ const PublicSiteGuideEditor = lazy(() => import('@/components/assistant/public-s
 const AcquisitionEditor = lazy(() => import('@/components/assistant/acquisition-editor').then(module => ({ default: module.AcquisitionEditor })));
 const KnowledgeSettings = lazy(() => import('@/components/assistant/knowledge-settings').then(module => ({ default: module.KnowledgeSettings })));
 const HandoffPanel = lazy(() => import('@/components/assistant/handoff-panel').then(module => ({ default: module.HandoffPanel })));
+const ConsultationHistoryPanel = lazy(() => import('@/components/assistant/consultation-history-panel').then(module => ({ default: module.ConsultationHistoryPanel })));
 const KnowledgeOperationsPanel = lazy(() => import('@/components/assistant/knowledge-operations').then(module => ({ default: module.KnowledgeOperationsPanel })));
 
-function KnowledgeWorkbench({ canHandoff, canUsage, canPublish }: { canHandoff: boolean; canUsage:boolean; canPublish: boolean }) {
+function KnowledgeWorkbench({ canManageConsultations, canUsage, canPublish }: { canManageConsultations: boolean; canUsage:boolean; canPublish: boolean }) {
   const [tab, setTab] = useState(() => {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
     if (params.get('tab') === 'stage-agents') return 'stage-agents';
@@ -67,7 +68,11 @@ function KnowledgeWorkbench({ canHandoff, canUsage, canPublish }: { canHandoff: 
       { key: 'guidance', label: '需求引导话术', children: <Suspense fallback={<Skeleton active />}><GuidanceEditor /></Suspense> },
       { key: 'public-site-guide', label: '围观引导', children: <Suspense fallback={<Skeleton active />}><PublicSiteGuideEditor /></Suspense> },
       { key: 'acquisition', label: '扫码获客', children: <Suspense fallback={<Skeleton active />}><AcquisitionEditor /></Suspense> },
-      ...(canHandoff ? [{ key: 'handoffs', label: '真人接续', children: <Suspense fallback={<Skeleton active />}><HandoffPanel /></Suspense> }] : []),
+      ...(canManageConsultations ? [
+        { key: 'handoffs', label: '真人接续', children: <Suspense fallback={<Skeleton active />}><HandoffPanel /></Suspense> },
+        { key: 'consultations', label: '企业咨询记录', children: tab === 'consultations'
+          ? <Suspense fallback={<Skeleton active />}><ConsultationHistoryPanel /></Suspense> : null },
+      ] : []),
     ]} />
     {editor && <Suspense fallback={<Drawer open width={720} title={editor === 'new' ? '新建知识' : '知识详情'} onClose={() => setEditor(null)}><Space direction="vertical" size={20} style={{ width: '100%' }}><Skeleton active /></Space></Drawer>}>
       <KnowledgeEditor key={editor} documentId={editor} onClose={() => setEditor(null)} onChanged={refresh} onPreview={(draftId, audience) => { setEditor(null); setPreviewKey(value => value + 1); setSeed({ draftId, audience }); setTab('preview'); }} />
@@ -77,6 +82,6 @@ function KnowledgeWorkbench({ canHandoff, canUsage, canPublish }: { canHandoff: 
 export default function AssistantKnowledgePage() {
   const { user, isLoading, error } = useCurrentUser();
   return <div className="admin-page-frame"><PageContainer title="小 K 知识库" subTitle="维护企业资料，核对回答依据" breadcrumbRender={false} className="admin-page-container">
-    {isLoading ? <Skeleton active /> : error ? <Result status="error" title="登录信息读取失败" extra={<Button onClick={() => window.location.reload()}>重新加载</Button>} /> : !hasAssistantKnowledgeAccess(user?.role, user?.effectivePermissions) ? <Result status="403" title="尚未获得小 K 知识管理权限" subTitle="平台管理员、超级管理员及企业明确授权的负责人可维护知识和访问本人试问。" /> : !user?.enterpriseId?._id ? <Result status="info" title="请先选择企业" subTitle="通过侧栏顶部的企业选择器选择一家企业，再查看和维护该企业的小 K 知识。" /> : <KnowledgeWorkbench canPublish={user.role === 'admin' || user.role === 'super_admin'} canHandoff={isEnterpriseManagementRole(user.role)} canUsage={user?.role==='enterprise_admin'&&Boolean(user?.effectivePermissions?.includes('assistant-usage'))} key={`${user?._id}:${user?.enterpriseId?._id}`} />}
+    {isLoading ? <Skeleton active /> : error ? <Result status="error" title="登录信息读取失败" extra={<Button onClick={() => window.location.reload()}>重新加载</Button>} /> : !hasAssistantKnowledgeAccess(user?.role, user?.effectivePermissions) ? <Result status="403" title="尚未获得小 K 知识管理权限" subTitle="平台管理员、超级管理员及企业明确授权的负责人可维护知识和访问本人试问。" /> : !user?.enterpriseId?._id ? <Result status="info" title="请先选择企业" subTitle="通过侧栏顶部的企业选择器选择一家企业，再查看和维护该企业的小 K 知识。" /> : <KnowledgeWorkbench canPublish={user.role === 'admin' || user.role === 'super_admin'} canManageConsultations={isEnterpriseManagementRole(user.role)} canUsage={user?.role==='enterprise_admin'&&Boolean(user?.effectivePermissions?.includes('assistant-usage'))} key={`${user?._id}:${user?.enterpriseId?._id}`} />}
   </PageContainer></div>;
 }

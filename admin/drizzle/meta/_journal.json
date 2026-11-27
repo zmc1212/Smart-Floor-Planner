@@ -1037,6 +1037,13 @@
       "when": 1798185600000,
       "tag": "0151_assistant_public_agent_library",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1798272000000,
+      "tag": "0152_assistant_consultation_reads",
+      "breakpoints": true
     }
   ]
 }
