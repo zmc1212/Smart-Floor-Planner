@@ -1,0 +1,335 @@
+@import './renovation-font.less';
+
+.site-nav.site-nav-detail { padding-left: 12px; z-index: 1; }
+.owner-site-page .renovation-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -6px 0;
+  padding-left: 10px;
+}
+.renovation-back-icon { display: block; width: 24px; height: 24px; }
+
+.renovation-home {
+  background: linear-gradient(136deg, #fbfaf1, #f6f5e9);
+  color: #113a30;
+  .site-nav { padding-left: 34px; }
+  .site-nav .book-nav-title { font: 900 22px/1.25 'Renovation Serif', 'Site Serif', SimSun, serif; }
+  .site-paper-grain { opacity: .36; }
+  .site-content { padding: 18px 17px calc(128rpx + env(safe-area-inset-bottom) + 18px) 31px; }
+  .site-family-shared { margin-top: 20px; }
+}
+.renovation-project {
+  min-height: 44px;
+  padding: 0 2px;
+  font: 900 30px/1.4 'Renovation Serif', 'Site Serif', 'Songti SC', SimSun, serif;
+  overflow-wrap: anywhere;
+}
+.renovation-project-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: #113a30;
+  .site-chevron { color: #537567; margin-left: 2px; }
+}
+.renovation-steps { position: relative; display: flex; justify-content: space-between; min-height: 55px; margin: 3px 0 12px; }
+.renovation-steps-track {
+  position: absolute;
+  top: 15px;
+  left: 32px;
+  right: 39px;
+  height: 1px;
+  background: #cfdad0;
+  view { height: 1px; background: #8eaf97; }
+}
+.renovation-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 64px;
+  color: #536b60;
+  font-size: 12px;
+  line-height: 19px;
+  &:last-child { margin-right: 7px; }
+}
+.renovation-step-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 30px;
+  view { width: 7px; height: 7px; box-sizing: border-box; border: 1px solid #adc1ae; border-radius: 50%; background: #f5f4e8; }
+}
+.renovation-step.is-done .renovation-step-dot view { background: #7fa389; border-color: #7fa389; }
+.renovation-step.is-current {
+  color: #094132;
+  font-weight: 700;
+  .renovation-step-dot view { width: 17px; height: 17px; border: 3px solid #dbe9da; background: #0c503e; }
+}
+
+.renovation-paper {
+  position: relative;
+  box-sizing: border-box;
+  padding: 16px 17px;
+  border: 1px solid #fffdf5;
+  border-radius: 9px;
+  background: linear-gradient(115deg, #fffdf3, #f9f6e9);
+  box-shadow: 0 3px 6px #755f321d, inset 0 0 0 1px #e9e5d368;
+}
+.renovation-action-card { display: flex; flex-direction: column; }
+.renovation-card-top { display: flex; align-items: center; justify-content: space-between; gap: 9px; min-height: 24px; }
+.renovation-chip { display: inline-flex; min-height: 24px; align-items: center; padding: 0 9px; border-radius: 5px; background: #e4eee3; color: #0c503e; font-size: 13px; font-weight: 600; line-height: 20px; }
+.renovation-chip-warm { color: #694c23; background: #f6e8c8; }
+.renovation-stage { color: #094132; font-size: 13px; line-height: 18px; text-align: right; overflow-wrap: anywhere; }
+.renovation-card-copy { position: relative; margin: 12px 0 12px; }
+.renovation-card-title {
+  display: block;
+  color: #113a30;
+  font: 900 25px/1.36 'Renovation Serif', 'Site Serif', 'Songti SC', SimSun, serif;
+  overflow-wrap: anywhere;
+}
+.renovation-card-subtitle, .renovation-card-note { display: block; color: #536b60; line-height: 21px; overflow-wrap: anywhere; }
+.renovation-card-subtitle { margin-top: 4px; font-size: 14px; }
+.renovation-card-note { margin-top: 2px; font-size: 13px; }
+.renovation-home .renovation-primary {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 51px;
+  margin: auto 0 0;
+  padding: 0 39px;
+  border-radius: 7px;
+  color: #fffdf3;
+  background: linear-gradient(105deg, #0b4737, #0f5742);
+  box-shadow: 0 3px 5px #143a252b;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  image { flex: none; width: 13px; height: 14px; }
+  &:active { background: #176049; }
+}
+.renovation-booking { min-height: 228px; }
+.renovation-booking .renovation-card-copy { padding-right: 118px; }
+.renovation-booking-art { position: absolute; top: 40px; right: 21px; width: 113px; height: 103px; pointer-events: none; }
+.renovation-scheme {
+  min-height: 339px;
+  .renovation-card-title { font-size: 24px; }
+  .renovation-card-copy { margin-bottom: 8px; }
+  .renovation-card-subtitle { font-size: 13px; }
+}
+.renovation-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 142px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  color: #536b60;
+  background: #eeefe5;
+  font-size: 13px;
+  image { width: 100%; height: 100%; }
+}
+.renovation-construction {
+  min-height: 194px;
+  .renovation-card-title { font-size: 23px; }
+  .renovation-card-subtitle { font-size: 13px; }
+}
+.renovation-digest {
+  min-height: 142px;
+  margin-top: 20px;
+  padding-bottom: 9px;
+}
+.renovation-digest-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font: 900 17px/1.4 'Renovation Serif', 'Site Serif', SimSun, serif;
+}
+.renovation-digest-line { display: block; margin-top: 10px; padding-bottom: 12px; border-bottom: 1px solid #dce3d6; font-size: 14px; line-height: 21px; overflow-wrap: anywhere; }
+.renovation-home .renovation-report {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 45px;
+  margin-top: 4px;
+  padding-right: 4px;
+  color: #094132;
+  font-size: 14px;
+  font-weight: 600;
+}
+.renovation-rows {
+  margin-top: 23px;
+  padding: 0 14px;
+  border: 1px solid #fffdf5;
+  border-radius: 8px;
+  background: linear-gradient(115deg, #fffdf3, #faf7ec);
+  box-shadow: 0 2px 5px #755f321c;
+}
+.renovation-home .renovation-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 53px;
+  padding: 7px 3px;
+  color: #113a30;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 21px;
+  image { flex: none; width: 20px; height: 20px; }
+  .site-chevron { margin-right: 4px; color: #536b60; }
+  + .renovation-row { border-top: 1px solid #dce3d6; }
+}
+.renovation-row-label { flex: 1; min-width: 0; }
+.renovation-meta { flex: none; max-width: 39%; color: #536b60; font: 400 12px/1.5 system-ui, sans-serif; text-align: right; overflow-wrap: anywhere; }
+
+.renovation-home-construction {
+  .site-content { padding-top: 12px; padding-left: 33px; }
+  .site-paper-grain { opacity: .6; }
+  .renovation-project { margin-bottom: 12px; }
+  .renovation-progress-card {
+    padding: 13px 13px 17px;
+    border: 0;
+    border-radius: 10px;
+    background: linear-gradient(115deg, #caddcba0, #d6e6d4a0);
+    box-shadow: none;
+
+    .renovation-card-top { min-height: 42px; }
+    .renovation-card-title {
+      min-width: 0;
+      padding-left: 3px;
+      color: #084b3c;
+      font-size: 33px;
+      line-height: 1.2;
+    }
+    .renovation-chip {
+      flex: none;
+      min-height: 26px;
+      padding: 0 9px;
+      border-radius: 7px;
+      background: #b7d4bc;
+      color: #0b503e;
+      font-size: 15px;
+    }
+    .renovation-primary {
+      min-height: 47px;
+      margin: 20px 0 0;
+      padding: 6px 14px;
+      border-radius: 8px;
+      background: linear-gradient(110deg, #0e5944, #0d5340);
+      box-shadow: none;
+      font-size: 18px;
+      image { width: 16px; height: 16px; }
+      &:active { background: #17634e; }
+    }
+  }
+
+  .renovation-rows {
+    margin-top: 12px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .renovation-rows .renovation-row {
+    gap: 18px;
+    min-height: 64px;
+    padding: 8px 6px 8px 10px;
+    border: 0;
+    color: #0c4c3d;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 24px;
+    image { width: 25px; height: 25px; }
+    .renovation-meta {
+      flex: 0 1 78px;
+      max-width: 31%;
+      color: #58746b;
+      font-size: 14px;
+      text-align: left;
+    }
+  }
+  .renovation-row-copy {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+  .renovation-row-summary {
+    display: -webkit-box;
+    margin-top: 2px;
+    overflow: hidden;
+    color: #536b60;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 18px;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .site-family-shared-head { margin: 0; padding: 3px 4px 5px; }
+  .site-family-shared-title { color: #58746b; font: 400 14.5px/20px system-ui, sans-serif; }
+  .site-family-shared .site-family-shared-card {
+    min-height: 45px;
+    margin-bottom: 0;
+    padding: 5px 6px 5px 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .site-family-shared-main { flex: 1; }
+  .site-family-shared-name { color: #0c4c3d; font-size: 16px; line-height: 24px; }
+  .site-family-shared-tag {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    min-height: 19px;
+    padding: 0 8px;
+    border-radius: 10px;
+    background: #e5dfcb;
+    color: #5d4f34;
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .renovation-rows .site-chevron,
+  .site-family-shared-card .site-chevron {
+    width: 8px;
+    height: 8px;
+    margin-right: 2px;
+    color: #5f7971;
+  }
+  .renovation-rows .renovation-row,
+  .site-family-shared-head,
+  .site-family-shared .site-family-shared-card { position: relative; }
+  .renovation-rows .renovation-row:active,
+  .site-family-shared .site-family-shared-card:active { background: #dbe9dc66; }
+}
+
+@media (max-width: 360px) {
+  .renovation-home-construction {
+    .site-content { padding-right: 13px; padding-left: 26px; }
+    .renovation-rows .renovation-row { gap: 12px; }
+  }
+}
+
+@media (max-width: 345px) {
+  .renovation-booking .renovation-card-copy { padding-right: 88px; }
+  .renovation-booking-art { right: 11px; width: 83px; }
+}

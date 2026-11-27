@@ -1,0 +1,14 @@
+<template name="notebook-task-v2">
+  <view class="notebook-task-v2">
+    <image class="notebook-task-paper" src="/packages/construction/assets/notebook/v2-task-paper.png" mode="scaleToFill" aria-hidden="true" />
+    <text class="notebook-task-tab notebook-task-tab-{{task.tone || 'green'}}">{{task.label}}</text>
+    <view class="notebook-task-copy">
+      <text class="notebook-task-title {{task.numeric ? 'notebook-task-time' : ''}}">{{task.title}}</text>
+      <text wx:if="{{task.meta}}" class="notebook-task-meta">{{task.meta}}</text>
+      <text wx:if="{{task.note}}" class="notebook-task-note">{{task.note}}</text>
+    </view>
+    <button class="notebook-task-action" bindtap="runNotebookTask">
+      <text>{{task.button}}</text><image class="notebook-task-arrow" src="/packages/construction/assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" />
+    </button>
+  </view>
+</template>

@@ -73,6 +73,106 @@ test('a staff report board can use its sole enterprise binding to check a projec
   assert.equal(controller.state.followupContext.selectedProject.id, '249');
 });
 
+test('initial-password guard stays visible for board and auto-open entries, then clears after same-session recovery', async () => {
+  const f = fixture();
+  f.intercept(({ path }) => {
+    if (path === '/followups') throw { statusCode: 403, code: 'construction_password_required' };
+  });
+
+  await f.controller.show({ board: true });
+  assert.equal(f.controller.state.followupPasswordRequired, true);
+  assert.equal(f.controller.state.followupActive, true);
+  assert.equal(f.controller.state.followupListLoading, false);
+  assert.equal(f.controller.state.followupLoading, false);
+  assert.equal(f.controller.state.followupContext, null);
+  assert.deepEqual(f.controller.state.followupBindings, []);
+  assert.deepEqual(f.controller.state.followupReports, []);
+
+  f.intercept(null);
+  await f.controller.show({ board: true });
+  assert.equal(f.controller.state.followupPasswordRequired, false);
+  assert.equal(f.controller.state.followupActive, true);
+  assert.equal(f.controller.state.followupContext.bindingId, '27');
+
+  f.controller.hide();
+  f.intercept(({ path }) => {
+    if (path === '/followups') throw { statusCode: 403, code: 'construction_password_required' };
+  });
+  await f.controller.show({ autoOpen: true });
+  assert.equal(f.controller.state.followupPasswordRequired, true);
+  assert.equal(f.controller.state.followupActive, true);
+  assert.equal(f.controller.state.followupContext, null);
+
+  f.intercept(null);
+  await f.controller.show({ autoOpen: true });
+  assert.equal(f.controller.state.followupPasswordRequired, false);
+  assert.equal(f.controller.state.followupActive, true);
+  assert.equal(f.controller.state.followupContext.bindingId, '27');
+  assert.equal(f.controller.state.followupReports[0].reportId, '98');
+  f.controller.hide();
+});
+
+test('ordinary staff denial does not enter the initial-password state', async () => {
+  const f = fixture();
+  f.intercept(({ path }) => {
+    if (path === '/followups') throw { statusCode: 403, code: 'construction_forbidden' };
+  });
+
+  await f.controller.show({ autoOpen: true });
+  assert.equal(f.controller.state.followupPasswordRequired, false);
+  assert.equal(f.controller.state.followupActive, false);
+  assert.match(f.controller.state.followupError, /当前身份无法查看/);
+  assert.equal(f.controller.state.followupContext, null);
+  assert.deepEqual(f.controller.state.followupReports, []);
+});
+
+test('staff without an active project shows the no-project empty state instead of a network error', async () => {
+  const f = fixture();
+  f.intercept(({ path }) => {
+    if (path === '/followups') return { items: [] };
+    if (path === '/followups/manage') return { items: [], nextCursor: null };
+    if (path === '/followups/open') throw { statusCode: 409, code: 'construction_followup_no_project' };
+  });
+
+  await f.controller.show({ autoOpen: true });
+  assert.equal(f.controller.state.followupNoProject, true);
+  assert.equal(f.controller.state.followupError, '');
+  assert.equal(f.controller.state.followupActive, true);
+  assert.equal(f.controller.state.followupPasswordRequired, false);
+  assert.deepEqual(f.controller.state.followupBindings, []);
+});
+
+test('initial-password guard stops polling and ignores a late response after leaving the page', async () => {
+  const f = fixture();
+  let scheduled = 0;
+  let unscheduled = 0;
+  f.controller.schedule = () => ++scheduled;
+  f.controller.unschedule = () => { unscheduled += 1; };
+  await f.controller.show({ autoOpen: true });
+  f.controller.startPolling();
+  const beforeGuardSchedule = scheduled;
+  const beforeGuardUnschedule = unscheduled;
+
+  f.controller.failure({ statusCode: 403, code: 'construction_password_required' });
+  assert.equal(f.controller.state.followupPasswordRequired, true);
+  assert.equal(f.controller.state.followupActive, true);
+  assert.ok(unscheduled > beforeGuardUnschedule);
+  f.controller.startPolling();
+  assert.equal(scheduled, beforeGuardSchedule);
+
+  let rejectList;
+  f.intercept(({ path }) => {
+    if (path === '/followups') return new Promise((resolve, reject) => { rejectList = reject; });
+  });
+  const pending = f.controller.show({ autoOpen: true });
+  await new Promise(resolve => setImmediate(resolve));
+  f.controller.hide();
+  rejectList({ statusCode: 403, code: 'construction_password_required' });
+  await pending;
+  assert.equal(f.controller.state.followupPasswordRequired, false);
+  assert.equal(f.controller.state.followupActive, false);
+});
+
 test('staff follow-up can reopen its original entry after a transport failure before binding selection', async () => {
   const f = fixture();
   f.intercept(({ path }) => {

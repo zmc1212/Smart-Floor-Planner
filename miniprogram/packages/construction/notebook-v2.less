@@ -1,0 +1,137 @@
+.notebook-cover-v2 {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.notebook-context-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  margin: 10px 0 0;
+  border-bottom: 1rpx solid #b8c6b5;
+  color: #50655a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.notebook-context-name { font-size: 17px; font-weight: 600; color: #084637; overflow-wrap: anywhere; }
+.notebook-context-right { flex: none; display: flex; align-items: center; gap: 8px; }
+
+.notebook-task-v2 {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 212px;
+  margin: 31px -4px 18px;
+  padding: 34px 19px 20px;
+  color: #103b30;
+}
+.notebook-task-copy { padding-bottom: 15px; }
+.notebook-task-paper {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(1px 4px 4px #67533731);
+  pointer-events: none;
+}
+.notebook-task-tab {
+  position: absolute;
+  z-index: 1;
+  top: -13px;
+  left: 8px;
+  padding: 6px 13px;
+  min-width: 81px;
+  box-sizing: border-box;
+  text-align: center;
+  transform: rotate(-4deg);
+  border-radius: 2px;
+  background: repeating-linear-gradient(45deg, #fff1 0 1px, transparent 1px 4px), linear-gradient(120deg, #033326, #0a503c);
+  box-shadow: 0 2px 4px #4e3f2c4d;
+  color: #fffced;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 19px;
+}
+.notebook-task-tab::after { content: ''; position: absolute; inset: 3px; border: 1rpx dashed #e3d9bc; pointer-events: none; }
+.notebook-task-tab-amber {
+  background: repeating-linear-gradient(45deg, #fff1 0 1px, transparent 1px 4px), linear-gradient(120deg, #66472e, #8b623b);
+}
+.notebook-task-tab-red {
+  background: repeating-linear-gradient(45deg, #fff1 0 1px, transparent 1px 4px), linear-gradient(120deg, #632f25, #984f3e);
+}
+.notebook-task-title, .notebook-task-meta, .notebook-task-note {
+  position: relative;
+  display: block;
+  overflow-wrap: anywhere;
+}
+.notebook-task-title { font: 900 27px/1.23 'Site Serif', 'Songti SC', SimSun, serif; color: #084637; }
+.notebook-task-time { font: 700 34px/1.1 -apple-system, BlinkMacSystemFont, sans-serif; }
+.notebook-task-meta { margin-top: 12px; font-size: 15px; font-weight: 500; line-height: 1.45; }
+.notebook-task-note { margin-top: 3px; color: #50655a; font-size: 13px; line-height: 1.45; }
+button.notebook-task-action {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100% !important;
+  flex: none;
+  min-height: 49px;
+  margin: auto 0 0;
+  padding: 5px 14px;
+  border-radius: 7px;
+  background: #084637;
+  color: #fffdf1;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+button.notebook-task-action::after, button.notebook-row-v2::after { border: 0; }
+.notebook-task-action:active { opacity: .82; }
+.notebook-task-arrow { flex: none; width: 13px; height: 13px; filter: brightness(0) invert(1); }
+.notebook-section-v2 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0 8px;
+  border-bottom: 1rpx solid #b8c6b5;
+  color: #103b30;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.notebook-muted-v2 { color: #50655a; font-size: 12px; font-weight: 400; line-height: 1.45; }
+.notebook-row-v2, button.notebook-row-v2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100% !important;
+  min-height: 52px;
+  margin: 0;
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1rpx solid #b8c6b5;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  box-sizing: border-box;
+  color: #103b30;
+  text-align: left;
+  font-size: 15px;
+  line-height: 1.45;
+}
+button.notebook-row-v2:active { background: #e0e9d85c; }
+.notebook-row-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.notebook-row-icon { flex: none; width: 20px; height: 20px; }
+.notebook-ink-icon { filter: brightness(0) saturate(100%) invert(22%) sepia(24%) saturate(1962%) hue-rotate(120deg) brightness(84%); }
+.notebook-link-v2 { flex: none; display: flex; align-items: center; gap: 6px; color: #084637; font-size: 13px; font-weight: 500; }
+.notebook-link-v2 image { width: 12px; height: 12px; }

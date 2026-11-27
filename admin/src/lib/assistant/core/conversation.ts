@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { minimalDialogueProtocol } from '../agent/minimal-dialogue';
-import { withPlatformTransaction, withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
+import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { delegationsEnabled } from '@/lib/native-workflow/live/delegation-config';
 import { recordDelegationExternalResult } from '@/lib/native-workflow/live/delegation-external';
 import { applyDelegationCommand, delegationCommand, recordDelegationOwnerInput } from '@/lib/native-workflow/live/delegation-chat';
@@ -112,12 +112,15 @@ export function runDto(r: Row) {
     answerKind:r.answer_kind ?? null,errorCode: r.error_code, usageReconciled: r.usage_reconciled === true,
     retryable: !r.trigger_deleted && !r.awaiting_reconciliation && ['failed', 'cancelled'].includes(String(r.status)), nextPollMs: ['queued', 'running'].includes(String(r.status)) ? 1500 : null };
 }
+export function readIdempotencyRecord(tx: PostgresTransaction, actor: ActorContext, operation: string, requestKey: string) {
+  key(requestKey);
+  return one(tx, sql`select request_hash,result from app.assistant_idempotency_records where enterprise_id=${actor.enterpriseId}
+    and principal_key=${principalKey(actor)} and operation=${operation} and key=${requestKey}`);
+}
 /** Retain operation results with their resources; expiry is not permission to duplicate effects. */
 export async function idempotent(tx: PostgresTransaction, actor: ActorContext, operation: string, requestKey: string, body: unknown, action: () => Promise<Row>): Promise<Row> {
-  key(requestKey);
   const hash = fingerprint(body);
-  const old = await one(tx, sql`select * from app.assistant_idempotency_records where enterprise_id=${actor.enterpriseId}
-    and principal_key=${principalKey(actor)} and operation=${operation} and key=${requestKey}`);
+  const old = await readIdempotencyRecord(tx, actor, operation, requestKey);
   if (old) { if (old.request_hash !== hash) fail('idempotency_conflict'); return old.result as Row; }
   const result = await action();
   await tx.execute(sql`insert into app.assistant_idempotency_records(enterprise_id,principal_key,operation,key,request_hash,result,expires_at)
@@ -202,7 +205,7 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   if (publicScope && actor.entry?.scope !== 'public') fail('context_changed');
   if (publicScope && purpose !== 'reply') fail('assistant_capability_forbidden', 403);
   if (publicScope) {
-    const currentPublic = await withPlatformTransaction(tx => readPublicAssistantScope(tx));
+    const currentPublic = await readPublicAssistantScope(tx);
     if (!currentPublic || currentPublic.enterpriseId !== actor.enterpriseId || !currentPublic.config.enabled
       || Number(currentPublic.config.version) !== Number(actor.entry?.publicConfigVersion)) fail('assistant_disabled', 403);
   }
@@ -569,7 +572,7 @@ export class ConversationService {
           ...(quoteId ? { messageQuote: { id: quoteId, text: quote?.text || '' } } : {}),
           ...(intent && (intent.sites || intent.works) ? { discovery: intent } : {}),
           ...(editableQuestion(repo, c, message, projected) ? { editableQuestion: true } : {}),
-          ...(readable ? { replyActions: replyControls(message, projected, feedback.get(projected.id) ?? null) } : {}),
+          ...(readable ? { replyActions: replyControls(this.actor, message, projected, feedback.get(projected.id) ?? null) } : {}),
           ...(process ? { answerProcess: projectAnswerProcess(process, projected.citations) } : {}),
         });
       }

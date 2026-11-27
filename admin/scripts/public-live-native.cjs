@@ -14,6 +14,25 @@ module.exports=async ctx=>{
   const step=async(name,fn)=>{try{await ctx.assertHeld();const data=await fn();await ctx.assertHeld();report.checks.push({name,passed:true,data});console.log('native '+name+': PASS');return data;}catch(e){report.checks.push({name,passed:false,error:e.stack,cliFailure:e.toJSON?.(),observations:e.observations});throw e;}finally{save();}};
   const page=target=>wait(async()=>{const p=await cli.currentPage();return p?.path===target?p:null;},'exact route '+target);
   const tap=async(p,selector)=>{const el=await p.$(selector);assert.ok(el,selector);await el.tap();};
+  const activatePublicControl=async(selector,method)=>{
+    const requested=await cli.evaluateSource((()=>{
+      const current=getCurrentPages().at(-1),state=getApp().__qaPublicLive;
+      const component=current?.selectComponent('#public-live-player');
+      if(!component)return {requested:false};
+      state.playerAction=null;
+      component.createSelectorQuery().select('.frame').boundingClientRect().select('__CONTROL__').boundingClientRect()
+        .exec(([frame,bounds])=>{
+          const activated=Boolean(frame&&bounds?.width&&bounds.height&&typeof component.__METHOD__==='function');
+          if(activated)component.__METHOD__();
+          state.playerAction={frame,bounds,activated};
+        });
+      return {requested:true};
+    }).toString().replace('__CONTROL__',selector).replaceAll('__METHOD__',method));
+    assert.ok(requested.requested,'mounted public player');
+    const action=await wait(()=>cli.evaluate(()=>getApp().__qaPublicLive.playerAction||null),'public player control '+selector);
+    assert.ok(action.activated,selector);
+    return action;
+  };
   const capture=async(name,target)=>{assert.equal((await cli.pageStack()).at(-1).path,target);await delay(400);const file=path.join(output,name+'.png');assert.ok(!fs.existsSync(file));await cli.screenshot({path:file});const b=fs.readFileSync(file);report.captures.push({file,route:target,logical:[390,844],encoded:[b.readUInt32BE(16),b.readUInt32BE(20)]});save();};
   const ownerReady=p=>wait(async()=>{const d=await p.data();const card=Object.values(d.liveCards||{}).find(c=>c.id===f.liveId&&c.versionId===f.versionId);return !d.loading&&!d.fatal&&card?{d,card}:null;},'current original live consent');
   const host=(file,args=[])=>{
@@ -143,17 +162,17 @@ module.exports=async ctx=>{
       await cli.reLaunch('/'+detail+'?enterpriseId='+f.eid+'&siteId='+f.photoId+'&versionId='+f.photoVersionId);let p=await page(detail);
       await wait(async()=>{const d=await p.data();return d.site?.id===f.photoId&&d.liveEntry?.key===f.key;},'real public detail and independent live entry');await capture('public-detail',detail);
       await tap(p,'.public-live-row button');p=await page(player);await wait(async()=>{const d=await p.data();if(d.state==='failed')throw Error('Native player connection failed: '+d.error);return d.state==='playing';},'actual native video play',90);await capture('public-playing',player);
-      await cli.evaluate(()=>{wx.createSelectorQuery().select('.live-video-frame').boundingClientRect().select('.live-video-tools button').boundingClientRect().exec(rects=>{getApp().__qaPublicLive.playerMetrics=rects;});return {requested:true};});
-      report.playerBounds=await wait(()=>cli.evaluate(()=>getApp().__qaPublicLive.playerMetrics||null),'player element bounds');
-      assert.ok(Math.abs(report.playerBounds[0].width/report.playerBounds[0].height-16/9)<0.03);assert.ok(report.playerBounds[1].height>=44);
-      await tap(p,'.live-video-tools button');await wait(async()=>(await p.data()).state==='paused','visible pause');await capture('public-paused',player);
-      await tap(p,'.live-video-tools button');await wait(async()=>(await p.data()).state==='playing','current live resume');return {nativePlayed:true,serverAudio:'verified by service04 real decoding',paused:true};
+      const {frame,bounds}=await activatePublicControl('.pause-toggle','togglePause');
+      report.playerBounds=[frame,bounds];
+      assert.ok(Math.abs(frame.width/frame.height-16/9)<0.03);assert.ok(bounds.height>=44);
+      await wait(async()=>(await p.data()).state==='paused','visible pause');await capture('public-paused',player);
+      await activatePublicControl('.pause-toggle','togglePause');await wait(async()=>(await p.data()).state==='playing','current live resume');return {nativePlayed:true,serverAudio:'verified by service04 real decoding',paused:true,controls:'mounted handler'};
     });
     await step('real HTTP503 clears media and the visible retry returns to current live',async()=>{
       await cli.evaluate(()=>{getApp().__qaPublicLive.failNextLive=true;return {armed:true};});
       await cli.reLaunch('/'+player+'?enterpriseId='+f.eid+'&key='+f.key);const p=await page(player);
       await wait(async()=>{const d=await p.data();return d.state==='failed'&&!d.src;},'real503 connection failure feedback');await capture('public-503',player);
-      await tap(p,'.live-state-layer button');await wait(async()=>(await p.data()).state==='playing','same-scope actual retry');await capture('public-recovered',player);return {realHttp503:true,srcCleared:true,retried:true};
+      await activatePublicControl('.play','play');await wait(async()=>(await p.data()).state==='playing','same-scope actual retry');await capture('public-recovered',player);return {realHttp503:true,srcCleared:true,retried:true,controls:'mounted handler'};
     });
     await step('owner stops through the real original card; old session and link fail, photos remain',async()=>{
       let p=await page(player);const oldSrc=(await p.data()).src;

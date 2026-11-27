@@ -333,7 +333,7 @@ test('renovation profile follows the confirmed home, merges corrections, and wit
   const fixtures = await withPlatformTransaction(async tx => {
     const secondHome = await one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
       values(${actor.enterpriseId},${users[0]},${prefix+'-second-home'},'13000000000','manual') returning id`);
-    const operators = [];
+    const operators: Array<{ id: string; role: 'admin' | 'super_admin' | 'designer' }> = [];
     for (const role of ['admin', 'super_admin', 'designer', 'designer'] as const) {
       const staff = await one(tx, sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,must_change_password)
         values(${role === 'designer' ? actor.enterpriseId : null},${prefix + '-profile-' + operators.length},'test',${role},'active',false) returning id`);

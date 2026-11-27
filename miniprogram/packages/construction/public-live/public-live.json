@@ -1,1 +1,7 @@
-{"navigationStyle":"custom","disableScroll":true}
+{
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "usingComponents": {
+    "native-live-player": "../components/native-live-player/native-live-player"
+  }
+}

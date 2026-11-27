@@ -1,0 +1,73 @@
+@import './question-return-font.less';
+
+.notebook-chat {
+  .question-return-welcome { margin: 92px 3px 14px 4px; }
+  .question-return-paper {
+    position: relative;
+    min-height: 225px;
+    box-sizing: border-box;
+    padding: 73px 14px 25px;
+    text-align: center;
+    border: 1px solid #fffdf3;
+    border-radius: 9px;
+    background: linear-gradient(116deg, #fffdf3, #f9f5e8);
+    box-shadow: 0 3px 6px #755f3226;
+  }
+  .question-return-sage { position: absolute; top: -76px; left: 25px; width: 74px; height: 110px; opacity: .62; }
+  .question-return-mascot { position: absolute; top: -98px; left: calc(50% - 70px); width: 139px; height: 144px; }
+  .question-return-title { display: block; color: #113a30; font: 900 34px/1.4 'Question Return Serif', 'Chat Serif', SimSun, serif; }
+  .question-return-line { width: 60px; height: 1px; margin: 8px auto 19px; background: #8da38b; }
+  .question-return-copy { display: block; color: #536b60; font-size: 15px; font-weight: 500; line-height: 1.5; }
+  .composer.question-return-composer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 9px;
+    min-height: 119px;
+    padding: 0 15px 9px 16px;
+    box-sizing: border-box;
+    border: 1px solid #9cb6a1;
+    border-radius: 13px;
+    background: linear-gradient(125deg, #fffdf6, #fbf8ed);
+    box-shadow: 0 2px 5px #6b5a341c;
+    .composer-input {
+      flex: 0 0 100%;
+      width: 100%;
+      min-height: 55px;
+      max-height: 142px;
+      margin: 0;
+      padding: 15px 0 10px;
+      box-sizing: border-box;
+      border-bottom: 1px solid #dee6d9;
+      color: #113a30;
+      font-size: 17px;
+      font-weight: 500;
+      line-height: 1.45;
+    }
+    .question-return-status { flex: 1; color: #536b60; font-size: 12px; line-height: 1.4; }
+    .send-button.chat-button {
+      flex: 0 0 81px;
+      width: 81px;
+      min-width: 81px;
+      max-width: 81px;
+      height: 44px;
+      min-height: 44px;
+      margin: 7px 0 0;
+      border-radius: 8px;
+      color: #fffdf3;
+      background: #0c503e;
+      font-size: 16px;
+      font-weight: 600;
+      box-shadow: 0 2px 4px #143a252b;
+      &.is-disabled { background: #e3ece1; color: #61756a; box-shadow: none; }
+    }
+  }
+  &.question-return-active {
+    .composer-dock { padding-right: 15px; padding-left: 28px; }
+    .conversation-content { padding-right: 14px; }
+  }
+}
+
+@media (max-height: 720px) {
+  .notebook-chat .question-return-welcome { margin-top: 64px; }
+}

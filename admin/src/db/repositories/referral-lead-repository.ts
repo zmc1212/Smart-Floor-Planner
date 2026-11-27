@@ -333,7 +333,7 @@ export class ReferralLeadRepository {
     if (idempotent) {
       const { lead } = await this.findActiveCustomerAttribution(input.customerUserId);
       if (!lead || !idempotent.enterpriseId) throw referralError('customer_service_changed', '原服务关系已变更，请重新扫码');
-      if (lead.enterpriseId !== idempotent.enterpriseId) return { kind: 'existing_attribution', lead };
+      if (lead.id !== idempotent.id) return { kind: 'existing_attribution', lead };
       return { kind: 'idempotent', lead: idempotent };
     }
     if (input.source.expired) {

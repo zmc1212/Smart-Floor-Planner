@@ -40,6 +40,8 @@ before(async()=>{
       managers.push({enterpriseId:eid,principal:{kind:'admin',adminId:String(a.id)},contextVersion:1,capabilities:['assistant.preview.self']});
       const u=(await one(tx,sql`insert into app.users(nickname,context_version) values(${prefix+i},1) returning id`))!;users.push(String(u.id));
       await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${String(u.id)},${prefix+i})`);
+      await tx.execute(sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+        values(${eid},${String(u.id)},${prefix+'-service-'+i},${'1390012888'+i},'natural')`);
       actors.push({enterpriseId:eid,principal:{kind:'user',userId:String(u.id)},contextVersion:1,capabilities:['assistant.chat.self']});
     }
     const a=(await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password)
@@ -51,7 +53,12 @@ before(async()=>{
 });
 after(async()=>{
   await withPlatformTransaction(async tx=>{
-    for(const eid of tenants) {await deleteAssistantData(tx,BigInt(eid));await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`);await tx.execute(sql`delete from app.enterprises where id=${eid}`);}
+    for(const eid of tenants) {
+      await deleteAssistantData(tx,BigInt(eid));
+      await tx.execute(sql`delete from app.leads where enterprise_id=${eid}`);
+      await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`);
+      await tx.execute(sql`delete from app.enterprises where id=${eid}`);
+    }
     for(const uid of users)await tx.execute(sql`delete from app.users where id=${uid}`);
   });await closePostgresPool();
 });

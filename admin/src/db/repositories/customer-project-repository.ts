@@ -37,6 +37,7 @@ export type CustomerProject = {
 
 export type CustomerProjectIndexItem = {
   leadId: bigint;
+  communityName: string | null;
   enterpriseName: string;
   status: string;
   terminationType: string | null;
@@ -180,6 +181,7 @@ export class CustomerProjectRepository {
     const rows = await this.transaction
       .select({
         leadId: leads.id,
+        communityName: leads.communityName,
         enterpriseName: enterprises.name,
         status: leads.status,
         terminationType: leads.terminationType,

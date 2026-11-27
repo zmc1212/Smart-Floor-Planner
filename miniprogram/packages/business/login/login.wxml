@@ -5,7 +5,40 @@
   FIRST VIEWPORT: 上半屏是完整开门场景；登录面板在场景下缘上浮，能力摘要和返回入口同屏收束。
   FORM: Operate 模式，按 design-references/all-pages-ip-v1/06-login.png 直接高保真还原。
 -->
-<view class="login-page">
+<view wx:if="{{resumeQuestion}}" class="question-login">
+  <image class="question-login-grain" src="../assets/login-v1/question-paper.png" mode="aspectFill" aria-hidden="true" />
+  <view class="question-login-spine" aria-hidden="true">
+    <view wx:for="{{[10, 36, 62, 92]}}" wx:key="*this" class="question-login-stitch" style="top:{{item}}%;" />
+  </view>
+  <view class="question-login-nav" style="padding-top:{{resumeNavTop}}px; min-height:{{resumeNavHeight}}px;">
+    <button bindtap="onBack" class="question-login-back" aria-label="返回小K"><view /></button>
+    <text>小K</text>
+  </view>
+  <view class="question-login-content">
+    <view class="question-login-art" aria-hidden="true">
+      <image class="question-login-sage" src="../assets/login-v1/question-sage.png" mode="aspectFit" />
+      <image class="question-login-mascot" src="../assets/login-v1/question-mascot.png" mode="aspectFit" />
+    </view>
+    <text class="question-login-title">继续向小K提问</text>
+    <text class="question-login-copy">登录后继续咨询，聊天记录可随时找回。</text>
+    <view class="question-login-note">
+      <text class="question-login-note-label">刚才选的问题</text>
+      <text class="question-login-question" user-select>{{resumeQuestion}}</text>
+    </view>
+    <view class="question-login-agreement" bindtap="onToggleAgreement" role="checkbox" aria-checked="{{agreed}}">
+      <view class="question-login-check {{agreed ? 'is-checked' : ''}}" />
+      <view class="question-login-legal">
+        <text>我已阅读并同意</text><text class="question-login-link" catchtap="onOpenLegalDoc" data-kind="user">《用户协议》</text><text>和</text><text class="question-login-link" catchtap="onOpenLegalDoc" data-kind="privacy">《隐私政策》</text>
+      </view>
+    </view>
+    <button wx:if="{{agreed}}" class="question-login-primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{loading}}" disabled="{{loading}}">
+      {{loading ? '正在登录…' : '手机号快捷登录'}}<view wx:if="{{!loading}}" class="question-login-chevron" aria-hidden="true" />
+    </button>
+    <button wx:else class="question-login-primary" bindtap="onNeedAgreement">手机号快捷登录<view class="question-login-chevron" aria-hidden="true" /></button>
+    <button class="question-login-later" bindtap="onBack" disabled="{{loading}}">暂不登录</button>
+  </view>
+</view>
+<view wx:else class="login-page">
   <view class="hero-wrap" aria-label="家客来企业客户工作台，欢迎回来，家客来伙伴">
     <image class="hero-image" src="/packages/business/assets/login-v1/hero-scene.jpg" mode="aspectFill" />
   </view>
@@ -89,14 +122,16 @@
         <view class="feature-desc">快速获取数据</view>
       </view>
     </view>
-    <view class="feature-divider"></view>
-    <view class="feature-item">
-      <image class="feature-icon" src="/packages/business/assets/login-v1/ai.png" mode="aspectFit" />
-      <view class="feature-copy">
-        <view class="feature-title">AI设计</view>
-        <view class="feature-desc">高效方案生成</view>
+    <block wx:if="{{aiEntriesEnabled}}">
+      <view class="feature-divider"></view>
+      <view class="feature-item">
+        <image class="feature-icon" src="/packages/business/assets/login-v1/ai.png" mode="aspectFit" />
+        <view class="feature-copy">
+          <view class="feature-title">AI设计</view>
+          <view class="feature-desc">高效方案生成</view>
+        </view>
       </view>
-    </view>
+    </block>
     <view class="feature-divider"></view>
     <view class="feature-item">
       <image class="feature-icon" src="/packages/business/assets/login-v1/images.png" mode="aspectFit" />

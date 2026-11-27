@@ -201,12 +201,13 @@ test('formal-survey keeps next-action right of the tab, address on its own row, 
   assert.ok(conversionIndex > historyIndex);
 });
 
-test('designer and enterprise owner AI design CTA appears on open leads without requiring survey or published schemes', () => {
+test('the lead detail guards AI design separately from published schemes and formal surveying', () => {
   const script = fs.readFileSync(
     path.join(__dirname, '..', 'packages', 'enterprise', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(script, /function canOpenAIDesignWorkbench\(/);
+  assert.match(script, /if \(!aiEntriesEnabled\(\)\) return false;/);
   assert.match(script, /\['designer', 'enterprise_admin'\]\.includes\(staffRole\)/);
   assert.match(script, /function eligibleAIDesignFloorPlanId\(/);
   assert.match(script, /plan\.status !== 'completed'/);

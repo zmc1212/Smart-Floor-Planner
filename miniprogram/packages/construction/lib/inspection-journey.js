@@ -1,6 +1,6 @@
 const maxStops = 8;
 const validId = value => typeof value === 'string' && /^[1-9]\d{0,18}$/.test(value);
-const shanghaiDay = () => new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+const shanghaiDay = (now = Date.now()) => new Date(now + 8 * 3600000).toISOString().slice(0, 10);
 
 function inspectionJourneyKey(context) {
   const enterprise = String(context?.enterpriseId || '');

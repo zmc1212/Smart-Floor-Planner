@@ -25,7 +25,7 @@ function createPage(definition) {
   };
 }
 
-test('a result deep link without a task ID exits loading and returns to the existing Design entry', () => {
+test('a stale result invocation returns to the homepage while AI Design is paused', () => {
   const originalWx = global.wx;
   const originalGetApp = global.getApp;
   const destinations = [];
@@ -34,9 +34,9 @@ test('a result deep link without a task ID exits loading and returns to the exis
   try {
     const page = createPage(loadPageDefinition());
     page.data.task = null;
-    page.onLoad({});
-    assert.equal(page.data.loading, false);
-    assert.deepEqual(destinations, ['/pages/ai-design/ai-design']);
+    page.loadTask = () => assert.fail('paused Design must not load a task');
+    page.onLoad({ id: '42', run: '1' });
+    assert.deepEqual(destinations, ['/pages/index/index']);
   } finally {
     global.wx = originalWx;
     if (originalGetApp === undefined) delete global.getApp; else global.getApp = originalGetApp;

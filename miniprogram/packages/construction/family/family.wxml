@@ -48,6 +48,32 @@
         <text class="page-title family-project-title">{{projectName}}</text>
         <text class="family-role">家人 · 只读</text>
       </view>
+      <view wx:if="{{cameraError}}" class="feedback family-section-state">{{cameraError}}</view>
+      <view wx:elif="{{cameras.length}}" class="family-live">
+        <view class="family-live-heading"><text class="fabric family-live-tab">直播</text></view>
+        <view class="paper family-camera">
+          <native-live-player id="family-live-player"
+            src="{{liveSrc}}" epoch="{{liveEpoch}}" phase="{{livePhase}}" message="{{liveMessage}}" audio-allowed="{{true}}"
+            bindadvance="onLiveAdvance" bindplaybackerror="onLiveError" bindplay="startFamilyLive" bindstop="stopFamilyLive"
+          />
+          <view class="family-live-caption">
+            <picker wx:if="{{cameras.length > 1}}" class="family-camera-picker" range="{{cameras}}" range-key="name" value="{{cameraIndex}}" bindchange="switchFamilyCamera">
+              <view class="family-camera-choice">
+                <text class="family-camera-name">{{cameras[cameraIndex].name}}</text>
+                <image class="family-caption-chevron" src="../assets/notebook/chevron.png" mode="aspectFit" aria-hidden="true" />
+              </view>
+            </picker>
+            <text wx:else class="family-camera-name">{{cameras[0].name}}</text>
+            <button size="mini" class="family-player-settings" bindtap="toggleFamilyLiveSettings" aria-expanded="{{liveSettings}}">
+              <text>播放设置</text>
+              <image class="family-caption-chevron" src="../assets/notebook/chevron.png" mode="aspectFit" aria-hidden="true" />
+            </button>
+          </view>
+          <view wx:if="{{liveSettings}}" class="family-live-settings">
+            <button class="text-action" bindtap="openCamera">用兼容播放器打开</button>
+          </view>
+        </view>
+      </view>
       <view wx:if="{{progressError}}" class="feedback family-section-state">{{progressError}}</view>
       <view wx:elif="{{progress}}" class="paper family-progress">
         <view class="section-heading family-progress-head">
@@ -58,20 +84,6 @@
         <text class="family-stage-value">{{progress.construction.stageName || '团队尚未标记'}}</text>
         <text class="family-summary">{{progress.available === false ? '施工计划尚未发布，暂无法判断进度是否正常。' : progress.summary}}</text>
         <template is="progress-nodes" data="{{nodes: progress.nodes, showReason: true}}" />
-      </view>
-      <view wx:if="{{cameraError}}" class="feedback family-section-state">{{cameraError}}</view>
-      <view wx:elif="{{cameras.length}}" class="paper family-camera">
-        <view class="family-camera-head">
-          <image class="family-camera-icon" src="../assets/notebook/video.png" mode="aspectFit" aria-hidden="true" />
-          <text class="section-title family-camera-title">工地直播</text>
-        </view>
-        <view class="family-camera-names">
-          <text wx:for="{{cameras}}" wx:key="id" class="family-camera-name">{{item.name || '工地摄像头'}}</text>
-        </view>
-        <button class="primary family-watch" bindtap="openCamera" hover-class="family-watch-pressed">
-          <view class="family-play" aria-hidden="true" />
-          <text class="family-watch-copy">观看直播</text>
-        </button>
       </view>
       <view class="family-permission">
         <image class="family-permission-icon" src="../assets/notebook/lock-keyhole.png" mode="aspectFit" aria-hidden="true" />

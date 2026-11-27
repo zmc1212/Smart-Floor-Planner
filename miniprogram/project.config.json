@@ -43,6 +43,10 @@
         "type": "file"
       },
       {
+        "value": "images/home-ip-v1/hero-scene-wechat-safe-overscan.png",
+        "type": "file"
+      },
+      {
         "value": "packages/assistant/assets/studio-serif-data.js",
         "type": "file"
       },
@@ -58,6 +62,14 @@
       },
       {
         "value": "packages/construction/assets/notebook-font.woff2.br",
+        "type": "file"
+      },
+      {
+        "value": "packages/construction/assets/notebook/family-invite-share-cover.jpg",
+        "type": "file"
+      },
+      {
+        "value": "images/share/jiakelai-share-cover.jpg",
         "type": "file"
       }
     ]

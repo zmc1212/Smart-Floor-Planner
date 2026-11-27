@@ -1,4 +1,5 @@
 const api = require('../../../utils/api');
+const { brandShareCover } = require('../../../utils/share-cover');
 const nativePreview = require('../../../utils/native-preview');
 const surveyLayout = require('../../../utils/surveyLayout.js');
 const { openSurveyingEditor } = require('../../../utils/surveyNavigation.js');
@@ -351,6 +352,7 @@ Page({
     return {
       title: '上门量房预约卡片',
       path: `/packages/enterprise/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId || '')}&appointmentId=${encodeURIComponent(appointment && appointment.id || '')}`,
+      imageUrl: brandShareCover,
     };
   },
 

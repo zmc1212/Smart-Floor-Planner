@@ -3,6 +3,7 @@ const { goToLogin } = require('../../../utils/session');
 const { copyDesignerWechatId } = require('../../../utils/designerContact');
 const nativePreview = require('../../../utils/native-preview');
 const { loadStudioFont } = require('./studio-font');
+const { aiEntriesEnabled, syncAiEntryVisibility } = require('../../../utils/ai-entries');
 function identity() { return getApp().globalData.token || wx.getStorageSync('token') || ''; }
 function originalChat(page, id) {
   const chat = page.route === 'packages/assistant/chat/chat' ? page
@@ -12,7 +13,7 @@ function originalChat(page, id) {
 function contactToast(title, icon = 'none') { wx.showToast({ title, icon }); }
 function page(kind) {
   return {
-    data: { ...initial(), studioSheetVisible: false, studioSheetOpen: false, contactSheetVisible: false, contactSheetOpen: false,
+    data: { ...initial(), aiEntriesEnabled: false, studioSheetVisible: false, studioSheetOpen: false, contactSheetVisible: false, contactSheetOpen: false,
       studioDraft: studioDefaults(), studioDraftCount: 0,
       studioSheetBodyHeight: 285, navigationTop: 47, navigationHeight: 44, navigationRight: 100, navigationBottom: 91 },
     onLoad(options) {
@@ -37,6 +38,7 @@ function page(kind) {
       // Returning from the native image viewer keeps the rendered gallery,
       // filters and scroll position instead of rebuilding the page.
       if (nativePreview.shownAfterPreview(this)) { this._previewPaths = null; this._previewPending = null; return; }
+      this.syncAiEntryVisibility();
       if (this._previewPaths) this.controller.images.clear();
       this._previewPaths = null;
       this._previewPending = null;
@@ -50,6 +52,7 @@ function page(kind) {
         }
       }
     },
+    syncAiEntryVisibility,
     onHide() {
       this._shown = false;
       if (nativePreview.hiddenByPreview(this)) return;
@@ -153,7 +156,7 @@ function page(kind) {
     },
     continueChat() {
       const id = this.data.conversationId;
-      if (!id || this.data.needsLogin) { wx.switchTab({ url: '/pages/index/index' }); return; }
+      if (!aiEntriesEnabled() || !id || this.data.needsLogin) { wx.switchTab({ url: '/pages/index/index' }); return; }
       const pages = getCurrentPages();
       const index = pages.findIndex(p => originalChat(p, id));
       if (index >= 0 && index < pages.length - 1) wx.navigateBack({ delta: pages.length - 1 - index });
@@ -228,7 +231,7 @@ function page(kind) {
     async contact() {
       if (await this.controller.write('contact')) {
         if (this.data.contactSheetVisible) this.closePublicContact();
-        this.continueChat();
+        if (aiEntriesEnabled()) this.continueChat();
       }
     },
     preference(event) { return this.controller.write(event.currentTarget.dataset.sentiment); },
@@ -272,6 +275,7 @@ function page(kind) {
       } finally { if (this._previewPending === epoch) this._previewPending = null; }
     },
     pickTopic(event) {
+      if (!aiEntriesEnabled()) return;
       const text = event.currentTarget.dataset.text;
       this._prompt = text;
       const pages = getCurrentPages();

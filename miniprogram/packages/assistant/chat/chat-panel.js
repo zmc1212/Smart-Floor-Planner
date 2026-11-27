@@ -9,11 +9,12 @@ const methods = Object.fromEntries(Object.entries(definition).filter(([key]) => 
 Component({
   options: { styleIsolation: 'isolated' },
   properties: {
-    active: { type: Boolean, value: false, observer() { this.syncVisibility(); } },
+    active: { type: Boolean, value: false, observer() { this.syncVisibility(); this.notifyEntryReady(); } },
     staffTab: { type: Boolean, value: false },
     promotionCode: { type: String, value: '' },
   },
-  data: { ...definition.data, embedded: true },
+  data: { ...definition.data, embedded: true, chatEntryVisible: true },
+  observers: { loading() { this.notifyEntryReady(); } },
   lifetimes: {
     attached() {
       this._hostVisible = true;
@@ -21,7 +22,8 @@ Component({
       this._attached = true;
       this.syncVisibility();
     },
-    detached() { definition.onUnload.call(this); },
+    ready() { this._layoutReady = true; this.notifyEntryReady(); },
+    detached() { this._attached = false; definition.onUnload.call(this); },
   },
   pageLifetimes: {
     show() {
@@ -37,6 +39,11 @@ Component({
   },
   methods: {
     ...methods,
+    notifyEntryReady() {
+      if (!this._layoutReady || this._entryReady || (this.data.active && this.data.loading)) return;
+      this._entryReady = true;
+      wx.nextTick(() => { if (this._attached) this.triggerEvent('entryready'); });
+    },
     syncVisibility() {
       if (!this._attached) return;
       const visible = this.data.active && this._hostVisible;

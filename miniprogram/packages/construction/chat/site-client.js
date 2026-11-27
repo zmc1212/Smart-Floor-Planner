@@ -7,6 +7,7 @@ function errorText(e) {
   return ({ version_conflict: '记录已被更新，已读取最新版，请核对后再提交。', context_changed: '原材料或权限已变化，请重新读取并核对。',
     run_result_unconfirmed: '上次答疑结果仍待核对，请稍后重新读取。', conversation_busy: '小K正在处理当前项目的问题，请稍后重新读取。',
     construction_forbidden: '当前身份没有这项工地权限。', construction_not_found: '工地已不可访问，请返回列表。', assistant_resource_not_found: '工地或原材料已不可访问。',
+    construction_password_required: '请完成密码修改，或使用微信手机号登录。',
     assistant_disabled: '企业暂未开放小K整理，请联系负责人。', assistant_quota_exceeded: '本次整理额度暂不可用，内容已保留。',
     site_retry_unavailable: '本次整理仍在核对结果，可先人工修改草稿。', site_review_required: '请先核对并补充本条现场内容。',
     site_rework_state_conflict: '本条补拍状态已变化，请重新读取原记录后选择操作。',

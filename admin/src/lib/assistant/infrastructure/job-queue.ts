@@ -39,7 +39,7 @@ async function authorized(repo: AssistantRepository, run: Row) {
   const policy = run.policy_snapshot as Row;
   const publicRun = policy.scope === 'public' || isPublicAssistantScope(repo.actor);
   if (publicRun) {
-    const scope = await withPlatformTransaction(tx => readPublicAssistantScope(tx));
+    const scope = await readPublicAssistantScope(repo.tx);
     const runActor = policy.actor as ActorContext | undefined;
     if (!scope || !scope.config.enabled || scope.enterpriseId !== repo.actor.enterpriseId
       || policy.scope !== 'public' || !isPublicAssistantScope(repo.actor)

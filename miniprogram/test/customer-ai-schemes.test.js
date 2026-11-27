@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
-const { sortSchemesByFirstPublished } = require('../packages/business/customer-ai-schemes/customer-ai-schemes-model');
+const { sortSchemesByFirstPublished } = require('../utils/published-scheme-order');
 
 const root = path.join(__dirname, '..');
 const pageRoot = path.join(root, 'packages', 'business', 'customer-ai-schemes');

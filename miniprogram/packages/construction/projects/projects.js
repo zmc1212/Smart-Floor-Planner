@@ -1,10 +1,14 @@
 const api = require('../../../utils/api.js');
 const nativePreview = require('../../../utils/native-preview');
 const { canAccessRoute } = require('../../../utils/identity-navigation.js');
+const { aiEntriesEnabled, syncAiEntryVisibility } = require('../../../utils/ai-entries');
 const { decorateProject, decorateDetail, errorText, roleLabels, operationKey } = require('./projects-model.js');
+const { initialStaffCamera, staffCameraMethods } = require('./projects-camera.js');
 const { decorate } = require('../chat/site-client');
 const { loadSiteFont } = require('../lib/site-font');
 const route = '/packages/construction/projects/projects';
+const followup = '/packages/assistant/chat/chat?followup=1';
+function projectUnavailable(error) { return [403, 404].includes(error.statusCode); }
 function unlinkPreview(path) { try { wx.getFileSystemManager().unlink({ filePath: path, fail() {} }); } catch (_) { /* Native temp file. */ } }
 function identity() {
   const g = getApp().globalData || {}, c = (g.bootstrap && g.bootstrap.current && g.bootstrap.current.context) || g.userInfo || {};
@@ -19,12 +23,13 @@ function navigationMetrics() {
     navRight: Math.max(96, info.windowWidth - (capsule && capsule.left || info.windowWidth - 94) + 10) };
 }
 Page({
-  data: { navTop: 24, navHeight: 32, navRight: 96, name: '', loading: true, error: '', items: [], detail: null, projectId: '',
+  ...staffCameraMethods(api, () => identity().token, url => wx.navigateTo({ url })),
+  data: { ...initialStaffCamera, navTop: 24, navHeight: 32, navRight: 96, name: '', loading: true, error: '', projectUnavailable: false, items: [], detail: null, projectId: '',
     pending: null, busy: false, sheet: '', staffOptions: [], roleOptions: [], selectedStaff: 0, selectedRole: 0, selectedStage: 0,
     workLabel: '', note: '', sendReminder: false, selectedIds: [], primaryOptions: [], selectedPrimary: 0, assignmentOptions: [],
     sheetOpen: false, statusFilter: 'all', filteredItems: [], activeCount: 0, preview: null, previewPhotos: [], previewLoading: false, previewError: '',
     scheduleOpen: false, scheduleForm: null,
-    stageAnswer: null, stageAnswerBusy: false, stageAnswerError: '',
+    aiEntriesEnabled: false, stageAnswer: null, stageAnswerBusy: false, stageAnswerError: '',
     reminders: [], reminderHistory: [], reminderPaused: false, remindersLoading: false, remindersError: '', reminderFocus: '', reminderCancelling: '',
     workbench: [], workbenchLoading: false, workbenchError: '' },
   onLoad(query) {
@@ -45,6 +50,7 @@ Page({
   },
   async onShow() {
     this._visible = true;
+    this.syncAiEntryVisibility();
     if (nativePreview.shownAfterPreview(this)) return;
     this.setData({ busy: false, reminderCancelling: '', reminderFocus: '' });
     const app = getApp();
@@ -52,11 +58,13 @@ Page({
     if (!this._visible) return;
     const current = identity();
     if (!current.key || !current.token || !canAccessRoute(route, current.bootstrap)) {
+      this.closeSiteLive();
       this.clearPreview();
       this._generation = (this._generation || 0) + 1; this._identityKey = null; this._token = null;
-      this.setData({ loading: false, error: '请使用有工地权限的员工身份登录。', items: [], detail: null, pending: null, sheet: '', scheduleOpen: false, scheduleForm: null }); return;
+      this.setData({ loading: false, error: '请使用有工地权限的员工身份登录。', projectUnavailable: false, items: [], detail: null, pending: null, sheet: '', scheduleOpen: false, scheduleForm: null }); return;
     }
     if (current.key !== this._identityKey || current.token !== this._token) {
+      this.closeSiteLive();
       this.clearPreview();
       this._identityKey = current.key; this._token = current.token;
       this._storageKey = 'construction:pending:' + current.key;
@@ -68,6 +76,7 @@ Page({
     await this.load();
   },
   onHide(force) {
+    this.closeSiteLive();
     if (!force && nativePreview.hiddenByPreview(this)) return;
     this._visible = false; this._generation = (this._generation || 0) + 1; this.clearPreview(); clearTimeout(this._sheetTimer);
     this.setData({ sheet: '', sheetOpen: false, scheduleForm: null });
@@ -78,12 +87,13 @@ Page({
   async load(quiet = false) {
     if (!this.current()) return;
     const g = this._generation = (this._generation || 0) + 1, pid = this.data.projectId;
-    if (quiet !== true) this.setData({ loading: true, error: '' });
+    if (quiet !== true) this.setData({ loading: true, error: '', projectUnavailable: false });
     try {
       const response = await api.request('/miniprogram/construction/projects' + (pid ? '/' + pid : ''), 'GET');
       if (!this.current(g)) return;
       const data = response.data;
       if (pid) {
+        if (data.project.status !== 'active') this.closeSiteLive();
         const form = this.data.scheduleForm;
         const latest = form?.node && data.progress?.management?.milestones.find(item => item.key === form.node.key);
         this.setData({ detail: decorateDetail(data), ...(form ? { scheduleForm: { ...form, latestTime: latest?.timeText || '' } } : {}),
@@ -91,17 +101,24 @@ Page({
         void this.loadPreview(g); void this.loadReminders(g); void this.applyDeepLink(g);
       }
       else { const items = data.items.map(p => decorateProject(p, data.stages || [])); this.clearPreview();
+        if (!items.some(item => item.id === this.data.liveProjectId && item.status === 'active')) this.closeSiteLive();
         this.setData({ items, owner: data.owner, detail: null, managementBrief: data.owner || (data.collaboration && items.some(p => p.my_role === 'manager')), activeCount: items.filter(p => p.status === 'active').length,
           filteredItems: items.filter(p => this.data.statusFilter !== 'active' || p.status === 'active'),
           canBrief: data.owner || data.items.some(p => p.status !== 'archived') });
         void this.loadWorkbench(g); }
-    } catch (error) { if (this.current(g)) { this.clearPreview(); this.setData({ error: errorText(error), detail: null, items: [], filteredItems: [],
-      scheduleOpen: false, scheduleForm: null, ...(this.data.sheet === 'schedule' ? { sheet: '', sheetOpen: false } : {}) }); } }
+    } catch (error) {
+      if (!this.current(g)) return;
+      this.closeSiteLive();
+      this.clearPreview();
+      const unavailable = !!pid && projectUnavailable(error);
+      this.setData({ error: unavailable ? '原工地已不可访问' : errorText(error), projectUnavailable: unavailable, detail: null, items: [], filteredItems: [],
+        scheduleOpen: false, scheduleForm: null, ...(unavailable || this.data.sheet === 'schedule' ? { sheet: '', sheetOpen: false } : {}) });
+    }
     finally { if (this.current(g)) this.setData({ loading: false }); }
   },
   chooseStatus(e) { const statusFilter = e.currentTarget.dataset.status; if (!['all','active'].includes(statusFilter)) return;
     this.setData({ statusFilter, filteredItems: this.data.items.filter(p => statusFilter !== 'active' || p.status === 'active') }); },
-  openProject(e) { if (this.data.busy || this.data.pending || !this.current()) return; this.clearPreview(); this.setData({ projectId: String(e.currentTarget.dataset.id), detail: null, stageAnswer: null, stageAnswerError: '' }); this.load(); },
+  openProject(e) { if (this.data.busy || this.data.pending || !this.current()) return; this.closeSiteLive(); this.clearPreview(); this.setData({ projectId: String(e.currentTarget.dataset.id), detail: null, stageAnswer: null, stageAnswerError: '' }); this.load(); },
   async loadReminders(g) {
     const pid = this.data.projectId;
     if (!pid || !this.current(g)) return;
@@ -245,7 +262,9 @@ Page({
       if (this.current(g)) this.setData({ remindersLoading: false });
     }
   },
+  syncAiEntryVisibility,
   async askStageKnowledge() {
+    if (!aiEntriesEnabled()) return;
     if (!this.current() || this.data.busy || this.data.pending || this.data.stageAnswerBusy || !this.data.detail) return;
     const g = this._generation;
     this.setData({ stageAnswerBusy: true, stageAnswerError: '' });
@@ -260,10 +279,10 @@ Page({
     }
   },
   openWeeklyReport() {
-    if (this.current()) wx.navigateTo({ url: '/packages/assistant/chat/chat?followup=1' });
+    if (this.current()) wx.navigateTo({ url: followup + (aiEntriesEnabled() ? '' : '&reportBoard=1&kind=weekly') });
   },
   openSiteCamera(e) { const p = this.data.items.find(p => p.id === String(e.currentTarget.dataset.id));
-    if (this.current() && !this.data.busy && !this.data.pending && p?.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(p.id) }); },
+    if (!this.data.busy && !this.data.pending && p?.status === 'active') return this.showSiteLive(p.id); },
   openSiteChat(e) { const p = this.data.items.find(p => p.id === String(e.currentTarget.dataset.id));
     if (this.current() && !this.data.busy && !this.data.pending && p && p.status !== 'archived') wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(p.id) }); },
   releasePreviewPhotos() { (this._previewPaths || []).forEach(unlinkPreview); this._previewPaths = []; },
@@ -309,7 +328,11 @@ Page({
         const response = await api.request(projectPath, 'GET', {}, { suppressUnauthorized: true });
         if (valid()) this.setData({ detail: decorateDetail(response.data) });
       } catch (detailError) {
-        if (valid()) this.setData({ items: [], filteredItems: [], error: errorText(detailError) });
+        if (valid()) {
+          const unavailable = projectUnavailable(detailError);
+          this.setData({ items: [], filteredItems: [], projectUnavailable: unavailable,
+            error: unavailable ? '原工地已不可访问' : errorText(detailError) });
+        }
       } finally { if (valid()) this.setData({ loading: false }); }
     }
   },
@@ -323,11 +346,15 @@ Page({
       this.setData({ scheduleOpen: false, scheduleForm: null, sheet: '', sheetOpen: false });
       return;
     }
-    if (this.data.projectId) { this.clearPreview(); this.setData({ projectId: '', detail: null, sheet: '' }); this.load(); }
+    if (this.data.projectId) { this.closeSiteLive(); this.clearPreview(); this.setData({ projectId: '', detail: null, sheet: '' }); this.load(); }
     else wx.switchTab({ url: '/pages/mine/mine' });
   },
   openMine() { wx.switchTab({ url: '/pages/mine/mine' }); },
-  openBrief() { if (this.current() && this.data.canBrief && !this.data.pending) wx.navigateTo({ url: this.data.managementBrief ? '/packages/construction/brief/brief' : '/packages/assistant/chat/chat?followup=1' }); },
+  openBrief() {
+    if (!this.current() || !this.data.canBrief || this.data.pending) return;
+    if (this.data.managementBrief) wx.navigateTo({ url: '/packages/construction/brief/brief' });
+    else wx.navigateTo({ url: followup + (aiEntriesEnabled() ? '' : '&reportBoard=1') });
+  },
   openChat() { const project = this.data.detail?.project;
     if (this.current() && project && project.status !== 'archived' && !this.data.busy && !this.data.pending) wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(project.id) }); },
   openIssue(e) {
@@ -354,7 +381,7 @@ Page({
     // project chat in plan mode instead of leaving the tap with no action.
     wx.navigateTo({ url: '/packages/construction/chat/chat?projectId=' + encodeURIComponent(detail.project.id) + '&mode=plan' + scope });
   },
-  openCamera() { if (this.current() && this.data.detail && !this.data.busy && !this.data.pending && this.data.detail.project.status === 'active') wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(this.data.detail.project.id) }); },
+  openCamera() { if (!this.data.busy && !this.data.pending && this.data.detail?.project.status === 'active') return this.showSiteLive(this.data.detail.project.id); },
   openIdentities() { wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' }); },
   showSheet(values) { clearTimeout(this._sheetTimer); const epoch = this._sheetEpoch = (this._sheetEpoch || 0) + 1; this.setData({ ...values, sheetOpen: false }); this._sheetTimer = setTimeout(() => { if (this._visible && epoch === this._sheetEpoch) this.setData({ sheetOpen: true }); }, 20); this._sheetTimer?.unref?.(); },
   closeSheet() { if (this.data.busy) return; clearTimeout(this._sheetTimer); const epoch = this._sheetEpoch = (this._sheetEpoch || 0) + 1; this.setData({ sheetOpen: false }); this._sheetTimer = setTimeout(() => { if (epoch === this._sheetEpoch) this.setData({ sheet: '' }); }, 260); this._sheetTimer?.unref?.(); },

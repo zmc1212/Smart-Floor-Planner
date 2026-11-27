@@ -17,20 +17,17 @@
     <block wx:elif="{{view === 'todo'}}">
       <view wx:if="{{!groups.length}}" class="state">
         <text>{{onsiteOnly ? '本站暂无待到场事项。' : '今天暂无上报和未审核事项。'}}</text>
-        <button wx:if="{{onsiteOnly}}" class="outline" bindtap="back">返回巡检路线</button>
+        <button wx:if="{{onsiteOnly}}" class="outline" bindtap="back">{{stationBackLabel}}</button>
       </view>
       <view wx:for="{{groups}}" wx:for-item="group" wx:key="id" class="paper inspection-group">
         <text class="inspection-heading">{{group.name}}</text>
         <button wx:for="{{group.items}}" wx:key="recordId" class="inspection-record" data-record="{{item.recordId}}" data-project="{{item.projectId}}" bindtap="openRecord">
           <view class="inspection-title-line">
-            <text class="inspection-title">{{item.title}}</text><text class="tag {{item.inspection.requiresOnsite && item.status.code === 'pending' ? 'visit-tag' : ''}}">
-              {{item.status.code === 'pending' && item.projectStatus === 'active' ? item.modeLabel : item.projectStatus === 'paused' && item.status.code === 'pending' ? '工地已暂停' : item.status.label}}
-            </text>
+            <text class="inspection-title">{{item.title}}</text>
+            <text class="tag {{item.inspection.requiresOnsite && item.status.code === 'pending' ? 'visit-tag' : ''}}">{{item.statusLabel}}</text>
           </view>
           <text class="inspection-meta">{{item.meta}}</text>
-          <text wx:if="{{item.status.code === 'pending' && (item.inspection.reason || item.inspection.priority || !item.today)}}" class="inspection-reason">
-            {{item.inspection.priority ? '优先处理 · ' : ''}}{{item.today ? '' : '往期待审 · '}}{{item.inspection.reason}}
-          </text>
+          <text wx:if="{{item.reasonLine}}" class="inspection-reason">{{item.reasonLine}}</text>
         </button>
       </view>
       <text wx:if="{{moreError}}" class="inspection-meta" role="alert">{{moreError}}</text>

@@ -1,4 +1,5 @@
 const api = require('./utils/api.js');
+const { aiEntriesEnabled, isAIDesignRoute } = require('./utils/ai-entries.js');
 
 function resolveApiRequest(apiModule) {
   if (typeof apiModule === 'function') return apiModule;
@@ -27,6 +28,9 @@ App({
     sessionHydrationToken: null,
     sessionHydrationPromise: null,
     bootstrap: null,
+    aiEntriesEnabled: false,
+    aiEntriesChecking: true,
+    aiEntriesRequest: null,
     sessionRecovery: null,
     lastValidIdentityContext: null,
     roleLandingRedirected: false,
@@ -72,12 +76,52 @@ App({
       this.globalData.launchOptions = options;
     }
     this.handleReferral(options);
+    this.refreshAiEntryVisibility();
     if (this.globalData.token && !this.globalData.sessionHydrated) {
       this.hydrateStoredSession();
     } else if (this.globalData.sessionHydrated) {
       this.guardCurrentRoute();
     }
     this.trySilentBluetoothReconnect();
+  },
+
+  onHide() {
+    this.globalData.aiEntriesRequest = null;
+    this.applyAiEntryVisibility(this.globalData.aiEntriesEnabled, true);
+  },
+
+  refreshAiEntryVisibility() {
+    const state = this.globalData;
+    if (state.aiEntriesRequest) return state.aiEntriesRequest;
+
+    const pending = api.request('/miniprogram/ai-entries', 'GET', {}, {
+      suppressUnauthorized: true, timeout: 5000,
+    }).then(result => result?.data?.enabled === true, () => false).then((enabled) => {
+      if (state.aiEntriesRequest !== pending) return;
+      state.aiEntriesRequest = null;
+      this.applyAiEntryVisibility(enabled, false);
+    });
+    state.aiEntriesRequest = pending;
+    this.applyAiEntryVisibility(state.aiEntriesEnabled, true);
+    return pending;
+  },
+
+  applyAiEntryVisibility(enabled, checking) {
+    const state = this.globalData;
+    const changed = state.aiEntriesEnabled !== enabled || state.aiEntriesChecking !== checking;
+    state.aiEntriesEnabled = enabled;
+    state.aiEntriesChecking = checking;
+    if (!checking && !enabled) {
+      if (state.customerTab === 'xiaok') state.customerTab = 'service';
+      if (state.siteWorkbenchTab === 'xiaok') state.siteWorkbenchTab = 'workbench';
+    }
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    const page = pages[pages.length - 1];
+    if (changed) {
+      page?.syncAiEntryVisibility?.();
+      this.refreshCustomTabBar();
+    }
+    if (!checking && page && isAIDesignRoute(page.route)) this.guardCurrentRoute();
   },
 
   initUpdateManager() {
@@ -320,16 +364,24 @@ App({
     this.globalData.roleLandingRedirected = true;
   },
   guardCurrentRoute() {
-    if (this.globalData.deepLinkRedirecting || !this.globalData.bootstrap) return;
+    if (this.globalData.deepLinkRedirecting) return;
     const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
     const current = pages.length ? `/${pages[pages.length - 1].route}` : '';
     if (!current || current.includes('/login') || current.includes('/identity-recovery') || current.includes('/onboarding') || current.includes('/enterprise-register') || current.includes('/free-design-service')) return;
     const navigation = require('./utils/identity-navigation.js');
-    const result = navigation.guardDeepLink(current, this.globalData.bootstrap);
-    if (result.allowed || !result.redirectPath || result.redirectPath === current) return;
+    let redirectPath;
+    const designRoute = isAIDesignRoute(current);
+    if (designRoute && this.globalData.aiEntriesChecking) return;
+    if (designRoute && !aiEntriesEnabled(this.globalData)) {
+      redirectPath = navigation.getRoleLanding(this.globalData.bootstrap?.current || this.globalData.userInfo) || '/pages/index/index';
+    } else if (this.globalData.bootstrap) {
+      const result = navigation.guardDeepLink(current, this.globalData.bootstrap);
+      if (!result.allowed) redirectPath = result.redirectPath;
+    }
+    if (!redirectPath || redirectPath === current) return;
     this.globalData.deepLinkRedirecting = true;
     wx.reLaunch({
-      url: result.redirectPath,
+      url: redirectPath,
       complete: () => { this.globalData.deepLinkRedirecting = false; }
     });
   },

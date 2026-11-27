@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { agentRuntimeBindings, nativeAgentRuntimeBinding, parseAgentRuntimeBinding, parseAgentRuntimeBindings } from '../fastgpt/agent-v2/config';
+import { fastGPTWorkflows } from '../fastgpt/runtime';
 import { parseSuggestionQuestions, resolveSuggestions, resumeSuggestionGeneration, storedSuggestionQuestions, suggestionPrompt } from '../fastgpt/agent-v2/suggestions';
 
 const base = {
@@ -75,7 +76,8 @@ test('several enterprises share one file, bind independently and fail closed on 
   const second = { ...base, enterpriseId: '2884', presets: ['企业二的问题？'] };
   try {
     process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = file;
-    fs.writeFileSync(file, JSON.stringify({ agentV2: [base, second] }));
+    fs.writeFileSync(file, JSON.stringify({ agentV2: [base, second], auditFile: path.join(directory, 'audit.jsonl') }));
+    assert.equal(fastGPTWorkflows(), undefined);
     assert.deepEqual(agentRuntimeBindings().map(item => item.configuration.enterpriseId), ['1454', '2884']);
     const first = nativeAgentRuntimeBinding('1454'), other = nativeAgentRuntimeBinding('2884');
     assert.ok(first && other);
@@ -83,8 +85,11 @@ test('several enterprises share one file, bind independently and fail closed on 
     assert.equal(nativeAgentRuntimeBinding('9999'), undefined);
     // A historical `fastgpt-agent-v2` entry no longer selects a runtime.
     fs.writeFileSync(file, JSON.stringify({ agentV2: [base, { ...second, runtime: 'fastgpt-agent-v2' }] }));
+    assert.throws(() => fastGPTWorkflows(), /context_changed/);
     assert.throws(() => nativeAgentRuntimeBinding('1454'), /context_changed/);
     assert.throws(() => parseAgentRuntimeBindings([base, { ...second, enterpriseId: '1454' }]), /context_changed/);
+    fs.writeFileSync(file, JSON.stringify({ agentV2: [base], knowledgeAppId: 'a'.repeat(24) }));
+    assert.throws(() => fastGPTWorkflows(), /Invalid FastGPT workflow configuration/);
   } finally {
     if (previous === undefined) delete process.env.XIAOK_FASTGPT_WORKFLOWS_FILE;
     else process.env.XIAOK_FASTGPT_WORKFLOWS_FILE = previous;

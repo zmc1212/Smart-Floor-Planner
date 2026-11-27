@@ -66,7 +66,8 @@ test('customer site Tab mounts the owner construction workspace', () => {
   assert.match(indexWxml, /<owner-site-home id="owner-site-home" wx:if="\{\{customerTab === 'service'\}\}"[\s\S]*?bindfamilyentryconsumed="onFamilyEntryConsumed"\s*\/>/);
   assert.equal(indexJson.componentPlaceholder['owner-site-home'], 'view');
   assert.equal(indexJson.componentPlaceholder['xiaok-chat'], 'view');
-  assert.match(indexWxml, /<xiaok-chat[^>]*active="\{\{customerTab === 'xiaok'\}\}"/);
+  assert.match(indexWxml, /<view wx:if="\{\{mountXiaokPanel\}\}" hidden="\{\{customerTab !== 'xiaok'\}\}">/);
+  assert.match(indexWxml, /<xiaok-chat[^>]*active="\{\{activateXiaokPanel\}\}"[^>]*bindentryready="onXiaokEntryReady"/);
   assert.match(indexWxml, /<role-workbench[^>]*wx:elif="\{\{roleWorkbenchRole\}\}"[^>]*focus="overview"/);
   assert.doesNotMatch(indexJs, /customer-projects\/customer-projects/);
   assert.match(ownerSite, /['"`]\/miniprogram\/construction\/owner-sites['"`]/);

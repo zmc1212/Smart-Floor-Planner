@@ -74,8 +74,9 @@ export function fastGPTWorkflows():FastGPTWorkflows|undefined {
   const current=cache.__xiaokFastGPTWorkflows;
   if(current){if(current.file!==file||current.hash!==hash)throw Error('FastGPT workflow configuration changed during the Worker lifetime');return current.runtime;}
   const configuration=JSON.parse(bytes.toString('utf8')) as Configuration & {agentV2?:unknown};
-  // A deployment file that selects only the native executor does not enable a bridge.
-  if (configuration.agentV2 !== undefined && Object.keys(configuration).length === 1) {
+  // A native-only deployment may include audit metadata without enabling a bridge.
+  if (configuration.agentV2 !== undefined
+    && Object.keys(configuration).every(key => key === 'agentV2' || key === 'auditFile')) {
     parseAgentRuntimeBindings(configuration.agentV2);
     return undefined;
   }

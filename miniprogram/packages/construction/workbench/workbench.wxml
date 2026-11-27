@@ -1,3 +1,4 @@
+<import src="../notebook-v2.wxml" />
 <template name="issue-row">
   <button class="workbench-row workbench-issue-row" data-issue="{{issue.issueId}}" data-record="{{issue.recordId}}" bindtap="openIssue" aria-label="{{issue.title}}">
     <text class="row-title">{{issue.title}}</text><text class="workbench-tag pending">{{label}}</text><view class="workbench-chevron" />
@@ -15,7 +16,10 @@
   </button>
 </template>
 
-<view class="site-workbench">
+<import src="../../../components/staff-password-required/staff-password-required.wxml"/>
+
+<view class="site-workbench {{model && (!model.emptyProject || model.notebookTask || model.appointments.length || model.survey.records.length) ? 'site-workbench-v2' : ''}} {{model.view === 'manager' ? 'manager-workbench-v2' : ''}}">
+  <image class="notebook-cover-v2 workbench-cover-v2" src="../assets/notebook/v2-notebook-binding.jpg" mode="aspectFill" aria-hidden="true" />
   <image class="workbench-texture" src="../assets/notebook/capture-v3-paper.png" mode="aspectFill" />
   <view class="book-spine"><view wx:for="{{[10.2,32.9,53.4,83.6]}}" wx:key="*this" class="book-stitch" style="top:{{item}}%"/></view>
   <scroll-view class="workbench-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="refresh">
@@ -23,14 +27,51 @@
       <text class="workbench-nav-title" style="line-height:{{navHeight}}px">{{title}}</text>
     </view>
     <view class="workbench-content">
-      <view wx:if="{{loading}}" class="workbench-paper workbench-state" role="status">正在读取工地…</view>
-      <view wx:elif="{{error}}" class="workbench-paper workbench-state" role="alert"><text>{{error}}</text><button class="workbench-plain" bindtap="retry">重新读取</button></view>
-      <block wx:elif="{{model.view === 'boss'}}">
-        <view class="workbench-heading boss-heading">
-          <text class="workbench-title">工地简报</text>
-          <text class="workbench-meta">{{model.enterpriseName}}{{model.date ? ' · ' + model.date : ''}}</text>
+      <view wx:if="{{notice}}" class="workbench-feedback" role="status">{{notice}}</view>
+      <view wx:if="{{loading}}" class="workbench-feedback" role="status">正在读取工地…</view>
+      <template wx:elif="{{passwordRequired}}" is="staff-password-required" />
+      <view wx:elif="{{error}}" class="workbench-feedback" role="alert"><text>{{error}}</text><button class="workbench-plain" bindtap="retry">重新读取</button></view>
+      <block wx:elif="{{model.emptyProject && !model.notebookTask && !model.appointments.length && !model.survey.records.length}}">
+        <view class="workbench-no-site">
+          <image wx:if="{{model.view === 'designer'}}" class="workbench-no-site-art" src="../assets/notebook/workbench-empty-designer.png" mode="aspectFit" aria-hidden="true" />
+          <image wx:elif="{{model.view === 'boss'}}" class="workbench-no-site-art" src="../assets/notebook/workbench-empty-boss.png" mode="aspectFit" aria-hidden="true" />
+          <image wx:else class="workbench-no-site-art" src="../assets/notebook/workbench-empty-construction.png" mode="aspectFit" aria-hidden="true" />
+          <text class="workbench-no-site-title">{{model.emptyProject.title}}</text>
+          <view class="workbench-no-site-copy">
+            <text wx:for="{{model.emptyProject.lines}}" wx:key="*this">{{item}}</text>
+          </view>
+          <button class="workbench-state-action workbench-no-site-refresh" bindtap="retry">
+            <text>刷新工地</text><image src="/images/ai-studio-icons-v3/refresh.png" mode="aspectFit" aria-hidden="true" />
+          </button>
+          <text wx:if="{{model.customerTasksError}}" class="workbench-meta">{{model.customerTasksError}}</text>
         </view>
-        <view class="workbench-paper workbench-summary">
+        <button wx:if="{{model.view === 'designer' && canDesign}}" class="workbench-row workbench-no-site-tool" bindtap="openDesign">
+          <view class="workbench-tool-icon"><image src="/images/mine-icons/tab-ai-active.png" mode="aspectFit" aria-hidden="true" /></view>
+          <text class="row-title">AI 设计</text><text class="workbench-meta">选择户型</text><view class="workbench-chevron" />
+        </button>
+        <button wx:elif="{{model.view === 'boss'}}" class="workbench-row workbench-no-site-tool" bindtap="openReports">
+          <view class="workbench-tool-icon"><image src="../assets/notebook/file.png" mode="aspectFit" aria-hidden="true" /></view>
+          <text class="row-title">企业日周报</text><view class="workbench-chevron" />
+        </button>
+      </block>
+      <block wx:elif="{{model.view === 'boss'}}">
+        <view class="notebook-context-v2"><text>{{model.enterpriseName}}{{model.enterpriseName && model.date ? ' · ' : ''}}{{model.date}}</text></view>
+        <template wx:if="{{model.notebookTask}}" is="notebook-task-v2" data="{{task: model.notebookTask}}" />
+        <text wx:if="{{!model.exceptions.length}}" class="workbench-boss-clear">暂无超期或待协调事项</text>
+        <block wx:if="{{model.pendingReport && model.notebookTask.kind !== 'approval'}}">
+          <view class="notebook-section-v2">待审核上报</view>
+          <button class="notebook-row-v2" data-project="{{model.pendingReport.projectId}}" data-record="{{model.pendingReport.recordId}}" bindtap="openApproval">
+            <view class="notebook-row-copy"><text>{{model.pendingReport.title}}</text><text class="notebook-muted-v2">{{model.pendingReport.projectName}} · {{model.pendingReport.time}}{{model.pendingReport.photoCount ? ' · ' + model.pendingReport.photoCount + ' 张照片' : ''}}</text></view>
+            <view class="notebook-link-v2"><text>审核上报</text><view class="workbench-chevron" /></view>
+          </button>
+        </block>
+        <block wx:for="{{model.exceptions}}" wx:key="key">
+          <block wx:if="{{index > 0}}">
+            <button wx:if="{{item.kind === 'late'}}" class="notebook-row-v2" data-project="{{item.id}}" data-node="{{item.nodeKey}}" bindtap="openNode"><view class="notebook-row-copy">{{item.name}} · {{item.title}}</view><view class="notebook-link-v2"><text>查看节点</text><view class="workbench-chevron" /></view></button>
+            <button wx:else class="notebook-row-v2" data-project="{{item.id}}" data-issue="{{item.issueId}}" bindtap="openIssue"><view class="notebook-row-copy">{{item.name}} · {{item.title}}</view><view class="notebook-link-v2"><text>查看事项</text><view class="workbench-chevron" /></view></button>
+          </block>
+        </block>
+        <view class="summary-grid notebook-summary-v2">
           <view><text class="summary-value">{{model.totals[0]}}</text><text>在建工地</text></view>
           <view><text class="summary-value {{model.totals[1] ? 'late-text' : ''}}">{{model.totals[1]}}</text><text>进度落后</text></view>
           <view><text class="summary-value">{{model.totals[2]}}</text><text>待协调事项</text></view>
@@ -38,81 +79,149 @@
         <text wx:if="{{model.hasMoreProjects}}" class="workbench-meta summary-note">以上汇总当前简报中的 {{model.items.length}} 个工地。</text>
         <text wx:if="{{model.unverified}}" class="workbench-meta summary-note">部分工地进度待核实。</text>
         <template wx:if="{{model.inspection}}" is="inspection-summary" data="{{inspection: model.inspection}}" />
-        <view wx:elif="{{model.pendingReport}}" class="workbench-paper manager-draft boss-pending">
-          <text class="workbench-fabric">待审核上报</text>
-          <view class="record-copy">
-            <text class="record-title draft-title">{{model.pendingReport.title}}</text>
-            <text class="workbench-meta">{{model.pendingReport.projectName}} · {{model.pendingReport.authorName}} · {{model.pendingReport.time}}</text>
-            <text wx:if="{{model.pendingReport.photoCount || model.pendingReport.hasVoice}}" class="workbench-meta">{{model.pendingReport.photoCount ? '照片 ' + model.pendingReport.photoCount + ' 张' : ''}}{{model.pendingReport.photoCount && model.pendingReport.hasVoice ? ' · ' : ''}}{{model.pendingReport.hasVoice ? '语音 1 段' : ''}}</text>
+        <button class="notebook-row-v2" bindtap="openAll"><image class="notebook-row-icon" src="/images/mine-icons/tab-home.png" mode="aspectFit" /><view class="notebook-row-copy">全部工地</view><view class="workbench-chevron" /></button>
+        <button class="notebook-row-v2" bindtap="openReports"><image class="notebook-row-icon" src="../assets/notebook/file.png" mode="aspectFit" /><view class="notebook-row-copy">企业日周报</view><view class="workbench-chevron" /></button>
+      </block>
+      <block wx:elif="{{model.view === 'designer' || model.view === 'manager'}}">
+        <view class="notebook-context-v2">
+          <view wx:if="{{model.view === 'manager'}}" class="manager-project-context">
+            <text class="notebook-context-name">{{model.project.name}}</text>
+            <text>{{model.combinedManager ? '兼任施工经理' : model.project.stageName}}{{model.project.status === 'paused' ? ' · 已暂停' : ''}}</text>
           </view>
-          <button class="workbench-primary" data-project="{{model.pendingReport.projectId}}" data-record="{{model.pendingReport.recordId}}" bindtap="openApproval">审核上报<view class="workbench-chevron" /></button>
+          <text wx:else>{{model.enterpriseName}}{{model.enterpriseName && model.date ? ' · ' : ''}}{{model.date}}</text>
+          <picker wx:if="{{model.choices.length > 1}}" class="workbench-picker" aria-label="换工地"
+            range="{{model.choices}}" range-key="name" value="{{selectedIndex}}" bindchange="changeProject">
+            <view class="{{model.view === 'manager' ? 'manager-project-picker' : 'picker-chip'}}">换工地<view class="workbench-chevron down" /></view>
+          </picker>
         </view>
-        <view class="workbench-section boss-exceptions">
-          <text class="workbench-fabric">优先处理</text>
-          <view wx:for="{{model.exceptions}}" wx:key="key" class="workbench-paper exception-card">
-            <view class="exception-heading"><text class="workbench-section-title">{{item.name}}</text>
-              <text class="workbench-tag {{item.kind === 'late' ? 'late' : 'pending'}}">{{item.kind === 'late' ? '进度落后' : '待协调'}}</text></view>
-            <text class="record-title">{{item.title}}</text>
-            <text class="workbench-meta">{{item.kind === 'late' ? '负责人' : '跟进状态'}} · {{item.waitingFor || '待分配'}}</text>
-            <button wx:if="{{item.kind === 'late'}}" class="workbench-row exception-link" data-project="{{item.id}}" data-node="{{item.nodeKey}}" bindtap="openNode">查看节点<view class="workbench-chevron" /></button>
-            <button wx:else class="workbench-row exception-link" data-project="{{item.id}}" data-issue="{{item.issueId}}" bindtap="openIssue">查看事项<view class="workbench-chevron" /></button>
-          </view>
-          <view wx:if="{{!model.exceptions.length}}" class="workbench-paper workbench-state">{{model.items.length ? '暂无需要优先处理的事项' : '暂无可查看的工地'}}</view>
-        </view>
-        <view class="workbench-paper boss-links">
-          <button class="workbench-row" bindtap="openAll">全部工地<view class="workbench-chevron" /></button>
-          <button class="workbench-row" bindtap="openReports">企业日周报<view class="workbench-chevron" /></button>
-        </view>
+        <template wx:if="{{model.notebookTask}}" is="notebook-task-v2" data="{{task: model.notebookTask}}" />
+        <button wx:if="{{model.notebookTask.kind === 'survey'}}" class="notebook-row-v2 notebook-appointment-receipt"
+          data-lead="{{model.notebookTask.item.leadId}}" data-appointment="{{model.notebookTask.item.appointmentId}}" bindtap="openCustomerAppointment">
+          <view class="notebook-link-v2"><text>查看预约详情</text><view class="workbench-chevron" /></view>
+        </button>
+        <block wx:if="{{model.view === 'manager'}}">
+          <view class="notebook-section-v2 manager-section">{{model.combinedManager ? '施工管理' : '现场待办'}}</view>
+          <button wx:if="{{model.onsiteTask && model.notebookTask.kind !== 'inspection' && model.notebookTask.kind !== 'inspection-route'}}"
+            class="notebook-row-v2 manager-detail-row" bindtap="openProjectInspection">
+            <image class="notebook-row-icon notebook-ink-icon" src="../assets/notebook/review-clock.png" mode="aspectFit" aria-hidden="true" />
+            <view class="notebook-row-copy">
+              <text>{{model.onsiteTask.title}}</text>
+              <text class="notebook-muted-v2">{{model.onsiteTask.inspection.source === 'ai' ? '建议到场' : '需到场'}}</text>
+            </view>
+            <view class="notebook-link-v2"><text>巡检</text><image src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" /></view>
+          </button>
+          <button wx:if="{{model.pendingReport && model.notebookTask.kind !== 'approval'}}" class="notebook-row-v2 manager-detail-row"
+            data-project="{{model.pendingReport.projectId}}" data-record="{{model.pendingReport.recordId}}" bindtap="openApproval">
+            <image class="notebook-row-icon notebook-ink-icon" src="../assets/notebook/v2-dossier-file.png" mode="aspectFit" aria-hidden="true" />
+            <view class="notebook-row-copy">
+              <text>{{model.pendingReport.title}}</text>
+              <text class="notebook-muted-v2">待审核{{model.pendingReport.mediaLabel ? ' · ' + model.pendingReport.mediaLabel : ''}}</text>
+            </view>
+            <view class="notebook-link-v2"><text>审核</text><image src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" /></view>
+          </button>
+          <button wx:if="{{model.review && model.notebookTask.kind !== 'recheck'}}" class="notebook-row-v2 manager-detail-row" bindtap="openManagerRecheck">
+            <image class="notebook-row-icon" src="../assets/notebook/review-clock.png" mode="aspectFit" aria-hidden="true" />
+            <view class="notebook-row-copy">
+              <text>{{model.review.title}}</text><text class="notebook-muted-v2">{{model.review.recordId ? '已补交 · 待复查' : '待复查'}}</text>
+            </view>
+            <view class="notebook-link-v2"><text>复查</text><image src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" /></view>
+          </button>
+          <view wx:if="{{!model.onsiteTask && !model.pendingReport && !model.review}}" class="notebook-row-v2 notebook-muted-v2">当前工地暂无待处理的施工事项</view>
+          <button class="notebook-row-v2 manager-project-link {{model.combinedManager ? 'compact' : ''}}" bindtap="openProject">
+            <image class="notebook-row-icon notebook-ink-icon" src="/custom-tab-bar/assets/notebook-home.png" mode="aspectFit" aria-hidden="true" />
+            <view class="notebook-row-copy">排期与分工</view><view class="notebook-link-v2"><text>查看工地</text><image src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" /></view>
+          </button>
+        </block>
+        <block wx:if="{{model.survey.records.length}}">
+          <view class="notebook-section-v2">量房记录</view>
+          <button wx:for="{{model.survey.records}}" wx:key="key" class="notebook-row-v2 notebook-survey-record" data-index="{{index}}" bindtap="openSurveyRecord">
+            <image class="notebook-row-icon notebook-ink-icon" src="../assets/notebook/{{item.action === 'plan' ? 'file' : 'v2-ruler'}}.png" mode="aspectFit" aria-hidden="true" />
+            <view class="notebook-row-copy"><text>{{item.title}}</text><text class="notebook-muted-v2">{{item.status}}</text></view>
+            <view class="notebook-link-v2"><text>{{item.action === 'plan' ? '查看户型' : '继续量房'}}</text><view class="workbench-chevron" /></view>
+          </button>
+        </block>
+        <block wx:if="{{model.view === 'designer' || model.combinedManager}}">
+        <view class="notebook-section-v2 {{model.combinedManager ? 'manager-customer-section' : ''}}">客户服务</view>
+        <button wx:if="{{model.customerTasksError}}" class="notebook-row-v2" bindtap="retry">{{model.customerTasksError}} · 重试</button>
+        <block wx:for="{{model.appointments}}" wx:key="appointmentId">
+          <button wx:if="{{item.appointmentId !== model.notebookTask.item.appointmentId}}" class="notebook-row-v2 {{model.combinedManager ? 'manager-detail-row' : ''}}"
+            data-lead="{{item.leadId}}" data-appointment="{{item.appointmentId}}" bindtap="openCustomerAppointment">
+            <image class="notebook-row-icon notebook-ink-icon" src="../assets/notebook/v2-calendar.png" mode="aspectFit" aria-hidden="true" />
+            <view class="notebook-row-copy">
+              <text>{{model.combinedManager ? (item.canPerformSurvey ? '上门量房' : '量房预约') : (item.communityName || item.title)}}</text>
+              <text class="notebook-muted-v2">{{model.combinedManager ? item.serviceTime + ' · ' + (item.communityName || item.title) : item.timeLabel + ' · 已预约量房'}}</text>
+            </view>
+            <view class="notebook-link-v2"><text>查看预约</text><view class="workbench-chevron" /></view>
+          </button>
+        </block>
+        <block wx:for="{{model.deliveries}}" wx:key="leadId">
+          <button wx:if="{{item.leadId !== model.notebookTask.delivery.leadId}}" class="notebook-row-v2 notebook-delivery-row {{model.combinedManager ? 'manager-detail-row' : ''}}"
+            data-lead="{{item.leadId}}" bindtap="{{model.combinedManager ? 'continueDelivery' : 'openDelivery'}}">
+            <image wx:if="{{model.combinedManager}}" class="notebook-row-icon notebook-ink-icon"
+              src="../assets/notebook/v2-dossier-file.png" mode="aspectFit" aria-hidden="true" />
+            <view class="notebook-row-copy">
+              <text>{{model.combinedManager ? '交付设计方案' : (item.communityName || item.title)}}</text>
+              <text class="notebook-muted-v2">{{model.combinedManager ? (item.communityName || item.title) + ' · 正式户型已归档' : '待交付方案'}}</text>
+            </view>
+            <view class="notebook-link-v2"><text>{{model.combinedManager && canDesign ? '继续交付' : '查看客户'}}</text><view class="workbench-chevron" /></view>
+          </button>
+        </block>
+        </block>
+        <block wx:if="{{model.view === 'designer'}}">
+        <view class="notebook-row-v2"><text>现场协作</text><text class="notebook-muted-v2">{{model.project ? model.project.name : '暂未分配工地'}}</text></view>
+        <template wx:if="{{model.inspection}}" is="inspection-summary" data="{{inspection: model.inspection}}" />
+        <button wx:if="{{model.pendingReport && model.notebookTask.kind !== 'approval'}}" class="notebook-row-v2" data-project="{{model.pendingReport.projectId}}" data-record="{{model.pendingReport.recordId}}" bindtap="openApproval">
+          <view class="notebook-row-copy">{{model.pendingReport.title}}</view><view class="notebook-link-v2"><text>审核上报</text><view class="workbench-chevron" /></view>
+        </button>
+        <block wx:for="{{model.reply}}" wx:key="issueId">
+          <template wx:if="{{item.issueId !== model.notebookTask.issue}}" is="issue-row" data="{{issue: item, label: '待回复'}}" />
+        </block>
+        <block wx:for="{{model.changes}}" wx:key="issueId">
+          <template wx:if="{{item.issueId !== model.notebookTask.issue}}" is="issue-row" data="{{issue: item, label: '待核对'}}" />
+        </block>
+        <button wx:if="{{model.project}}" class="notebook-row-v2" bindtap="openReports"><image class="notebook-row-icon" src="../assets/notebook/file.png" mode="aspectFit" /><view class="notebook-row-copy">工地日报与周报</view><view class="workbench-chevron" /></button>
+        <button wx:if="{{canDesign}}" class="notebook-row-v2" bindtap="openDesign"><image class="notebook-row-icon" src="/images/mine-icons/tab-ai-active.png" mode="aspectFit" /><view class="notebook-row-copy">AI 设计</view><view class="notebook-link-v2"><text>选择户型</text><view class="workbench-chevron" /></view></button>
+        </block>
+        <block wx:if="{{model.view === 'manager'}}">
+          <button class="notebook-row-v2 manager-report-link" bindtap="openReports">
+            <image class="notebook-row-icon notebook-ink-icon" src="../assets/notebook/v2-dossier-file.png" mode="aspectFit" aria-hidden="true" />
+            <view class="notebook-row-copy">工地日报与周报</view><image class="manager-arrow" src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" />
+          </button>
+          <button wx:if="{{model.inspection.count && model.notebookTask.kind !== 'inspection-route'}}" class="notebook-row-v2 manager-extra-link" bindtap="openInspectionRoute">
+            <view class="notebook-row-copy">巡检路线</view><view class="workbench-chevron" />
+          </button>
+          <button wx:if="{{model.inspection}}" class="notebook-row-v2 manager-extra-link" bindtap="openInspection">
+            <view class="notebook-row-copy">全部审核上报</view><view class="workbench-chevron" />
+          </button>
+        </block>
       </block>
       <block wx:else>
-        <view wx:if="{{notice}}" class="workbench-paper workbench-state" role="status">{{notice}}</view>
-        <view wx:if="{{!model.project}}" class="workbench-paper workbench-state">暂时没有分配的工地</view>
-        <block wx:else>
-          <view class="workbench-heading">
+        <block wx:if="{{model.project}}">
+          <view class="{{model.view === 'worker' ? 'notebook-context-v2 worker-context-v2' : 'workbench-heading'}}">
             <view class="project-copy"><text class="workbench-title">{{model.project.name}}</text><text class="workbench-stage">{{model.project.stageName}}{{model.project.status === 'paused' ? ' · 已暂停' : ''}}</text></view>
             <picker wx:if="{{model.choices.length > 1}}" class="workbench-picker" range="{{model.choices}}" range-key="name" value="{{selectedIndex}}" bindchange="changeProject">
               <view class="picker-chip">换工地<view class="workbench-chevron down" /></view>
             </picker>
           </view>
           <block wx:if="{{model.view === 'worker'}}">
-            <view wx:if="{{model.task}}" class="workbench-paper worker-task">
-              <text class="workbench-tag pending">今日任务</text>
-              <button class="workbench-row workbench-issue-row" bindtap="openTask">
-                <text class="row-title">{{model.task.title}}</text><text class="workbench-tag {{model.task.issueId ? 'pending' : 'done'}}">{{model.task.label}}</text><view class="workbench-chevron" />
-              </button>
-            </view>
+            <template wx:if="{{model.notebookTask}}" is="notebook-task-v2" data="{{task: model.notebookTask}}" />
+            <button wx:if="{{model.notebookTask.kind === 'return'}}" class="notebook-row-v2 capture-section" bindtap="capture" aria-label="现场上报">
+              <image class="notebook-row-icon notebook-ink-icon" src="../assets/notebook/capture-camera.png" mode="aspectFit" aria-hidden="true" />
+              <view class="notebook-row-copy">现场上报</view><view class="workbench-chevron" />
+            </button>
+            <text wx:if="{{!model.canCapture}}" class="workbench-meta capture-paused">当前工地已暂停上报，请联系施工经理。</text>
+            <button wx:if="{{model.task}}" class="notebook-row-v2 workbench-issue-row" bindtap="openTask">
+              <view class="notebook-row-copy"><text>{{model.task.title}}</text><text class="notebook-muted-v2">{{model.task.label}}</text></view><view class="workbench-chevron" />
+            </button>
 
-            <view class="workbench-paper today-summary">
-              <text class="workbench-fabric summary-fabric">今日汇总</text>
-              <view class="summary-grid">
-                <view><text class="summary-value">{{todaySummary.total}}</text><text>今日上报</text></view>
-                <view><text class="summary-value pending-text">{{todaySummary.pending}}</text><text>待审核</text></view>
-                <view><text class="summary-value done-text">{{todaySummary.approved}}</text><text>审核通过</text></view>
-              </view>
-            </view>
-
-            <view wx:if="{{model.canCapture}}" class="workbench-section capture-section">
-              <button class="workbench-primary" bindtap="capture" aria-label="现场上报"><image src="../assets/notebook/capture-camera.png" mode="aspectFit" />现场上报</button>
-            </view>
-            <text wx:else class="workbench-meta capture-paused">当前工地已暂停上报，请联系施工经理。</text>
-
-            <view class="filter-bar">
-              <button class="filter-chip {{reportRange.key === 'today' ? 'active' : ''}}" data-key="today" bindtap="selectRange">今天</button>
-              <button class="filter-chip {{reportRange.key === 'yesterday' ? 'active' : ''}}" data-key="yesterday" bindtap="selectRange">昨天</button>
-              <button class="filter-chip {{reportRange.key === 'week' ? 'active' : ''}}" data-key="week" bindtap="selectRange">近7天</button>
-              <button class="filter-chip calendar-chip {{reportRange.key === 'custom' ? 'active' : ''}}" bindtap="openCalendar">
-                <view class="calendar-glyph" aria-hidden="true"></view>日历
-              </button>
-            </view>
-
-            <view class="workbench-paper report-list">
-              <view class="report-list-heading">
-                <text class="workbench-fabric">上报记录</text>
-                <text class="workbench-meta">{{reportRange.label}}</text>
+            <view class="report-list notebook-report-list-v2 {{(!reportLoading && !reportError && !reports.length) ? 'report-list-empty' : ''}}">
+              <view class="notebook-section-v2">
+                <text>{{reportRange.key === 'today' ? '今日上报' : '上报记录'}}</text>
+                <text class="notebook-muted-v2">{{reportRange.key === 'today' ? '' : reportRange.label + ' · '}}{{reports.length}} 条</text>
               </view>
               <view wx:if="{{reportLoading}}" class="workbench-state">正在读取上报…</view>
               <view wx:elif="{{reportError}}" class="workbench-state" role="alert"><text>{{reportError}}</text><button class="workbench-plain" bindtap="retry">重新读取</button></view>
-              <view wx:elif="{{!reports.length}}" class="workbench-state">{{reportRange.key === 'today' ? '今天还没有上报' : '这段时间还没有上报'}}</view>
+              <text wx:elif="{{!reports.length}}" class="workbench-empty-detail">{{reportRange.key === 'today' ? '今天还没有上报' : '这段时间还没有上报'}}</text>
               <block wx:else>
                 <button wx:for="{{reports}}" wx:key="recordId" class="report-row" data-record="{{item.recordId}}" bindtap="openRecord">
                   <view class="report-copy">
@@ -129,83 +238,20 @@
               </block>
             </view>
 
-            <button class="workbench-row workbench-link" bindtap="openReports">
-              <image src="../assets/notebook/file.png" mode="aspectFit" /><text class="row-title">工地日报与周报</text><view class="workbench-chevron" />
+            <button class="notebook-row-v2" bindtap="openReports">
+              <image class="notebook-row-icon" src="../assets/notebook/file.png" mode="aspectFit" /><view class="notebook-row-copy">工地日报与周报</view><view class="workbench-chevron" />
             </button>
-          </block>
-          <block wx:elif="{{model.view === 'manager'}}">
-            <block wx:if="{{model.inspection}}">
-              <button class="workbench-paper inspection-summary inspection-route-entry" bindtap="openInspectionRoute">
-                <view class="inspection-summary-copy">
-                  <text class="workbench-section-title">{{resumeInspection ? '继续巡检' : '现场巡检'}}</text>
-                  <text class="workbench-meta">{{model.inspection.count ? model.inspection.count + ' 项待到场 · ' + model.inspection.projects + ' 个工地' : '目前暂无待到场事项'}}</text>
-                  <text wx:if="{{model.inspection.next}}" class="record-title">优先查看 · {{model.inspection.next}}</text>
-                </view>
-                <view class="workbench-chevron" />
+            <view class="filter-bar">
+              <button class="filter-chip {{reportRange.key === 'today' ? 'active' : ''}}" data-key="today" bindtap="selectRange"><view class="filter-chip-label">今天</view></button>
+              <button class="filter-chip {{reportRange.key === 'yesterday' ? 'active' : ''}}" data-key="yesterday" bindtap="selectRange"><view class="filter-chip-label">昨天</view></button>
+              <button class="filter-chip filter-chip-wide {{reportRange.key === 'week' ? 'active' : ''}}" data-key="week" bindtap="selectRange"><view class="filter-chip-label">近7天</view></button>
+              <button class="filter-chip filter-chip-wide calendar-chip {{reportRange.key === 'custom' ? 'active' : ''}}" bindtap="openCalendar">
+                <view class="filter-chip-label"><view class="calendar-glyph" aria-hidden="true"></view>日历</view>
               </button>
-              <button class="workbench-row workbench-link inspection-review-entry" bindtap="openInspection">待审核上报<view class="workbench-chevron" /></button>
-            </block>
-            <view wx:else class="workbench-section">
-              <text class="workbench-fabric">待审核上报</text>
-              <view wx:if="{{model.draft}}" class="workbench-paper manager-draft">
-                <view class="draft-source">
-                  <view class="record-copy">
-                    <text class="record-title draft-title">{{model.draft.title}}</text>
-                    <text class="workbench-meta">{{model.draft.authorName}} · {{model.draft.time}}</text>
-                    <text wx:if="{{model.draft.photoCount || model.draft.hasVoice}}" class="workbench-meta">{{model.draft.photoCount ? '照片 ' + model.draft.photoCount + ' 张' : ''}}{{model.draft.photoCount && model.draft.hasVoice ? ' · ' : ''}}{{model.draft.hasVoice ? '语音 1 段' : ''}}</text>
-                  </view>
-                  <image wx:if="{{photo}}" class="draft-photo" src="{{photo}}" mode="aspectFill" />
-                </view>
-                <button class="workbench-primary" data-project="{{model.project.id}}" data-record="{{model.draft.recordId}}" bindtap="openApproval">审核上报<view class="workbench-chevron" /></button>
-              </view>
-              <view wx:else class="workbench-paper workbench-state empty-fabric">暂无待审核上报</view>
             </view>
-            <view class="workbench-paper workbench-section manager-review">
-              <text class="workbench-section-title">整改复查</text>
-              <template wx:if="{{model.review}}" is="issue-row" data="{{issue: model.review, label: '待复查'}}" />
-              <text wx:else class="workbench-meta workbench-empty">暂无待复查事项</text>
-              <text wx:if="{{model.review.recordId}}" class="workbench-meta">已补拍</text>
-            </view>
-            <button class="workbench-row workbench-link" bindtap="openProject">查看工地<view class="workbench-chevron" /></button>
+
           </block>
-          <block wx:else>
-            <template wx:if="{{model.inspection}}" is="inspection-summary" data="{{inspection: model.inspection}}" />
-            <view wx:elif="{{model.pendingReport}}" class="workbench-section">
-              <text class="workbench-fabric">待审核上报</text>
-              <view class="workbench-paper manager-draft">
-                <view class="draft-source">
-                  <view class="record-copy">
-                    <text class="record-title draft-title">{{model.pendingReport.title}}</text>
-                    <text class="workbench-meta">{{model.pendingReport.authorName}} · {{model.pendingReport.time}}</text>
-                    <text wx:if="{{model.pendingReport.photoCount || model.pendingReport.hasVoice}}" class="workbench-meta">{{model.pendingReport.photoCount ? '照片 ' + model.pendingReport.photoCount + ' 张' : ''}}{{model.pendingReport.photoCount && model.pendingReport.hasVoice ? ' · ' : ''}}{{model.pendingReport.hasVoice ? '语音 1 段' : ''}}</text>
-                  </view>
-                </view>
-                <button class="workbench-primary" data-project="{{model.pendingReport.projectId}}" data-record="{{model.pendingReport.recordId}}" bindtap="openApproval">审核上报<view class="workbench-chevron" /></button>
-              </view>
-            </view>
-            <view class="workbench-section">
-              <text class="workbench-fabric">待我答复</text>
-              <view wx:if="{{model.reply.length}}" class="workbench-paper designer-reply">
-                <text class="workbench-section-title">{{model.reply[0].title}}</text>
-                <text wx:if="{{model.reply[0].roomName}}" class="workbench-meta">{{model.reply[0].roomName}}</text>
-                <button class="workbench-primary reply-primary" data-issue="{{model.reply[0].issueId}}" bindtap="openIssue">查看并回复<view class="workbench-chevron" /></button>
-                <block wx:for="{{model.reply}}" wx:key="issueId"><template wx:if="{{index > 0}}" is="issue-row" data="{{issue: item, label: '待回复'}}" /></block>
-              </view>
-              <view wx:else class="workbench-paper workbench-state empty-fabric">暂无待回复的现场问题</view>
-            </view>
-            <view class="workbench-paper workbench-section designer-changes">
-              <text class="workbench-section-title">待核对变更</text>
-              <block wx:for="{{model.changes}}" wx:key="issueId"><template is="issue-row" data="{{issue: item, label: '待核对'}}" /></block>
-              <text wx:if="{{!model.changes.length}}" class="workbench-meta workbench-empty">暂无待核对变更</text>
-            </view>
-          </block>
-          <button wx:if="{{model.view !== 'worker'}}" class="workbench-row workbench-link {{model.view === 'designer' ? 'designer-report' : ''}}" bindtap="openReports">
-            <image wx:if="{{model.view === 'designer'}}" src="../assets/notebook/file.png" mode="aspectFit" /><text class="row-title">工地日报与周报</text><view class="workbench-chevron" />
-          </button>
         </block>
-        <button wx:if="{{model.view === 'designer'}}" class="workbench-row workbench-paper designer-tool" bindtap="openDesign">
-          <image src="/images/mine-icons/tab-ai-active.png" mode="aspectFit" /><text class="row-title">AI 设计</text><text class="workbench-meta">选择户型</text><view class="workbench-chevron" />
-        </button>
       </block>
     </view>
   </scroll-view>

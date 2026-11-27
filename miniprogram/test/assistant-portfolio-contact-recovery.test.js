@@ -34,12 +34,15 @@ function fixture(write, readContact) {
     show: () => controller.show({ conversationId: '11', workId: '12', versionId: '13' }, 'work') };
 }
 function originalChatNavigation(run) {
-  const oldWx = global.wx, oldPages = global.getCurrentPages, navigation = [];
+  const oldWx = global.wx, oldPages = global.getCurrentPages, oldApp = global.getApp, navigation = [];
+  global.getApp = () => ({ globalData: { aiEntriesEnabled: true } });
   global.wx = { navigateBack: input => navigation.push({ action: 'back', ...input }),
     redirectTo: input => navigation.push({ action: 'redirect', ...input }) };
   global.getCurrentPages = () => [{ route: 'packages/assistant/chat/chat', data: { conversation: { id: '11' } } },
     { route: 'packages/assistant/designer/designer' }, { route: 'packages/assistant/work/work' }];
-  return Promise.resolve().then(() => run(navigation)).finally(() => { global.wx = oldWx; global.getCurrentPages = oldPages; });
+  return Promise.resolve().then(() => run(navigation)).finally(() => {
+    global.wx = oldWx; global.getCurrentPages = oldPages; global.getApp = oldApp;
+  });
 }
 function workPage(f) {
   const methods = page('work');

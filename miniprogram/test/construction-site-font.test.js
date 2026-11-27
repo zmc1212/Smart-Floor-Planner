@@ -23,7 +23,8 @@ test('the packaged Site Serif payload is an uploadable Brotli WOFF2 force-includ
   assert.ok(config.packOptions.include.some(rule => rule.type === 'file' && rule.value === fontPath),
     'the file API asset must be force-included even when unused-file pruning is enabled');
   assert.equal(font.subarray(0, 4).toString(), 'wOF2');
-  assert.equal(font.length, 182836);
+  assert.equal(font.length, font.readUInt32BE(8), 'the WOFF2 header must match the decompressed payload length');
+  assert.ok(fs.statSync(path.join(root, fontPath)).size <= 300 * 1024);
   const stylesheet = fs.readFileSync(path.join(root, 'packages/construction/notebook-font.less'), 'utf8');
   assert.doesNotMatch(stylesheet, /base64,/, 'the stylesheet must stay free of the embedded font');
 });

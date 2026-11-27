@@ -9,7 +9,7 @@ const filename = path.resolve(__dirname, '../packages/construction/projects/proj
 const source = fs.readFileSync(filename, 'utf8');
 
 function fixture(role = 'construction_staff', values = new Map()) {
-  const app = { globalData: { token: 'session-a', bootstrap: { current: { role, capabilities: ['construction.projects','account'], context: { enterpriseId: '1', staffId: '2', staffRole: role, staffDisplayName: '项目员工' } } } } };
+  const app = { globalData: { aiEntriesEnabled: true, token: 'session-a', bootstrap: { current: { role, capabilities: ['construction.projects','account'], context: { enterpriseId: '1', staffId: '2', staffRole: role, staffDisplayName: '项目员工' } } } } };
   let handler = async () => ({ success: true, data: { items: [], stages: [] } });
   let definition; const calls = [], messages = [], unlinked = [];
   let download = async () => { throw new Error('Unexpected media download'); };
@@ -23,7 +23,14 @@ function fixture(role = 'construction_staff', values = new Map()) {
   };
   const localRequire = createRequire(filename);
   const api = { request: async (...args) => { calls.push(args); return handler(...args); }, downloadFile: (...args) => download(...args) };
-  new Function('require','Page','getApp','wx', source)(name => name.includes('utils/api') ? api : localRequire(name), value => { definition = value; }, () => app, wx);
+  new Function('require','Page','getApp','wx', source)(name => {
+    if (name.includes('utils/api')) return api;
+    if (name.includes('utils/ai-entries')) return {
+      aiEntriesEnabled: () => app.globalData.aiEntriesEnabled,
+      syncAiEntryVisibility() { this.setData({ aiEntriesEnabled: app.globalData.aiEntriesEnabled }); },
+    };
+    return localRequire(name);
+  }, value => { definition = value; }, () => app, wx);
   function page() { return { ...definition, data: JSON.parse(JSON.stringify(definition.data)), setData(values) { Object.assign(this.data, values); } }; }
   return { app, calls, messages, values, page, unlinked, intercept: fn => { handler = fn; }, interceptDownload: fn => { download = fn; } };
 }
@@ -56,17 +63,31 @@ test('the enterprise owner brief entry opens the company project brief instead o
   assert.equal(staffPage.data.managementBrief, false);
   staffPage.openBrief();
   assert.equal(staff.messages.at(-1), '/packages/assistant/chat/chat?followup=1');
+  staff.app.globalData.aiEntriesEnabled = false;
+  staffPage.openBrief();
+  assert.equal(staff.messages.at(-1), '/packages/assistant/chat/chat?followup=1&reportBoard=1');
+  staffPage.openWeeklyReport();
+  assert.equal(staff.messages.at(-1), '/packages/assistant/chat/chat?followup=1&reportBoard=1&kind=weekly');
 });
 
 test('project shortcuts use authorized rows and preserve inactive, pending and session boundaries', async () => {
   const f=fixture(),p=f.page();await p.onShow();
+  const ticket = 'n1.1.' + 'a'.repeat(43);
+  f.intercept(async url => ({ data: url.endsWith('/cameras') ? { items: [{ binding_id: '7', name: '测试机位' }] }
+    : { ticket, url: `https://camera.example/camera-media/native/${ticket}/1/hls.m3u8` } }));
   p.setData({items:[{id:'1',status:'active'},{id:'2',status:'paused'},{id:'3',status:'archived'}]});
   p.chooseStatus({currentTarget:{dataset:{status:'active'}}});assert.deepEqual(p.data.filteredItems.map(x=>x.id),['1']);
   const event=id=>({currentTarget:{dataset:{id}}});
-  p.openSiteCamera(event('1'));assert.equal(f.messages.at(-1),'/packages/construction/camera/camera?projectId=1');
+  await p.openSiteCamera(event('1'));
+  assert.equal(p.data.liveProjectId, '1');
+  assert.match(p.data.liveSrc, /camera-media\/native/);
+  assert.deepEqual(f.calls.at(-1).slice(0, 3), ['/miniprogram/construction/staff-video/projects/1/native-live/start', 'POST', { bindingId: '7' }]);
+  assert.deepEqual(f.messages, []);
   const count=f.messages.length;p.openSiteCamera(event('2'));p.openSiteChat(event('3'));p.openSiteChat(event('foreign'));assert.equal(f.messages.length,count);
   p.setData({pending:{key:'pending'}});p.openSiteCamera(event('1'));assert.equal(f.messages.length,count);
   p.setData({pending:null});p.onHide();p.openSiteChat(event('1'));assert.equal(f.messages.length,count);
+  assert.equal(p.data.liveSrc, '');
+  assert.equal(f.calls.at(-1)[0], '/miniprogram/construction/staff-video/projects/1/native-live/stop');
 });
 
 test('the current construction requirement opens the room by its server ID', async () => {
@@ -125,7 +146,8 @@ test('unavailable record media leaves an authorized project usable, while archiv
   assert.deepEqual(p.data.previewPhotos, []);
   assert.deepEqual(f.unlinked, ['wxfile://test/private-first-photo']);
   assert.ok(p.data.previewError);
-  p.openCamera(); assert.match(f.messages.at(-1), /camera\?projectId=9$/);
+  await p.openCamera(); assert.equal(p.data.liveProjectId, '9');
+  assert.equal(f.calls.at(-1)[0], '/miniprogram/construction/staff-video/projects/9/cameras');
   p.setData({ detail: { project: { ...project, status: 'archived' } } });
   const requests = f.calls.length, routes = f.messages.length;
   await p.refreshPreview(); p.openChat();

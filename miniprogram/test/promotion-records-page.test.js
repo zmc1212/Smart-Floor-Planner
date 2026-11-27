@@ -70,7 +70,7 @@ test('Promotion records translates legacy English creation entries for the list'
   assert.match(pageJs, /localizeTimelineCopy\(latestFollowUp\.content, latestFollowUp\.type\)/);
 });
 
-test('Only the five primary routes own the shared custom TabBar', () => {
+test('Only primary routes own the shared custom TabBar', () => {
   assert.deepEqual(
     appConfig.tabBar.list.map((item) => item.pagePath),
     [

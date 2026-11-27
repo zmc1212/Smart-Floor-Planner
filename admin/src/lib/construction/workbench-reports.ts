@@ -3,6 +3,7 @@ import { one, rows } from '@/db/repositories/assistant-repository';
 import type { PostgresTransaction } from '@/db/transaction';
 import { fail } from '@/lib/assistant/contracts';
 import type { ConstructionActor } from './contracts';
+import { inspectionModeSql } from './inspection-policy';
 
 export type ReportRange = { from: string; to: string };
 
@@ -64,7 +65,7 @@ function stages(value: unknown) {
     .map(item => ({ key: String((item as { key: string }).key), name: String((item as { name: string }).name) }));
 }
 
-export async function workerReportHistory(tx: PostgresTransaction, actor: ConstructionActor, projectId: string, range: ReportRange) {
+async function workerReports(tx: PostgresTransaction, actor: ConstructionActor, projectId: string, range?: ReportRange) {
   const data = await rows<{
     recordId: string; clientMessageId: string; status: string; title: string | null; sourceAt: Date;
     stages: unknown; photoCount: string | number; photoId: string | null; hasVoice: boolean;
@@ -90,8 +91,11 @@ export async function workerReportHistory(tx: PostgresTransaction, actor: Constr
     left join app.admin_users ap on ap.enterprise_id=r.enterprise_id and ap.id=r.approved_by
     left join app.admin_users rb on rb.enterprise_id=r.enterprise_id and rb.id=r.returned_by
     where r.enterprise_id=${actor.enterpriseId} and r.project_id=${projectId} and r.author_id=${actor.adminId}
-      and (m.created_at at time zone 'Asia/Shanghai')::date between ${range.from}::date and ${range.to}::date
-    order by m.created_at desc,r.id desc limit 100`);
+      ${range ? sql`and (m.created_at at time zone 'Asia/Shanghai')::date between ${range.from}::date and ${range.to}::date`
+        : sql`and r.status='changes_requested' and not exists(select 1 from app.construction_site_records child
+          where child.enterprise_id=r.enterprise_id and child.project_id=r.project_id
+            and child.author_id=r.author_id and child.resubmission_of_id=r.id)`}
+    order by ${range ? sql`m.created_at` : sql`coalesce(r.returned_at,m.created_at)`} desc,r.id desc limit ${range ? 100 : 1}`);
   return data.map(row => {
     const photoCount = Number(row.photoCount || 0);
     const status = reportStatus(String(row.status));
@@ -116,6 +120,14 @@ export async function workerReportHistory(tx: PostgresTransaction, actor: Constr
   });
 }
 
+export function workerReportHistory(tx: PostgresTransaction, actor: ConstructionActor, projectId: string, range: ReportRange) {
+  return workerReports(tx, actor, projectId, range);
+}
+
+export async function latestWorkerReturn(tx: PostgresTransaction, actor: ConstructionActor, projectId: string) {
+  return (await workerReports(tx, actor, projectId))[0] || null;
+}
+
 export async function workerTodaySummary(tx: PostgresTransaction, actor: ConstructionActor, projectId: string) {
   const summary = await one<{ total: string; pending: string; approved: string; returned: string }>(tx, sql`
     select count(*) as total,
@@ -134,12 +146,13 @@ export async function workerTodaySummary(tx: PostgresTransaction, actor: Constru
   };
 }
 
-export async function latestPendingReport(tx: PostgresTransaction, enterpriseId: string, projectId?: string) {
+export async function latestPendingReport(tx: PostgresTransaction, enterpriseId: string, projectId?: string,
+  { routineOnly = false }: { routineOnly?: boolean } = {}) {
   const report = await one<{
     recordId: string; projectId: string; projectName: string; title: string | null; authorName: string;
-    sourceAt: Date; photoCount: string | number; hasVoice: boolean;
+    sourceAt: Date; photoCount: string | number; hasVoice: boolean; stageSnapshot: unknown;
   }>(tx, sql`select r.id::text as "recordId",p.id::text as "projectId",p.name as "projectName",r.data->>'title' as title,
-    a.display_name as "authorName",m.created_at as "sourceAt",
+    a.display_name as "authorName",m.created_at as "sourceAt",r.stage_snapshot as "stageSnapshot",
     (select count(*) from app.construction_site_attachments x join app.construction_site_media mm
       on mm.enterprise_id=x.enterprise_id and mm.project_id=x.project_id and mm.id=x.media_id
       where x.enterprise_id=r.enterprise_id and x.project_id=r.project_id and x.record_id=r.id and mm.deleted_at is null) as "photoCount",
@@ -151,6 +164,7 @@ export async function latestPendingReport(tx: PostgresTransaction, enterpriseId:
     join app.admin_users a on a.enterprise_id=r.enterprise_id and a.id=r.author_id
     where r.enterprise_id=${enterpriseId} and r.status='draft' and p.status<>'archived'
       ${projectId ? sql`and r.project_id=${projectId}` : sql``}
+      ${routineOnly ? sql`and r.resubmission_of_id is null and (${inspectionModeSql}) not in ('required','onsite')` : sql``}
     order by m.created_at desc,r.id desc limit 1`);
   if (!report) return null;
   const photoCount = Number(report.photoCount || 0);
@@ -163,5 +177,6 @@ export async function latestPendingReport(tx: PostgresTransaction, enterpriseId:
     at: new Date(report.sourceAt).toISOString(),
     photoCount,
     hasVoice: Boolean(report.hasVoice),
+    stageNames: stages(report.stageSnapshot).map(stage => stage.name),
   };
 }

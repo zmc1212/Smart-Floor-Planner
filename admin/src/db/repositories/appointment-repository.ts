@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseAppointmentSettings,
@@ -682,6 +682,8 @@ export class AppointmentRepository {
       .where(and(
         eq(leads.enterpriseId, enterpriseId),
         eq(leads.customerUserId, customerUserId),
+        isNull(leads.archivedAt),
+        notInArray(leads.status, ['closed', 'converted']),
         eq(measurementAppointments.status, 'confirmed'),
         sql`upper(${measurementAppointments.timeRange}) > now()`
       ))

@@ -1,10 +1,12 @@
 const api = require('../../../utils/api.js');
 const { canAccessRoute } = require('../../../utils/identity-navigation.js');
+const { ownerLiveMedia } = require('../../../utils/owner-live-media.js');
 const sessionToken = () => getApp().globalData.token || wx.getStorageSync('token');
 Page({
   data: { src: '', loading: true, error: '' },
   onLoad(query) {
     this._projectId = /^[1-9]\d*$/.test(query.projectId || '') ? query.projectId : '';
+    this._staff = query.staff === '1';
     this._ownerPreview = query.conversationId !== undefined;
     if (this._ownerPreview) this._scope = [query.conversationId, query.liveId, query.versionId, query.revision];
   },
@@ -48,16 +50,16 @@ Page({
         if (result.data?.versionId !== versionId || result.data?.revision !== Number(revision)) throw new Error('invalid version');
       } else {
         if (!this._projectId || !canAccessRoute('/packages/construction/camera/camera', current.bootstrap || current.userInfo)) throw new Error('forbidden');
-        result = await api.request('/miniprogram/construction/video/projects/' + this._projectId + '/entry', 'POST', {});
+        const endpoint = this._staff ? 'staff-video' : 'video';
+        result = await api.request(`/miniprogram/construction/${endpoint}/projects/${this._projectId}/entry`, 'POST', {});
       }
       if (!currentAttempt()) return;
       if (token !== sessionToken()) throw new Error('identity changed');
       const url = result.data && result.data.url;
       if (this._ownerPreview) {
-        const match = /^(https:\/\/[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?)?\/api\/public\/construction-live\/([1-9]\d*)\/([a-f0-9]{48})\/media\/([A-Za-z0-9_-]{43})\/hls\.m3u8$/.exec(url || '');
-        if (!match) throw new Error('invalid entry');
-        const origin = match[1] || api.getBaseUrls()[0].replace(/\/api$/, '');
-        const src = origin + '/construction-camera#ownerLive=' + match.slice(2).join('.');
+        const media = ownerLiveMedia(url, api.getBaseUrls);
+        if (!media) throw new Error('invalid entry');
+        const src = media.webview;
         this._preview = { src, token, expiresAt: Date.now() + Number(result.data.expiresInSeconds) * 1000 };
         if (this._visible) this.setData({ src });
         return;

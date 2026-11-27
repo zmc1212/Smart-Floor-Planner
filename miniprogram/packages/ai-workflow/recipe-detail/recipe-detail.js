@@ -1,5 +1,6 @@
 const aiService = require('../../../utils/aiDesignService.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
+const { pendingAiEntryVisibility } = require('../../../utils/ai-entries.js');
 
 Page({
   data: {
@@ -12,7 +13,9 @@ Page({
     navigationRight: 96,
   },
 
-  onLoad(options) {
+  async onLoad(options) {
+    const pending = pendingAiEntryVisibility();
+    if (pending) await pending;
     if (!canAccessAIDesign()) {
       showAIDesignAccessDenied();
       wx.navigateBack();

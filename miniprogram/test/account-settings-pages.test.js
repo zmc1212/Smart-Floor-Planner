@@ -74,6 +74,32 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.match(settingsJs, /switchTab\([\s\S]*pages\/mine\/mine/);
 });
 
+test('Mine opens the existing activity code from the first account row for enterprise owners only', () => {
+  const markup = read('pages/mine/mine.wxml');
+  assert.match(markup, /account-section-title">账号<\/view>\s*<view class="account-surface">\s*<view wx:if="\{\{activeRole === 'enterprise_admin'\}\}" class="account-row"[^>]*bindtap="onOpenStaffActivityCode"[\s\S]*?分享活动码[\s\S]*?bindtap="onEditProfile"/);
+
+  const page = createPage(loadPage('pages/mine/mine.js'));
+  const originalWx = global.wx;
+  const destinations = [];
+  global.wx = { navigateTo: ({ url }) => destinations.push(url) };
+  try {
+    page.data.activeRole = 'enterprise_admin';
+    page.onOpenStaffActivityCode();
+    page.data.isLoggedIn = true;
+    for (const role of ['customer', 'designer', 'referrer', 'construction_staff', 'platform_admin']) {
+      page.data.activeRole = role;
+      page.onOpenStaffActivityCode();
+    }
+    assert.deepEqual(destinations, []);
+
+    page.data.activeRole = 'enterprise_admin';
+    page.onOpenStaffActivityCode();
+    assert.deepEqual(destinations, ['/packages/business/staff-activity-code/staff-activity-code']);
+  } finally {
+    global.wx = originalWx;
+  }
+});
+
 test('Account pages use the approved account-v1 scenes while keeping live controls native', () => {
   const heroPages = [
     {

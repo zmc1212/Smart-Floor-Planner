@@ -28,9 +28,12 @@ export type AssistantQueueScope = {
   includeSharedConsultations?: boolean;
 };
 
-/** Filters an assistant_jobs row aliased as j. An active Worker may service
- * user-initiated customer replies outside the pilot. Other jobs still require
- * the pilot enterprise, even when they use the same chat_turn queue kind. */
+/** A local transcription run stores its protocol and configuration as JSON. */
+export const localSpeechRunFilter = sql`coalesce(r.purpose='speech.transcribe'
+  and r.policy_snapshot #>> '{localSpeech,protocol}'='local-speech-v1',false)`;
+
+/** Filters an assistant_jobs row aliased as j. The shared lane is limited to
+ * the customer's own consultation replies, regenerations and voice drafts. */
 export function assistantQueueFilter(scope?: AssistantQueueScope) {
   const enterpriseId = scope?.enterpriseId?.trim();
   if (!enterpriseId) return sql``;
@@ -40,8 +43,12 @@ export function assistantQueueFilter(scope?: AssistantQueueScope) {
     select 1 from app.assistant_runs r
     join app.assistant_conversations c on c.enterprise_id=r.enterprise_id and c.id=r.conversation_id
     where r.enterprise_id=j.enterprise_id and r.id=j.run_id
-      and r.trigger_kind='user_message' and r.purpose='reply' and c.purpose='customer_consultation'
+      and c.purpose='customer_consultation'
       and r.policy_snapshot #>> '{actor,principal,kind}' = 'user'
+      and (
+        (r.trigger_kind='user_message' and r.purpose in ('reply','reply.regenerate'))
+        or (r.trigger_kind='domain_event' and ${localSpeechRunFilter})
+      )
   )))`;
 }
 

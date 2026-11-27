@@ -211,6 +211,7 @@ export async function GET(request: Request) {
         const primaryItems = profileTodo
           ? [profileTodo, ...followUps.slice(0, 7)]
           : followUps.slice(0, 8);
+        const assignedLeads = surveyList.rows.map(lead => leadItem(lead, 'lead', publishedCountFor(lead.id)));
         return {
           role,
           title: '家装设计顾问工作台',
@@ -222,6 +223,17 @@ export async function GET(request: Request) {
           ],
           primaryItems,
           tasks: [...ownExpired, ...surveyTasks],
+          pendingDeliveries: assignedLeads
+            .filter(item => item.serviceStage === 'survey_completed' && item.floorPlanStatus === 'completed').slice(0, 3),
+          appointments: surveyList.rows.flatMap(lead => {
+            const appointment = lead.appointment;
+            if (appointment?.status !== 'confirmed') return [];
+            const item = appointmentItem(appointment, lead, { publishedDesignCount: publishedCountFor(lead.id) });
+            if (['closed', 'converted', 'referrer_withdrawn'].includes(item.serviceStage)) return [];
+            return [{ ...item, canPerformSurvey: appointment.designerId === staffId && appointment.measurerId === staffId }];
+          }),
+          recentFloorPlans: assignedLeads.filter(item => item.floorPlanId && item.floorPlanStatus === 'completed'
+            && !['closed', 'converted', 'referrer_withdrawn'].includes(item.serviceStage)).slice(0, 3),
           ...acquisitionEntries(role),
           secondary: { label: '查看全部客户', target: 'customers' },
           ...opsDashboard,

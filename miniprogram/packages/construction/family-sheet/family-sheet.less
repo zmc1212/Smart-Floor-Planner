@@ -1,4 +1,4 @@
-/* Approved owner-site-unified-20261120/owner-family-sheet-v002. */
+/* Approved family share v003, based on owner-family-sheet-v002. */
 .family-layer { position: fixed; inset: 0; z-index: 1200; }
 .family-mask { position: absolute; inset: 0; background: #123a30; opacity: 0; transition: opacity 240ms ease-out; }
 .family-layer.is-open .family-mask { opacity: .55; }
@@ -55,26 +55,9 @@
 }
 .family-sheet .family-share:active { background: #0d6148; }
 .family-sheet .family-share[disabled] { background: var(--action-disabled-bg, #a9d9b8) !important; color: #244b3d; }
-.family-sheet .family-code-toggle {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 46px;
-  margin-top: 13px;
-  padding: 0 12px;
-  border: 1px solid #abbea4;
-  border-radius: 9px;
-  font-size: 15px;
-  font-weight: 600;
-  text-align: left;
-}
-.family-code-toggle image { width: 22px; height: 22px; flex: none; }
-.family-arrow-up { transform: rotate(-90deg); }
-.family-code { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 8px 0 2px; padding: 12px 10px 3px; background: #f4f2e7; border-radius: 8px; }
-.family-code-image { width: 160px; height: 160px; margin-top: 2px; background: #fffdf5; }
-.family-code-state { min-height: 44px; display: flex; align-items: center; font-size: 13px; color: #526e60; }
+.family-code { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.family-code-image { width: 196px; height: 196px; background: #fff; border-radius: 8px; }
+.family-code-state { min-height: 196px; display: flex; align-items: center; justify-content: center; }
 .family-invite-meta, .family-inline-state, .family-viewer-heading, .family-viewer {
   display: flex;
   align-items: center;
@@ -95,8 +78,10 @@
   font-size: 13px;
   font-weight: 600;
 }
-.family-sheet .family-link[disabled], .family-sheet .family-code-toggle[disabled] { color: #6a7c70; }
-.family-sheet .family-link:active, .family-sheet .family-code-toggle:active { background: #e9efe2; }
+.family-sheet .family-code-link { gap: 4px; }
+.family-code-link image { width: 16px; height: 16px; flex: none; }
+.family-sheet .family-link[disabled] { color: #6a7c70; }
+.family-sheet .family-link:active { background: #e9efe2; }
 .family-feedback { display: block; padding: 5px 0; color: #785020; font-size: 13px; line-height: 1.5; }
 .family-inline-state { display: flex; align-self: stretch; }
 .family-viewers, .family-viewer { position: relative; }

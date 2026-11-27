@@ -233,6 +233,10 @@ test('manager returns require instructions; new-photo resubmissions retain the o
     const returnKey = randomUUID(), returned = await manager.mutate(pid, currentId, 'request_changes', request, returnKey);
     assert.deepEqual(await manager.mutate(pid, currentId, 'request_changes', request, returnKey), returned);
     assert.equal(returned.status, 'changes_requested');
+    const outsideReportRange = { from: '2000-01-01', to: '2000-01-02' };
+    const priority = await constructionWorkbench(actor(), 'construction_staff', pid, outsideReportRange);
+    assert.equal('latestReturn' in priority && priority.latestReturn?.recordId, currentId);
+    assert.equal('latestReturn' in priority && priority.latestReturn?.returnReason, requirements);
     assert.equal((await get(currentId))!.published_version, null);
     assert.equal(await withTenantTransaction(eids[0], tx => publishedSiteRecord(tx, eids[0], customer.principal.kind === 'user' ? customer.principal.userId : '', currentId)), undefined);
     await assert.rejects(site().mutate(pid, currentId, 'edit', { expectedVersion: returned.version, data: firstData }, randomUUID()), { code: 'site_rework_state_conflict' });
@@ -259,6 +263,8 @@ test('manager returns require instructions; new-photo resubmissions retain the o
     // Recover with the actual winning key, including a response lost by the client.
     if (results[0].status === 'fulfilled') assert.deepEqual(await site().mutate(pid, currentId, 'resubmit', body, submitKey), submitted);
     assert.equal(submitted.originalRecordId, originalId); assert.equal(submitted.resubmissionOfId, currentId);
+    const nextPriority = await constructionWorkbench(actor(), 'construction_staff', pid, outsideReportRange);
+    assert.notEqual('latestReturn' in nextPriority && nextPriority.latestReturn?.recordId, currentId);
     const childId = String(submitted.recordId), lease = await claimJob(); assert.equal(lease?.runId, submitted.runId);
     assert.equal(String((await get(childId))!.room_id), firstData.roomId);
     if (round === 0) {

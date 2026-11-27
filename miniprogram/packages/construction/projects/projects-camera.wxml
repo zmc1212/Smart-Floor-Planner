@@ -1,0 +1,17 @@
+<view class="paper staff-live-paper">
+  <native-live-player wx:if="{{liveCameras.length}}" id="staff-live-player"
+    src="{{liveSrc}}" epoch="{{liveEpoch}}" phase="{{livePhase}}" message="{{liveMessage}}" audio-allowed="{{true}}"
+    bindadvance="onPrivateLiveAdvance" bindplaybackerror="onPrivateLiveError" bindplay="startPrivateLive" bindstop="stopPrivateLive"
+  />
+  <view wx:else class="staff-live-feedback" role="status">
+    <text>{{liveListLoading ? '正在读取摄像头…' : (liveListError || '暂无可用摄像头')}}</text>
+    <button wx:if="{{liveListError}}" class="text-action" bindtap="retrySiteLive">重试</button>
+  </view>
+  <view wx:if="{{!liveListLoading}}" class="staff-live-caption">
+    <picker wx:if="{{liveCameras.length > 1}}" class="staff-live-name" range="{{liveCameras}}" range-key="name" value="{{liveCameraIndex}}" bindchange="selectSiteCamera">
+      <view>{{liveCameras[liveCameraIndex].name}} <image class="book-icon" src="../assets/notebook/chevron.png" mode="aspectFit" aria-hidden="true"/></view>
+    </picker>
+    <text wx:else class="staff-live-name">{{liveCameras[0].name}}</text>
+    <button class="text-action" bindtap="openCompatibleSiteCamera">用兼容播放器打开</button>
+  </view>
+</view>

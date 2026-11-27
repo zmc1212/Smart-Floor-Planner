@@ -1,0 +1,41 @@
+<view class="frame {{fill ? 'frame-fill' : ''}} {{compactControls ? 'frame-compact' : ''}}">
+  <video
+    wx:if="{{src}}" id="site-live-video" class="video" src="{{src}}" data-epoch="{{epoch}}"
+    autoplay="{{true}}" muted="{{muted}}" controls="{{fullscreen}}"
+    show-mute-btn="{{false}}" show-fullscreen-btn="{{fullscreen}}"
+    object-fit="contain" show-center-play-btn="{{false}}" show-play-btn="{{false}}"
+    show-progress="{{false}}" enable-progress-gesture="{{false}}" event-model="bubble"
+    bindtimeupdate="onAdvance" binderror="onError" bindfullscreenchange="fullscreenChanged"
+  >
+    <block wx:if="{{(phase === 'playing' || phase === 'paused') && !fullscreen}}">
+      <cover-view wx:if="{{pausable}}" class="icon-button stop pause-toggle" bindtap="togglePause" aria-role="button" aria-label="{{phase === 'paused' ? '继续观看' : '暂停'}}">
+        <cover-view class="icon-disc"><cover-image class="glyph" src="{{phase === 'paused' ? './play.png' : './pause.png'}}" aria-hidden="true" /></cover-view>
+      </cover-view>
+      <cover-view wx:else class="icon-button stop" bindtap="stop" aria-role="button" aria-label="停止播放">
+        <cover-view class="icon-disc"><cover-view class="square" aria-hidden="true" /></cover-view>
+      </cover-view>
+      <cover-view wx:if="{{audioAllowed}}" class="icon-button audio" bindtap="toggleAudio" aria-role="button" aria-label="{{muted ? '打开声音' : '关闭声音'}}">
+        <cover-view class="icon-disc"><cover-image class="glyph" src="{{muted ? './volume-x.png' : './volume-2.png'}}" aria-hidden="true" /></cover-view>
+      </cover-view>
+      <cover-view class="icon-button fullscreen" bindtap="fullscreen" aria-role="button" aria-label="全屏">
+        <cover-view class="icon-disc"><cover-image class="glyph" src="./maximize.png" aria-hidden="true" /></cover-view>
+      </cover-view>
+    </block>
+  </video>
+
+  <image wx:if="{{poster && phase !== 'playing'}}" class="poster" src="{{poster}}" mode="{{posterMode}}"
+    data-key="{{posterKey}}" binderror="posterError" aria-hidden="true" />
+  <block wx:if="{{phase !== 'playing' && phase !== 'paused'}}">
+    <view class="overlay">
+      <text wx:if="{{message}}" class="feedback-copy">{{message}}</text>
+      <block wx:if="{{phase === 'stopped'}}"><slot /></block>
+      <view wx:elif="{{phase !== 'connecting'}}" class="play {{disabled ? 'is-disabled' : ''}}" bindtap="play" aria-role="button" aria-disabled="{{disabled}}" aria-label="{{phase === 'failed' ? '重试播放' : '播放直播'}}">
+        <view class="triangle" aria-hidden="true" />
+      </view>
+    </view>
+
+    <view wx:if="{{phase !== 'stopped'}}" class="icon-button fullscreen is-disabled" aria-role="button" aria-disabled="{{true}}" aria-label="全屏">
+      <view class="icon-disc"><image class="glyph" src="./maximize.png" mode="aspectFit" aria-hidden="true" /></view>
+    </view>
+  </block>
+</view>

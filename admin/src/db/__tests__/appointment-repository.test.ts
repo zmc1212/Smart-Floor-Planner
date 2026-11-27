@@ -132,6 +132,27 @@ test('one designer cannot take overlapping visits and the successful booking ret
   assert.equal(customerAccess.otherCustomerAppointment, null);
 });
 
+test('the current booking card ignores visits on archived or ended service files', async () => {
+  await withTenantTransaction(enterpriseId, async transaction => {
+    const repository = new AppointmentRepository(transaction);
+    const [lead] = await transaction.select().from(leads).where(eq(leads.id, bookedLeadId));
+    assert.ok(lead);
+    assert.equal((await repository.findCurrentForCustomer(enterpriseId, actorUserId))?.leadId, bookedLeadId);
+    try {
+      for (const inactive of [
+        { archivedAt: new Date() },
+        { archivedAt: null, status: 'closed' },
+        { status: 'converted' },
+      ]) {
+        await transaction.update(leads).set(inactive).where(eq(leads.id, bookedLeadId));
+        assert.equal(await repository.findCurrentForCustomer(enterpriseId, actorUserId), null);
+      }
+    } finally {
+      await transaction.update(leads).set({ archivedAt: lead.archivedAt, status: lead.status }).where(eq(leads.id, bookedLeadId));
+    }
+  });
+});
+
 test('rescheduling, unavailability, and tenant RLS preserve appointment boundaries', async () => {
   const appointment = await withTenantTransaction(enterpriseId, (transaction) =>
     new AppointmentRepository(transaction).listByLead(enterpriseId, bookedLeadId)

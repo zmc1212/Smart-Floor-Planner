@@ -65,28 +65,34 @@ function withNavigation(globalData, verify) {
   }
 }
 
-test('an authorized designer can open the registered Design page with a selected room', () => {
-  const tab = appConfig.tabBar.list.find((item) => '/' + item.pagePath === AI_DESIGN_TAB_URL);
-
-  assert.ok(tab);
-  assert.equal(tab.text, '设计');
-  assert.equal(tab.iconPath, 'images/mine-icons/tab-ai.png');
-  assert.equal(tab.selectedIconPath, 'images/mine-icons/tab-ai-active.png');
-  assert.equal(
-    appConfig.tabBar.list.some((item) => item.pagePath === 'pages/inspiration/inspiration'),
-    false
-  );
+test('the platform switch controls the packaged Design tab and scheme entry', () => {
+  const designPage = AI_DESIGN_TAB_URL.slice(1);
+  const pack = require('../project.config.json').packOptions;
+  assert(appConfig.pages.includes(designPage));
+  assert(appConfig.tabBar.list.some(item => item.pagePath === designPage));
+  assert(appConfig.subPackages.some(item => item.root === 'packages/ai-workflow'));
+  for (const value of ['pages/ai-design', 'packages/ai-workflow']) {
+    assert(!pack.ignore.some(item => item.type === 'folder' && item.value === value));
+  }
 
   const userInfo = { role: 'staff', staffRole: 'designer', enterpriseId: '42' };
   const bootstrap = { current: { role: 'designer', capabilities: ['construction.projects', 'staff.design', 'account'] } };
-  assert.equal(canAccessRoute(AI_DESIGN_TAB_URL, bootstrap), true);
-  withNavigation({ userInfo, bootstrap }, routes => {
-    assert.equal(openAIDesignTab({ floorPlanId: '123', roomId: '456' }), true);
-    assert.deepEqual(routes, [{ method: 'switchTab', url: AI_DESIGN_TAB_URL }]);
-    assert.deepEqual(consumeAIDesignContext(), {
-      floorPlanId: '123', roomId: '456', targetScope: 'single_room',
-    });
+  assert.equal(canAccessRoute(AI_DESIGN_TAB_URL, bootstrap), false);
+  assert.equal(canAccessRoute(buildSchemeStudioUrl({ leadId: '42' }), bootstrap), false);
+  assert.equal(canAccessRoute('/packages/ai-workflow/result/ai-design-result?id=42&run=1', bootstrap), false);
+  assert.equal(canAccessRoute('/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=42', bootstrap), true);
+  const state = { userInfo, bootstrap, aiEntriesEnabled: false };
+  withNavigation(state, routes => {
+    assert.equal(openAIDesignTab({ floorPlanId: '123', roomId: '456' }), false);
+    assert.equal(openSchemeStudio({ leadId: '42' }), false);
+    assert.deepEqual(routes, []);
     assert.equal(consumeAIDesignContext(), null);
+    state.aiEntriesEnabled = true;
+    assert.equal(canAccessRoute(AI_DESIGN_TAB_URL, bootstrap), true);
+    assert.equal(openAIDesignTab({ floorPlanId: '123', roomId: '456' }), true);
+    assert.deepEqual(consumeAIDesignContext(), { floorPlanId: '123', roomId: '456', targetScope: 'single_room' });
+    assert.equal(canAccessRoute(buildSchemeStudioUrl({ leadId: '42' }), bootstrap), true);
+    assert.deepEqual(routes, [{ method: 'switchTab', url: AI_DESIGN_TAB_URL }]);
   });
 
   for (const filename of ['tab-ai.png', 'tab-ai-active.png']) {
@@ -189,11 +195,11 @@ test('standalone channel promoters cannot open or load enterprise AI design', ()
   const userInfo = { role: 'staff', staffRole: 'salesperson', enterpriseId: '' };
   const bootstrap = { current: { role: 'salesperson', capabilities: ['promotion.records', 'account'] } };
   assert.equal(canAccessAIDesign(userInfo), false);
-  assert.equal(canAccessAIDesign({ role: 'staff', staffRole: 'salesperson', enterpriseId: '42' }), true);
+  assert.equal(canAccessAIDesign({ role: 'staff', staffRole: 'salesperson', enterpriseId: '42' }), false);
   assert.equal(canAccessAIDesign({ role: 'user', enterpriseId: '42' }), false);
   assert.equal(canAccessRoute(AI_DESIGN_TAB_URL, bootstrap), false);
 
-  withNavigation({ userInfo, bootstrap }, routes => {
+  withNavigation({ userInfo, bootstrap, aiEntriesEnabled: true }, routes => {
     assert.equal(openAIDesignTab({ floorPlanId: '123' }), false);
     assert.equal(openSchemeStudio({ leadId: '42' }), false);
     assert.deepEqual(routes, []);

@@ -1,16 +1,21 @@
 <view class="home-page {{roleWorkbenchRole === 'customer' ? (customerTab === 'service' ? 'owner-site-tab' : (customerTab === 'xiaok' ? 'xiaok-home' : 'sfp-tab-page')) : (roleWorkbenchRole === 'designer' || roleWorkbenchRole === 'construction_staff' || roleWorkbenchRole === 'enterprise_admin') ? 'site-workbench-home' : 'sfp-tab-page'}}">
   <block wx:if="{{roleWorkbenchRole === 'customer'}}">
-    <view hidden="{{customerTab !== 'xiaok'}}"><xiaok-chat id="xiaok-chat" active="{{customerTab === 'xiaok'}}" promotion-code="{{promotionCode}}" bindpromotionentryconsumed="onPromotionEntryConsumed" /></view>
-    <owner-site-home id="owner-site-home" wx:if="{{customerTab === 'service'}}"
-      requested-family-project-id="{{requestedFamilyProjectId}}" bindfamilyentryconsumed="onFamilyEntryConsumed" />
+    <view wx:if="{{mountXiaokPanel}}" hidden="{{customerTab !== 'xiaok'}}">
+      <xiaok-chat id="xiaok-chat" data-panel="customer" active="{{activateXiaokPanel}}" bindentryready="onXiaokEntryReady"
+        promotion-code="{{promotionCode}}" bindpromotionentryconsumed="onPromotionEntryConsumed" />
+    </view>
+    <owner-site-home id="owner-site-home" wx:if="{{customerTab === 'service'}}" renovation-overview="{{true}}"
+      ai-entries-enabled="{{aiEntriesEnabled}}" requested-family-project-id="{{requestedFamilyProjectId}}" bindfamilyentryconsumed="onFamilyEntryConsumed" />
     <customer-nav id="customer-nav" />
   </block>
   <block wx:elif="{{roleWorkbenchRole === 'construction_staff'}}">
     <site-workbench id="site-workbench" role="construction_staff" bindsheetchange="onSiteWorkbenchSheetChange" />
   </block>
   <block wx:elif="{{roleWorkbenchRole === 'designer' || roleWorkbenchRole === 'enterprise_admin'}}">
-    <site-workbench id="site-workbench" wx:if="{{siteWorkbenchTab === 'workbench'}}" role="{{roleWorkbenchRole}}" bindsheetchange="onSiteWorkbenchSheetChange" />
-    <xiaok-chat wx:else id="xiaok-chat" active="{{true}}" staff-tab="{{true}}" />
+    <site-workbench id="site-workbench" wx:if="{{siteWorkbenchTab === 'workbench'}}" role="{{roleWorkbenchRole}}" ai-entries-enabled="{{aiEntriesEnabled}}" bindsheetchange="onSiteWorkbenchSheetChange" />
+    <view wx:if="{{mountXiaokPanel}}" hidden="{{siteWorkbenchTab !== 'xiaok'}}">
+      <xiaok-chat id="xiaok-chat" data-panel="staff" active="{{activateXiaokPanel}}" bindentryready="onXiaokEntryReady" staff-tab="{{true}}" />
+    </view>
   </block>
-  <role-workbench id="role-workbench" wx:elif="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" />
+  <role-workbench id="role-workbench" wx:elif="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" ai-entries-enabled="{{aiEntriesEnabled}}" />
 </view>

@@ -2,6 +2,7 @@ const api = require('../utils/api.js');
 const { openSurveyingEditor } = require('../utils/surveyNavigation.js');
 const { ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG } = require('../utils/debugConfig.js');
 const { roleForIdentity } = require('../utils/identity-navigation.js');
+const { aiEntriesEnabled, customerHomeTab, staffHomeTab } = require('../utils/ai-entries.js');
 
 const STAFF_TABS = [
   { key: 'xiaok', capability: 'construction.projects', pagePath: '/pages/index/index', staffView: 'xiaok', text: '小K', icon: 'chat', tab: true },
@@ -25,7 +26,7 @@ const STAFF_ROLE_ITEMS = {
 const ROLE_ITEMS = {
   customer: [
     { key: 'xiaok', capability: 'customer.service', pagePath: '/pages/index/index', customerView: 'xiaok', text: '小K', tab: true },
-    { key: 'service', capability: 'customer.service', pagePath: '/pages/index/index', customerView: 'service', text: '工地', tab: true },
+    { key: 'service', capability: 'customer.service', pagePath: '/pages/index/index', customerView: 'service', text: '我的装修', tab: true },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true }
   ],
   referrer: [
@@ -62,17 +63,14 @@ function currentRole(globalData) {
   return storedRole && ROLE_ITEMS[storedRole] ? storedRole : null;
 }
 
-function visibleItems(globalData) {
+function visibleItems(globalData, page) {
   const role = currentRole(globalData);
-  if (role) {
-    const capabilities = (globalData.bootstrap && globalData.bootstrap.current
-      && globalData.bootstrap.current.capabilities) || [];
-    return ROLE_ITEMS[role]
-      .filter((item) => !capabilities.length || capabilities.includes(item.capability))
-      .map((item) => ({ ...item, visible: true }));
-  }
-  // Guests use customer navigation; professional tabs stay role scoped.
-  return ROLE_ITEMS.customer.map((item) => ({ ...item, visible: true }));
+  const capabilities = role ? globalData?.bootstrap?.current?.capabilities || [] : [];
+  const xiaokReady = page?.route !== 'pages/index/index' || page.data?.xiaokEntryReady !== false;
+  return (ROLE_ITEMS[role] || ROLE_ITEMS.customer)
+    .filter((item) => item.key !== 'xiaok' || (aiEntriesEnabled(globalData) && xiaokReady))
+    .filter((item) => !capabilities.length || capabilities.includes(item.capability))
+    .map((item) => ({ ...item, visible: true }));
 }
 
 function applyServerBadges(list, badges) {
@@ -130,8 +128,9 @@ Component({
       const index = e.currentTarget.dataset.index;
       const item = this.data.list[index];
       if (!item || this._tabTransition) return;
+      const globalData = getApp().globalData;
 
-      if (!item.visible) {
+      if (!item.visible || (item.key === 'xiaok' && !aiEntriesEnabled(globalData))) {
         this.syncSelected();
         return;
       }
@@ -141,7 +140,6 @@ Component({
         return;
       }
 
-      const globalData = getApp().globalData;
       const role = currentRole(globalData);
       const staffFloating = this.data.staffNavigation && item.key !== 'xiaok';
       const animate = this.data.staffNavigation && staffFloating !== this.data.staffFloating
@@ -151,16 +149,16 @@ Component({
       const navigate = () => {
         this._tabTransition = null;
         const current = getApp().globalData;
-        if (animate && (currentRole(current) !== role || !visibleItems(current).some(tab => tab.key === item.key))) {
+        const pages = getCurrentPages(), page = pages[pages.length - 1];
+        if (currentRole(current) !== role || !visibleItems(current, page).some(tab => tab.key === item.key)) {
           this.syncSelected();
           return;
         }
         if (item.staffView) {
           const previous = current.siteWorkbenchTab;
           current.siteWorkbenchTab = item.staffView;
-          const pages = getCurrentPages(), page = pages[pages.length - 1];
           if (page && '/' + page.route === item.pagePath) {
-            page.setData({ siteWorkbenchTab: item.staffView }, () => this.syncSelected());
+            page.syncHomeView();
             return;
           }
           wx.switchTab({ url: item.pagePath, fail: () => { current.siteWorkbenchTab = previous; this.syncSelected(); } });
@@ -209,19 +207,20 @@ Component({
 
     syncSelected() {
       const globalData = (getApp() && getApp().globalData) || {};
+      const pages = getCurrentPages();
+      const page = pages && pages[pages.length - 1];
+      const current = page ? `/${page.route}` : '';
       const decorated = applyServerBadges(
-        visibleItems(globalData),
+        visibleItems(globalData, page),
         globalData.bootstrap && globalData.bootstrap.badges
       );
       const list = decorated.list;
-      const pages = getCurrentPages();
-      const current = pages && pages.length ? `/${pages[pages.length - 1].route}` : '';
       const role = currentRole(globalData);
       const customerNavigation = ['customer', null].includes(role);
       const staffNavigation = Object.prototype.hasOwnProperty.call(STAFF_ROLE_ITEMS, role);
       const hasWorkbenchTab = list.some(item => item.staffView);
-      const customerView = globalData.customerTab || 'xiaok';
-      const staffView = globalData.siteWorkbenchTab || 'workbench';
+      const customerView = page?.data?.customerTab || customerHomeTab(globalData);
+      const staffView = page?.data?.siteWorkbenchTab || staffHomeTab(globalData);
       // Session and badge refreshes can run before the pending route change.
       const pending = this._tabTransition;
       const pendingIndex = pending?.role === role ? list.findIndex(item => item.key === pending.key) : -1;
@@ -240,6 +239,7 @@ Component({
         badgeUnavailable: decorated.badgeUnavailable && !hasWorkbenchTab,
         badgeUnavailableText: decorated.badgeUnavailableText
       });
+      if (customerNavigation) page?.selectComponent?.('#customer-nav')?.syncSelected?.();
     }
   }
 });

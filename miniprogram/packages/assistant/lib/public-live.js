@@ -1,16 +1,21 @@
 const api = require('../../../utils/api');
 const { uncertain } = require('../../../utils/assistant-client');
-const initialLive = () => ({ liveCards: {}, liveCoverPaths: {}, liveBusy: false, liveError: '', livePending: false, publicLiveEntry: null });
+const { InlineLivePreview } = require('./inline-live-preview');
+const initialLive = () => ({ liveCards: {}, liveCoverPaths: {}, livePreview: null, liveBusy: false, liveError: '', livePending: false, publicLiveEntry: null });
 const copy = error => ({ public_live_source_changed: '机位、业主或访问范围已有变化，请重新读取。', public_live_preview_required: '请先查看这一版的全部画面与观看范围。',
   public_live_state_conflict: '直播状态已变化，请重新读取。', public_live_unavailable: '直播已停止公开或当前无权查看。', version_conflict: '版本已有更新，请重新核对，不会沿用旧决定。',
   public_live_tracks_unverified: '暂时无法确认无声画面，请稍后重试。', public_live_media_unknown: '连接结果尚未确认，请先核对最新状态。',
   public_live_not_configured: '直播服务暂不可用，请稍后重试。' })[error && (error.code || error.error)] || '暂时无法连接，请重试；未确认的操作会保留。';
 function scope(value) { let n = 2166136261; for (let i=0;i<value.length;i++) n=Math.imul(n^value.charCodeAt(i),16777619); return (n>>>0).toString(16); }
 class LiveConsentController {
-  constructor({emit,identity,openPreview,request=api.request,download=api.downloadFile}) { Object.assign(this,{emit,identity,openPreview,request,download}); this.state=initialLive(); this.epoch=0; }
+  constructor({emit,identity,request=api.request,download=api.downloadFile,playbackReceipt}) {
+    Object.assign(this,{emit,identity,request,download}); this.state=initialLive(); this.epoch=0;
+    this.preview = new InlineLivePreview({ identity, read: (...args) => this.read(...args), refresh: () => this.load(this.cid),
+      emit: livePreview => this.set({ livePreview }), baseUrls: api.getBaseUrls, receipt: playbackReceipt });
+  }
   set(p) { Object.assign(this.state,p); this.emit(p); }
   unlink(path) { try { wx.getFileSystemManager().unlink({filePath:path,fail(){}}); } catch { /* Native temp file already gone. */ } }
-  clear() { this.epoch++;this.cid='';this.operation=null;for(const path of Object.values(this.state.liveCoverPaths))this.unlink(path);this.set(initialLive()); }
+  clear() { this.preview.clear();this.epoch++;this.cid='';this.operation=null;for(const path of Object.values(this.state.liveCoverPaths))this.unlink(path);this.set(initialLive()); }
   valid(epoch) { return epoch===this.epoch && this.session===this.identity(); }
   storage() { return 'public-live:'+scope(this.session)+':'+this.cid; }
   pending() { try { return wx.getStorageSync(this.storage()) || null; } catch (_) { return this.operation || null; } }
@@ -23,6 +28,7 @@ class LiveConsentController {
     const epoch=++this.epoch;
     try { const data=await this.read('/miniprogram/assistant/public-live/'+cid);if(!this.valid(epoch))return;
       const cards={};for(const card of data.items||[]) {if(!card.id||!card.versionId||!card.messageId)throw {code:'invalid_response'};cards[card.messageId]=card;}
+      this.preview.reconcile(cards);
       const covers=Object.values(cards).filter(c=>c.canDecide&&/^[1-9]\d*$/.test(c.cover?.id||''));
       for(const c of covers){
         const captured=Date.parse(c.cover.capturedAt);
@@ -39,7 +45,7 @@ class LiveConsentController {
           this.set({liveCoverPaths:{...this.state.liveCoverPaths,[id]:file.tempFilePath}});
         }catch { /* The card retains its playable empty-cover state. */ }
       }
-    }catch(error){if(this.valid(epoch)){for(const path of Object.values(this.state.liveCoverPaths))this.unlink(path);this.set({liveCards:{},liveCoverPaths:{},liveError:copy(error),livePending:!!this.pending()});}}
+    }catch(error){if(this.valid(epoch)){this.preview.clear();for(const path of Object.values(this.state.liveCoverPaths))this.unlink(path);this.set({liveCards:{},liveCoverPaths:{},liveError:copy(error),livePending:!!this.pending()});}}
   }
   async entry(eid,siteId) {
     const epoch=this.epoch,session=this.identity();this.set({publicLiveEntry:null});
@@ -55,13 +61,14 @@ class LiveConsentController {
       body:{versionId:c.versionId,expectedRevision:c.revision},action,id});
   }
   async write(op) {
+    this.preview.clear();
     const epoch=this.epoch;this.savePending(op);this.set({liveBusy:true,livePending:true,liveError:''});
     try {const r=await this.read(op.path,'POST',op.body,{'Idempotency-Key':op.key});if(!this.valid(epoch))return false;
       const status={preview:'pending_owner',later:'pending_owner',approve:'owner_approved',decline:'declined',withdraw:'withdrawn'}[op.action];
       if(r.id!==op.id||r.versionId!==op.body.versionId||r.revision!==op.body.expectedRevision+1||r.status!==status)throw {uncertain:true,code:'invalid_response'};
       this.savePending(null);this.set({livePending:false,liveError:r.stopped===false?'公开权限已撤回，媒体清理待确认。':''});
       const cards={...this.state.liveCards};for(const k of Object.keys(cards))if(cards[k].id===op.id)cards[k]={...cards[k],...r,...(r.material||{}),playbackReady:false,canDecide:r.status==='pending_owner',canWithdraw:['pending_owner','owner_approved','published'].includes(r.status)};
-      this.set({liveCards:cards});if(op.action==='preview')await this.openPreview?.(this.cid,r);return true;
+      this.set({liveCards:cards});if(op.action==='preview')await this.preview.open(this.cid,r);return true;
     }catch(error){if(this.valid(epoch)){if(!uncertain(error)&&!error.uncertain)this.savePending(null);this.set({liveError:uncertain(error)||error.uncertain?'结果尚未确认，请核对同一次操作。':copy(error),livePending:!!this.pending()});}return false;}
     finally{if(this.valid(epoch))this.set({liveBusy:false});}
   }

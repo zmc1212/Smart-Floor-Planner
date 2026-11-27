@@ -1,11 +1,12 @@
 const { errorCopy, uncertain, isTransportInterruption } = require('./assistant-client');
 const { SiteRecordMedia } = require('./assistant-site-records');
 const api = require('./api');
+const { isInitialPasswordRequired } = require('./session');
 const { initialSettings, settingsMethods, operationKind } = require('./assistant-followup-settings');
 const { initialPlan, planMethods } = require('./assistant-report-plan');
 const { initialHistory, historyMethods } = require('./assistant-report-history');
 const BASE = '/followups';
-const initialFollowups = () => ({ followupActive: false, followupBindings: [], followupListLoading: false, followupLoading: false,
+const initialFollowups = () => ({ followupActive: false, followupPasswordRequired: false, followupNoProject: false, followupBindings: [], followupListLoading: false, followupLoading: false,
   followupError: '', followupConnectionInterrupted: false, followupBusy: false, followupPending: false, followupContext: null, followupReports: [], followupCursor: null,
   followupDetail: null, followupOriginal: null, followupOriginalLoading: false, followupHasCards: false, ...initialSettings(), ...initialPlan(), ...initialHistory() });
 function dateLabel(value, time = false) {
@@ -147,7 +148,7 @@ class FollowupController {
       return;
     }
     await this.loadList({ threadRead: autoOpen });
-    if (!this.current() || this.state.followupError) return;
+    if (!this.current() || this.state.followupError || this.state.followupPasswordRequired) return;
     this.startPolling();
     if ([...this.client.pending.keys()].some(slot => slot.startsWith('followup:plan:')) || this.planReentry) {
       if (autoOpen) this.set({ followupActive: true });
@@ -198,11 +199,12 @@ class FollowupController {
   }
   startPolling() {
     this.unschedule(this.timer);
-    if (!this.current()) return;
+    if (!this.current() || this.state.followupPasswordRequired) return;
     this.timer = this.schedule(async () => {
       if (!this.current()) return;
       if (!this.state.followupBusy && !this.state.followupPending && !this.state.followupLoading) {
         await this.loadList({ background: true, threadRead: this.state.followupActive });
+        if (this.state.followupPasswordRequired) return;
         if (this.current() && this.state.followupManageOpen) await this.loadManagement();
         if (this.current() && this.state.followupPlanOpen) await this.loadPlan();
         if (this.current() && this.selected && this.state.followupActive) await this.sync();
@@ -234,6 +236,22 @@ class FollowupController {
   }
   failure(e, { threadRead = false } = {}) {
     if (!this.current()) return;
+    if (isInitialPasswordRequired(e)) {
+      this.epoch += 1;
+      this.unschedule(this.timer);
+      this.planReentry = null;
+      this.settingsReentry = null;
+      this.historyReentry = null;
+      this.set({ ...initialFollowups(), followupActive: true, followupPasswordRequired: true });
+      return;
+    }
+    if ((e.code || e.error) === 'construction_followup_no_project') {
+      this.planReentry = null;
+      this.settingsReentry = null;
+      this.historyReentry = null;
+      this.set({ ...initialFollowups(), followupActive: true, followupNoProject: true });
+      return;
+    }
     const denied = e.statusCode === 401 || e.statusCode === 403 || ['assistant_resource_not_found','identity_context_invalid'].includes(e.code || e.error);
     const interrupted = !denied && threadRead && isTransportInterruption(e);
     if (denied) { this.planReentry = null; this.set({ ...initialFollowups(), followupActive: !!this.selected }); }
@@ -246,7 +264,8 @@ class FollowupController {
     const epoch = this.epoch; this.set({ followupListLoading: true });
     try {
       const list = await this.client.read(BASE, {}, await this.headers()); if (!this.current(epoch)) return;
-      this.set({ followupBindings: (list.items || []).map(b => ({ ...b, latestDateLabel: b.latestReport ? dateLabel(b.latestReport.generatedAt, true) : '' })), ...(!background ? { followupError: '' } : {}) });
+      const items = (list.items || []).map(b => ({ ...b, latestDateLabel: b.latestReport ? dateLabel(b.latestReport.generatedAt, true) : '' }));
+      this.set({ followupPasswordRequired: false, followupBindings: items, ...(items.length ? { followupNoProject: false } : {}), ...(!background ? { followupError: '' } : {}) });
     } catch (e) { if (this.current(epoch)) this.failure(e, { threadRead }); }
     finally { if (this.current(epoch)) this.set({ followupListLoading: false }); }
   }
@@ -268,7 +287,7 @@ class FollowupController {
         readReports ? this.client.read(BASE + '/' + bindingId + '/reports', query, headers) : { items: [], nextCursor: null }]);
       if (!this.current(epoch)) return;
       this.set({ followupContext: context, followupReports: reports.items.map(r => reportForView(r, context, projectId)), followupCursor: reports.nextCursor,
-        followupError: '', followupPending: !!this.operation });
+        followupError: '', followupPasswordRequired: false, followupNoProject: false, followupPending: !!this.operation });
       const reentry = this.historyReentry; this.historyReentry = null;
       if (reentry?.bindingId === this.selected && !this.operation) {
         this.set({ followupHistoryFilters: reentry.filters, followupHistoryScroll: reentry.scroll }); await this.openHistory();

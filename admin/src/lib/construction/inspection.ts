@@ -37,6 +37,18 @@ export async function inspectionSummary(tx: PostgresTransaction, actor: Construc
   return { count: Number(result?.count || 0), projects: Number(result?.projects || 0), next: String(result?.next || '') };
 }
 
+export async function workbenchOnsiteTask(tx: PostgresTransaction, actor: ConstructionActor, owner: boolean, projectId: string) {
+  const record = await one(tx, sql`select r.id::text as "recordId",${recordTitle} as title,
+    r.room_name_snapshot as room,s.created_at as at,r.inspection_checkpoint,r.inspection_decision,r.inspection_suggestion,
+    (${inspectionEvidenceAvailable}) as inspection_evidence_available
+    ${scope(actor)} ${recordJoin}
+    where ${projectFilter(actor, owner)} and p.id=${projectId} and p.status='active' and ${pending} and ${needsVisit}
+    order by ${recordOrder} limit 1`);
+  if (!record) return null;
+  return { recordId: String(record.recordId), title: String(record.title), room: String(record.room || ''),
+    at: new Date(record.at as Date).toISOString(), inspection: inspectionProjection(record) };
+}
+
 export async function listInspection(actor: ConstructionActor, cursor: string | null, projectId: string | null = null, onsiteOnly = false) {
   if (projectId !== null) id(projectId);
   if (onsiteOnly && !projectId) fail('invalid_construction', 422);

@@ -10,7 +10,7 @@ import { createInspectionMapSession } from '@/lib/construction/inspection-map-se
 import { CustomerProjectProgress, customerConstructionProjects, customerProgressTenant, familyInviteTarget } from '@/lib/construction/family-progress';
 import { signFamilyInviteCode, verifyFamilyInviteCode } from '@/lib/construction/family-invite-code';
 import { createFamilyInviteCode, getMiniProgramCodeContentType } from '@/lib/wechat-miniprogram-code';
-import { staffCameraHttp, customerCameraHttp } from '@/lib/construction/camera/http';
+import { staffMiniCameraHttp, customerCameraHttp } from '@/lib/construction/camera/http';
 import { ownerSiteHome, ownerSiteList } from '@/lib/construction/owner-home';
 import { ownerSiteCover } from '@/lib/construction/camera/owner-cover';
 import { issueOwnerLiveWebTicket, ownerApplicationSummary } from '@/lib/construction/public-live/project-owner';
@@ -72,7 +72,7 @@ async function handle(request: NextRequest, context: Context) {
       }
       if (!read || request.nextUrl.search || p.length > 3 || (p.length === 3 && p[2] !== 'cover')) fail('construction_not_found', 404);
       const data = p.length === 1 ? await ownerSiteList(identity.userId)
-        : p.length === 2 ? await ownerSiteHome(identity, id(p[1])) : await ownerSiteCover(identity, id(p[1]));
+        : p.length === 2 ? await ownerSiteHome(identity, id(p[1]), actor.mode === 'customer') : await ownerSiteCover(identity, id(p[1]));
       return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
     }
     // The construction customer flows are keyed by the underlying user id
@@ -163,7 +163,7 @@ async function handle(request: NextRequest, context: Context) {
       else fail('construction_not_found', 404);
       return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } });
     }
-    if (p[0] === 'video') return await staffCameraHttp(request, {
+    if (p[0] === 'staff-video') return await staffMiniCameraHttp(request, {
       enterpriseId: actor.enterpriseId, adminId: actor.staff._id, miniProgramUserId: actor.user._id, miniProgramContextVersion: token.contextVersion,
     }, p.slice(1));
     if (p[0] === 'projects' && p[2] === 'chat') return await siteChatHttp(request, {

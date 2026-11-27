@@ -19,6 +19,7 @@ const database = (label) => `xiaok_i4_${label}_${suffix}`;
 const journal = JSON.parse(readFileSync(new URL('meta/_journal.json', folder))).entries;
 const common = journal.filter(({ idx }) => idx < 120);
 const stageAndPilotMigrations = ['0128', '0129', '0130', '0131'];
+const laterMigrations = journal.map(({ tag }) => tag.slice(0, 4)).filter(tag => Number(tag) > 131);
 const read = (name) => readFileSync(new URL(name + '.sql', folder), 'utf8');
 const hash = (sql) => createHash('sha256').update(sql).digest('hex');
 const userStates = {
@@ -245,13 +246,31 @@ const delegationTables = {
   domain_event_outbox: 'id', domain_event_deliveries: 'id',
 };
 
-async function verifyUpgrade(name, legacy, before, rowsBefore, expectedTags) {
-  const after = await snapshot(name, legacy === 'native'
-    ? { ...delegationTables, native_workflow_durable_tasks: 'id' } : delegationTables);
+async function verifyUpgradeLedger(name, before, expectedTags) {
+  const applied = await ledger(name);
+  assert.deepEqual(applied.slice(0, before.length), before);
+  const appended = applied.slice(before.length);
+  assert.deepEqual(appended.map(entry =>
+    journal.find(item => String(item.when) === entry.created_at)?.tag.slice(0, 4)), [...expectedTags, ...laterMigrations]);
+  for (const entry of appended) {
+    const migration = journal.find(item => String(item.when) === entry.created_at);
+    assert.ok(migration);
+    assert.equal(entry.hash, hash(read(migration.tag)));
+  }
+  return applied;
+}
+
+function assertPreservedRows(rowsBefore, after) {
   for (const [table, previous] of Object.entries(rowsBefore)) {
     assert.equal(after[table].length, previous.length, table);
     assert.deepEqual(after[table].map((row, i) => Object.fromEntries(Object.keys(previous[i]).map(key => [key, row[key]]))), previous, table);
   }
+}
+
+async function verifyUpgrade(name, legacy, before, rowsBefore, expectedTags) {
+  const after = await snapshot(name, legacy === 'native'
+    ? { ...delegationTables, native_workflow_durable_tasks: 'id' } : delegationTables);
+  assertPreservedRows(rowsBefore, after);
   const rows = after.native_workflow_delegations;
   if (legacy === 'bailian') {
     for (const row of rows) {
@@ -266,15 +285,7 @@ async function verifyUpgrade(name, legacy, before, rowsBefore, expectedTags) {
   } else {
     assert.ok(rows.every(row => row.owner_id === null && row.scope === null && row.current_status === null));
   }
-  const applied = await ledger(name);
-  assert.deepEqual(applied.slice(0, before.length), before);
-  assert.deepEqual(applied.slice(before.length).map(entry =>
-    journal.find(item => String(item.when) === entry.created_at)?.tag.slice(0, 4)), expectedTags);
-  for (const entry of applied.slice(before.length)) {
-    const migration = journal.find(item => String(item.when) === entry.created_at);
-    assert.ok(migration);
-    assert.equal(entry.hash, hash(read(migration.tag)));
-  }
+  const applied = await verifyUpgradeLedger(name, before, expectedTags);
   const rerun = migrate(name);
   assert.equal(rerun.code, 0, rerun.output);
   assert.deepEqual(await ledger(name), applied);
@@ -410,12 +421,8 @@ live('the 0129 baseline applies the pilot scope and notification alignment migra
   const snapshotBefore = await snapshot(name, facts);
   const run = migrate(name);
   assert.equal(run.code, 0, run.output);
-  const applied = await ledger(name);
-  assert.deepEqual(applied.slice(0, -2), before);
-  assert.equal(applied.length, before.length + 2);
-  assert.equal(applied.at(-2).hash, hash(read('0130_xiaok_pilot_project_scopes')));
-  assert.equal(applied.at(-1).hash, hash(read('0131_platform_notification_config_not_null')));
-  assert.deepEqual(await snapshot(name, facts), snapshotBefore);
+  await verifyUpgradeLedger(name, before, ['0130', '0131']);
+  assertPreservedRows(snapshotBefore, await snapshot(name, facts));
   await asApp(name, async db => {
     const result = await db.query(`select relrowsecurity,relforcerowsecurity from pg_class
       where oid='app.xiaok_pilot_project_scopes'::regclass`);

@@ -15,6 +15,7 @@ import { AssistantMediaService } from '@/lib/assistant/media/service';
 import { HandoffService } from '@/lib/assistant/handoff/service';
 import { deliverSiteResults } from '@/lib/construction/site-results';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
+import type { SynthesisSource } from '@/lib/assistant/agent/synthesis';
 import { queryNeedIssues } from '@/lib/construction/need-issues';
 import { processSiteRecord } from '@/lib/construction/site-worker';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
@@ -193,9 +194,10 @@ test('Agent continuation inherits the exact returned result as revocable constru
     // historical wrapper to remain in every provider round.
     if (turn === 0) assert.match(JSON.stringify(messages), /此前项目团队向本咨询明确回传的处理回复/);
     else {
-      const current = JSON.parse(messages.filter(m => m.role === 'tool').at(-1)!.content as string);
+      const current: { query: { domain: string }; resultKey: string; synthesisSources: SynthesisSource[] } =
+        JSON.parse(messages.filter(m => m.role === 'tool').at(-1)!.content);
       assert.equal(current.query.domain, 'followups');
-      const result = current.synthesisSources.find((s: Row) => s.followup?.kind === 'team_result');
+      const result = current.synthesisSources.find(s => s.followup?.kind === 'team_result');
       assert.ok(result); assert.equal(result.resultKey, current.resultKey);
       assert.match(result.text, /底盒位置仍待现场核对/);
     }
@@ -227,8 +229,8 @@ test('query_followups finds only the authorized team result after it leaves the 
     if (turn === 0) assert.doesNotMatch(JSON.stringify(messages), /此前项目团队向本咨询明确回传的处理回复/);
     const resultKey = messages.filter(m=>m.role==='tool').map(m=>{ try { return JSON.parse(String(m.content)).resultKey } catch { return undefined } }).filter(Boolean).at(-1);
     if (turn > 0) {
-      const packet = JSON.parse(String(messages.filter(m => m.role === 'tool').at(-1)!.content));
-      assert.ok(packet.synthesisSources.some((s: Row) => s.followup?.kind === 'team_result' && /V2/.test(s.text)));
+      const packet: { synthesisSources: SynthesisSource[] } = JSON.parse(messages.filter(m => m.role === 'tool').at(-1)!.content);
+      assert.ok(packet.synthesisSources.some(s => s.followup?.kind === 'team_result' && /V2/.test(s.text)));
     }
     return { text: '', toolCalls: [{ id: 'history-' + turn, name: turn === 0 ? 'query_followups' : 'final_response',
       arguments: JSON.stringify(turn === 0 ? {} : { kind: 'business', resultKey }) }],

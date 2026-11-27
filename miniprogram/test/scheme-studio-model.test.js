@@ -331,10 +331,10 @@ test('buildWorkflowSwitcherOptions marks the current scheme', () => {
   assert.match(options[1].label, /当前/);
 });
 
-test('scheme-studio route wires composer, send modal, and studio APIs', () => {
+test('registered scheme studio retains its composer and studio API contract', () => {
   const appConfig = JSON.parse(fs.readFileSync(path.join(miniRoot, 'app.json'), 'utf8'));
   const aiWorkflowPackage = appConfig.subPackages.find((item) => item.root === 'packages/ai-workflow');
-  assert.ok(aiWorkflowPackage.pages.includes('scheme-studio/scheme-studio'));
+  assert.ok(aiWorkflowPackage?.pages.includes('scheme-studio/scheme-studio'));
 
   const wxml = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.wxml'), 'utf8');
   const less = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.less'), 'utf8');

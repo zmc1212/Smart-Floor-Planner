@@ -21,6 +21,12 @@ export async function ensureFollowupBinding(tx: PostgresTransaction, eid: string
   const b = (await one(tx, sql`insert into app.construction_followup_bindings(enterprise_id,principal_key,audience,user_id,admin_id,project_id,scope_key,conversation_id)
     values(${eid},${who},${recipient.audience},${recipient.kind === 'user' ? recipient.id : null},${recipient.kind === 'admin' ? recipient.id : null},
       ${recipient.projectId || null},${scope},${String(c.id)}) returning *`))!;
+  // The participant guard rejects the insert from inside the database. Check the
+  // same current relationship first so a staff member without an active project
+  // gets a clean, recoverable code instead of a generic 503.
+  const allowed = await one(tx, sql`select app.assistant_followup_conversation_access(
+    ${recipient.kind},${String(recipient.id)}::bigint,${eid}::bigint,${String(c.id)}::bigint) as allowed`);
+  if (!allowed?.allowed) fail('construction_followup_no_project');
   await tx.execute(sql`insert into app.assistant_participants(enterprise_id,conversation_id,principal_kind,user_id,admin_id,grant_basis)
     values(${eid},${String(c.id)},${recipient.kind},${recipient.kind === 'user' ? recipient.id : null},${recipient.kind === 'admin' ? recipient.id : null},
     ${JSON.stringify({ kind: 'construction_followup', bindingId: String(b.id) })}::jsonb)`);

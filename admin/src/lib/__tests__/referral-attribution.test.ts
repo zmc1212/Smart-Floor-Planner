@@ -720,5 +720,5 @@ test('staff activity presenters include the enterprise owner for store-level acq
   assert.match(network, /'enterprise_admin'/);
   assert.match(leads, /STAFF_ACTIVITY_PRESENTER_ROLES/);
   assert.match(leads, /enterprise_admin_activity_attribution/);
-  assert.match(leads, /activitySource\?\.staff\.role === 'measurer'/);
+  assert.match(leads, /activitySource\?\.staff\.role === 'designer'/);
 });

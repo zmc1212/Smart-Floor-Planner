@@ -1,4 +1,6 @@
 const api = require('../../utils/api.js');
+const { aiEntriesEnabled } = require('../../utils/ai-entries.js');
+const { openAIDesignTab } = require('../../utils/aiDesignNavigation.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { formatAppointmentDisplay } = require('../../utils/appointmentTimeRange.js');
 const { openRoleGuide, hasSeenRoleGuide } = require('../../utils/roleGuide.js');
@@ -218,6 +220,7 @@ Component({
   properties: {
     role: { type: String, value: '' },
     focus: { type: String, value: 'overview' },
+    aiEntriesEnabled: Boolean,
   },
 
   data: {
@@ -320,7 +323,9 @@ Component({
   },
 
   methods: {
-    openAssistantHandoffs() { wx.navigateTo({ url: '/packages/assistant/handoff/handoff?staff=1' }); },
+    openAssistantHandoffs() {
+      if (aiEntriesEnabled()) wx.navigateTo({ url: '/packages/assistant/handoff/handoff?staff=1' });
+    },
     isDesignerContext() {
       return (this.properties.role || this.data.role) === 'designer';
     },
@@ -731,7 +736,8 @@ Component({
     },
 
     openXiaokFollowup() {
-      wx.navigateTo({ url: '/packages/assistant/chat/chat?followup=1' });
+      const reportOnly = aiEntriesEnabled() ? '' : '&reportBoard=1&kind=weekly';
+      wx.navigateTo({ url: '/packages/assistant/chat/chat?followup=1' + reportOnly });
     },
 
     openConstruction() {
@@ -1066,7 +1072,7 @@ Component({
     },
 
     openAIDesign() {
-      wx.switchTab({ url: '/pages/ai-design/ai-design' });
+      openAIDesignTab();
     },
 
     openCalendar() {

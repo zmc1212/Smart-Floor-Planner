@@ -1,3 +1,6 @@
+/* The async panel compiles the shared password state stylesheet directly. */
+@import '../../../components/staff-password-required/staff-password-exhibit.less';
+
 /* The home panel shares the standalone chat layout and native button sizing. */
 /* Approved11 tag and control calibration stays in this entry's compile graph. */
 @import "./chat.less";
@@ -12,7 +15,7 @@
 /* Keep a direct dependency so the async home panel recompiles the archive row. */
 @import "./floorplan-context.less";
 /* Approved04 report/source/run updates share the root panel compilation. */
-/* followup09 approved heading glyphs */
+@import './followup-settings.less';
 /* Approved10 shared plan stylesheet entry. */
 /* Approved10 source glyph and rule calibration. */
 /* Approved10 final optical controls and long project label. */
@@ -20,3 +23,11 @@
 /* Approved04 run-state inset is shared with the root panel. */
 @import './welcome-notebook.less'; /* Shared owner welcome paper and controls. */
 @import './ai-generation-notice.less';
+
+/* Fit the signed-out welcome paper above the AI notice and home TabBar. */
+.notebook-chat .welcome-guest-home {
+  .topic-intro { margin: 29rpx 34rpx; }
+  .welcome-paper { padding-bottom: 20rpx; }
+}
+
+@import './question-return.less'; /* Direct dependency for the async panel's native draft layout. */

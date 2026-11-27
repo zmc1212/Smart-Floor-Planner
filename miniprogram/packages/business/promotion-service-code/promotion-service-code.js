@@ -1,6 +1,8 @@
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 const { fetchServiceCodeImage, removeServiceCodeImage } = require('../../../utils/serviceCodeImage.js');
+const { aiEntriesEnabled } = require('../../../utils/ai-entries');
+const { brandShareCover } = require('../../../utils/share-cover');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -27,6 +29,7 @@ Page({
     promotionToken: '',
     qrImagePath: '',
     codeMode: 'service',
+    aiEntriesEnabled: false,
     loading: true,
     errorMessage: ''
   },
@@ -39,7 +42,16 @@ Page({
   },
 
   onShow() {
+    this.syncAiEntryVisibility(false);
     return this.loadServiceCode();
+  },
+
+  syncAiEntryVisibility(reload = true) {
+    const state = getApp().globalData;
+    const enabled = aiEntriesEnabled(state);
+    const reset = !enabled && !state.aiEntriesChecking && this.data.codeMode === 'xiaok';
+    this.setData({ aiEntriesEnabled: enabled, ...(reset ? { codeMode: 'service' } : {}) });
+    if (reset && reload) return this.loadServiceCode();
   },
 
   onHide() {
@@ -94,6 +106,7 @@ Page({
 
   onSwitchMode(event) {
     const mode = event.currentTarget.dataset.mode === 'xiaok' ? 'xiaok' : 'service';
+    if (mode === 'xiaok' && !aiEntriesEnabled()) return;
     if (mode === this.data.codeMode) return;
     this.setData({ codeMode: mode });
     this.loadServiceCode();
@@ -124,15 +137,19 @@ Page({
 
   onShareAppMessage() {
     const token = this.data.promotionToken;
-    if (!token) return { title: '免费上门测量与家装设计顾问服务', path: '/pages/index/index' };
-    return this.data.codeMode === 'xiaok'
-      ? {
-          title: '和小K聊聊你家的装修',
-          path: `/packages/business/acquisition-chat/acquisition-chat?entryCode=${encodeURIComponent(token)}`
-        }
-      : {
-          title: '免费上门测量与家装设计顾问服务',
-          path: `/packages/business/free-design-service/free-design-service?token=${encodeURIComponent(token)}`
-        };
+    if (token && aiEntriesEnabled() && this.data.codeMode === 'xiaok') {
+      return {
+        title: '和小K聊聊你家的装修',
+        path: `/packages/business/acquisition-chat/acquisition-chat?entryCode=${encodeURIComponent(token)}`,
+        imageUrl: brandShareCover,
+      };
+    }
+    return {
+      title: '免费上门测量与家装设计顾问服务',
+      path: token
+        ? `/packages/business/free-design-service/free-design-service?token=${encodeURIComponent(token)}`
+        : '/pages/index/index',
+      imageUrl: brandShareCover,
+    };
   }
 });

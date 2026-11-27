@@ -434,7 +434,7 @@ test('a superseded send snapshot keeps the acknowledged bubble until the newer r
   assert.equal(f.controller.state.sending, false);
 });
 
-test('welcome shortcuts preserve blocked drafts and use the existing login action', async () => {
+test('welcome shortcuts preserve blocked drafts and stage the guest question before login', async () => {
   for (const [field, value] of Object.entries({ canSend: false, loading: true, busy: true, pendingSend: true,
     pendingAction: 'cancel', generating: true, uncertainRun: true, readOnly: true, fatal: true,
     contextBusy: true, contextPending: true, speechBusy: true })) {
@@ -450,7 +450,7 @@ test('welcome shortcuts preserve blocked drafts and use the existing login actio
   await page.pickPrompt(promptEvent(page.data.topics[1].text));
   assert.equal(logins, 1);
   assert.equal(f.calls.length, 0);
-  assert.equal(page.data.draft, '');
+  assert.equal(page.data.draft, page.data.topics[1].text);
 });
 
 test('a shortcut with an unknown receipt keeps the original message and recovery key', async () => {

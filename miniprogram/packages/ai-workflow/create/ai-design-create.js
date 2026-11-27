@@ -1,6 +1,7 @@
 const aiService = require('../../../utils/aiDesignService.js');
 const { validateTaskInput } = require('../../../utils/aiDesignValidation.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
+const { pendingAiEntryVisibility } = require('../../../utils/ai-entries.js');
 
 const STYLE_PREVIEW_IMAGES = {
   modern: '/packages/ai-workflow/assets/page-ip-v3/ai-create-style-modern.jpg',
@@ -112,6 +113,8 @@ Page({
   },
 
   async onLoad(options) {
+    const pending = pendingAiEntryVisibility();
+    if (pending) await pending;
     if (!canAccessAIDesign()) {
       showAIDesignAccessDenied();
       wx.switchTab({ url: '/pages/index/index' });

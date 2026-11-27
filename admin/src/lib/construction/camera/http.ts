@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { AssistantError, fail, id } from '@/lib/assistant/contracts';
 import type { ConstructionActor } from '../contracts';
 import { object } from '../contracts';
-import { CameraService, cameraCookie, cameraPublicOrigin, cameraSnapshots, captureCamera, createCameraEntry, listCameraProject, exchangeCameraEntry, sessionCameraCover, sessionHeartbeat, sessionState, startCameraView } from './service';
+import { CameraService, cameraCookie, cameraPublicOrigin, cameraSnapshots, captureCamera, createCameraEntry, listCameraProject, exchangeCameraEntry, openNativeCameraLive, openNativeCustomerLive, updateNativeCameraLive, sessionCameraCover, sessionHeartbeat, sessionState, startCameraView } from './service';
 import { cameraPtz } from './ptz';
 import {saveRecordingPolicy,saveRetentionDefault,listCameraRecordings,startRecordingView} from './recordings';
 import {startSdRecordingView} from './sd';
@@ -45,12 +45,36 @@ export async function customerCameraHttp(request: Request, identity: CameraCusto
   if (new URL(request.url).search) fail('camera_invalid_request', 422);
   if (request.method === 'GET' && path.length === 2 && path[0] === 'customer-projects')
     return cameraJson(await customerCameraProjects(identity, id(path[1])));
+  if (path[0] === 'projects' && path.length === 4 && path[2] === 'native-live' && request.method === 'POST')
+    return nativeLiveHttp(request, identity, id(path[1]), path[3]);
   if (path[0] !== 'projects' || path.length !== 3 ||
     !(request.method === 'GET' && path[2] === 'cameras' || request.method === 'POST' && path[2] === 'entry')) fail('camera_not_found', 404);
   const { actor, projectId: pid } = await customerCameraPlayback(identity, id(path[1]));
   if (request.method === 'GET') return cameraJson(await listCameraProject(actor, pid));
   object(await body(request), []);
   return cameraJson(await createCameraEntry(actor, pid));
+}
+export async function staffMiniCameraHttp(request: Request, actor: ConstructionActor, path: string[]) {
+  if (new URL(request.url).search) fail('camera_invalid_request', 422);
+  if (path[0] !== 'projects') fail('camera_not_found', 404);
+  if (path.length === 4 && path[2] === 'native-live' && request.method === 'POST')
+    return nativeLiveHttp(request, actor, id(path[1]), path[3]);
+  if (path.length === 3 && (path[2] === 'cameras' && request.method === 'GET' || path[2] === 'entry' && request.method === 'POST'))
+    return staffCameraHttp(request, actor, path);
+  fail('camera_not_found', 404);
+}
+async function nativeLiveHttp(request: Request, viewer: CameraCustomerIdentity | ConstructionActor, pid: string, action: string) {
+  if (action === 'start') {
+    const input = object(await body(request), ['bindingId']);
+    const bindingId = input.bindingId === debugSignalBinding ? debugSignalBinding : id(input.bindingId);
+    return cameraJson(await ('userId' in viewer ? openNativeCustomerLive(viewer, pid, bindingId) : openNativeCameraLive(viewer, pid, bindingId)));
+  }
+  if (action === 'heartbeat' || action === 'stop') {
+    const input = object(await body(request), ['ticket']);
+    if (typeof input.ticket !== 'string') fail('camera_invalid_request', 422);
+    return cameraJson(await updateNativeCameraLive(viewer, pid, input.ticket, action === 'stop'));
+  }
+  fail('camera_not_found', 404);
 }
 export function cookieToken(cookie: string | null) {
   const value = cookie?.split(';').map(x => x.trim()).find(x => x.startsWith(cameraCookie + '='))?.slice(cameraCookie.length + 1);

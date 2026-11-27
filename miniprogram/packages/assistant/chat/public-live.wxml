@@ -4,12 +4,14 @@
     <text class="owner-live-name">{{card.name}}</text>
     <view class="owner-live-heading"><text>{{card.alias}}</text><text class="owner-live-status">{{card.statusLabel}}</text></view>
     <block wx:if="{{card.canDecide}}">
-      <view class="owner-live-preview" style="position:relative;width:100%;height:0;padding-top:56.25%;overflow:hidden">
-        <image wx:if="{{coverPath}}" src="{{coverPath}}" mode="aspectFit" style="display:block;position:absolute;left:0;top:0;width:100%;height:100%"/>
-        <view wx:else class="owner-live-connecting">暂无定时抓拍</view>
+      <view class="owner-live-preview">
+        <native-live-player id="consultation-live-player-{{card.id}}" src="{{preview.src}}" epoch="{{preview.epoch}}"
+          phase="{{preview.phase || 'idle'}}" poster="{{coverPath}}" message="{{preview.message || (!coverPath && !preview.phase ? '暂无定时抓拍' : '')}}"
+          audio-allowed="{{false}}" track-progress="{{true}}" disabled="{{busy || pending}}" data-id="{{card.id}}" data-action="preview"
+          bindplay="liveDecision" bindadvance="advanceLivePreview" bindplaybackerror="failLivePreview" bindstop="stopLivePreview" />
       </view>
-      <text wx:if="{{coverPath && card.coverTime}}" class="owner-live-cover-time">抓拍于 {{card.coverTime}}</text>
-      <button class="owner-live-primary owner-live-play chat-button {{(busy || pending) ? 'is-disabled' : ''}}" data-id="{{card.id}}" data-action="preview" bindtap="liveDecision" disabled="{{busy || pending}}">{{card.projectId ? '查看直播公开申请' : '播放直播'}}</button>
+      <text wx:if="{{coverPath && card.coverTime && preview.phase !== 'playing'}}" class="owner-live-cover-time">抓拍于 {{card.coverTime}}</text>
+      <button wx:if="{{card.projectId}}" class="owner-live-primary owner-live-play chat-button {{(busy || pending) ? 'is-disabled' : ''}}" data-id="{{card.id}}" bindtap="openLivePreviewApplication" disabled="{{busy || pending}}">查看直播公开申请</button>
     </block>
     <block wx:if="{{card.canDecide && card.playbackReady}}">
       <text class="fabric-label owner-live-scope-label">观看范围</text>

@@ -20,6 +20,27 @@ test('packaged WXML starts without a UTF-8 BOM', () => {
   assert.deepEqual(offenders, []);
 });
 
+test('bound WXML text has no template line breaks around its value', () => {
+  const offenders = [];
+  const textNode = /<text\b(?:[^<>"']|"[^"]*"|'[^']*')*>([^<]*)<\/text\s*>/g;
+
+  for (const { relative, absolute } of packageSourceFiles('')) {
+    if (!relative.endsWith('.wxml')) continue;
+    const source = fs.readFileSync(absolute, 'utf8');
+    for (const match of source.matchAll(textNode)) {
+      const body = match[1].replace(/\{\{[\s\S]*?\}\}/g, '\0');
+      if (!/^\s*\0[\s\0]*$/.test(body)) continue;
+      // Native <text> preserves line breaks outside the bindings, creating blank rows.
+      if (/^\s*[\r\n]|[\r\n]\s*$/.test(body)) {
+        const line = source.slice(0, match.index).split('\n').length;
+        offenders.push(`${relative}:${line}`);
+      }
+    }
+  }
+
+  assert.deepEqual(offenders, []);
+});
+
 test('source package excludes development-only directories', () => {
   const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
   const ignoredDirectories = new Set(
@@ -60,6 +81,7 @@ test('source package excludes development configuration and unused legacy assets
     'design-tokens.json',
     'project.config.json',
     'project.private.config.json',
+    'images/home-ip-v1/hero-scene-wechat-safe-overscan.png',
     'packages/assistant/assets/studio-serif-data.js',
     'packages/assistant/assets/customer-handoff.png',
   ]));
@@ -246,14 +268,8 @@ test('main package contains only primary tabs and low-frequency flows are split 
     {
       root: 'packages/ai-workflow',
       pages: [
-        'legacy/ai-gen',
-        'create/ai-design-create',
-        'result/ai-design-result',
-        'history/ai-design-history',
-        'recipe-detail/recipe-detail',
-        'recipe-project/recipe-project',
-        'recipe-confirm/recipe-confirm',
-        'scheme-studio/scheme-studio',
+        'legacy/ai-gen', 'create/ai-design-create', 'result/ai-design-result', 'history/ai-design-history',
+        'recipe-detail/recipe-detail', 'recipe-project/recipe-project', 'recipe-confirm/recipe-confirm', 'scheme-studio/scheme-studio',
       ],
     },
     {

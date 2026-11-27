@@ -54,9 +54,11 @@ test('I7.5.8 provider started with a fully recorded agent outcome is safe to rec
   { classification: 'reclaimable', reason: 'expired_with_known_agent_outcome', reclaimable: true });
 });
 
-test('I7.5.8 lost local speech never becomes a replay', () => {
-  assert.deepEqual(classifyPreviewJob({ ...base, status: 'running',
-    leaseExpiresAt: new Date(now.getTime() - 1000), localSpeech: true }),
+test('I7.5.8 local speech can be reclaimed before ASR starts', () => {
+  const expired = { ...base, status: 'running', leaseExpiresAt: new Date(now.getTime() - 1000), localSpeech: true };
+  assert.deepEqual(classifyPreviewJob(expired),
+    { classification: 'reclaimable', reason: 'expired_without_provider', reclaimable: true });
+  assert.deepEqual(classifyPreviewJob({ ...expired, providerStartedAt: new Date(now.getTime() - 2000) }),
   { classification: 'terminal', reason: 'local_speech_result_unknown', reclaimable: false });
 });
 

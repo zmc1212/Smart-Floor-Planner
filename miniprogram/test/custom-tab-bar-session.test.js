@@ -42,6 +42,7 @@ function loadTabBarComponent(globalData) {
 
 test('unsigned visitors reuse the customer XiaoK/Service/Mine navigation', () => {
   const globalData = {
+    aiEntriesEnabled: true,
     userInfo: null,
     bootstrap: null
   };
@@ -69,6 +70,7 @@ test('unsigned visitors reuse the customer XiaoK/Service/Mine navigation', () =>
 
 test('custom TabBar uses the signed bootstrap role instead of the legacy staff split', () => {
   const globalData = {
+    aiEntriesEnabled: true,
     userInfo: { role: 'staff', enterpriseId: 'enterprise-1' },
     bootstrap: { current: { role: 'customer', capabilities: ['customer.service', 'customer.projects', 'account'] } }
   };
@@ -175,6 +177,7 @@ test('unchanged roles retain earnings icons and native tool pages stay registere
 test('staff tabs animate between the docked XiaoK and floating destinations', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   const globalData = {
+    aiEntriesEnabled: true,
     userInfo: { role: 'staff', mode: 'staff', staffRole: 'enterprise_admin' },
     bootstrap: {
       current: {
@@ -204,7 +207,10 @@ test('staff tabs animate between the docked XiaoK and floating destinations', as
     await definition.methods.switchTab.call(component, { currentTarget: { dataset: { index } } });
     assert.deepEqual(navigations, [['switchTab', '/pages/index/index']]);
     assert.equal(globalData.siteWorkbenchTab, 'workbench');
-    const page = { route: 'pages/index/index', setData(update, callback) { this.update = update; callback(); } };
+    const page = { route: 'pages/index/index', syncHomeView() {
+      this.update = { siteWorkbenchTab: globalData.siteWorkbenchTab };
+      component.syncSelected();
+    } };
     global.getCurrentPages = () => [page];
     await definition.methods.switchTab.call(component, { currentTarget: { dataset: { index: 0 } } });
     assert.equal(component.data.staffFloating, false);
@@ -235,6 +241,7 @@ test('staff tabs animate between the docked XiaoK and floating destinations', as
 
 test('custom TabBar uses the stored signed role before bootstrap refresh completes', () => {
   const globalData = {
+    aiEntriesEnabled: true,
     userInfo: { role: 'staff', mode: 'staff', staffRole: 'designer' },
     bootstrap: null
   };

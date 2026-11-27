@@ -2,6 +2,8 @@
   "component": true,
   "styleIsolation": "isolated",
   "usingComponents": {
-    "family-sheet": "../family-sheet/family-sheet"
+    "family-sheet": "../family-sheet/family-sheet",
+    "designer-contact-sheet": "/components/designer-contact-sheet/designer-contact-sheet",
+    "native-live-player": "../components/native-live-player/native-live-player"
   }
 }

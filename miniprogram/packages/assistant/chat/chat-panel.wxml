@@ -1,1 +1,2 @@
+<import src="../../../components/staff-password-required/staff-password-required.wxml"/>
 <include src="./chat.wxml" />

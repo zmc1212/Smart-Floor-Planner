@@ -9,6 +9,7 @@ function publicLivePage(request){
   const source=fs.readFileSync(require.resolve('../packages/construction/public-live/public-live'),'utf8'),calls=[];let page;
   new Function('Page','require','wx',source)(definition=>{page=definition;},module=>{
     if(module.includes('site-font'))return {loadSiteFont(){}};
+    if(module.includes('ai-entries'))return {aiEntriesEnabled:()=>true,syncAiEntryVisibility(){}};
     if(module.includes('public-site-client'))return {publicConsultationId:options=>publicConsultationId(options,request)};
     return {request};
   },{navigateTo:({url})=>calls.push(url)});
@@ -76,12 +77,16 @@ test('the guide preview uses the confirmed live version and discards a response 
   assert.equal(page.data.guideQuestion, '');
 });
 
-test('opening WebView uses the preview receipt and approval only follows server playback readback',async()=>{
-  env();let row={...card,playbackReady:false},refreshes=0;const opens=[],writes=[];
+test('consultation preview plays inline and approval requires server playback readback',async()=>{
+  env();let row={...card,playbackReady:false},refreshes=0;const opens=[],writes=[],played=[];
   const page=require('../packages/assistant/chat/chat-definition')();
-  const c=new LiveConsentController({identity:()=> 'owner',emit(){},openPreview:async(cid,receipt)=>opens.push({cid,receipt}),
-    request:async(p,method)=>{
+  const url=`https://camera.example/api/public/construction-live/1/${'1'.repeat(48)}/media/${'2'.repeat(43)}/hls.m3u8`;
+  const c=new LiveConsentController({identity:()=> 'owner',emit(){},playbackReceipt:async path=>{played.push(path);row.playbackReady=true;},
+    request:async(p,method,body)=>{
       if(method==='GET')return {success:true,data:{items:[{...row}]}};
+      if(p.endsWith('/webview')) {
+        opens.push({p,body});return {success:true,data:{url,versionId:row.versionId,revision:row.revision}};
+      }
       writes.push(p);
       row={...row,revision:row.revision+1,status:p.endsWith('/approve')?'owner_approved':'pending_owner'};
       return {success:true,data:{...row,material:row}};
@@ -90,9 +95,14 @@ test('opening WebView uses the preview receipt and approval only follows server 
   const action=type=>page.liveDecision({currentTarget:{dataset:{id:'7',action:type}}});
   await c.load('9');await action('approve');assert.equal(writes.length,0);
   await action('preview');
-  assert.equal(refreshes,0);assert.equal(opens[0].cid,'9');assert.equal(opens[0].receipt.revision,4);
+  assert.equal(refreshes,0);assert.deepEqual(opens[0],{p:'/miniprogram/assistant/public-live/9/7/webview',body:{versionId:row.versionId,expectedRevision:4}});
+  assert.equal(c.state.livePreview.src,url);
   await action('approve');assert.equal(writes.length,1);
-  c.clear();row.playbackReady=true;await c.load('9');
+  const epoch=c.state.livePreview.epoch;
+  await c.preview.advance({epoch:epoch-1,currentTime:30});
+  await c.preview.advance({epoch,currentTime:3});assert.equal(played.length,0);
+  await c.preview.advance({epoch,currentTime:3.5});assert.deepEqual(played,[url.replace('hls.m3u8','played')]);
+  c.clear();await c.load('9');assert.equal(c.state.livePreview,null);
   await action('approve');assert.equal(refreshes,1);assert.equal(c.card('7').status,'owner_approved');
 });
 
@@ -113,10 +123,10 @@ test('owner cover downloads are scoped and previous files are removed on revisio
   assert.deepEqual(removed,['cover-1','cover-2']);assert.deepEqual(c.state.liveCoverPaths,{});
 });
 
-test('a late owner preview receipt cannot open WebView after the viewer identity changes',async()=>{
+test('a late owner preview receipt cannot start inline playback after the viewer identity changes',async()=>{
   env();let identity='owner',resolveWrite;const writes=new Promise(resolve=>{resolveWrite=resolve;});let opens=0;
-  const c=new LiveConsentController({identity:()=>identity,emit(){},openPreview(){opens++;},
-    request:async(_,method)=>method==='GET'?{success:true,data:{items:[{...card}]}}:writes});
+  const c=new LiveConsentController({identity:()=>identity,emit(){},
+    request:async(path,method)=>{if(path.endsWith('/webview'))opens++;return method==='GET'?{success:true,data:{items:[{...card}]}}:writes;}});
   await c.load('9');const opening=c.decide('7','preview');
   identity='other';c.clear();await c.load('10');
   resolveWrite({success:true,data:{...card,revision:4}});
@@ -128,7 +138,7 @@ function ownerCamera(request) {
   const globalData={token:'synthetic'}, calls=[];
   let page, now=0;
   new Function('Page','require','getApp','wx','Date',source)(definition=>{page=definition;},module=>module.includes('identity-navigation')?
-    {canAccessRoute:()=>false}:{request:async(...args)=>{calls.push(args);return request(...args);}},
+    {canAccessRoute:()=>false}:module.includes('owner-live-media')?require('../utils/owner-live-media'):{request:async(...args)=>{calls.push(args);return request(...args);}},
     ()=>({globalData}),{}, {now:()=>now});
   page.setData=patch=>Object.assign(page.data,patch);
   page.onLoad({conversationId:'9',liveId:'7',versionId:'8',revision:'4'});
@@ -185,23 +195,43 @@ test('owner preview uses one pending entry across hide/show and cannot mount aft
   }
 });
 
-function publicPlayer(request, shareMenu = []) {
+function publicPlayer(request, shareMenu = [], timers = { set: () => 1, clear: () => {} }) {
   const source = fs.readFileSync(require.resolve('../packages/construction/public-live/public-live'), 'utf8');
-  let page;
+  const playerSource = fs.readFileSync(require.resolve('../packages/construction/components/native-live-player/native-live-player'), 'utf8');
+  const handlers = { advance: 'played', playbackerror: 'playbackError', play: 'retry', pause: 'pause' };
+  const videoActions = [];
+  let page, playerDefinition;
+  const wx = {
+    createVideoContext: () => ({ stop: () => videoActions.push('stop'), pause: () => videoActions.push('pause') }),
+    showShareMenu: options => shareMenu.push({ visible: true, ...options }),
+    hideShareMenu: options => shareMenu.push({ visible: false, ...options }),
+  };
+  new Function('Component', 'wx', playerSource)(definition => { playerDefinition = definition; }, wx);
+  const player = {
+    ...playerDefinition.methods,
+    data: { ...playerDefinition.data, pausable: true, trackProgress: true },
+    setData(patch) { Object.assign(this.data, patch); },
+    triggerEvent(name, detail) { if (handlers[name]) page[handlers[name]]({ detail }); },
+  };
   new Function('Page', 'require', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'wx', source)(
     definition => { page = definition; }, () => ({ request, getBaseUrls: () => ['http://127.0.0.1:3006/api'] }),
-    () => 1, () => {}, () => 1, () => {}, {
-      createVideoContext: () => ({ stop() {}, pause() {} }),
-      showShareMenu: options => shareMenu.push({ visible: true, ...options }),
-      hideShareMenu: options => shareMenu.push({ visible: false, ...options }),
-    },
+    () => 1, () => {}, timers.set, timers.clear, wx,
   );
-  return Object.assign(page, { options: { enterpriseId: '1454', key: card.key }, epoch: 0, alive: true, visible: true,
-    setData(patch) { Object.assign(this.data, patch); } });
+  return Object.assign(page, {
+    options: { enterpriseId: '1454', key: card.key }, epoch: 0, alive: true, visible: true, player, videoActions,
+    selectComponent(id) { assert.equal(id, '#public-live-player'); return player; },
+    setData(patch) {
+      const previousSrc = this.data.src;
+      Object.assign(this.data, patch);
+      const { src, playerEpoch: epoch, state: phase } = this.data;
+      player.setData({ src, epoch, phase });
+      player.sourceChanged(src, previousSrc);
+    },
+  });
 }
 
 const playerEvent = (epoch, currentTime) => ({
-  currentTarget: { dataset: { playerEpoch: epoch } },
+  currentTarget: { dataset: { epoch } },
   detail: { currentTime },
 });
 
@@ -214,9 +244,11 @@ test('confirmed public live shares the approved title and cover at the exact ano
   assert.equal(page.data.shareAvailable, false);
   assert.equal(page.onShareAppMessage().path, '/pages/index/index');
   await connecting;
-  page.played(playerEvent(page.epoch, 0.25));
-  page.toggle();
+  page.player.onAdvance(playerEvent(page.epoch, 0.25));
+  page.player.togglePause();
   assert.equal(page.data.state, 'paused');
+  assert.deepEqual(page.videoActions, ['pause']);
+  assert.equal(page.player.data.muted, true);
   assert.equal(page.data.shareAvailable, true);
   assert.deepEqual(shareMenu.at(-1), { visible: true, menus: ['shareAppMessage'] });
   assert.deepEqual(page.onShareAppMessage(), {
@@ -225,6 +257,7 @@ test('confirmed public live shares the approved title and cover at the exact ano
     imageUrl: '/packages/construction/assets/notebook/public-live-share-cover.jpg',
   });
   page.onHide();
+  assert.deepEqual(page.videoActions, ['pause', 'stop']);
   assert.equal(page.data.shareAvailable, false);
   assert.equal(page.onShareAppMessage().path, '/pages/index/index');
 });
@@ -268,14 +301,49 @@ test('public 503 and decoder failures permit retry, and playback needs positive 
   sessionUnavailable = false;
   await page.retry();
   assert.ok(page.data.src.endsWith('/hls.m3u8'));
-  for (const time of [undefined, 0, NaN]) page.played(playerEvent(page.epoch, time));
+  for (const time of [undefined, 0, NaN]) page.player.onAdvance(playerEvent(page.epoch, time));
   assert.equal(page.data.state, 'connecting');
-  page.played(playerEvent(page.epoch, 0.25));
+  page.player.onAdvance(playerEvent(page.epoch, 0.25));
   assert.equal(page.data.state, 'playing');
-  page.playbackError(playerEvent(page.epoch));
+  page.player.onError(playerEvent(page.epoch));
   assert.equal(page.data.state, 'failed');
   assert.equal(page.data.error, '暂时无法连接直播，请重试。');
   assert.equal(page.data.src, '');
+});
+
+test('the public player recovers a short HLS stall and bounds a sustained one', async () => {
+  const detail = { key: card.key, versionId: card.versionId, revision: card.revision };
+  const timers = new Map();
+  let id = 0;
+  const page = publicPlayer(async (_, method) => ({ success: true, data: method === 'POST' ? { ...detail, url: path } : detail }), [], {
+    set(fn, delay) { timers.set(++id, { fn, delay }); return id; },
+    clear(timer) { timers.delete(timer); },
+  });
+  await page.connect();
+  const event = playerEvent(page.epoch, 0.95);
+  const stall = { ...event, detail: { errMsg: 'HLS error, type: mediaError, details: bufferStalledError, response: "none"' } };
+  page.player.onAdvance(event);
+  page.player.onError(stall);
+  const recovery = page.bufferRecovery;
+  assert.equal(timers.get(recovery).delay, 8000);
+  assert.equal(page.data.state, 'playing');
+  assert.ok(page.data.src);
+  page.player.onError(stall);
+  page.player.onAdvance(event);
+  assert.equal(page.bufferRecovery, recovery);
+  page.player.onAdvance(playerEvent(page.epoch, 1.4));
+  assert.equal(timers.has(recovery), false);
+  assert.equal(page.data.state, 'playing');
+
+  page.player.onError(stall);
+  timers.get(page.bufferRecovery).fn();
+  assert.equal(page.data.state, 'failed');
+  assert.equal(page.data.src, '');
+
+  await page.retry();
+  page.player.onError({ ...playerEvent(page.epoch, 0), detail: { details: 'bufferStalledError', fatal: true } });
+  assert.equal(page.data.state, 'failed');
+  assert.equal(page.bufferRecovery, undefined);
 });
 
 test('continuing public live waits for the new player and ignores late progress and errors', async () => {
@@ -291,26 +359,26 @@ test('continuing public live waits for the new player and ignores late progress 
   });
   await page.connect();
   const oldEpoch = page.epoch;
-  page.played(playerEvent(oldEpoch, 0.25));
-  page.toggle();
+  page.player.onAdvance(playerEvent(oldEpoch, 0.25));
+  page.player.togglePause();
   assert.equal(page.data.state, 'paused');
 
-  page.toggle();
+  page.player.togglePause();
   assert.equal(page.data.src, '');
-  page.played(playerEvent(oldEpoch, 3));
+  page.player.onAdvance(playerEvent(oldEpoch, 3));
   assert.equal(page.data.state, 'connecting');
   resolveSession(response({ ...detail, url: path.replace('b'.repeat(43), 'c'.repeat(43)) }));
   await new Promise(setImmediate);
   assert.equal(sessions, 2);
-  page.played(playerEvent(oldEpoch, 3));
+  page.player.onAdvance(playerEvent(oldEpoch, 3));
   assert.equal(page.data.state, 'connecting');
-  page.playbackError(playerEvent(oldEpoch));
+  page.player.onError(playerEvent(oldEpoch));
   assert.equal(page.data.state, 'connecting');
   assert.equal(page.data.playerEpoch, page.epoch);
   assert.ok(page.data.src.includes('c'.repeat(43)));
-  page.toggle();
+  page.player.togglePause();
   assert.equal(page.data.state, 'connecting');
-  page.played(playerEvent(page.epoch, 0.25));
+  page.player.onAdvance(playerEvent(page.epoch, 0.25));
   assert.equal(page.data.state, 'playing');
 });
 
@@ -323,7 +391,7 @@ test('withdrawal keeps the stopped feedback even if an old player reports an err
   await page.connect();
   withdrawn = true;
   await page.check(page.epoch);
-  page.playbackError(playerEvent(page.epoch));
+  page.player.onError(playerEvent(page.epoch));
   assert.equal(page.data.state, 'stopped');
   assert.equal(page.data.error, '直播已停止公开');
   await page.retry();

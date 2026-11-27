@@ -104,8 +104,33 @@
 
 .chat-scroll { position:relative; flex:1; min-height:0; }
 .chat-content { padding:0 18px 12px 33px; }
-.state,.empty { padding:24px 10px; font-size:16px; line-height:1.7; }
-.empty > text { display:block; margin-bottom:10px; }
+.state { padding:24px 10px; font-size:16px; line-height:1.7; }
+.site-chat-empty { padding:12px 8px 22px; text-align:center; }
+.site-chat-empty-title { display:block; font:900 20px/1.5 'Site Serif','Songti SC',SimSun,serif; }
+.site-chat-empty-copy { display:block; margin-top:7px; color:#455f53; font-size:14px; line-height:1.6; }
+.first-site-record { padding-bottom:10px; }
+.first-site-record .site-chat-empty-copy { margin-top:5px; }
+.feedback.site-access-feedback {
+  margin:0;
+  padding:12px 14px;
+  border:1px solid #d7dfd1;
+  border-radius:8px;
+  background:#f6f3e9;
+  color:#455f53;
+  font-size:14px;
+  line-height:1.6;
+}
+.site-access-feedback button {
+  display:flex;
+  width:auto !important;
+  align-items:center;
+  min-height:44px;
+  margin-top:0;
+  padding:0;
+  color:#00513c;
+  font-size:14px;
+  font-weight:600;
+}
 .helper,.record-helper { display:block; font-size:13px; color:#60796c; line-height:1.6; }
 .success { color:#205a43; font-size:13px; padding:10px 0; text-align:center; }
 .text-button {
@@ -348,7 +373,10 @@
   color:#073c30;
 }
 .composer-input::placeholder { color:#647a70; }
+.capture-entry { display:flex; flex-direction:column; }
 .capture-secondary { position:relative; display:flex; align-items:center; justify-content:space-between; min-height:51px; }
+.first-site-record ~ .capture-secondary { order:1; }
+.first-site-record ~ .capture-secondary::before { display:none; }
 .capture-secondary::before {
   content:'';
   position:absolute;
@@ -375,6 +403,9 @@
 .quick-entry text { padding:5px 13px; border:1px solid #52795e; border-radius:20px; }
 .capture-secondary .type-entry { min-width:44px; justify-content:flex-end; padding-right:3px; }
 .capture-secondary .chat-entry { min-width:52px; justify-content:flex-end; padding-right:3px; font-weight:700; }
+.first-site-record ~ .capture-secondary button { flex:1; min-width:0; justify-content:center; padding:0; }
+.first-site-record ~ .capture-secondary .type-entry { order:-1; }
+.first-site-record ~ .capture-secondary .quick-entry text { padding:0; border:0; }
 .capture-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
 .capture-action {
   display:flex;
@@ -394,6 +425,9 @@
   background:linear-gradient(111deg,#114632,#134a36 74%,#104331);
 }
 .capture-action image { width:26px; height:26px; }
+.first-site-record ~ .capture-actions { gap:12px; }
+.first-site-record ~ .capture-actions .capture-action { border-radius:12px; background:#00513c; font-weight:600; }
+.first-site-record ~ .capture-actions .capture-action image { width:25px; height:25px; }
 .capture-action[disabled] { color:#f5f3e9 !important; background:#7a9685 !important; }
 .capture-submit-row { display:flex; justify-content:flex-end; padding:8px 0; }
 .capture-submit-row .capture-send {

@@ -35,7 +35,7 @@ function syncWith({ route, view }) {
   const previousGetApp = global.getApp;
   const previousGetPages = global.getCurrentPages;
   const previousWx = global.wx;
-  global.getApp = () => ({ globalData: { customerTab: view, token: '' } });
+  global.getApp = () => ({ globalData: { customerTab: view, token: '', aiEntriesEnabled: true } });
   global.getCurrentPages = () => [{ route, getTabBar: () => ({ data: { list: CUSTOMER_ITEMS } }) }];
   global.wx = { getStorageSync: () => '' };
   try {

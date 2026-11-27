@@ -1,7 +1,9 @@
 const app = getApp();
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
+const { syncAiEntryVisibility } = require('../../../utils/ai-entries.js');
 const { resolveLegalDoc, buildLegalWebviewUrl } = require('../../../utils/legal-docs.js');
+const { previewQuestion, authorizeQuestionReturn, dismissQuestionLogin } = require('../../../utils/xiaok-question-login');
 const {
   refreshWechatLoginCode,
   resolveWechatPhoneLoginInput,
@@ -39,12 +41,16 @@ function loginErrorMessage(error) {
 
 Page({
   data: {
+    aiEntriesEnabled: false,
     loginType: 'phone',
     username: '',
     password: '',
     loading: false,
     agreed: false,
-    showDisclaimer: false
+    showDisclaimer: false,
+    resumeQuestion: '',
+    resumeNavTop: 47,
+    resumeNavHeight: 32,
   },
 
   onLoad(options) {
@@ -57,6 +63,16 @@ Page({
     }
     const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
     const previousRoute = pages.length >= 2 ? (pages[pages.length - 2].route || '') : '';
+    const origin = pages[pages.length - 2];
+    const resumeQuestion = this.data.loginType === 'phone' && options?.questionResume
+      ? previewQuestion(options.questionResume, origin) : '';
+    if (resumeQuestion) {
+      this._resumeId = options.questionResume;
+      this._resumeOrigin = origin;
+      const capsule = wx.getMenuButtonBoundingClientRect?.();
+      this.setData({ resumeQuestion, resumeNavTop: capsule?.top || 47, resumeNavHeight: capsule?.height || 32 });
+      return;
+    }
     if (
       app.globalData.openid &&
       app.globalData.userInfo &&
@@ -67,8 +83,16 @@ Page({
   },
 
   onShow() {
+    this.syncAiEntryVisibility();
     refreshWechatLoginCode();
   },
+
+  onUnload() {
+    if (this._resumeId) dismissQuestionLogin(this._resumeId, this._returningQuestion);
+    this._resumeOrigin = null;
+  },
+
+  syncAiEntryVisibility,
 
   switchTab(e) {
     const type = e.currentTarget.dataset.type;
@@ -169,6 +193,8 @@ Page({
         }
         await app.hydrateStoredSession();
         if (app.globalData.sessionRecovery) throw new Error('身份资料已失效，请重新登录');
+        if (this._resumeId && !this._resumeOrigin) return;
+        if (this._resumeId && !app.globalData.bootstrap?.current) throw new Error('身份资料暂时无法读取，请重试');
 
         this.setData({ loading: false });
         if (res.requiresPasswordChange) {
@@ -223,10 +249,22 @@ Page({
   },
 
   finishLogin() {
+    if (this._resumeId && getCurrentPages().at(-2) === this._resumeOrigin
+      && authorizeQuestionReturn(this._resumeId, this._resumeOrigin, app.globalData)) {
+      const id = this._resumeId;
+      this._returningQuestion = true;
+      wx.navigateBack({ fail: () => {
+        dismissQuestionLogin(id);
+        navigateToRoleLanding(app.globalData.userInfo);
+      } });
+      return;
+    }
+    if (this._resumeId) dismissQuestionLogin(this._resumeId);
     navigateToRoleLanding(app.globalData.userInfo);
   },
 
   onBack() {
+    if (this.data.resumeQuestion && this.data.loading) return;
     const pages = getCurrentPages();
     const previousRoute = pages.length >= 2 ? (pages[pages.length - 2].route || '') : '';
     if (pages.length > 1 && !String(previousRoute).includes('enterprise-register')) {

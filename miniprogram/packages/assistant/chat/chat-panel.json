@@ -1,4 +1,7 @@
 {
   "component": true,
-  "usingComponents": {}
+  "usingComponents": {
+    "native-live-player": "/packages/construction/components/native-live-player/native-live-player"
+  },
+  "componentPlaceholder": { "native-live-player": "view" }
 }

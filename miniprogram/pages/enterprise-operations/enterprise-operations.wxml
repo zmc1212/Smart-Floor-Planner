@@ -1,4 +1,4 @@
 <!-- Shared professional data Tab: owners read enterprise facts; staff read only their own facts. -->
 <view class="enterprise-operations-page sfp-tab-page">
-  <role-workbench wx:if="{{role}}" role="{{role}}" focus="operations" />
+  <role-workbench wx:if="{{role}}" role="{{role}}" focus="operations" ai-entries-enabled="{{aiEntriesEnabled}}" />
 </view>

@@ -83,7 +83,7 @@ test('authorized JPEG downloads bind the exact work and version and discard a la
 test('native portfolio preview returns to the same gallery without reloading or clearing files', async () => {
   const oldWx = global.wx, oldApp = global.getApp;
   const removed = [], authorizations = [], viewer = [];
-  global.getApp = () => ({ globalData: { token: 'session-a' } });
+  global.getApp = () => ({ globalData: { token: 'session-a', aiEntriesEnabled: true } });
   const fixture = page('work');
   const data = workForView(work());
   const files = new PortfolioImages(null, async path => ({ tempFilePath: '/private/' + path.match(/\/assets\/(\d+)/)[1] + '.jpg' }));
@@ -121,10 +121,11 @@ test('C01 reads recommendations without preference/contact writes and clears rev
   revoked = true; await c.load('11', true); assert.deepEqual(state.portfolioItems, []); assert.deepEqual(state.portfolioImages, {}); assert.ok(state.portfolioError);
 });
 test('return to consultation uses the matching original chat stack and does not start another conversation', () => {
-  const oldWx = global.wx, oldPages = global.getCurrentPages; let back;
+  const oldWx = global.wx, oldPages = global.getCurrentPages, oldApp = global.getApp; let back;
+  global.getApp = () => ({ globalData: { aiEntriesEnabled: true } });
   global.wx = { navigateBack: x => { back = x; } }; global.getCurrentPages = () => [{ route: 'packages/assistant/chat/chat', data: { conversation: { id: '11' } } }, { route: 'packages/assistant/designer/designer' }, { route: 'packages/assistant/work/work' }];
   try { page('work').continueChat.call({ data: { conversationId: '11' } }); assert.deepEqual(back, { delta: 2 }); }
-  finally { global.wx = oldWx; global.getCurrentPages = oldPages; }
+  finally { global.wx = oldWx; global.getCurrentPages = oldPages; global.getApp = oldApp; }
 });
 test('shared works revalidate on reentry and support preview only for either identity', async () => {
   let session = 'account-a', withdrawn = false;

@@ -3,6 +3,24 @@ const { displayName, familyErrorText } = require('../lib/family-view');
 
 const projectPath = '/miniprogram/construction/projects/';
 const scopedRequest = { suppressUnauthorized: true };
+const inviteCover = '/packages/construction/assets/notebook/family-invite-share-cover.jpg';
+const defaultInviteTitle = '邀请你看我家的装修进度';
+
+function inviteTitle({ communityName, areaLabel }) {
+  // The legacy community field can hold a synced appointment address.
+  const label = displayName(String(communityName || '').normalize('NFKC'), '');
+  const streetNumber = /(?:路|街|巷|道|弄|胡同)\s*[\d零〇一二三四五六七八九十百]+\s*(?:号|弄)/;
+  if (streetNumber.test(label)) return defaultInviteTitle;
+
+  const buildingOrRoom = /(?:[a-z]?\d+[a-z]?|[零〇一二三四五六七八九十百]+)\s*(?:号楼|栋|幢|单元|座|层|楼|室|房)|[a-z]\s*座/i;
+  const shortName = label.split(buildingOrRoom, 1)[0]
+    .replace(/(?:[\s·,，/]+\d{3,}[a-z]?|[\s·,，]+\d+[-/]\d+|\d+(?:[-/]\d+){2,})$/i, '')
+    .replace(/[\s·,，/、-]+$/, '')
+    .replace(/\s+/g, ' ');
+  if (!shortName || /^\d+\s*号?$/.test(shortName)) return defaultInviteTitle;
+
+  return [shortName, areaLabel].filter(Boolean).join(' ') + ' · 装修进度';
+}
 
 function sessionToken() {
   return getApp().globalData.token || wx.getStorageSync('token') || '';
@@ -46,6 +64,11 @@ Component({
       this._scope = null;
     },
   },
+  pageLifetimes: {
+    show() {
+      if (!this.data.viewerLoading && !this.data.busy) void this.loadViewers();
+    },
+  },
   methods: {
     current(scope) {
       return Boolean(scope && this._scope === scope && scope.token &&
@@ -62,13 +85,18 @@ Component({
 
     stop() {},
 
-    shareInvite() {
-      const scope = this._scope, token = this.data.inviteToken;
-      if (!this.current(scope) || !token || this.data.inviteLoading) return null;
+    shareInvite(project) {
+      const scope = this._scope;
+      const { inviteToken, inviteLoading, inviteCodeOpen } = this.data;
+      if (!this.current(scope) || project?.id !== scope.projectId || !inviteToken || inviteLoading || inviteCodeOpen) return null;
+      // The native picker may be cancelled. Reuse neither the handed-off card nor its token.
+      this.setData({ inviteToken: '' });
+      void this.createInvite();
       return {
-        title: '家人一起看工地进度',
+        title: inviteTitle(project),
         path: '/packages/construction/family/family?projectId=' + encodeURIComponent(scope.projectId) +
-          '&invite=' + encodeURIComponent(token),
+          '&invite=' + encodeURIComponent(inviteToken),
+        imageUrl: inviteCover,
       };
     },
 
@@ -98,7 +126,7 @@ Component({
 
     async createInvite() {
       const scope = this._scope;
-      if (!this.current(scope) || !/^[1-9]\d*$/.test(scope.projectId) || this.data.inviteLoading || this.data.inviteCodeLoading) return;
+      if (!this.current(scope) || !/^[1-9]\d*$/.test(scope.projectId) || this.data.inviteToken || this.data.inviteLoading) return;
       this.setData({ inviteLoading: true, inviteError: '' });
       const failure = '邀请暂时无法生成，请重试。';
       try {
@@ -109,8 +137,7 @@ Component({
           this.setData({ inviteError: failure });
           return;
         }
-        this.setData({ inviteToken: token, inviteCodePath: '', inviteCodeError: '' });
-        if (this.data.inviteCodeOpen) void this.loadInviteCode();
+        this.setData({ inviteToken: token });
       } catch (error) {
         if (this.current(scope)) this.setData({ inviteError: familyErrorText(error, failure) });
       } finally {
@@ -118,49 +145,41 @@ Component({
       }
     },
 
-    toggleInviteCode() {
-      if (!this.current(this._scope) || !this.data.inviteToken || this.data.inviteLoading) return;
-      const inviteCodeOpen = !this.data.inviteCodeOpen;
-      this.setData({ inviteCodeOpen });
-      if (inviteCodeOpen && !this.data.inviteCodePath) return this.loadInviteCode();
+    openInviteCode() {
+      if (!this.current(this._scope) || this.data.inviteCodeOpen) return;
+      this.setData({ inviteCodeOpen: true });
+      return this.loadInviteCode();
+    },
+
+    closeInviteCode() {
+      if (!this.data.inviteCodeOpen) return;
+      this.setData({ inviteCodeOpen: false, inviteCodePath: '', inviteCodeLoading: false, inviteCodeError: '' });
+      if (!this.data.busy) void this.loadViewers();
     },
 
     async loadInviteCode() {
       const scope = this._scope;
       if (!this.current(scope) || !/^[1-9]\d*$/.test(scope.projectId) ||
-          !this.data.inviteCodeOpen || !this.data.inviteToken || this.data.inviteCodeLoading) return;
+          !this.data.inviteCodeOpen || this.data.inviteCodeLoading) return;
+      const request = this._codeRequest = (this._codeRequest || 0) + 1;
+      const current = () => this.current(scope) && this.data.inviteCodeOpen && this._codeRequest === request;
       this.setData({ inviteCodeLoading: true, inviteCodeError: '' });
       const failure = '邀请码暂时无法生成，请重试。';
-      console.log('[familySheet] invite-code GET env=' + buildEnvVersion() + ' project=' + scope.projectId);
       try {
         const file = await api.downloadFile(projectPath + scope.projectId + '/family-invite-code?env=' + buildEnvVersion(), scopedRequest);
-        if (!this.current(scope)) return;
+        if (!current()) return;
         const inviteCodePath = String(file?.tempFilePath || '');
         this.setData({ inviteCodePath, inviteCodeError: inviteCodePath ? '' : failure });
       } catch (error) {
-        console.error('[familySheet] invite-code failed: ' + JSON.stringify(error || {}));
-        if (this.current(scope)) this.setData({ inviteCodePath: '', inviteCodeError: familyErrorText(error, failure) });
+        if (current()) this.setData({ inviteCodePath: '', inviteCodeError: familyErrorText(error, failure) });
       } finally {
-        if (this.current(scope)) this.setData({ inviteCodeLoading: false });
+        if (current()) this.setData({ inviteCodeLoading: false });
       }
     },
 
     previewInviteCode() {
       const path = this.data.inviteCodePath;
       if (this.current(this._scope) && this.data.inviteCodeOpen && path) wx.previewImage({ current: path, urls: [path] });
-    },
-
-    saveInviteCode() {
-      const filePath = this.data.inviteCodePath;
-      if (!this.current(this._scope) || !this.data.inviteCodeOpen || !filePath || !wx.saveImageToPhotosAlbum) return;
-      wx.saveImageToPhotosAlbum({
-        filePath,
-        success: () => wx.showToast({ title: '已保存到相册', icon: 'success' }),
-        fail: (error) => wx.showToast({
-          title: String(error?.errMsg || '').includes('auth') ? '请允许保存到相册' : '保存失败，请重试',
-          icon: 'none',
-        }),
-      });
     },
 
     async revokeViewer(event) {

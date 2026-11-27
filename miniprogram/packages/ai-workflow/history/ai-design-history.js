@@ -1,5 +1,6 @@
 const aiService = require('../../../utils/aiDesignService.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
+const { pendingAiEntryVisibility } = require('../../../utils/ai-entries.js');
 const { openSchemeStudio } = require('../../../utils/aiDesignNavigation.js');
 
 const MODE_TITLES = {
@@ -57,7 +58,9 @@ Page({
     projects: [],
   },
 
-  onShow() {
+  async onShow() {
+    const pending = pendingAiEntryVisibility();
+    if (pending) await pending;
     if (!canAccessAIDesign()) {
       showAIDesignAccessDenied();
       wx.switchTab({ url: '/pages/index/index' });

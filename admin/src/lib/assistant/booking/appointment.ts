@@ -3,9 +3,10 @@ import { withTenantTransaction, type PostgresTransaction } from '@/db/transactio
 import { AppointmentRepository, ReferralLeadRepository } from '@/db/repositories';
 import { AssistantRepository, rows, type Row } from '@/db/repositories/assistant-repository';
 import { appointmentToDto, parseAppointmentAddress, parseAppointmentContactPhone, parseAppointmentDateTime, parseAppointmentLocation } from '@/lib/appointment-api';
+import { formatAppointmentTimeRangeIso } from '@/lib/lead-service-stage';
 import { notifyAppointmentStaff, notifyCustomerOfAppointment } from '@/lib/wechat-notification';
 import { fail, id, requireCapability, type ActorContext } from '../contracts';
-import { idempotent } from '../core/conversation';
+import { idempotent, readIdempotencyRecord } from '../core/conversation';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -68,10 +69,11 @@ export class AssistantMeasureBookingService {
     };
     return this.transaction ? execute(this.transaction) : withTenantTransaction(this.actor.enterpriseId, execute);
   }
-  private async projects(repo: AssistantRepository) {
+  private async projects(repo: AssistantRepository, leadId: string | null = null) {
     const list = await rows(repo.tx, sql`select l.id,l.name,l.community_name from app.leads l
       where l.enterprise_id=${this.actor.enterpriseId} and l.customer_user_id=${this.userId}
-        and l.archived_at is null and l.status not in ('closed','converted') order by l.id desc limit 20`);
+        and l.archived_at is null and l.status not in ('closed','converted')
+        ${leadId ? sql`and l.id=${leadId}` : sql``} order by l.id desc limit 20`);
     return list.map(item => ({
       leadId: String(item.id),
       name: String(item.name),
@@ -101,8 +103,8 @@ export class AssistantMeasureBookingService {
     const date = parseDate(input.date);
     const requested = parseLeadId(input.leadId);
     return this.scope(async repo => {
-      const projects = await this.projects(repo);
-      if (requested && !projects.some(project => project.leadId === requested)) fail('assistant_resource_not_found', 404);
+      const projects = await this.projects(repo, requested);
+      if (requested && !projects.length) fail('assistant_resource_not_found', 404);
       const leadId = requested || (projects.length === 1 ? projects[0].leadId : null);
       const data = await new AppointmentRepository(repo.tx).listAvailability({
         enterpriseId: BigInt(this.actor.enterpriseId),
@@ -125,9 +127,14 @@ export class AssistantMeasureBookingService {
       const loginPhone = this.profile.phone?.trim() || '';
       const receipt = await this.scope(async (repo, c) => {
         if (c.status !== 'open' || c.mode !== 'ai') fail('conversation_read_only');
-        const projects = await this.projects(repo);
+        const operation = 'measure-booking:' + this.conversationId;
         let leadId = body.leadId;
-        if (leadId && !projects.some(project => project.leadId === leadId)) fail('assistant_resource_not_found', 404);
+        if (!leadId) {
+          const previous = await readIdempotencyRecord(repo.tx, this.actor, operation, requestKey);
+          if (previous) leadId = id((previous.result as Row).leadId);
+        }
+        const projects = await this.projects(repo, leadId);
+        if (leadId && !projects.length) fail('assistant_resource_not_found', 404);
         if (!leadId) {
           if (projects.length === 1) leadId = projects[0].leadId;
           else if (projects.length > 1) fail('appointment_lead_required', 409);
@@ -142,7 +149,7 @@ export class AssistantMeasureBookingService {
             leadId = String(project.lead.id);
           }
         }
-        const receipt = await idempotent(repo.tx, this.actor, 'measure-booking:' + this.conversationId, requestKey,
+        const receipt = await idempotent(repo.tx, this.actor, operation, requestKey,
           { ...body, leadId }, async () => {
             const contactPhone = body.contactPhone || loginPhone;
             if (!contactPhone) fail('appointment_phone_required', 409);
@@ -157,12 +164,19 @@ export class AssistantMeasureBookingService {
               actorUserId: BigInt(this.userId),
               eventKey: 'assistant-booking:' + this.conversationId + ':' + requestKey,
             });
+            await repo.tx.execute(sql`update app.assistant_conversations
+              set entry_snapshot=entry_snapshot-'measureOffer',version=version+1,updated_at=now()
+              where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId} and jsonb_exists(entry_snapshot,'measureOffer')`);
             created = true;
             return { leadId: leadId!, contactPhone, appointment: appointmentToDto(appointment) };
           });
-        await repo.tx.execute(sql`update app.assistant_conversations
-          set entry_snapshot=entry_snapshot-'measureOffer',version=version+1,updated_at=now()
-          where enterprise_id=${this.actor.enterpriseId} and id=${this.conversationId} and jsonb_exists(entry_snapshot,'measureOffer')`);
+        if (!created) {
+          // Existing request hashes normalize Date objects without their values.
+          // The original receipt retains the exact submitted interval.
+          const appointment = receipt.appointment as ReturnType<typeof appointmentToDto> | undefined;
+          const timeRange = `[${body.startAt.toISOString()},${body.endAt.toISOString()})`;
+          if (formatAppointmentTimeRangeIso(appointment?.timeRange) !== timeRange) fail('idempotency_conflict');
+        }
         return receipt;
       }, true);
       if (created) await this.notify(receipt as {

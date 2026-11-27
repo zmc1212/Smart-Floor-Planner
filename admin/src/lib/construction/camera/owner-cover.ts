@@ -91,18 +91,19 @@ async function syntheticCover(origin: string): Promise<Cover | null> {
 export async function ownerSiteCover(identity: CameraCustomerIdentity, projectId: string,
   snapshot = (device: string, channel: string) => cameraWvp().snapshot(device, channel)) {
   const { actor, debugCamera } = await customerCameraPlayback(identity, projectId);
+  if (actor.family) fail('camera_project_unavailable', 404);
   if (debugCamera) {
-    if (!debugCamera.syntheticOrigin) return { camera: { name: debugCamera.item.name, cover: null } };
+    if (!debugCamera.syntheticOrigin) return { camera: { bindingId: debugCamera.item.binding_id, name: debugCamera.item.name, cover: null } };
     const cover = await syntheticCover(debugCamera.syntheticOrigin).catch(() => null);
     const current = await customerCameraPlayback(identity, projectId);
-    if (!current.debugCamera?.syntheticOrigin || current.actor.debug?.scope !== actor.debug?.scope ||
+    if (current.actor.family || !current.debugCamera?.syntheticOrigin || current.actor.debug?.scope !== actor.debug?.scope ||
       current.actor.grantVersion !== actor.grantVersion) fail('camera_project_unavailable', 404);
-    return { camera: { name: current.debugCamera.item.name, cover } };
+    return { camera: { bindingId: current.debugCamera.item.binding_id, name: current.debugCamera.item.name, cover } };
   }
   const camera = await source(actor, projectId);
   if (!camera) return { camera: null };
   const stored = await withTenantTransaction(actor.enterpriseId, tx => storedCameraCover(tx, actor.enterpriseId, projectId, String(camera.id)));
-  if (stored?.data) return { camera: { name: String(camera.name), cover: {
+  if (stored?.data) return { camera: { bindingId: String(camera.id), name: String(camera.name), cover: {
     capturedAt: new Date(String(stored.captured_at)).toISOString(), jpeg: Buffer.from(stored.data as Buffer).toString('base64'),
   } } };
   const key = sourceKey(actor, projectId, camera);
@@ -111,7 +112,7 @@ export async function ownerSiteCover(identity: CameraCustomerIdentity, projectId
   // the bytes of a frame captured before the change.
   const current = await source(actor, projectId);
   if (!current || sourceKey(actor, projectId, current) !== key) fail('camera_project_unavailable', 404);
-  return { camera: { name: String(current.name), cover } };
+  return { camera: { bindingId: String(current.id), name: String(current.name), cover } };
 }
 
 type DueCover = { enterprise_id: string; project_id: string; binding_id: string; device_id: string; channel_id: string; slot: Date };

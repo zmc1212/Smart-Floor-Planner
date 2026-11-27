@@ -1,5 +1,5 @@
 const api = require('../../../utils/api');
-const { sortSchemesByFirstPublished } = require('./customer-ai-schemes-model');
+const { sortSchemesByFirstPublished } = require('../../../utils/published-scheme-order');
 const {
   fetchProtectedImage,
   readCachedProtectedImage,
@@ -182,12 +182,13 @@ Page({
   onLoad(query) {
     this._assetRequestId = 0;
     const audience = String(query.mode || query.from || 'customer') === 'staff' ? 'staff' : 'customer';
+    this._fromRenovation = query.from === 'renovation' && audience === 'customer' && Boolean(query.schemeId);
     this.setData({
       ...navigationMetrics(),
       leadId: query.leadId || query.id || '',
       schemeId: query.schemeId || '',
       audience,
-      backLabel: audience === 'staff' ? '返回客户详情' : '返回服务档案',
+      backLabel: audience === 'staff' ? '返回客户详情' : this._fromRenovation ? '返回我的装修' : '返回服务档案',
       showShareAction: audience === 'customer',
     });
     this.load();
@@ -207,7 +208,12 @@ Page({
     const schemes = decorateSchemes(payload.publishedSchemes, this.data.leadId, audience);
     const totalImages = schemes.reduce((sum, scheme) => sum + scheme.imageCount, 0);
     const preferredId = String(this.data.schemeId || '');
-    const selected = schemes.find((scheme) => scheme.id === preferredId)
+    const preferred = schemes.find((scheme) => scheme.id === preferredId);
+    if (this._fromRenovation && !preferred) {
+      this.setData({ loading: false, error: '这版方案目前不可查看', schemes: [], selectedScheme: null, timelineImages: [] });
+      return;
+    }
+    const selected = preferred
       || schemes.find((scheme) => scheme.finalized)
       || schemes[schemes.length - 1]
       || null;
@@ -216,7 +222,7 @@ Page({
       showShareAction: audience === 'customer',
       backLabel: audience === 'staff'
         ? '返回客户详情'
-        : audience === 'share' ? '返回首页' : '返回服务档案',
+        : audience === 'share' ? '返回首页' : this._fromRenovation ? '返回我的装修' : '返回服务档案',
       heroTitle: audience === 'share'
         ? (String(payload && payload.heroTitle || '').trim() || '设计方案')
         : buildHeroTitle(payload, audience),
@@ -250,7 +256,7 @@ Page({
       const result = await api.request(path, 'GET');
       this.applyLoadedPayload(result.data || {}, audience);
     } catch (error) {
-      if (this.data.audience !== 'staff' && isOwnerAccessDenied(error)) {
+      if (!this._fromRenovation && this.data.audience !== 'staff' && isOwnerAccessDenied(error)) {
         try {
           const shared = await api.request(
             `/miniprogram/published-scheme-folios/${encodeURIComponent(this.data.leadId)}`,

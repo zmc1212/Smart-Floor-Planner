@@ -32,14 +32,14 @@ FORM: design-references/enterprise-code-presenters-fullscreen-v1/staff-activity-
           <text class="hero-subtitle">免费上门量房 · 专业家装设计顾问服务</text>
         </view>
 
-        <view class="code-mode">
+        <view wx:if="{{aiEntriesEnabled}}" class="code-mode">
           <button class="mode-option {{codeMode === 'service' ? 'active' : ''}}" data-mode="service" bindtap="onSwitchMode">免费服务码</button>
           <button class="mode-option {{codeMode === 'xiaok' ? 'active' : ''}}" data-mode="xiaok" bindtap="onSwitchMode">小K获客码</button>
         </view>
 
         <view class="qr-presentation">
           <view class="qr-stage">
-            <view wx:if="{{loading}}" class="qr-loading">
+            <view wx:if="{{loading || (codeMode === 'xiaok' && !aiEntriesEnabled)}}" class="qr-loading">
               <view class="qr-loading-grid"></view>
               <text class="qr-state-copy">服务码生成中</text>
             </view>
@@ -85,7 +85,7 @@ FORM: design-references/enterprise-code-presenters-fullscreen-v1/staff-activity-
           </view>
           <view class="info-bar">
             <image class="info-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-            <text class="info-copy">{{codeMode === 'xiaok' ? '扫码进入小K，授权手机号后自动建立服务' : '扫码后授权手机号，服务自动建立'}}</text>
+            <text class="info-copy">{{aiEntriesEnabled && codeMode === 'xiaok' ? '扫码进入小K，授权手机号后自动建立服务' : '扫码后授权手机号，服务自动建立'}}</text>
           </view>
         </view>
         <view class="action-dock">

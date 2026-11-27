@@ -17,6 +17,54 @@ import { publicCatalogHttp } from '../src/lib/construction/public-http';
 import { resolveMiniProgramContext } from '../src/lib/miniprogram-auth';
 import { fail } from '../src/lib/assistant/contracts';
 
+const staticPlayerFile = /^\/construction-camera\/(player\.js|style\.css|vendor\/[a-zA-Z0-9_.-]+|assets\/(?:(?:camera|image|move|up|down|left|right|volume-2|volume-x)\.png|site-serif\.woff2))$/;
+const nativeLivePath = /^\/api\/miniprogram\/construction\/((?:video|staff-video)\/projects\/[1-9]\d{0,18}\/native-live\/(?:start|heartbeat|stop))$/;
+const staffCameraPath = /^\/api\/miniprogram\/construction\/(staff-video\/projects\/[1-9]\d{0,18}\/(cameras|entry))$/;
+
+async function cameraGatewayRequest(req: IncomingMessage, url: URL) {
+  const method = req.method || 'GET';
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers)) if (v !== undefined) headers.set(k, Array.isArray(v) ? v.join(', ') : v);
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  if (method === 'POST') for await (const chunk of req) {
+    bytes += chunk.length;
+    if (bytes > 32768) fail('camera_invalid_request', 413);
+    chunks.push(Buffer.from(chunk));
+  }
+  return new NextRequest(url, { method, headers, body: method === 'POST' ? Buffer.concat(chunks) : undefined });
+}
+
+async function cameraPlayerHttp(pathname: string) {
+  if (pathname === '/construction-camera') return playerPage();
+  const file = staticPlayerFile.exec(pathname)?.[1];
+  if (!file) return null;
+  const types: Record<string, string> = {
+    '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.png': 'image/png', '.woff2': 'font/woff2',
+  };
+  const type = types[path.extname(file)] || 'application/javascript; charset=utf-8';
+  try {
+    return new Response(new Uint8Array(await fs.readFile(path.join(process.cwd(), 'public/construction-camera', file))), { headers: { 'Content-Type': type } });
+  } catch { return new Response(null, { status: 404 }); }
+}
+
+/** Keep the AAC viewer and its native start/renew/stop on the same versioned gateway. */
+export async function privateLiveGatewayHttp(req: IncomingMessage, url: URL) {
+  if (!process.env.CAMERA_LIVE_AAC_BINDING?.trim() || url.search) return null;
+  const read = req.method === 'GET';
+  if (read || req.method === 'HEAD') {
+    const player = await cameraPlayerHttp(url.pathname);
+    if (player) return player;
+  }
+  const staff = staffCameraPath.exec(url.pathname);
+  const staffRoute = staff && req.method === (staff[2] === 'cameras' ? 'GET' : 'POST') ? staff[1] : undefined;
+  const nativeRoute = req.method === 'POST' ? nativeLivePath.exec(url.pathname)?.[1] : undefined;
+  const route = staffRoute ?? nativeRoute;
+  if (!route) return null;
+  const handle = read ? constructionGet : constructionPost;
+  return handle(await cameraGatewayRequest(req, url), { params: Promise.resolve({ path: route.split('/') }) });
+}
+
 /** Explicit trial listener. All identity, tenant and camera checks remain in their
  * canonical route handlers; this is not an alternate general Admin/API server. */
 export async function embeddedCameraHttp(req: IncomingMessage, url: URL): Promise<Response | null> {
@@ -33,7 +81,7 @@ export async function embeddedCameraHttp(req: IncomingMessage, url: URL): Promis
   };
   const mini = /^\/api\/miniprogram\/construction\/(video\/[^?]+|projects(?:\/[1-9]\d*)?)$/.exec(p);
   const session = /^\/api\/construction-camera\/([^?]+)$/.exec(p);
-  const staticFile = /^\/construction-camera\/(player\.js|style\.css|vendor\/[a-zA-Z0-9_.-]+|assets\/(?:(?:camera|image|move|up|down|left|right)\.png|site-serif\.woff2))$/.exec(p);
+  const staticFile = staticPlayerFile.exec(p);
   const notebook = process.env.CAMERA_TRIAL_NOTEBOOK === '1';
   const notebookRead = notebook && /^\/api\/miniprogram\/construction\/(brief|projects\/12\/chat(?:\/media\/[1-9]\d{0,18})?)$/.exec(p);
   const publicRead = notebook && /^\/api\/miniprogram\/construction\/public-catalogue\/1454\/(areas|sites(?:\/[1-9]\d{0,18}(?:\/media\/[1-9]\d{0,18})?)?)$/.exec(p);
@@ -42,22 +90,8 @@ export async function embeddedCameraHttp(req: IncomingMessage, url: URL): Promis
   if (!allowed) return null;
   if (!['GET', 'POST'].includes(method)) return new Response(null, { status: 405 });
   if ((notebookRead || publicRead) && method !== 'GET') return new Response(null, { status: 405 });
-  const headers = new Headers();
-  for (const [k, v] of Object.entries(req.headers)) if (v !== undefined) headers.set(k, Array.isArray(v) ? v.join(', ') : v);
-  const chunks: Buffer[] = []; let bytes = 0;
-  if (method === 'POST') for await (const chunk of req) {
-    bytes += chunk.length; if (bytes > 32768) fail('camera_invalid_request', 413); chunks.push(Buffer.from(chunk));
-  }
-  const request = new NextRequest(url, { method, headers, body: method === 'POST' ? Buffer.concat(chunks) : undefined });
-  if (p === '/construction-camera' && method === 'GET') return playerPage();
-  if (staticFile && method === 'GET') {
-    const types: Record<string, string> = {
-      '.css': 'text/css; charset=utf-8', '.wasm': 'application/wasm', '.png': 'image/png', '.woff2': 'font/woff2',
-    };
-    const file = staticFile[1], type = types[path.extname(file)] || 'application/javascript; charset=utf-8';
-    try { return new Response(new Uint8Array(await fs.readFile(path.join(process.cwd(), 'public/construction-camera', file))), { headers: { 'Content-Type': type } }); }
-    catch { return new Response(null, { status: 404 }); }
-  }
+  if (method === 'GET' && (p === '/construction-camera' || staticFile)) return cameraPlayerHttp(p);
+  const request = await cameraGatewayRequest(req, url);
   if (session) return sessionCameraHttp(request, session[1].split('/'));
   if (p === '/api/auth/miniprogram' && method === 'POST') {
     const input = await request.clone().json().catch(() => null);

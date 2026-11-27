@@ -233,6 +233,7 @@ export async function entryContext(identity: Identity, body: Record<string, unkn
       join app.assistant_participants p on p.enterprise_id=c.enterprise_id and p.conversation_id=c.id
       where c.enterprise_id=${enterpriseId!} and c.purpose='customer_consultation' and c.status='open'
         and p.user_id=${identity.userId} and p.status='active' and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false)
+        and c.entry_snapshot->>'scope' is distinct from ${PUBLIC_ASSISTANT_SCOPE}
         ${basis.kind === 'lead' ? sql`and c.entry_snapshot->>'kind'='lead' and c.entry_snapshot->>'id'=${String(basis.id)}` : sql``}
         order by c.id desc limit 1`) : [];
     const eligibleLeads = assistantWritesEnabled(settings) && !developmentReviewEnabled(enterpriseId!)

@@ -173,6 +173,7 @@ export async function assistantHttp(request: Request, path: string[]) {
         only(body, ['rating', 'reason', 'note']);
         data = await service.feedback(target, message, requestKey(), body);
       } else if (path[4] === 'regenerate' && method === 'POST') {
+        assertPrivateScope(actor);
         only(body, []);
         data = await service.regenerate(target, message, requestKey());
         status = 202;

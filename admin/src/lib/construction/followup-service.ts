@@ -219,7 +219,7 @@ export class FollowupService {
         and b.project_id=${projectId} and b.status<>'deleted' and not b.list_hidden`);
       if (!binding || !await followupBindingAvailable(repo.tx, eid, binding)) return null;
       await repo.conversation(String(binding.conversation_id));
-      const row = await one(repo.tx, sql`select r.id::text,d.revision from app.construction_reports r
+      const row = await one(repo.tx, sql`select r.id::text,d.revision,d.delivered_at from app.construction_reports r
         join app.construction_report_deliveries d on d.enterprise_id=r.enterprise_id and d.report_id=r.id and d.binding_id=r.binding_id
         join app.construction_report_versions v on v.enterprise_id=d.enterprise_id and v.report_id=d.report_id and v.revision=d.revision
         join app.assistant_runs a on a.enterprise_id=v.enterprise_id and a.id=v.run_id and a.conversation_id=${String(binding.conversation_id)}
@@ -229,10 +229,19 @@ export class FollowupService {
       const view = await this.version(repo, binding, String(row.id), Number(row.revision));
       const project = view.facts?.projects.find(p => p.id === projectId);
       if (!view.available || !project || !('periodStart' in view)) return null;
+      let photo: { recordId: string; mediaId: string } | null = null;
+      for (const record of project.records.slice(0, 2)) {
+        const source = await currentRecord(repo.tx, eid, projectId, record.id, true);
+        const mediaId = source?.media[0]?.id;
+        if (mediaId) { photo = { recordId: record.id, mediaId: String(mediaId) }; break; }
+      }
       return { bindingId: String(binding.id), reportId: view.reportId, revision: view.revision, periodStart: new Date(String(view.periodStart)).toISOString(),
+        publishedAt: row.delivered_at ? new Date(String(row.delivered_at)).toISOString() : null,
+        photo,
         progress: project.records.map(r => typeof r.data.completed === 'string' ? r.data.completed.trim() : '').filter(Boolean).slice(0, 2),
         pending: (project.publishedRecordItems || []).flatMap(item => [item.pending, item.coordination]
-          .map((value, index) => ({ key: item.recordId + ':' + index, recordId: item.recordId, text: value.trim() }))
+          .map((value, index) => ({ key: item.recordId + ':' + index, recordId: item.recordId, text: value.trim(),
+            room: item.room, publishedAt: item.publishedAt, coordination: index === 1 }))
           .filter(item => item.text)).slice(0, 3) };
     });
   }

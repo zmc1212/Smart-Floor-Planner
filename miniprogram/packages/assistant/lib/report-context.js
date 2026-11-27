@@ -51,6 +51,7 @@ const reportQuestionMethods = {
     if (this.reportQuestions.state.invalidated && this.data.followupDetail) this.followups.closeReport();
   },
   async askFollowupReport(event) {
+    if (this.data.aiEntriesEnabled === false) return;
     if (!this.data.followupActive && this.data.reportQuestion.selected) { this.followups.closeReport(); return; }
     const c = this.data.followupContext;
     if (!c || !['customer','worker','designer','boss'].includes(c.audience) || !this.reportQuestions.canChange()) return;
@@ -67,6 +68,7 @@ const reportQuestionMethods = {
     }
   },
   async sendFollowup() {
+    if (this.data.aiEntriesEnabled === false) return;
     const f = this.followupChatController, q = this.reportQuestions;
     if (this._startingFollowup || q.state.busy || q.state.pending) return;
     if (f.canSend() || f.state.pendingSend) return f.send();

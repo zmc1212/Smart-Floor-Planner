@@ -1,14 +1,42 @@
 <view class="public-page">
+  <image class="notebook-page-grain" src="../assets/notebook/capture-v3-paper.png" mode="aspectFill" aria-hidden="true" />
   <view class="book-spine"><view wx:for="{{[0,1,2,3,4,5]}}" wx:key="*this" class="book-stitch" style="top:{{88 + item * 130}}px"/></view>
   <view class="book-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="book-back" bindtap="back" aria-label="返回"><image src="../assets/notebook/back.png"/></button><text class="book-nav-title">附近工地</text></view>
   <view class="public-content">
     <view class="public-hero"><view><text class="page-title">看看真实施工</text><text class="subtitle">先看现场，再聊你家的装修。</text></view><image src="../assets/notebook/xiaok-public.png" mode="aspectFit" aria-hidden="true"/></view>
-    <view class="area-row"><picker range="{{areas}}" range-key="label" value="{{areaIndex}}" bindchange="chooseArea" disabled="{{loading}}"><view class="area-picker">{{areaLabel}}<image class="book-icon" src="../assets/notebook/chevron.png"/></view></picker><text class="meta">业主授权公开</text></view>
+    <view class="area-row">
+      <picker range="{{areas}}" range-key="label" value="{{areaIndex}}" bindchange="chooseArea" disabled="{{loading}}">
+        <view class="area-picker"><view class="area-picker-face">{{areaLabel}}<image class="book-icon" src="../assets/notebook/chevron.png" mode="aspectFit" aria-hidden="true" /></view></view>
+      </picker>
+      <text class="meta">业主授权公开</text>
+    </view>
     <view wx:if="{{loading && !items.length}}" class="state">正在读取公开工地…</view>
     <view wx:if="{{error || publicError}}" class="state" role="alert"><text>{{error || publicError}}</text><button class="outline" bindtap="refresh">重新读取</button></view>
     <view wx:if="{{!loading && !error && !items.length}}" class="state">这一片区暂时没有授权公开的工地，可以先聊聊你家的装修。</view>
-    <view wx:for="{{items}}" wx:key="id" class="paper site-card"><view class="site-cover"><image wx:if="{{item.photos.length && publicPaths[item.photos[0].key]}}" src="{{publicPaths[item.photos[0].key]}}" mode="aspectFill"/><text wx:else class="meta">现场照片未公开</text></view><view class="site-copy"><text class="site-title">{{item.name}}</text><text class="stage-tag">{{item.stageName}}</text><text class="meta date-label">{{item.district}} · {{item.dateLabel}}</text><text wx:if="{{item.excerpts.length}}" class="site-summary">{{item.excerpts[0].text}}</text><button class="primary" data-id="{{item.id}}" bindtap="openSite">看看现场 <text>›</text></button></view></view>
-    <text class="privacy-note">仅展示获准公开的照片与服务节选。</text>
+    <view wx:for="{{items}}" wx:key="id" class="paper site-card">
+      <view wx:if="{{item.photos.length && publicPaths[item.photos[0].key]}}" class="site-cover">
+        <image src="{{publicPaths[item.photos[0].key]}}" mode="aspectFill" />
+      </view>
+      <view class="site-copy">
+        <text class="site-title">{{item.name}}</text>
+        <view class="site-stage">
+          <text class="stage-tag">{{item.stageName}}</text>
+          <text wx:if="{{!item.photos.length}}" class="meta site-cover-note">现场照片未公开</text>
+        </view>
+        <view wx:if="{{(areaIndex === 0 && item.district) || item.dateLabel}}" class="meta site-update">
+          <text wx:if="{{areaIndex === 0 && item.district}}" class="site-district">{{item.district}}</text>
+          <view wx:if="{{item.dateLabel}}" class="date-label">
+            <image src="../assets/notebook/review-clock.png" mode="aspectFit" aria-hidden="true" />
+            <text>{{item.dateLabel}}</text>
+          </view>
+        </view>
+        <text wx:if="{{item.excerpts.length}}" class="site-summary">{{item.excerpts[0].text}}</text>
+        <button class="site-card-action" data-id="{{item.id}}" bindtap="openSite">
+          <view class="site-card-action-face">看看现场 <text aria-hidden="true">›</text></view>
+        </button>
+      </view>
+    </view>
+    <view class="privacy-note"><text>仅展示获准公开的照片与服务节选。</text></view>
   </view>
-  <view wx:if="{{canConsult && !unavailable}}" class="consult-footer"><button class="primary" bindtap="consult">聊聊我家的装修</button></view>
+  <view wx:if="{{aiEntriesEnabled && canConsult && !unavailable}}" class="consult-footer"><button class="primary" bindtap="consult">聊聊我家的装修</button></view>
 </view>

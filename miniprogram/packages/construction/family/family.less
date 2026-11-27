@@ -1,4 +1,4 @@
-/* Approved cloud-site-family-view-20261120/family-view-v001. */
+/* Family view with the approved inline notebook live player. */
 @import '../notebook.less';
 
 .family-paper-grain {
@@ -171,61 +171,84 @@
   line-height: 18px;
 }
 
-.family-content .family-camera {
-  padding: 13px 15px 17px;
-  margin-bottom: 0;
+.family-live {
+  margin-bottom: 17px;
 }
 
-.family-camera-head {
+.family-live-heading {
+  padding-bottom: 7px;
+  margin-bottom: 9px;
+  border-bottom: 1rpx solid #a1af99;
+}
+
+.family-live-tab {
+  padding: 4px 16px;
+  font-size: 20px;
+  line-height: 1.5;
+  background: repeating-linear-gradient(0deg, #a4c8a518 0 1px, transparent 1px 4px),
+    linear-gradient(115deg, #155641, #0b4937 65%, #1a6048);
+}
+
+.family-content .family-camera {
+  padding: 7px 7px 0;
+  margin-bottom: 0;
+  background: linear-gradient(118deg, #fffdf4, #f9f5e8);
+  box-shadow: 0 1px 0 #e6dec9, 0 4px 9px #735b3724;
+}
+
+.family-live-caption, .family-camera-choice {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  min-height: 44px;
+  min-width: 0;
 }
 
-.family-camera-icon {
-  flex: none;
-  width: 31px;
-  height: 31px;
-  margin-left: -1px;
+.family-live-caption {
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 3px;
 }
 
-.family-camera-title {
-  font-size: 19px;
-  line-height: 26px;
-}
-
-.family-camera-names {
-  margin-top: 5px;
+.family-camera-picker {
+  flex: 1;
+  min-width: 0;
 }
 
 .family-camera-name {
-  display: block;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 21px;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #274c3f;
+  font-size: 13px;
+  line-height: 20px;
 }
 
-.family-shell .family-watch {
-  min-height: 48px;
-  margin-top: 12px;
-  background: #034b38;
-  color: #fffdf5;
-  box-shadow: none;
-  font-weight: 600;
-}
-
-.family-shell .family-watch-pressed {
-  background: #11624c;
-}
-
-.family-play {
+.family-player-settings {
   flex: none;
-  width: 0;
-  height: 0;
-  border: 8px solid transparent;
-  border-left: 13px solid #fffdf5;
-  border-right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  width: 74px;
+  min-width: 0;
+  min-height: 44px;
+  color: #285846;
+  font-size: 13px;
+}
+
+.family-caption-chevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.family-live-settings {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 3px;
+  border-top: 1rpx solid #d4ddcc;
 }
 
 .family-permission {

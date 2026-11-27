@@ -172,9 +172,9 @@
               <text wx:for="{{project.notes}}" wx:key="*this" class="report-board-line">{{item}}</text>
             </block>
           </block>
-          <button class="report-board-button compact chat-button" bindtap="askReportBoard">问小K</button>
+          <button wx:if="{{aiEntriesEnabled}}" class="report-board-button compact chat-button" bindtap="askReportBoard">问小K</button>
         </view>
-        <button wx:else class="report-board-button compact chat-button" bindtap="askReportBoard">问小K</button>
+        <button wx:elif="{{aiEntriesEnabled}}" class="report-board-button compact chat-button" bindtap="askReportBoard">问小K</button>
         <view wx:if="{{reportBoardView.decided.length}}" class="report-board-paper">
           <text class="fabric-label">方案处理记录</text>
           <button wx:for="{{reportBoardView.decided}}" wx:key="id" class="report-board-row chat-button" data-id="{{item.id}}" bindtap="openReportBoardDecision"><text class="chat-text">{{item.title}}</text><text class="report-board-tag done chat-text">{{item.label}}</text></button>

@@ -17,6 +17,13 @@ export const isCameraCustomer = (actor: CameraActor): actor is CameraCustomerAct
 export const cameraActorRef = (actor: CameraActor) => isCameraCustomer(actor)
   ? { kind: 'user', id: actor.userId } : { kind: 'admin', id: actor.adminId };
 
+function viewerDebugSource(enterpriseId: string, projectId: string, ownerId: string, family: boolean) {
+  const config = debugCameraSource(enterpriseId, projectId, ownerId);
+  // A synthetic test feed belongs to the target project. A redirected
+  // physical feed still requires the exact allowlisted owner.
+  return family && config && !('syntheticOrigin' in config) ? null : config;
+}
+
 async function customerIdentity(tx: PostgresTransaction, actor: CameraCustomerIdentity, eid: string) {
   id(actor.userId);
   if (!Number.isSafeInteger(actor.contextVersion) || actor.contextVersion < 1 ||
@@ -33,15 +40,18 @@ export async function cameraAccess(tx: PostgresTransaction, actor: CameraActor, 
     await customerIdentity(tx, actor, eid);
     if (!Number.isSafeInteger(actor.grantVersion) || actor.grantVersion < 1) fail('camera_project_unavailable', 404);
     const targetId = actor.debug ? id(actor.debug.targetProjectId) : pid;
-    const p = await one(tx, sql`select p.id,p.name,p.status,l.customer_user_id,g.capture_enabled,g.ptz_enabled
+    const p = await one(tx, sql`select p.id,p.name,p.status,p.customer_access,l.customer_user_id,g.capture_enabled,g.ptz_enabled
       from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
       join app.construction_camera_customer_grants g on g.enterprise_id=p.enterprise_id and g.project_id=p.id and g.user_id=l.customer_user_id
       where p.enterprise_id=${eid} and p.id=${targetId} and p.status='active' and l.archived_at is null
         and g.enabled and g.version=${actor.grantVersion} for share of p,l,g`);
     if (!p) fail('camera_project_unavailable', 404);
-    const owner = actor.family !== true && String(p.customer_user_id) === actor.userId;
+    const ownerId = String(p.customer_user_id);
+    const owner = actor.family !== true && ownerId === actor.userId;
+    if (!owner && !await familyViewerAllowed(tx, eid, targetId, actor.userId, ownerId))
+      fail('camera_project_unavailable', 404);
     if (actor.debug) {
-      const config = owner ? debugCameraSource(eid, targetId, actor.userId) : null;
+      const config = owner || p.customer_access ? viewerDebugSource(eid, targetId, ownerId, !owner) : null;
       if (!config || config.scope !== actor.debug.scope ||
         ('sourceProjectId' in config ? config.sourceProjectId : targetId) !== pid) fail('camera_project_unavailable', 404);
       const debugCamera = await availableDebugCamera(tx, config, targetId);
@@ -49,8 +59,6 @@ export async function cameraAccess(tx: PostgresTransaction, actor: CameraActor, 
       return { project: { id: p.id, name: p.name, status: p.status }, manage: false, owner: false,
         liveOnly: true, canCapture: false, canControl: false, debugCamera };
     }
-    if (!owner && !await familyViewerAllowed(tx, eid, pid, actor.userId, String(p.customer_user_id)))
-      fail('camera_project_unavailable', 404);
     // Family viewers receive live view only. Capture, PTZ and recordings remain
     // owner capabilities even though they inherit the household camera grant.
     return { project: { id: p.id, name: p.name, status: p.status }, manage: false, owner: false, liveOnly: !owner,
@@ -67,10 +75,10 @@ export async function cameraAccess(tx: PostgresTransaction, actor: CameraActor, 
   return { project: p, manage, owner, liveOnly: false, canCapture: manage, canControl: manage };
 }
 
-/** Platform lookup returns only routing IDs for this current customer's own grant. */
-export async function customerCameraActor(identity: CameraCustomerIdentity, projectId: string): Promise<CameraCustomerActor> {
+/** Resolve the owning grant and the viewer's relationship without changing the session actor. */
+async function customerCameraScope(identity: CameraCustomerIdentity, projectId: string) {
   const located = await withPlatformTransaction(async tx => {
-    const p = await one(tx, sql`select p.enterprise_id,l.customer_user_id,g.version
+    const p = await one(tx, sql`select p.enterprise_id,p.customer_access,l.customer_user_id,g.version
       from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
       join app.construction_camera_customer_grants g on g.enterprise_id=p.enterprise_id and g.project_id=p.id and g.user_id=l.customer_user_id
       where p.id=${id(projectId)} and l.archived_at is null and g.enabled`);
@@ -79,15 +87,22 @@ export async function customerCameraActor(identity: CameraCustomerIdentity, proj
     const family = ownerId !== identity.userId;
     if (family && !await familyViewerAllowed(tx, String(p.enterprise_id), String(projectId), identity.userId, ownerId))
       fail('camera_project_unavailable', 404);
-    return { enterpriseId: String(p.enterprise_id), grantVersion: Number(p.version), family };
+    return { enterpriseId: String(p.enterprise_id), grantVersion: Number(p.version), family, ownerId, customerAccess: p.customer_access === true };
   });
-  return { ...identity, kind: 'customer', ...located };
+  const { ownerId, customerAccess, ...grant } = located;
+  const actor: CameraCustomerActor = { ...identity, kind: 'customer', ...grant };
+  return { actor, ownerId, customerAccess };
+}
+
+export async function customerCameraActor(identity: CameraCustomerIdentity, projectId: string): Promise<CameraCustomerActor> {
+  return (await customerCameraScope(identity, projectId)).actor;
 }
 
 /** Keep the customer's grant on the target even when playback comes from a dedicated source project. */
 export async function customerCameraPlayback(identity: CameraCustomerIdentity, projectId: string) {
-  const actor = await customerCameraActor(identity, projectId);
-  const config = actor.family ? null : debugCameraSource(actor.enterpriseId, projectId, actor.userId);
+  const { actor, ownerId, customerAccess } = await customerCameraScope(identity, projectId);
+  const config = actor.family && !customerAccess
+    ? null : viewerDebugSource(actor.enterpriseId, projectId, ownerId, actor.family === true);
   if (config) {
     const debugCamera = await withTenantTransaction(actor.enterpriseId, async tx => {
       await cameraAccess(tx, actor, projectId);

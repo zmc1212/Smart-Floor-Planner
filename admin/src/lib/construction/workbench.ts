@@ -6,9 +6,9 @@ import { constructionAccess } from './service';
 import { constructionBrief } from './brief';
 import { readStageSettings } from './stages-store';
 import { currentRecord, projectSiteIssues, siteIssueTitle, type IssueView } from './site-issues';
-import { latestPendingReport, parseReportRange, workerReportHistory, workerTodaySummary } from './workbench-reports';
+import { latestPendingReport, latestWorkerReturn, parseReportRange, workerReportHistory, workerTodaySummary } from './workbench-reports';
 import type { ConstructionActor } from './contracts';
-import { inspectionSummary } from './inspection';
+import { inspectionSummary, workbenchOnsiteTask } from './inspection';
 
 type Project = { id: string; name: string; role: 'worker' | 'manager' | 'observer' | 'designer';
   status: string; stageKey: string | null; assigned: boolean };
@@ -72,7 +72,8 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
       join app.construction_members m on m.enterprise_id=p.enterprise_id and m.project_id=p.id and m.admin_id=${actor.adminId} and m.active
       where p.enterprise_id=${eid} and p.status<>'archived' and l.archived_at is null and ${allowed}
       order by (p.status='active') desc,p.id desc limit 200 for share of p,l,m`);
-    const project = requested ? projects.find(p => p.id === requested) : projects[0];
+    const project = requested ? projects.find(p => p.id === requested)
+      : projects.find(p => p.role === 'manager' && p.status === 'active') || projects[0];
     if (requested && !project) fail('construction_not_found', 404);
     const defaultView = staffRole === 'designer' ? 'designer' : 'worker';
     const choices = projects.map(({ id, name }) => ({ id, name }));
@@ -94,14 +95,17 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
       const issue = active.find(issue => issue.classification === 'awaiting_review');
       return { view: 'manager', ...scope, draft: await recordCard(tx, actor, project.id, 'draft'),
         inspection: await inspectionSummary(tx, actor, owner),
+        onsiteTask: await workbenchOnsiteTask(tx, actor, owner, project.id),
         review: issue ? issueCard(issue) : await recordCard(tx, actor, project.id, 'rework'),
-        pendingReport: await latestPendingReport(tx, eid, project.id) };
+        pendingReport: await latestPendingReport(tx, eid, project.id, { routineOnly: true }) };
     }
     const task = mine.find(issue => issue.sourceKind !== 'need' && awaitingOwner.has(issue.status));
     const settings = await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`);
     const reportRange = parseReportRange(range?.from, range?.to);
     const reports = await workerReportHistory(tx, actor, project.id, reportRange);
-    return { view: 'worker', ...scope, canCapture: project.status === 'active' && assistantWritesEnabled(settings),
+    const canCapture = project.status === 'active' && assistantWritesEnabled(settings);
+    return { view: 'worker', ...scope, canCapture,
+      latestReturn: canCapture ? await latestWorkerReturn(tx, actor, project.id) : null,
       task: task ? issueCard(task) : project.assigned && project.stageKey && project.status === 'active'
         ? { title: stageName, label: '进行中' } : null,
       receipt: await recordCard(tx, actor, project.id, 'capture'),

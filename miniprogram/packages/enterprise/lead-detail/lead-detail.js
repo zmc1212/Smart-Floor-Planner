@@ -3,6 +3,7 @@ const nativePreview = require('../../../utils/native-preview');
 const surveyLayout = require('../../../utils/surveyLayout.js');
 const { openSurveyingEditor, clearSurveyingEditorDraft } = require('../../../utils/surveyNavigation.js');
 const { openAIDesignEntry } = require('../../../utils/aiDesignNavigation.js');
+const { aiEntriesEnabled } = require('../../../utils/ai-entries.js');
 const {
   fetchProtectedImage,
   readCachedProtectedImage,
@@ -320,6 +321,7 @@ function canEditLeadMeasurements(lead, staffRole, staffId) {
 
 /** Designer and enterprise-owner AI entry on any open unarchived lead. */
 function canOpenAIDesignWorkbench(lead, staffRole) {
+  if (!aiEntriesEnabled()) return false;
   if (!lead || lead.archivedAt) return false;
   if (!['designer', 'enterprise_admin'].includes(staffRole)) return false;
   if (['converted', 'closed'].includes(lead.status)) return false;
@@ -413,8 +415,13 @@ Page({
   },
 
   onShow() {
+    this.syncAiEntryVisibility();
     if (nativePreview.shownAfterPreview(this)) return;
     if (this.data.leadId) this.fetchLeadDetail();
+  },
+
+  syncAiEntryVisibility() {
+    this.setData({ canOpenAIDesign: canOpenAIDesignWorkbench(this.data.lead, getStaffRole()) });
   },
 
   async fetchLeadDetail(options = {}) {

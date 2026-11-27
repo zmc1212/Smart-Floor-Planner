@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
+const artifact = path.resolve(root, process.env.NEXT_DIST_DIR || '.next', 'standalone');
 
 function read(relative) {
   return readFileSync(path.join(root, relative), 'utf8');
@@ -40,7 +43,30 @@ test('runtime image copies only staged scripts after removing the traced scripts
   assert.doesNotMatch(runner, /^COPY --from=builder \/app\/scripts(?:\/|\s)/m);
 });
 
-test('local standalone artifact contains no env, key, upload or test files', { skip: !existsSync(path.join(root, '.next/standalone')) }, () => {
+test('postbuild removes copied env files from the configured standalone output and app subdirectory', t => {
+  const workspace = mkdtempSync(path.join(tmpdir(), 'sfp-release-test-'));
+  t.after(() => rmSync(workspace, { recursive: true, force: true }));
+  const output = path.join(workspace, 'custom-build', 'standalone');
+  const app = path.join(output, 'packages', 'admin');
+  mkdirSync(app, { recursive: true });
+  writeFileSync(path.join(workspace, 'custom-build', 'required-server-files.json'),
+    JSON.stringify({ relativeAppDir: 'packages/admin' }));
+  const copiedEnv = path.join(output, '.env.production');
+  const appEnv = path.join(app, '.env');
+  const runtime = path.join(app, 'server.js');
+  writeFileSync(copiedEnv, 'SYNTHETIC_BUILD_TEST=1');
+  writeFileSync(appEnv, 'SYNTHETIC_BUILD_TEST=1');
+  writeFileSync(runtime, '/* synthetic */');
+  execFileSync(process.execPath, [path.join(root, 'scripts', 'prune-standalone-env.mjs')], {
+    cwd: workspace,
+    env: { ...process.env, NEXT_DIST_DIR: 'custom-build' },
+  });
+  assert.equal(existsSync(copiedEnv), false);
+  assert.equal(existsSync(appEnv), false);
+  assert.equal(existsSync(runtime), true);
+});
+
+test('local standalone artifact contains no env, key, upload or test files', { skip: !existsSync(artifact) }, () => {
   const files = [];
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {
@@ -49,7 +75,7 @@ test('local standalone artifact contains no env, key, upload or test files', { s
       else files.push(full.replaceAll('\\', '/'));
     }
   };
-  walk(path.join(root, '.next/standalone'));
+  walk(artifact);
   const forbidden = files.filter((file) =>
     /\/\.env(?:\.|$)/.test(file)
     || /\/keys\//.test(file)
@@ -58,5 +84,5 @@ test('local standalone artifact contains no env, key, upload or test files', { s
     || /(?:^|\/)__tests__\//.test(file)
     || /\.test\.(?:ts|mjs|js)$/.test(file)
     || /\/scripts\/.*(?:acceptance|live|fixture)/.test(file));
-  assert.deepEqual(forbidden, []);
+  assert.equal(forbidden.length, 0, 'Standalone output includes files excluded from releases');
 });

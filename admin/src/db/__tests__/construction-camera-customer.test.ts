@@ -10,8 +10,9 @@ import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresq
 import type { ConstructionActor } from '@/lib/construction/contracts';
 import { customerCameraActor, customerCameraProjects, type CameraCustomerIdentity } from '@/lib/construction/camera/access';
 import { saveCameraCustomerGrant } from '@/lib/construction/camera/customer-grants';
-import { CameraService, createCameraEntry, exchangeCameraEntry, listCameraProject, sessionState, startCameraView, authorizeCameraMedia, captureCamera, cameraSnapshots, sessionCameraCover, sessionHeartbeat } from '@/lib/construction/camera/service';
-import { customerCameraHttp, sessionCameraHttp } from '@/lib/construction/camera/http';
+import { CustomerProjectProgress } from '@/lib/construction/family-progress';
+import { CameraService, createCameraEntry, exchangeCameraEntry, listCameraProject, sessionState, startCameraView, authorizeCameraMedia, captureCamera, cameraSnapshots, sessionCameraCover, sessionHeartbeat, openNativeCustomerLive, openNativeCameraLive, updateNativeCameraLive, authorizeNativeCameraMedia, digest } from '@/lib/construction/camera/service';
+import { customerCameraHttp, sessionCameraHttp, staffMiniCameraHttp } from '@/lib/construction/camera/http';
 import { ownerSiteCover } from '@/lib/construction/camera/owner-cover';
 import { debugSignalBinding, debugSignalStream } from '@/lib/construction/camera/debug-source';
 import { cameraPtz } from '@/lib/construction/camera/ptz';
@@ -70,7 +71,7 @@ before(async () => {
 after(async () => {
   try { await withPlatformTransaction(async tx => {
     for (const e of [eid, otherEid]) {
-      for (const table of ['construction_camera_controls', 'construction_camera_snapshots', 'construction_camera_sessions', 'construction_camera_entries', 'construction_camera_sd_playbacks', 'construction_camera_sd_recordings', 'construction_camera_sd_windows', 'construction_recordings', 'construction_camera_recording_periods', 'construction_camera_recording_policies', 'construction_camera_customer_grants', 'construction_camera_bindings', 'construction_cameras', 'construction_audits', 'construction_members', 'construction_projects', 'leads', 'admin_users'])
+      for (const table of ['construction_camera_controls', 'construction_camera_snapshots', 'construction_camera_sessions', 'construction_camera_entries', 'construction_camera_sd_playbacks', 'construction_camera_sd_recordings', 'construction_camera_sd_windows', 'construction_recordings', 'construction_camera_recording_periods', 'construction_camera_recording_policies', 'construction_camera_customer_grants', 'construction_camera_bindings', 'construction_cameras', 'construction_audits', 'assistant_idempotency_records', 'domain_event_outbox', 'construction_members', 'construction_projects', 'leads', 'admin_users'])
         await tx.execute(sql`delete from ${sql.raw('app.' + table)} where enterprise_id=${e}`);
       await tx.execute(sql`delete from app.enterprises where id=${e}`);
     }
@@ -206,7 +207,7 @@ test('SD revocation preserves another authorized viewer, then stops the final ow
   assert.deepEqual([...streams], ['foreign-stream']); assert.equal(stops, 2); streams.clear(); await grant(true);
 });
 
-test('dedicated cameras and synthetic signals stay limited to allowed owners and live-only after reentry', async () => {
+test('physical debug feeds require their owner and synthetic feeds honor current family viewing grants', async () => {
   const frameTime = '2026-11-06T08:30:00.000Z';
   let coverRequests = 0;
   let hasFrame = true;
@@ -276,11 +277,17 @@ test('dedicated cameras and synthetic signals stay limited to allowed owners and
     process.env.CAMERA_DEBUG_SOURCE = JSON.stringify(config);
     assert.deepEqual((await cameras(identity, unlisted)).items, []);
     await assert.rejects(cameras(secondOwner, target), /unavailable/);
+    const secondProgress = new CustomerProjectProgress({ enterpriseId: eid, contextVersion: 1,
+      principal: { kind: 'user', userId: secondOwner.userId }, capabilities: [] });
+    await withPlatformTransaction(tx => tx.execute(sql`update app.users set openid=${prefix + '-synthetic-family'} where id=${identity.userId}`));
+    await secondProgress.grant(second, identity.userId, { allowed: true, expectedVersion: 0 }, randomUUID());
+    assert.deepEqual((await cameras(identity, second)).items, []);
+    await assert.rejects(openNativeCustomerLive(identity, second, sourceBindingId, provider), /binding_unavailable/);
     await assert.rejects(entry(identity, foreignPid), /unavailable/);
     assert.equal((await cameras(identity, pid)).items[0].binding_id, bid);
     assert.deepEqual((await service().list(target)).items, []);
     assert.deepEqual(await ownerSiteCover(identity, target, async () => assert.fail('debug cover must not capture')),
-      { camera: { name: '调试机位', cover: null } });
+      { camera: { bindingId: sourceBindingId, name: '调试机位', cover: null } });
 
     const first = await exchangeCameraEntry(await entry(identity, target));
     const state = await sessionState(first.session);
@@ -331,13 +338,33 @@ test('dedicated cameras and synthetic signals stay limited to allowed owners and
     assert.equal(coverRequests, 0);
     const { camera: thumbnail } = await ownerSiteCover(secondOwner, second, async () => assert.fail('synthetic cover used WVP'));
     assert.equal(thumbnail?.name, '调试机位');
+    assert.equal(thumbnail?.bindingId, debugSignalBinding);
     assert.ok(thumbnail?.cover);
     assert.equal(thumbnail.cover.capturedAt, frameTime);
     const thumbnailImage = await sharp(Buffer.from(thumbnail.cover.jpeg, 'base64')).metadata();
     assert.deepEqual([thumbnailImage.format, thumbnailImage.width, thumbnailImage.height], ['jpeg', 80, 60]);
     hasFrame = false;
-    assert.deepEqual(await ownerSiteCover(secondOwner, second), { camera: { name: '调试机位', cover: null } });
+    assert.deepEqual(await ownerSiteCover(secondOwner, second), { camera: { bindingId: debugSignalBinding, name: '调试机位', cover: null } });
     hasFrame = true;
+    const nativeDebug = await openNativeCustomerLive(secondOwner, second, debugSignalBinding, provider);
+    const debugGeneration = Number(new URL(nativeDebug.url).pathname.split('/').at(-2));
+    assert.deepEqual(await authorizeNativeCameraMedia(nativeDebug.ticket, debugGeneration), { ...debugSignalStream, syntheticOrigin: syntheticConfig.syntheticOrigin });
+    await assert.rejects(openNativeCustomerLive(identity, pid, debugSignalBinding, provider), /binding_unavailable/);
+    assert.deepEqual(await updateNativeCameraLive(secondOwner, second, nativeDebug.ticket, false), { stopped: false, expiresIn: 60 });
+    assert.deepEqual(await updateNativeCameraLive(secondOwner, second, nativeDebug.ticket, true), { stopped: true });
+    const familyState = await cameras(identity, second);
+    assert.equal(familyState.items[0]?.binding_id, debugSignalBinding);
+    assert.deepEqual([familyState.liveOnly, familyState.canCapture, familyState.canControl, familyState.canViewSnapshots],
+      [true, false, false, false]);
+    const familyDebug = await openNativeCustomerLive(identity, second, debugSignalBinding, provider);
+    const familyGeneration = Number(new URL(familyDebug.url).pathname.split('/').at(-2));
+    assert.deepEqual(await authorizeNativeCameraMedia(familyDebug.ticket, familyGeneration),
+      { ...debugSignalStream, syntheticOrigin: syntheticConfig.syntheticOrigin });
+    await assert.rejects(updateNativeCameraLive(secondOwner, second, familyDebug.ticket, false), /unavailable/);
+    assert.deepEqual(await updateNativeCameraLive(identity, second, familyDebug.ticket, false), { stopped: false, expiresIn: 60 });
+    await secondProgress.grant(second, identity.userId, { allowed: false, expectedVersion: 1 }, randomUUID());
+    await assert.rejects(authorizeNativeCameraMedia(familyDebug.ticket, familyGeneration), /expired|unavailable/);
+    await assert.rejects(cameras(identity, second), /unavailable/);
     const opening = await exchangeCameraEntry(await entry(secondOwner, second));
     const reopenedSignal = await exchangeCameraEntry(await entry(secondOwner, second));
     for (const entered of [opening, reopenedSignal]) {
@@ -368,4 +395,75 @@ test('dedicated cameras and synthetic signals stay limited to allowed owners and
     if (originalConfig === undefined) delete process.env.CAMERA_DEBUG_SOURCE;
     else process.env.CAMERA_DEBUG_SOURCE = originalConfig;
   }
+});
+
+test('native family viewing uses the existing grant and keeps media tickets separate from H5 and control access', async () => {
+  await grant(true);
+  const family = { userId: uids[1], contextVersion: 1 };
+  const progress = new CustomerProjectProgress({
+    enterpriseId: eid, principal: { kind: 'user', userId: identity.userId }, contextVersion: identity.contextVersion, capabilities: [],
+  });
+  await withPlatformTransaction(tx => tx.execute(sql`update app.users set openid=${prefix + '-family'} where id=${family.userId}`));
+  await assert.rejects(openNativeCustomerLive(family, pid, bid, upstream), /unavailable/);
+  await progress.grant(pid, family.userId, { allowed: true, expectedVersion: 0 }, randomUUID());
+  await assert.rejects(openNativeCustomerLive(family, pid, '999999', upstream), /binding_unavailable/);
+
+  const first = await openNativeCustomerLive(family, pid, bid, upstream);
+  assert.match(first.url, /^http:\/\/localhost:3017\/camera-media\/native\/n1\./);
+  const generation = Number(new URL(first.url).pathname.split('/').at(-2));
+  assert.deepEqual(await authorizeNativeCameraMedia(first.ticket, generation), await upstream.play());
+  await assert.rejects(authorizeNativeCameraMedia(first.ticket, generation + 1), /view_expired/);
+  await assert.rejects(sessionState(first.ticket), /session_expired/);
+  await assert.rejects(updateNativeCameraLive(identity, pid, first.ticket, false), /unavailable/);
+  await assert.rejects(updateNativeCameraLive(family, foreignPid, first.ticket, true), /unavailable/);
+
+  await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_camera_sessions
+    set expires_at=now()+interval '10 seconds',view_expires_at=now()+interval '10 seconds' where token_hash=${digest(first.ticket)}`));
+  assert.deepEqual(await updateNativeCameraLive(family, pid, first.ticket, false), { stopped: false, expiresIn: 60 });
+  const renewed = await withTenantTransaction(eid, tx => one(tx, sql`select expires_at>now()+interval '50 seconds' as ok
+    from app.construction_camera_sessions where token_hash=${digest(first.ticket)}`));
+  assert.equal(renewed?.ok, true);
+
+  assert.deepEqual(await updateNativeCameraLive(family, pid, first.ticket, true), { stopped: true });
+  await assert.rejects(authorizeNativeCameraMedia(first.ticket, generation), /session_expired/);
+  const second = await openNativeCustomerLive(family, pid, bid, upstream);
+  const secondGeneration = Number(new URL(second.url).pathname.split('/').at(-2));
+  assert.notEqual(second.ticket, first.ticket);
+  await progress.grant(pid, family.userId, { allowed: false, expectedVersion: 1 }, randomUUID());
+  await assert.rejects(authorizeNativeCameraMedia(second.ticket, secondGeneration), /session_expired/);
+  await assert.rejects(updateNativeCameraLive(family, pid, second.ticket, false), /session_expired/);
+  await progress.grant(pid, family.userId, { allowed: true, expectedVersion: 2 }, randomUUID());
+  await assert.rejects(authorizeNativeCameraMedia(second.ticket, secondGeneration), /session_expired/);
+  const currentActor = await customerCameraActor(family, pid);
+  const h5 = await exchangeCameraEntry((await createCameraEntry(currentActor, pid)).url.split('#entry=')[1]);
+  assert.equal((await sessionState(h5.session)).liveOnly, true);
+});
+
+test('native owners and assigned Mini staff renew only their own lease and lose media access when their grant changes', async () => {
+  await grant(true);
+  const staffUser = await withPlatformTransaction(async tx => {
+    const user = await one(tx, sql`insert into app.users(nickname,phone) values(${prefix + '-mini-staff'},'15590000001') returning id`);
+    const userId = String(user!.id);
+    uids.push(userId);
+    await tx.execute(sql`update app.admin_users set user_id=${userId} where id=${manager.adminId}`);
+    return userId;
+  });
+  const staff = { ...manager, miniProgramUserId: staffUser, miniProgramContextVersion: 1 };
+  const generation = (url: string) => Number(new URL(url).pathname.split('/').at(-2));
+  const staffView = await openNativeCameraLive(staff, pid, bid, upstream);
+  const ownerView = await openNativeCustomerLive(identity, pid, bid, upstream);
+  assert.deepEqual(await authorizeNativeCameraMedia(staffView.ticket, generation(staffView.url)), await upstream.play());
+  assert.deepEqual(await authorizeNativeCameraMedia(ownerView.ticket, generation(ownerView.url)), await upstream.play());
+  await assert.rejects(updateNativeCameraLive(staff, pid, ownerView.ticket, false), /unavailable/);
+  await assert.rejects(updateNativeCameraLive(identity, pid, staffView.ticket, true), /unavailable/);
+  await assert.rejects(updateNativeCameraLive({ ...staff, enterpriseId: otherEid }, pid, staffView.ticket, false), /unavailable/);
+  await assert.rejects(openNativeCameraLive(manager, pid, bid, upstream), /forbidden/);
+  await assert.rejects(staffMiniCameraHttp(new Request('http://localhost/video', { method: 'POST', body: '{}' }), staff,
+    ['projects', pid, 'binding']), /not_found/);
+  assert.deepEqual(await updateNativeCameraLive(staff, pid, staffView.ticket, false), { stopped: false, expiresIn: 60 });
+  assert.deepEqual(await updateNativeCameraLive(identity, pid, ownerView.ticket, false), { stopped: false, expiresIn: 60 });
+  await grant(false);
+  await assert.rejects(authorizeNativeCameraMedia(ownerView.ticket, generation(ownerView.url)), /session_expired|unavailable/);
+  await withTenantTransaction(eid, tx => tx.execute(sql`update app.construction_members set active=false where project_id=${pid} and admin_id=${staff.adminId}`));
+  await assert.rejects(authorizeNativeCameraMedia(staffView.ticket, generation(staffView.url)), /unavailable/);
 });

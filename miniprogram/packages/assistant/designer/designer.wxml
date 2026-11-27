@@ -22,7 +22,7 @@
       <button wx:else bindtap="retry" disabled="{{loading}}">重新读取</button>
     </view>
     <block wx:if="{{designer && !unavailable && !loading}}">
-      <template wx:if="{{designer.template === 'notebook'}}" is="designer-notebook" data="{{designer, featuredWork, closingWork, images, portraitPath, publicContact, contactBusy, contactError, contactSheetVisible, totalWorks, studioCountLabel, styleOptions, studioFilters, navigationBottom, studioSheetVisible, catalogWorks, visibleCount, hasStudioFilters, remainingWorks, catalogCompleteLabel, imageError, busy, readOnly, pendingAction, error}}" />
+      <template wx:if="{{designer.template === 'notebook'}}" is="designer-notebook" data="{{designer, featuredWork, closingWork, images, portraitPath, publicContact, contactBusy, contactError, contactSheetVisible, totalWorks, studioCountLabel, styleOptions, studioFilters, navigationBottom, studioSheetVisible, catalogWorks, visibleCount, hasStudioFilters, remainingWorks, catalogCompleteLabel, imageError, busy, readOnly, pendingAction, error, aiEntriesEnabled}}" />
       <block wx:else>
       <view class="studio-masthead">
         <text class="studio-profession">{{designer.professionalLine || '设计师'}}</text>
@@ -80,22 +80,22 @@
         <view wx:if="{{designer.styles.length}}" class="studio-specialty flex items-start"><text class="studio-specialty-label">风格</text><view class="studio-specialty-values flex flex-wrap"><text wx:for="{{designer.styles}}" wx:key="*this">{{item}}</text></view></view></view>
         <template is="portfolio-contact-inline" data="{{publicContact, contactBusy, contactError, contactSheetVisible}}" />
       </view>
-      <view class="studio-topics">
+      <view wx:if="{{aiEntriesEnabled}}" class="studio-topics">
         <view class="studio-topic-heading flex-row"><text class="studio-section-title">可以先聊这些</text><text class="studio-topic-caption">从你的日常开始</text></view>
         <button class="studio-topic-row flex-row" data-text="旧房改造有哪些需要先考虑？" bindtap="pickTopic"><text class="studio-topic-index">01</text><view class="studio-topic-copy"><text class="studio-topic-label">旧房怎么改</text><text class="studio-topic-helper">聊聊你想改善的地方</text></view><view class="chevron" /></button>
         <button class="studio-topic-row flex-row" data-text="想聊聊适合我家的装修风格" bindtap="pickTopic"><text class="studio-topic-index">02</text><view class="studio-topic-copy"><text class="studio-topic-label">喜欢什么风格</text><text class="studio-topic-helper">从喜欢的空间和细节说起</text></view><view class="chevron" /></button>
         <button class="studio-topic-row flex-row" data-text="想聊聊装修预算怎么安排" bindtap="pickTopic"><text class="studio-topic-index">03</text><view class="studio-topic-copy"><text class="studio-topic-label">预算怎么安排</text><text class="studio-topic-helper">先说说你的想法与打算</text></view><view class="chevron" /></button>
       </view>
-      <view class="studio-assistant-notice"><text>小K是{{designer.name}}的AI助手，</text><text>可随时申请联系本人。</text></view>
+      <view wx:if="{{aiEntriesEnabled}}" class="studio-assistant-notice"><text>小K是{{designer.name}}的AI助手，</text><text>可随时申请联系本人。</text></view>
       <view class="studio-ending flex-row"><view></view><text>已看完当前公开内容</text><view></view></view>
       </block>
     </block>
     <view wx:if="{{feedback}}" class="notice" role="status">{{feedback}}</view>
-    <button wx:if="{{unavailable || (!loading && !designer)}}" class="secondary-action" bindtap="continueChat">{{conversationId ? '回到原咨询' : '返回首页'}}</button>
+    <button wx:if="{{unavailable || (!loading && !designer)}}" class="secondary-action" bindtap="continueChat">{{aiEntriesEnabled && conversationId ? '回到原咨询' : '返回首页'}}</button>
   </view>
   <view wx:if="{{designer && designer.template !== 'notebook' && !unavailable && !loading}}" class="studio-action-dock">
     <view class="studio-action-row flex-row">
-      <button class="studio-consult flex-row" bindtap="continueChat"><image class="studio-assistant-art" src="../assets/designer-studio-assistant.png" mode="aspectFit" aria-hidden="true" /><text>和小K聊聊</text></button>
+      <button wx:if="{{aiEntriesEnabled}}" class="studio-consult flex-row" bindtap="continueChat"><image class="studio-assistant-art" src="../assets/designer-studio-assistant.png" mode="aspectFit" aria-hidden="true" /><text>和小K聊聊</text></button>
       <button class="studio-contact flex-row" bindtap="openPublicContact" disabled="{{!featuredWork}}"><text>联系设计师</text><image class="studio-contact-arrow" src="../assets/studio-arrow-right.png" aria-hidden="true" /></button>
     </view>
     <text class="studio-dock-helper">{{publicContact.channelLabel || '站内咨询'}}</text>

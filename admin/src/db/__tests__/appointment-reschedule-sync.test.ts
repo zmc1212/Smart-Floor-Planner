@@ -31,11 +31,14 @@ import {
   selectMeasurerWorkbenchAppointments,
 } from '@/lib/miniprogram-workbench';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
+import { GET as getWorkbench } from '@/app/api/miniprogram/workbench/route';
 
 const runKey = `appt-sync-${process.pid}-${Date.now()}`;
 let enterpriseId: bigint;
 let customerUserId: bigint;
 let designerUserId: bigint;
+let designerContextVersion: number;
 let designerId: bigint;
 let measurerId: bigint;
 let leadId: bigint;
@@ -152,6 +155,7 @@ before(async () => {
       nickname: `${runKey}-designer-user`,
     }).returning();
     designerUserId = designerUser!.id;
+    designerContextVersion = designerUser!.contextVersion;
   });
 
   await withTenantTransaction(enterpriseId, async (transaction) => {
@@ -265,6 +269,19 @@ test('booking then customer and staff reschedule keep customer, designer and ent
   assert.equal(afterCreate.workbenchItem?.timeRange, createdIso);
   assert.equal(afterCreate.appointmentRow?.measurerId, designerId);
   assert.equal(afterCreate.appointmentRow?.designerId, designerId);
+  const designerToken = await signMiniProgramToken({
+    sub: String(designerUserId), id: String(designerUserId), mode: 'staff', role: 'designer', staffRole: 'designer',
+    enterpriseId: String(enterpriseId), staffId: String(designerId), contextVersion: designerContextVersion, source: 'phone',
+  });
+  const workbench = await getWorkbench(new Request('http://localhost:3006/api/miniprogram/workbench', {
+    headers: { Authorization: 'Bearer ' + designerToken },
+  }));
+  assert.equal(workbench.status, 200);
+  const ownVisit = (await workbench.json()).data.appointments.find((item: { appointmentId: string }) => item.appointmentId === String(booked.id));
+  assert.ok(ownVisit);
+  assert.equal(ownVisit.leadId, String(leadId));
+  assert.equal(ownVisit.timeRange, createdIso);
+  assert.equal(ownVisit.canPerformSurvey, true);
   assert.equal(afterCreate.events.map((event) => event.eventType).join(','), 'created');
   assert.equal(await occupancyFor(leadId, firstSlot.localDate, firstSlot.startAt), true, '改期列表排除本预约，自身档仍可选');
   assert.equal(await occupancyFor(probeLeadId, firstSlot.localDate, firstSlot.startAt), false, '其他线索看不到已被占用的档');

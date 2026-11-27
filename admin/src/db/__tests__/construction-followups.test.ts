@@ -22,7 +22,7 @@ import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
 
 const prefix = 'stage-needs-' + randomUUID();
-let eid: string, uid: string, ownerId: string, designerId: string, workerId: string, service: ConstructionService;
+let eid: string, otherEnterpriseId: string, uid: string, ownerId: string, designerId: string, workerId: string, service: ConstructionService;
 let priorProvider: Awaited<ReturnType<typeof getPlatformLlmRuntimeConfig>> | undefined;
 const live = process.env.CONSTRUCTION_LIVE_MODEL === '1';
 const prompt: NeedFollowUp = { field: 'devices', room: '书房', question: '书房需要预留哪些设备的插座？' };
@@ -44,6 +44,9 @@ before(async () => {
   }
   await withPlatformTransaction(async tx => {
     eid = String((await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix},${prefix},'active') returning id`))!.id);
+    const foreign = prefix + '-control';
+    otherEnterpriseId = String((await one(tx, sql`insert into app.enterprises(name,code,status)
+      values(${foreign},${foreign},'active') returning id`))!.id);
     uid = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!.id);
     await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${uid},${prefix})`);
     await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
@@ -63,6 +66,7 @@ after(async () => {
       await tx.execute(sql`delete from app.leads where enterprise_id=${eid}`);
       await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`);
       await tx.execute(sql`delete from app.enterprises where id=${eid}`);
+      if (otherEnterpriseId) await tx.execute(sql`delete from app.enterprises where id=${otherEnterpriseId}`);
       if (uid) await tx.execute(sql`delete from app.users where id=${uid}`);
     });
   } finally { try { if (priorProvider) await savePlatformLlmConfig(priorProvider); } finally { await closePostgresPool(); } }
@@ -93,12 +97,18 @@ async function setup(followUps: NeedFollowUp[] = [prompt]) {
 }
 
 test('a real stage selects one missing need, skips known uncertainty and stays deduplicated across reentry and other chats', async () => {
-  const x = await setup([{ field: 'budget', room: '', question: '预算有什么想法？' }, prompt, { ...prompt, room: '客厅', question: '客厅需要哪些设备？' }]);
-  assert.equal((await x.answer('预算暂时没定，先聊书房。')).run.status, 'succeeded');
+  const x = await setup([{ ...prompt, room: '客厅', question: '客厅需要预留哪些设备的插座？' }, prompt]);
+  const quote = '客厅的设备插座暂时没定';
+  const saved = await x.answer('请记住，' + quote + '。', async (_messages, _tools, turn) => turn === 0
+    ? response('record_need', { room: '客厅', field: 'devices', quote, value: '设备插座暂时没定', additionalNeeds: [] })
+    : response('final_response', { kind: 'general', text: '已记录客厅的设备插座暂时没定。' }));
+  assert.equal(saved.run.status, 'succeeded');
+  const snapshot = await withTenantTransaction(eid, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`));
+  assert.ok(readMemory(snapshot?.entry_snapshot).facts.some(fact => fact.room === '客厅' && fact.sourceMessageId === saved.sent.messageId));
   await x.progress();
   assert.equal((await x.notices()).length, 1);
   assert.match(JSON.stringify((await x.notices())[0].content), /书房需要预留/);
-  assert.doesNotMatch(JSON.stringify((await x.notices())[0].content), /预算有什么想法/);
+  assert.doesNotMatch(JSON.stringify((await x.notices())[0].content), /客厅需要预留/);
   const [visible] = await Promise.all([x.messages(), x.messages()]);
   const questionId = String((await x.notices())[0].id), question = visible.find(m => m.id === questionId)!;
   assert.equal(question.constructionFollowUp, true); assert.equal(question.constructionReminder, false);
@@ -111,7 +121,7 @@ test('a real stage selects one missing need, skips known uncertainty and stays d
 test('an explicit reply reaches durable sourced memory and the original staff review flow without formal approval', async () => {
   const x = await setup(); await x.progress();
   const text = '书房需要电脑和打印机的插座';
-  const { sent, run } = await x.answer(text, async (messages, tools, turn) => {
+  const { sent, run } = await x.answer('请记住，' + text + '。', async (messages, tools, turn) => {
     assert.match(JSON.stringify(messages), /书房需要预留哪些设备/);
     if (turn === 0) {
       assert.ok(tools.some(t => t.name === 'record_need'));
@@ -183,7 +193,7 @@ test('paused or revoked projects and foreign tenants cannot read a current follo
   const update = async (status: string, customerAccess: boolean) => execute('update', { projectId: x.projectId, expectedVersion: Number(((await x.detail()).project as Row).version), name: '补问新家', status, customerAccess });
   await update('paused', true); assert.equal((await x.messages()).find(m => m.id === String(notice.id))?.available, false);
   await update('active', false); assert.equal((await x.messages()).find(m => m.id === String(notice.id))?.available, false);
-  await assert.rejects(new ConversationService({ ...x.actor, enterpriseId: '1' }).messages(x.cid), /not_found|identity|enterprise|disabled/);
+  await assert.rejects(new ConversationService({ ...x.actor, enterpriseId: otherEnterpriseId }).messages(x.cid), /not_found|identity|enterprise|disabled/);
 });
 test('only actual project rooms are questioned and room/configuration changes revoke prior sources', async () => {
   const x = await setup([{ ...prompt, room: '不存在房间', question: '不存在房间需要哪些设备？' }, prompt]); await x.progress();

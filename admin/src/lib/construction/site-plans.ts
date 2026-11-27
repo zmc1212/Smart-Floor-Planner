@@ -223,7 +223,7 @@ export async function reportOwnerDecisions(repo: AssistantRepository, projectId:
   const { tx, actor } = repo;
   if (actor.principal.kind !== 'user') return [];
   const eid = actor.enterpriseId, uid = actor.principal.userId;
-  const candidates = await rows(tx, sql`select e.id from app.domain_event_outbox e
+  const candidates = await rows(tx, sql`select e.id,e.created_at from app.domain_event_outbox e
     join app.assistant_conversations c on c.enterprise_id=e.enterprise_id and c.id::text=e.payload->>'conversationId'
     where e.enterprise_id=${eid} and e.type=${publishedType} and e.payload->>'projectId'=${projectId}
     and e.payload->>'customerId'=${uid} and e.created_at<${cutoff}
@@ -238,7 +238,7 @@ export async function reportOwnerDecisions(repo: AssistantRepository, projectId:
     const conversation = await consultations.conversation(plan.conversationId, 'share');
     if (conversation.status !== 'open' || conversation.mode !== 'ai') continue;
     items.push({ id: plan.id, conversationId: plan.conversationId, leadId: String(conversation.lead_id || ''),
-      title: plan.title, room: plan.roomName, number: plan.number, status: plan.status,
+      title: plan.title, room: plan.roomName, number: plan.number, status: plan.status, publishedAt: new Date(String(candidate.created_at)).toISOString(),
       label: planStatusLabels[plan.status] || '', canDecide: ['pending_customer', 'deferred'].includes(plan.status) });
   }
   return items;

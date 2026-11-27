@@ -10,7 +10,7 @@
       <view class="public-detail-tabs"><button class="{{tab === 'photos' ? 'fabric' : ''}}" data-tab="photos" bindtap="changeTab">现场进展</button><button class="{{tab === 'records' ? 'fabric' : ''}}" data-tab="records" bindtap="changeTab">小K服务记录</button></view>
       <view class="paper"><block wx:if="{{tab === 'records'}}"><view wx:for="{{site.excerpts}}" wx:key="key" class="public-record"><text class="public-record-author">{{item.role}} <text>· {{item.dateLabel}}</text></text><text class="body-text public-record-body" user-select>{{item.text}}</text></view><text wx:if="{{!site.excerpts.length}}" class="helper">这一版没有公开服务记录。</text></block>
       <block wx:else><view wx:for="{{site.photos}}" wx:key="key" class="public-extra-photo"><image wx:if="{{publicPaths[item.key]}}" src="{{publicPaths[item.key]}}" mode="widthFix" data-key="{{item.key}}" bindtap="preview"/></view><text wx:if="{{!site.photos.length}}" class="helper">这一版没有公开现场照片。</text></block></view>
-      <text class="helper public-privacy">角色与时间已保留，私人信息已隐藏。</text><button wx:if="{{canConsult}}" class="primary" bindtap="consult">围观中有疑问？问小K</button><button wx:if="{{canConsult}}" class="book-link" bindtap="designer">找设计师聊 ↗</button>
+      <text class="helper public-privacy">角色与时间已保留，私人信息已隐藏。</text><button wx:if="{{aiEntriesEnabled && canConsult}}" class="primary" bindtap="consult">围观中有疑问？问小K</button><button wx:if="{{aiEntriesEnabled && canConsult}}" class="book-link" bindtap="designer">找设计师聊 ↗</button>
     </block>
   </view>
 </view>

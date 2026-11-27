@@ -1,10 +1,12 @@
 const { PublicSitesController, initial } = require('./public-sites-model');
 const { loadSiteFont } = require('../lib/site-font');
 const nativePreview = require('../../../utils/native-preview');
+const { aiEntriesEnabled, syncAiEntryVisibility } = require('../../../utils/ai-entries');
+const { brandShareCover } = require('../../../utils/share-cover');
 function identity() { return getApp().globalData.token || wx.getStorageSync('token') || ''; }
 function page(detail) {
   return {
-    data: { ...initial(), navTop: 47, navHeight: 44, navRight: 100 },
+    data: { ...initial(), aiEntriesEnabled: false, navTop: 47, navHeight: 44, navRight: 100 },
     onLoad(options) {
       loadSiteFont();
       this.options = options || {}; this.alive = true;
@@ -16,12 +18,14 @@ function page(detail) {
     },
     async onShow() {
       this.shown = true;
+      this.syncAiEntryVisibility();
       if (nativePreview.shownAfterPreview(this)) return;
       const app = getApp(); if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
       if (!this.alive || !this.shown) return;
       await this.controller.show(this.options, detail);
       if (this.alive && this.shown) this.timer = setInterval(() => { if (!this.data.loading) this.controller.load(); }, 15000);
     },
+    syncAiEntryVisibility,
     onHide() {
       if (nativePreview.hiddenByPreview(this)) return;
       this.shown = false; clearInterval(this.timer); this.controller.hide();
@@ -39,12 +43,17 @@ function page(detail) {
         ...(this.controller.consultationId ? { conversationId: this.controller.consultationId } : {}) };
       wx.navigateTo({ url: '/packages/construction/public-site/public-site?' + Object.entries(values).map(([k,v]) => k+'='+encodeURIComponent(v)).join('&') });
     },
-    consult() { const url = this.controller.privateChat(this.data.site); if (url) wx.navigateTo({ url }); },
-    designer() { const url = this.controller.privateChat(this.data.site, true); if (url) wx.navigateTo({ url }); },
+    consult() { if (aiEntriesEnabled()) this.openConsultation(); },
+    designer() { if (aiEntriesEnabled()) this.openConsultation(true); },
+    openConsultation(designer = false) {
+      const url = this.controller.privateChat(this.data.site, designer);
+      if (url) wx.navigateTo({ url });
+    },
     voice() { wx.showToast({ title: '语音暂不可用，可以打字或发图', icon: 'none' }); },
     onShareAppMessage() { return { title: detail && this.data.site ? this.data.site.name + ' · 云工地围观' : '看看公开工地 · 家客来',
       path: detail && this.data.site ? '/packages/construction/public-site/public-site?enterpriseId='+this.options.enterpriseId+'&siteId='+this.data.site.id+'&versionId='+this.data.site.versionId
-        : '/packages/construction/public-sites/public-sites?enterpriseId='+this.options.enterpriseId }; },
+        : '/packages/construction/public-sites/public-sites?enterpriseId='+this.options.enterpriseId,
+      imageUrl: brandShareCover }; },
   };
 }
 module.exports = { page };

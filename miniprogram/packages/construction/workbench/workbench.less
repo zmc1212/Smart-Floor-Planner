@@ -1,4 +1,6 @@
 @import '../notebook.less';
+@import '../notebook-v2.less';
+@import '../../../components/staff-password-required/staff-password-exhibit.less';
 
 .site-workbench { position:relative; height:100vh; color:#073c30; background:#f7f3e9; }
 .workbench-texture { position:absolute; inset:0; width:100%; height:100%; }
@@ -6,6 +8,31 @@
 .workbench-nav,.workbench-content { box-sizing:border-box; padding-left:34px; padding-right:18px; }
 .workbench-nav-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:900 22px/1.4 'Site Serif','Songti SC',SimSun,serif; }
 .workbench-content { padding-top:10px; padding-bottom:calc(128rpx + env(safe-area-inset-bottom) + 18px); }
+.workbench-cover-v2 { display: none; }
+.site-workbench-v2 .workbench-cover-v2 { display: block; }
+.site-workbench-v2 .workbench-texture, .site-workbench-v2 .book-spine { display: none; }
+.site-workbench-v2 .workbench-content { padding-top: 0; }
+.site-workbench-v2 .workbench-nav-title { font-size: 23px; }
+.manager-workbench-v2 .workbench-scroll { height: calc(100% - 128rpx - env(safe-area-inset-bottom) - 10px); }
+.manager-workbench-v2 .workbench-content { padding-left: 35px; padding-right: 22px; padding-bottom: 16px; }
+.manager-workbench-v2 .notebook-task-v2 { margin-left: -5px; margin-right: -4px; }
+.manager-project-context { display: flex; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; min-width: 0; }
+.manager-project-picker { display: flex; align-items: center; gap: 6px; min-height: 44px; color: #084637; font-weight: 500; }
+.manager-workbench-v2 button.manager-detail-row { min-height: 60px; }
+.manager-workbench-v2 button.manager-project-link, .manager-workbench-v2 button.manager-report-link { min-height: 54px; }
+.manager-workbench-v2 button.manager-project-link.compact { min-height: 46px; }
+.manager-customer-section { margin-top: 10px; }
+.manager-arrow { flex: none; width: 12px; height: 12px; }
+.site-workbench-v2 button.notebook-appointment-receipt { justify-content: flex-end; min-height: 44px; border-bottom: 0; }
+.site-workbench-v2 button.notebook-survey-record { min-height: 60px; }
+.site-workbench-v2 .worker-context-v2 .project-copy { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 1; }
+.site-workbench-v2 .worker-context-v2 .workbench-title { font: 600 17px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; min-width: 0; }
+.site-workbench-v2 .worker-context-v2 .workbench-stage { font-size: 14px; color: #50655a; flex: none; }
+.site-workbench-v2 .notebook-report-list-v2 { margin: 12px 0 0; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+.site-workbench-v2 .notebook-report-list-v2 .report-row { padding-left: 0; padding-right: 0; border-bottom: 1rpx solid #b8c6b5; }
+.site-workbench-v2 .notebook-summary-v2 { padding: 12px 0; border-bottom: 1rpx solid #b8c6b5; }
+.site-workbench-v2 .notebook-summary-v2 .summary-value { font-size: 23px; }
+.site-workbench-v2 .workbench-boss-clear { margin: 12px 0 0; }
 .workbench-heading { position:relative; display:flex; justify-content:space-between; align-items:flex-end; gap:8px; min-height:67px; padding:0 0 8px; margin-bottom:16px; }
 .workbench-heading::after { content:''; position:absolute; bottom:0; left:4px; right:0; height:1px; background:#789981; transform:scaleY(.5); }
 .boss-heading { display:block; }
@@ -33,27 +60,104 @@ button.workbench-row { display:flex; align-items:center; justify-content:space-b
 .workbench-issue-row:last-child { border-bottom:0; }
 .workbench-row image { width:23px; height:23px; }
 .workbench-state { padding-top:14px; padding-bottom:14px; font-size:15px; line-height:1.6; }
-.workbench-empty { padding:10px 0 4px; }
-.empty-fabric { padding-top:44px; }
 button.workbench-plain { min-height:44px; padding-right:12px; text-align:left; text-decoration:underline; font-size:15px; }
+.workbench-feedback {
+  padding:12px 14px;
+  border:1px solid #d7dfd1;
+  border-radius:8px;
+  background:#f6f3e9;
+  color:#455f53;
+  font-size:14px;
+  line-height:1.6;
+}
+.workbench-feedback .workbench-plain {
+  display:flex;
+  align-items:center;
+  padding:0 12px 0 0;
+  font-weight:600;
+  font-size:14px;
+  color:#00513c;
+  text-decoration:none;
+}
+.workbench-no-site {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding-top:57px;
+  text-align:center;
+}
+.workbench-no-site-art { display:block; width:320px; max-width:100%; height:229px; }
+.workbench-no-site-title {
+  margin-top:27px;
+  font:900 32px/40px 'Site Serif','Songti SC',SimSun,serif;
+  overflow-wrap:anywhere;
+}
+.workbench-no-site-copy { margin-top:17px; font-size:14px; line-height:25px; color:#455f53; }
+.workbench-no-site-copy text { display:block; }
+button.workbench-state-action {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  width:240px;
+  max-width:100% !important;
+  min-height:51px;
+  margin-top:33px;
+  border:1px solid #acc3ab;
+  border-radius:13px;
+  background:#e6ede1;
+  color:#00513c;
+  font-size:16px;
+  font-weight:700;
+}
+.workbench-no-site-refresh image { width:21px; height:21px; }
+button.workbench-no-site-tool {
+  min-height:56px;
+  margin-top:29px;
+  padding:0 13px 0 12px;
+  gap:12px;
+  border:1px solid #e5e3d6;
+  border-radius:5px;
+  background:#fbf8ef;
+  box-shadow:0 3px 6px #52483117;
+  font-size:16px;
+}
+.workbench-tool-icon {
+  display:flex;
+  flex:none;
+  align-items:center;
+  justify-content:center;
+  width:32px;
+  height:32px;
+  border-radius:8px;
+  background:#e8eee2;
+}
+.workbench-no-site-tool .workbench-tool-icon image { width:23px; height:23px; }
+.workbench-no-site-tool .row-title { font-weight:500; }
+.workbench-empty-card {
+  box-sizing:border-box;
+  min-height:65px;
+  padding:8px 13px;
+  margin:10px 0;
+  border:1px solid #e6e5d9;
+  border-radius:5px;
+  background:#fbf8ef;
+}
+.workbench-empty-label { display:block; font-size:14.5px; font-weight:600; line-height:20px; }
+.workbench-empty-detail { display:block; margin-top:5px; font-size:14px; line-height:20px; color:#455f53; }
 button.workbench-primary { display:flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:0 12px; width:100%; background:#064534; border-radius:8px; color:#fffdf5; font-size:15px; font-weight:600; }
 .workbench-primary:active,.workbench-row:active { opacity:.78; }
 .worker-task { padding:9px 13px 2px; min-height:78px; }
 .worker-task .row-title { font-size:17px; font-weight:600; }
-.capture-section { margin:13px 0 22px; }
+.capture-section { margin:13px 0 3px; }
 .capture-section .workbench-primary { min-height:54px; border-radius:14px; font-size:17px; font-weight:500; }
 .capture-section image { width:26px; height:26px; }
 button.worker-receipt { display:flex; width:100%; align-items:center; gap:10px; min-height:135px; padding:41px 14px 16px; text-align:left; }
 .receipt-photo { flex:none; width:89px; height:80px; border-radius:5px; }
 .record-title { display:block; font-size:16px; font-weight:600; line-height:1.4; overflow-wrap:anywhere; }
 .receipt-status { display:flex; align-items:center; flex-wrap:wrap; gap:5px 7px; margin-top:5px; }
-.manager-draft { padding:35px 15px 12px; }
-.draft-source { display:flex; align-items:flex-start; gap:8px; padding-bottom:10px; }
 .draft-title { font-size:19px; line-height:1.45; margin:3px 0 5px; }
-.draft-source .workbench-meta + .workbench-meta { margin-top:5px; }
-.draft-photo { flex:none; width:39%; height:106px; border-radius:6px; }
-.manager-review .workbench-section-title,.designer-changes .workbench-section-title { padding-bottom:3px; border-bottom:1px solid #d3dccb; }
-.manager-review .workbench-meta { margin-top:-3px; }
+.designer-changes .workbench-section-title { padding-bottom:3px; border-bottom:1px solid #d3dccb; }
 button.workbench-link { padding:0 10px; border-top:1px solid #b7c5b0; }
 .workbench-link + .workbench-link { border-bottom:1px solid #b7c5b0; }
 .designer-reply { padding-top:36px; min-height:149px; }
@@ -66,10 +170,45 @@ button.designer-tool { padding:0 13px; border-top:0; min-height:52px; }
 .workbench-summary > view { flex:1; min-width:0; text-align:center; font-size:13px; line-height:1.4; }
 .workbench-summary > view + view { border-left:1px solid #adbea5; }
 .summary-value { display:block; font-size:34px; font-weight:650; line-height:1.04; margin-bottom:5px; }
+.workbench-summary-no-priority {
+  min-height:85px;
+  padding:10px 0;
+  border-color:#e6e5d9;
+  border-radius:5px;
+  background:#fbf8ef;
+  box-shadow:none;
+}
+.workbench-summary-no-priority > view + view { border-color:#d9e0d2; }
+.workbench-summary-no-priority .summary-value {
+  margin-bottom:9px;
+  font:900 27px/1.1 'Site Serif','Songti SC',SimSun,serif;
+}
 .late-text { color:#9c3c30; }
 .summary-note { padding:5px 4px 0; }
 .boss-exceptions { margin-top:28px; }
 .boss-exceptions .workbench-fabric { top:-15px; }
+.workbench-boss-clear {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:47px;
+  padding:0 13px;
+  margin:12px 0 16px;
+  border-radius:6px;
+  background:#e8eee2;
+  color:#455f53;
+  font-size:14px;
+}
+.workbench-boss-check {
+  box-sizing:border-box;
+  flex:none;
+  width:13px;
+  height:7px;
+  margin:0 2px 3px 4px;
+  border-left:1.5px solid #446d54;
+  border-bottom:1.5px solid #446d54;
+  transform:rotate(-45deg);
+}
 .exception-card { min-height:144px; padding-top:20px; padding-bottom:1px; margin-bottom:10px; }
 .exception-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:4px; }
 .exception-heading .workbench-section-title { min-width:0; }
@@ -88,14 +227,37 @@ button.exception-link { justify-content:flex-end; min-height:44px; margin-top:7p
 .pending-text { color:#9c6a1f; }
 .done-text { color:#14552e; }
 .capture-paused { display:block; margin:8px 0 12px; }
-.filter-bar { display:flex; gap:6px; margin:10px 0 14px; }
+.filter-bar { display:flex; gap:8px; margin:1px 0 4px; }
 button.filter-chip { flex:1; min-width:0; min-height:42px; display:flex; align-items:center; justify-content:center; gap:4px; padding:0 8px; border:1px solid #a3b59d; border-radius:21px; background:#fbf8ef; color:#235a46; font-size:14px; line-height:1.35; white-space:nowrap; }
 button.filter-chip.active { border-color:#00513c; background:#00513c; color:#fffdf0; }
+.filter-bar button.filter-chip { min-height:44px; padding:0; border:0; border-radius:0; background:transparent; }
+.filter-bar button.filter-chip-wide { flex:1.48; }
+.filter-chip-label {
+  box-sizing:border-box;
+  display:flex;
+  flex:1;
+  height:31px;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  border:1px solid #afc5ad;
+  border-radius:16px;
+  background:#fbf8ef;
+  color:#00513c;
+  font-size:13px;
+  line-height:18px;
+}
+.filter-chip.active .filter-chip-label { border-color:#00513c; background:#00513c; color:#fffdf0; }
 .calendar-glyph { position:relative; width:14px; height:14px; flex:none; border:1.5px solid currentColor; border-radius:3px; }
 .calendar-glyph::before { content:''; position:absolute; left:2px; right:2px; top:4px; height:1px; background:currentColor; }
 .calendar-glyph::after { content:''; position:absolute; left:3px; top:-2px; width:1.5px; height:4px; background:currentColor; box-shadow:5px 0 0 currentColor; }
-.report-list { padding-top:40px; padding-bottom:4px; }
+.report-list { padding-top:10px; padding-bottom:4px; }
 .report-list-heading { display:flex; align-items:center; justify-content:flex-end; min-height:26px; padding-bottom:4px; border-bottom:1px solid #d5dbcc; }
+.report-list-empty { min-height:52px; padding:6px 13px; margin-bottom:12px; border-color:#e6e5d9; border-radius:5px; background:#fbf8ef; box-shadow:none; }
+.report-list-empty .report-list-heading { min-height:19px; justify-content:space-between; gap:8px; padding-bottom:0; border-bottom:0; }
+.report-list-empty .workbench-empty-label { font-size:14px; line-height:19px; }
+.report-list-empty .workbench-meta { font-size:12px; line-height:18px; }
+.report-list-empty .workbench-empty-detail { margin-top:3px; line-height:17px; }
 button.report-row { display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; padding:11px 0; text-align:left; border-bottom:1px solid #d5dbcc; }
 button.report-row:last-child { border-bottom:0; }
 .report-copy { flex:1; min-width:0; }
@@ -160,6 +322,7 @@ button.detail-report-link { width:100%; justify-content:center; color:#205a43; f
 
 @media (max-width:360px) {
   .workbench-nav,.workbench-content { padding-left:28px; padding-right:13px; }
+  .manager-workbench-v2 .workbench-content { padding-left: 28px; padding-right: 13px; }
   .workbench-title { font-size:29px; }
   .workbench-paper { padding-left:11px; padding-right:11px; }
   .filter-chip { font-size:13px; padding:0 5px; }

@@ -24,13 +24,26 @@
     return json.data;
   }
   const selected = () => state?.items.find(c => String(c.binding_id) === $('camera').value);
-  function renderLiveCover() {
-    const image = $('live-cover'), time = $('live-cover-time'), overlay = $('live-overlay-play');
-    if (image && time) image.hidden = time.hidden = !coverLoaded || liveHasFrame || viewMode !== 'live' || document.hidden;
-    if (overlay) overlay.hidden = ownerPreview !== null || viewMode !== 'live' || liveHasFrame || active || Boolean(liveStartup && !liveStartup.blocked) || unavailable;
+  function renderLiveFrame() {
+    if (ownerPreview !== null) return;
+
+    const liveAvailable = viewMode === 'live' && !document.hidden && !queryBusy && Boolean(selected());
+    const showCover = liveAvailable && coverLoaded && !liveHasFrame;
+    $('live-cover').hidden = $('live-cover-time').hidden = !showCover;
+
+    const connecting = liveStartup && !liveStartup.blocked;
+    $('live-overlay-play').hidden = !liveAvailable || connecting || active || liveHasFrame;
+    $('live-actions').hidden = !liveAvailable;
+    $('stop').hidden = !active && !liveStartup;
+    $('live-audio').hidden = !liveAvailable || !active || !liveHasFrame;
+  }
+  function syncLiveAudio() {
+    const audio = $('live-audio');
+    audio.setAttribute('aria-pressed', String(!video.muted));
+    audio.setAttribute('aria-label', video.muted ? '打开声音' : '关闭声音');
   }
   function settleLiveIdle() {
-    renderLiveCover();
+    renderLiveFrame();
     if (viewMode === 'live' && !active && !liveStartup && selected()) status('点击画面中央的播放按钮观看直播。');
   }
   function clearLiveCover() {
@@ -42,7 +55,7 @@
     time.removeAttribute('datetime'); time.textContent = '';
     if (coverUrl) URL.revokeObjectURL(coverUrl);
     coverUrl = '';
-    renderLiveCover();
+    renderLiveFrame();
   }
   async function loadLiveCover() {
     clearLiveCover();
@@ -64,15 +77,16 @@
       image.onload = () => {
         if (generation !== coverRequest) return;
         coverLoaded = true;
-        renderLiveCover();
+        renderLiveFrame();
       };
       image.onerror = () => { if (generation === coverRequest) clearLiveCover(); };
       image.src = coverUrl;
     } catch { /* Live playback remains available when a cover cannot be loaded. */ }
   }
   function syncFullscreen() {
-    const exit = $('exit-fullscreen');
-    if (exit) exit.hidden = !(document.fullscreenElement || document.webkitFullscreenElement || immersiveMode);
+    const fullscreenActive = Boolean(document.fullscreenElement || document.webkitFullscreenElement || immersiveMode);
+    $('exit-fullscreen').hidden = !fullscreenActive;
+    $('live-fullscreen').hidden = fullscreenActive && ownerPreview === null;
   }
   function leaveFullscreen() {
     immersiveMode = false;
@@ -103,14 +117,17 @@
     } catch { enterImmersive(); }
   }
   function destroy() {
+    if (livePinned) video.muted = true;
     active = false; livePinned = false; liveStartup = null; liveHasFrame = false;
     clearTimeout(stallTimer); stallTimer = null; leaveFullscreen();
     clearInterval(recordingTicker); recordingTicker = null;
     video.autoplay = false; video.preload = 'none';
-    if (player) { player.destroy(); player = null; }
+    const previousPlayer = player;
+    player = null;
+    previousPlayer?.destroy();
     video.pause(); video.removeAttribute('src'); video.load();
     $('stop').disabled = true; $('live-fullscreen').disabled = true;
-    renderLiveCover();
+    renderLiveFrame();
   }
   async function stop(quiet = false) {
     const generation = ++intent; destroy(); capabilities();
@@ -132,11 +149,11 @@
   }
   const recordingKey=r=>(r.source||'cloud')+':'+r.id;
   const selectedRecording=()=>recordings.find(r=>recordingKey(r)===$('recording').value);
-  function capabilities() { const c = selected(); $('playback-tab').hidden = state?.liveOnly === true; $('play').disabled = !c || queryBusy || Boolean(liveStartup && !liveStartup.blocked); $('capture').hidden = viewMode!=='live'||!state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = viewMode!=='live'||!state?.canControl || !c?.ptz_enabled; $('snapshots-section').hidden=viewMode!=='live'||state?.canViewSnapshots===false; $('play-recording').disabled=queryBusy||!selectedRecording();$('query-recordings').disabled=queryBusy||!state;
+  function capabilities() { const c = selected(); $('playback-tab').hidden = state?.liveOnly === true; $('capture').hidden = viewMode!=='live'||!state?.canCapture; $('capture').disabled = !c || captureBusy; $('ptz').hidden = viewMode!=='live'||!state?.canControl || !c?.ptz_enabled; $('snapshots-section').hidden=viewMode!=='live'||state?.canViewSnapshots===false; $('play-recording').disabled=queryBusy||!selectedRecording();$('query-recordings').disabled=queryBusy||!state;
     if ($('history-jump')) $('history-jump').hidden = viewMode!=='live'||!state||state.canViewSnapshots===false;
     if ($('ptz-toggle')) $('ptz-toggle').hidden = $('ptz').hidden;
     if ($('camera-tools')) $('camera-tools').hidden = viewMode!=='live'||!state||(!state.canCapture&&state.canViewSnapshots===false&&$('ptz').hidden);
-    renderRecordings(); renderLiveCover();
+    renderRecordings(); renderLiveFrame();
   }
   function renderRecordings() {
     const list = $('recording-list'); if (!list) return; list.replaceChildren();
@@ -193,7 +210,8 @@
     if(mode===viewMode||(mode==='playback'&&state?.liveOnly))return;
     if (mode === 'playback') clearLiveCover();
     if(!await stopForSelection())return;queryBusy=false;viewMode=mode;savePreference('view',mode);
-    const playback=mode==='playback';video.controls=playback;mat?.classList.toggle('is-playback',playback);$('live-actions').hidden=playback;$('live-settings').hidden=playback;$('playback-panel').hidden=!playback;
+    const playback=mode==='playback';video.controls=playback;mat?.classList.toggle('is-playback',playback);$('live-settings').hidden=playback;$('playback-panel').hidden=!playback;
+    $('player-section').dataset.mode = mode;
     for(const name of ['live','playback']){$(name+'-tab').classList.toggle('secondary',name!==mode);$(name+'-tab').setAttribute('aria-pressed',String(name===mode));}
     document.querySelector('.eyebrow').textContent=playback?'云工地 · 录像回放':'云工地 · 实时画面';
     capabilities();
@@ -238,15 +256,30 @@
   }
   function attachStream(stream,generation,live,onPreviewError) {
       const ownerPreview = !!onPreviewError;
-      const mode = ownerPreview ? 'hls' : $('mode').value, flv = window.mpegts?.getFeatureList().mseLivePlayback;
+      const useHls = ownerPreview || (live && stream.preferredFormat === 'hls');
+      const mode = useHls ? 'hls' : $('mode').value, flv = window.mpegts?.getFeatureList().mseLivePlayback;
       if (mode !== 'hls' && flv) {
-        player = window.mpegts.createPlayer({ type: 'flv', isLive: live, url: stream.flv }, { enableWorker: false, enableStashBuffer: false, liveBufferLatencyChasing: live });
-        player.on(window.mpegts.Events.ERROR, () => { if (generation === intent) { void stop(true); status('播放中断，可重新播放或切换兼容播放。', true); } });
-        player.attachMediaElement(video); player.load();
+        const flvPlayer = player = window.mpegts.createPlayer({ type: 'flv', isLive: live, url: stream.flv }, { enableWorker: false, enableStashBuffer: false, liveBufferLatencyChasing: live });
+        flvPlayer.on(window.mpegts.Events.ERROR, () => {
+          if (generation !== intent || player !== flvPlayer) return;
+          if (live && mode === 'auto' && !document.hidden && stream.hls
+            && (window.Hls?.isSupported() || video.canPlayType('application/vnd.apple.mpegurl'))) {
+            destroy();
+            void startLiveSource({ ...stream, preferredFormat: 'hls' }, generation, beginLiveStartup());
+            return;
+          }
+          void stop(true); status('播放中断，可重新播放或切换兼容播放。', true);
+        });
+        flvPlayer.attachMediaElement(video); flvPlayer.load();
       } else if (mode !== 'flv' && window.Hls?.isSupported()) {
         // The owner relay has a short sliding playlist. Starting at its oldest
         // segment can leave a stalled viewer behind the next playlist update.
-        player = new window.Hls({ enableWorker: false, backBufferLength: 15, liveSyncDurationCount: ownerPreview ? 1 : 2 });
+        const options = { enableWorker: false, backBufferLength: 15, liveSyncDurationCount: ownerPreview ? 1 : 2 };
+        const policy = window.Hls.DefaultConfig?.manifestLoadPolicy;
+        if (live && stream.preferredFormat === 'hls' && policy) {
+          options.manifestLoadPolicy = { ...policy, default: { ...policy.default, maxLoadTimeMs: 25000 } };
+        }
+        player = new window.Hls(options);
         const hls = player;
         hls.on(window.Hls.Events.ERROR, (_, data) => {
           if (!data.fatal || generation !== intent) return;
@@ -257,20 +290,32 @@
       } else if (mode !== 'flv' && video.canPlayType('application/vnd.apple.mpegurl')) video.src = stream.hls;
       else throw Object.assign(new Error(), { code: 'unsupported' });
   }
+  function beginLiveStartup() {
+    const startup = liveStartup = { attached: false, blocked: false, retriedOnReady: false };
+    $('stop').disabled = false; capabilities();
+    status('正在连接摄像头…');
+    return startup;
+  }
   async function play() {
     const c = selected();
     if (!c || viewMode !== 'live' || queryBusy || document.hidden) return;
     if (liveStartup) return retryBlockedLive();
 
     const generation = ++intent; destroy();
-    const startup = liveStartup = { attached: false, blocked: false, retriedOnReady: false };
-    $('stop').disabled = false; capabilities();
-    status('正在连接摄像头…');
+    const startup = beginLiveStartup();
     try {
       await stopPending; if (generation !== intent) return;
       const live = await api('live', { bindingId: String(c.binding_id) }); if (generation !== intent) return;
+      await startLiveSource(live, generation, startup);
+    } catch (e) {
+      if (liveStartup === startup) failLiveStartup(e);
+    }
+  }
+  async function startLiveSource(live, generation, startup) {
+    try {
       // Set the live element's properties before binding either an MSE or native source.
       video.muted = true; video.autoplay = true; video.preload = 'auto';
+      syncLiveAudio();
       attachStream(live,generation,true);
       if (liveStartup !== startup) return;
       startup.attached = true;
@@ -358,6 +403,8 @@
   }
   function initOwnerPreview(ticket) {
     history.replaceState(null,'',location.pathname);
+    $('player-section').dataset.mode = 'owner-preview';
+    $('live-actions').hidden = false;
     for(const id of ['camera','live-settings','playback-panel','ptz','snapshots-section','capture','camera-tools']) $(id).hidden=true;
     for(const selector of ['label[for="camera"]','.mode-tabs','.footer']) document.querySelector(selector).hidden=true;
     $('project').textContent='工地直播预览';
@@ -412,7 +459,13 @@
   document.addEventListener('fullscreenchange',syncFullscreen);document.addEventListener('webkitfullscreenchange',syncFullscreen);
   syncFullscreen();
   if(ownerPreview!==null){initOwnerPreview(ownerPreview);return;}
-  $('play').onclick = () => play(); $('live-overlay-play').onclick = () => play(); $('stop').onclick = () => stop(); $('capture').onclick = capture; $('refresh').onclick = loadHistory;
+  $('live-overlay-play').onclick = play; $('stop').onclick = () => stop(); $('capture').onclick = capture; $('refresh').onclick = loadHistory;
+  $('live-audio').onclick = () => {
+    if ($('live-audio').hidden) return;
+    video.muted = !video.muted;
+    syncLiveAudio();
+  };
+  video.addEventListener('volumechange', syncLiveAudio);
   mat?.addEventListener('click', event => {
     if (!(event.target instanceof Element) || event.target.closest('button')) return;
     if (liveStartup?.blocked) return retryBlockedLive();
@@ -432,7 +485,7 @@
     if (!active || video.paused || !(video.currentTime > 0)) return;
     if (viewMode === 'live' && !liveHasFrame) {
       if (!video.videoWidth || video.readyState < 2) return;
-      liveHasFrame = true; renderLiveCover();
+      liveHasFrame = true; renderLiveFrame();
     }
     const name = viewMode === 'playback' ? selectedRecording()?.name : selected()?.name;
     status((viewMode === 'playback' ? '正在回放' : '正在播放') + (name ? ' · ' + name : ''));

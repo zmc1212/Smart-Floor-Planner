@@ -21,8 +21,15 @@ function grouped(items) {
   for (const item of items) {
     if (!groups.has(item.projectId)) groups.set(item.projectId, { id: item.projectId, name: item.projectName, items: [] });
     const stages = (item.stages || []).map(stage => stage.name).filter(Boolean).join('、');
-    groups.get(item.projectId).items.push({ ...item, modeLabel: item.inspection.mode === 'onsite' && item.inspection.source === 'staff'
-      ? '需到场' : modes[item.inspection.mode],
+    const { inspection, status } = item;
+    const pending = status.code === 'pending';
+    const modeLabel = inspection.mode === 'onsite' && inspection.source === 'staff' ? '需到场' : modes[inspection.mode];
+    let statusLabel = status.label;
+    if (pending && item.projectStatus === 'active') statusLabel = modeLabel;
+    if (pending && item.projectStatus === 'paused') statusLabel = '工地已暂停';
+    const reasonLine = pending ? [inspection.priority && '优先处理', !item.today && '往期待审', inspection.reason?.trim()]
+      .filter(Boolean).join(' · ') : '';
+    groups.get(item.projectId).items.push({ ...item, statusLabel, reasonLine,
       meta: [item.author, siteMessageTime(item.submittedAt), stages,
         item.photoCount && item.photoCount + ' 张照片', item.hasVoice && '语音'].filter(Boolean).join(' · ') });
   }
@@ -34,7 +41,8 @@ Page({
   onLoad(query) {
     this._projectId = validId(query.projectId) ? String(query.projectId) : '';
     this._onsite = Boolean(this._projectId && query.onsite === '1');
-    this.setData({ stationOnly: Boolean(this._projectId), onsiteOnly: this._onsite });
+    this.setData({ stationOnly: Boolean(this._projectId), onsiteOnly: this._onsite,
+      stationBackLabel: query.fromWorkbench === '1' ? '返回工作台' : '返回巡检路线' });
     loadSiteFont();
     const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     let capsule;

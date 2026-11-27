@@ -165,9 +165,7 @@
             <view class="device-main">
               <text class="device-code">{{item.code}}</text>
               <text wx:if="{{item.serialNumber}}" class="device-sn">SN {{item.serialNumber}}</text>
-              <text class="device-enterprise">
-                {{item.enterpriseId && item.enterpriseId.name ? item.enterpriseId.name : '未分配企业'}}
-              </text>
+              <text class="device-enterprise">{{item.enterpriseId && item.enterpriseId.name ? item.enterpriseId.name : '未分配企业'}}</text>
             </view>
             <text class="device-status">{{item.status === 'assigned' ? '已分配' : item.status}}</text>
           </view>

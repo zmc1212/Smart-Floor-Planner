@@ -501,7 +501,7 @@ test('A06 two workers contend for the same fixture job and only the holder can c
   assert.equal((await service.run(String(sent.runId))).status, 'succeeded');
 });
 
-test('shared Worker replies to two enterprises and leaves out-of-pilot background work queued', async () => {
+test('shared Worker processes replies and regenerations across enterprises while leaving background work scoped to the pilot', async () => {
   const outsideActor: ActorContext = { ...b, principal: { kind: 'user', userId: userIds[1] } };
   const outside = new ConversationService(outsideActor);
   const outsideId = String((await outside.create('shared-worker-outside')).id);
@@ -524,10 +524,12 @@ test('shared Worker replies to two enterprises and leaves out-of-pilot backgroun
   assert.equal(sharedJobs.filter(job => job.enterpriseId === outsideActor.enterpriseId).length, 1);
 
   const processed: string[] = [];
+  let regeneration: { runId: string; originalMessageId: string } | undefined;
   const answer = '可以先从家里的采光和你喜欢的材质聊起。';
   const post = createAssistantJobsPost({ env, processAssistantRun: async lease => {
     processed.push(lease.runId);
-    await completeRun(lease, { content: content(answer), usage: null });
+    await completeRun(lease, { content: content(answer), usage: { inputTokens: 12, outputTokens: 16 },
+      ...(regeneration?.runId === lease.runId ? { replyVersionOf: regeneration.originalMessageId } : {}) });
   } });
   const previousSecret = process.env.CRON_SECRET;
   process.env.CRON_SECRET = 'shared-worker-fixture-secret';
@@ -543,9 +545,29 @@ test('shared Worker replies to two enterprises and leaves out-of-pilot backgroun
     assert.deepEqual(new Set(processed), new Set([pilotReply.runId, outsideReply.runId]));
     assert.equal(processed.length, 2);
     const reentry = new ConversationService(outsideActor);
-    assert.equal((await reentry.run(String(outsideReply.runId))).status, 'succeeded');
+    const firstAnswer = await reentry.run(String(outsideReply.runId));
+    assert.equal(firstAnswer.status, 'succeeded');
     assert.equal((await reentry.messages(outsideId)).items.filter(message => message.authorKind === 'assistant').length, 1);
     await assert.rejects(service.detail(outsideId), /assistant_resource_not_found/);
+    assert.equal((await outside.run(String(background.runId))).status, 'queued');
+
+    await withTenantTransaction(outsideActor.enterpriseId, async tx => {
+      await tx.execute(sql`update app.assistant_enterprise_settings set agent_config=
+        '{"runtime":"langgraph-v1","providerKey":"deepseek","model":"deepseek-flash","tools":true,"imageInput":false,"probeVersion":"shared-queue-fixture"}'::jsonb
+        where enterprise_id=${outsideActor.enterpriseId}`);
+      await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint)
+        values(${outsideActor.enterpriseId},${String(outsideReply.runId)},100,'agent_model','succeeded','{"toolCalls":[]}'::jsonb)`);
+    });
+    const originalMessageId = String(firstAnswer.outputMessageId);
+    const queued = await reentry.regenerate(outsideId, originalMessageId, 'shared-worker-regenerate');
+    regeneration = { runId: String(queued.runId), originalMessageId };
+    const updatedPreflight = await assistantWorkerPreflight({ env });
+    assert.equal(updatedPreflight.scopedQueue?.items.filter(job => job.enterpriseId === outsideActor.enterpriseId && job.status === 'queued').length, 1);
+    await tick();
+    assert.equal((await reentry.run(regeneration.runId)).status, 'succeeded');
+    const variants = (await reentry.messages(outsideId)).items.filter(message => message.authorKind === 'assistant');
+    assert.equal(variants.length, 2);
+    assert.equal(variants.find(message => message.id !== originalMessageId)?.replyActions?.versionOf, originalMessageId);
     assert.equal((await outside.run(String(background.runId))).status, 'queued');
 
     const disabledId = String((await outside.create('shared-worker-revoked')).id);
@@ -556,7 +578,7 @@ test('shared Worker replies to two enterprises and leaves out-of-pilot backgroun
     try {
       await tick();
       assert.equal((await outside.run(String(disabled.runId))).status, 'failed');
-      assert.equal(processed.length, 2);
+      assert.equal(processed.length, 3);
     } finally { await setOutsideEnabled(true); }
   } finally {
     if (previousSecret === undefined) delete process.env.CRON_SECRET;

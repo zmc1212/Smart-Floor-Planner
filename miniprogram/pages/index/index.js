@@ -1,10 +1,21 @@
 const { roleForIdentity, getRoleLanding } = require('../../utils/identity-navigation');
-const { serviceEntryCode } = require('../../utils/service-entry');
+const { freeDesignServiceUrl, serviceEntryCode } = require('../../utils/service-entry');
+const { aiEntriesEnabled, customerHomeTab, staffHomeTab } = require('../../utils/ai-entries');
+const { brandShareCover } = require('../../utils/share-cover');
+
+function xiaokPanelFor(role) {
+  if (role === 'customer') return 'customer';
+  return ['designer', 'enterprise_admin'].includes(role) ? 'staff' : '';
+}
 
 Page({
   data: {
     roleWorkbenchRole: '',
-    customerTab: 'xiaok',
+    aiEntriesEnabled: false,
+    mountXiaokPanel: false,
+    activateXiaokPanel: false,
+    xiaokEntryReady: false,
+    customerTab: 'service',
     promotionCode: '',
     requestedFamilyProjectId: '',
     siteWorkbenchTab: 'workbench',
@@ -20,13 +31,23 @@ Page({
     else if (options?.customerTab === 'service' || requestedFamilyProjectId) globalData.customerTab = 'service';
 
     this.setData({ promotionCode, requestedFamilyProjectId });
+    this.syncAiEntryVisibility();
+  },
+
+  syncAiEntryVisibility() {
     this.syncHomeView();
+    const { globalData } = getApp();
+    const code = this.data.promotionCode;
+    if (!code || globalData.aiEntriesChecking || aiEntriesEnabled(globalData) || this._forwardingPromotion) return;
+    this._forwardingPromotion = true;
+    wx.navigateTo({ url: freeDesignServiceUrl(code), success: () => this.onPromotionEntryConsumed(),
+      complete: () => { this._forwardingPromotion = false; } });
   },
 
   async onShow() {
     const { globalData } = getApp();
     const hydration = globalData.sessionHydrationPromise;
-    this.syncHomeView();
+    this.syncAiEntryVisibility();
 
     if (hydration) {
       await hydration;
@@ -44,11 +65,25 @@ Page({
 
     const roleWorkbenchRole = loggedIn ? this.getRoleWorkbenchRole() : 'customer';
     if (roleWorkbenchRole === 'construction_staff') globalData.siteWorkbenchTab = 'workbench';
+    const panel = xiaokPanelFor(roleWorkbenchRole);
+    const mountXiaokPanel = Boolean(panel && globalData.aiEntriesEnabled);
+    const xiaokEntryReady = mountXiaokPanel && panel === xiaokPanelFor(this.data.roleWorkbenchRole) && this.data.xiaokEntryReady;
+    const customerTab = customerHomeTab(globalData);
+    const siteWorkbenchTab = staffHomeTab(globalData);
     this.setData({
       roleWorkbenchRole,
-      customerTab: globalData.customerTab || 'xiaok',
-      siteWorkbenchTab: globalData.siteWorkbenchTab || 'workbench',
+      aiEntriesEnabled: aiEntriesEnabled(globalData),
+      mountXiaokPanel,
+      xiaokEntryReady,
+      activateXiaokPanel: panel === 'customer' ? customerTab === 'xiaok' : siteWorkbenchTab === 'xiaok',
+      customerTab: xiaokEntryReady ? customerTab : 'service',
+      siteWorkbenchTab: xiaokEntryReady ? siteWorkbenchTab : 'workbench',
     }, () => this.syncTabBar());
+  },
+
+  onXiaokEntryReady(event) {
+    if (!this.data.mountXiaokPanel || event.currentTarget.dataset.panel !== xiaokPanelFor(this.data.roleWorkbenchRole)) return;
+    this.setData({ xiaokEntryReady: true }, () => this.syncHomeView());
   },
 
   getRoleWorkbenchRole() {
@@ -104,6 +139,7 @@ Page({
     return {
       title: '智能量房大师 - 专业 AR 量房设计工具',
       path: '/pages/index/index',
+      imageUrl: brandShareCover,
     };
   },
 });

@@ -1,4 +1,5 @@
 <view class="report-page">
+  <image class="notebook-page-grain" src="../assets/notebook/capture-v3-paper.png" mode="aspectFill" aria-hidden="true" />
   <view class="book-spine" aria-hidden="true">
     <view class="book-stitch" style="top:84px" />
     <view class="book-stitch" style="top:37%" />
@@ -29,7 +30,9 @@
             <text class="stage-title">施工阶段（可多选）</text>
           </view>
           <view class="stage-chips">
-            <view wx:for="{{stageChips}}" wx:key="key" class="stage-chip {{item.selected ? 'selected' : ''}}" data-key="{{item.key}}" bindtap="toggleStage">{{item.name}}</view>
+            <view wx:for="{{stageChips}}" wx:key="key" class="stage-chip stage-choice {{item.selected ? 'selected' : ''}}" data-key="{{item.key}}" bindtap="toggleStage" aria-role="button" aria-pressed="{{item.selected}}">
+              <text class="stage-choice-face">{{item.name}}</text>
+            </view>
           </view>
           <text class="helper">可多选 · 来自企业施工节点配置</text>
           <block wx:if="{{checkpoints.length}}">
@@ -51,7 +54,7 @@
               <button class="photo-remove" data-id="{{item.id}}" catchtap="removePhoto" aria-label="删除照片">×</button>
             </view>
             <view wx:if="{{photos.length < maxPhotos}}" class="photo-add" bindtap="addPhotos" aria-label="添加照片">
-              <image src="../assets/notebook/capture-camera.png" mode="aspectFit" />
+              <image class="photo-add-icon" src="../assets/notebook/camera.png" mode="aspectFit" aria-hidden="true" />
               <text>添加照片</text>
             </view>
           </view>
@@ -60,13 +63,13 @@
         <view class="paper voice-paper">
           <view class="paper-heading"><view class="fabric">语音说明（选填）</view></view>
           <view wx:if="{{voice}}" class="voice-row recorded">
-            <image class="voice-icon" src="../assets/notebook/capture-mic.png" mode="aspectFit" />
+            <view class="voice-symbol" aria-hidden="true"><image class="voice-icon" src="../assets/notebook/mic.png" mode="aspectFit" /></view>
             <text class="voice-label">语音 {{voice.durationSeconds || 0}}秒</text>
             <button class="text-action" bindtap="playVoice">{{voicePlaying ? '停止' : '回听'}}</button>
             <button class="text-action voice-remove" bindtap="removeVoice">删除</button>
           </view>
-          <view wx:else class="voice-row" bindtap="toggleRecord">
-            <image class="voice-icon" src="../assets/notebook/capture-mic.png" mode="aspectFit" />
+          <view wx:else class="voice-row" bindtap="toggleRecord" aria-role="button">
+            <view class="voice-symbol" aria-hidden="true"><image class="voice-icon" src="../assets/notebook/mic.png" mode="aspectFit" /></view>
             <text class="voice-label">{{recording ? '录音中 ' + recordSeconds + '秒 · 点击结束' : '点击录音'}}</text>
             <text class="voice-limit">最长60秒</text>
           </view>

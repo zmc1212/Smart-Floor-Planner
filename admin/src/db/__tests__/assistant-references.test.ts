@@ -53,6 +53,8 @@ before(async()=>{
         values(${tenants[i]},${prefix+i},'test-only','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!; admins.push(String(a.id));
       const u=(await one(tx,sql`insert into app.users(nickname,context_version) values(${prefix+i},1) returning id`))!;users.push(String(u.id));
       await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${users[i]},${prefix+i})`);
+      await tx.execute(sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source)
+        values(${tenants[i]},${users[i]},${prefix+'-service-'+i},${'1390012999'+i},'natural')`);
       const code=createStaffActivityToken(BigInt(admins[i]),1);channelCodes.push(code);
       await tx.execute(sql`insert into app.staff_activity_codes(enterprise_id,staff_id,token_hash,status,version) values(${tenants[i]},${admins[i]},${hashReferrerNetworkToken(code)},'active',1)`);
     }
@@ -63,7 +65,7 @@ before(async()=>{
   imageBase64=(await sharp({create:{width:300,height:200,channels:3,background:'#adc2a4'}}).png().toBuffer()).toString('base64');
 });
 after(async()=>{
-  try{await withPlatformTransaction(async tx=>{for(const eid of tenants){await deleteAssistantData(tx,BigInt(eid));await tx.execute(sql`delete from app.promotion_scan_audits where enterprise_id=${eid}`);await tx.execute(sql`delete from app.staff_activity_codes where enterprise_id=${eid}`);await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`);await tx.execute(sql`delete from app.enterprises where id=${eid}`);}for(const uid of users)await tx.execute(sql`delete from app.users where id=${uid}`);});}
+  try{await withPlatformTransaction(async tx=>{for(const eid of tenants){await deleteAssistantData(tx,BigInt(eid));await tx.execute(sql`delete from app.promotion_scan_audits where enterprise_id=${eid}`);await tx.execute(sql`delete from app.staff_activity_codes where enterprise_id=${eid}`);await tx.execute(sql`delete from app.leads where enterprise_id=${eid}`);await tx.execute(sql`delete from app.admin_users where enterprise_id=${eid}`);await tx.execute(sql`delete from app.enterprises where id=${eid}`);}for(const uid of users)await tx.execute(sql`delete from app.users where id=${uid}`);});}
   finally{try{if(priorProvider)await savePlatformLlmConfig(priorProvider);}finally{await closePostgresPool();}}
 });
 const exec=(action:string,input:Row={},key=randomUUID())=>manager.execute(action,input,key);
@@ -161,6 +163,7 @@ test('P2C foundation: signed case entry persists source, native chat reentry and
   const shared=await exec('share',{documentId:d.documentId,expectedVersion:2});assert.match(String(shared.path),/^\/packages\/assistant\/chat\/chat\?referenceEntry=/);
   const token=new URL('https://local'+shared.path).searchParams.get('referenceEntry')!;
   const payload=await readContentEntry(token);assert.equal(payload.enterpriseId,actor.enterpriseId);assert.equal(payload.documentId,d.documentId);assert.ok(!('userId' in payload));
+  await assert.rejects(entryContext({userId:users[1],contextVersion:1,enterpriseId:tenants[1]},{referenceEntry:token}),/assistant_share_preview_only/);
   const identity={userId:users[0],contextVersion:1,enterpriseId:tenants[1]};
   const entry=await entryContext(identity,{referenceEntry:token});assert.equal(entry.enterprise?.id,actor.enterpriseId);assert.match(String(entry.guidanceOpening),/入口/);assert.equal(entry.guidanceEnabled,false);
   const bound=await fromEntry(identity,entry.entryToken),chat=new ConversationService(bound),c=String((await chat.create(randomUUID())).id);
@@ -194,7 +197,11 @@ test('P2C channel: valid existing activity source persists separately from owner
   const token=new URL('https://local'+shared.path).searchParams.get('referenceEntry')!,identity={userId:users[0],contextVersion:1,enterpriseId:actor.enterpriseId};
   const entry=await entryContext(identity,{referenceEntry:token}),bound=await fromEntry(identity,entry.entryToken),c=String((await new ConversationService(bound).create(randomUUID())).id);
   const snapshot=await preferences(c);assert.equal((snapshot.channel as Row).kind,'staff_activity_code');assert.equal(snapshot.channelCode,undefined);
-  await withTenantTransaction(actor.enterpriseId,async tx=>{assert.equal(Number((await one(tx,sql`select count(*) n from app.leads where enterprise_id=${actor.enterpriseId}`))!.n),0);await tx.execute(sql`update app.staff_activity_codes set status='disabled' where enterprise_id=${actor.enterpriseId} and staff_id=${admins[0]}`);});
+  await withTenantTransaction(actor.enterpriseId,async tx=>{
+    const lead = await one(tx,sql`select count(*)::int as n, min(customer_user_id)::text as owner from app.leads where enterprise_id=${actor.enterpriseId}`);
+    assert.deepEqual(lead,{n:1,owner:users[0]});
+    await tx.execute(sql`update app.staff_activity_codes set status='disabled' where enterprise_id=${actor.enterpriseId} and staff_id=${admins[0]}`);
+  });
   const fallback=await entryContext(identity,{referenceEntry:token});assert.match(String(fallback.guidanceOpening),/分享已失效/);
   const late=await fromEntry(identity,entry.entryToken);assert.equal(late.entry!.kind,'reference_unavailable');
 });

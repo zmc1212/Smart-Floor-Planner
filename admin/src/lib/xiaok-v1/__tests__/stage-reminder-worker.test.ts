@@ -104,7 +104,7 @@ test('F/G. the worker route keeps the other jobs, auth guard and delivery flow',
   assert.doesNotMatch(route, /advanceConfiguredStageReminders\(/);
   assert.doesNotMatch(route, /deliverConfiguredStageReminders\(/);
   assert.match(source, /const pilotScopeAlignment = alignmentOf\(env\)/);
-  assert.match(source, /const workerSafetyGate = safetyGateOf\(env\)/);
+  assert.match(source, /const workerSafetyGate = input\.deployment\?\.gate \?\? safetyGateOf\(env\)/);
   assert.match(source, /const execution = workerTaskScope\(workerSafetyGate\)/);
   assert.match(source, /const businessTasksEnabled = execution\.enabled/);
   assert.match(source, /advanceReminders\(\{ now, env \}\)/);
@@ -123,12 +123,13 @@ test('F/G. the worker route keeps the other jobs, auth guard and delivery flow',
   assert.match(source, /workerSafetyGate,/);
   assert.match(source, /workerExecution: \{/);
   assert.match(source, /nativeWorkflowScopes: \{/);
-  assert.match(source, /assistantJob\(assistantRun, undefined, taskScope\)/);
+  assert.match(source, /assistantJob\(assistantRun, undefined, execution\.assistantQueueScope\)/);
   assert.match(source, /siteNotifications\(taskScope\)/);
   assert.match(source, /publicConsents\(pilotEnterpriseId \?\? undefined\)/);
   assert.match(source, /portfolioCopy\(taskScope\)/);
-  assert.ok(source.indexOf('advanceReminders({ now, env })') < source.indexOf('assistantJob(assistantRun, undefined, taskScope)'));
-  assert.ok(source.indexOf('assistantJob(assistantRun, undefined, taskScope)') < source.indexOf('deliverReminders({ now, env })'));
+  const assistantJob = 'assistantJob(assistantRun, undefined, execution.assistantQueueScope)';
+  assert.ok(source.indexOf('advanceReminders({ now, env })') < source.indexOf(assistantJob));
+  assert.ok(source.indexOf(assistantJob) < source.indexOf('deliverReminders({ now, env })'));
 });
 
 type DeliverCall = [Date, string | undefined, string | undefined];

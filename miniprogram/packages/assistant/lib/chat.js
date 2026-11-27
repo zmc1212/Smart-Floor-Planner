@@ -162,6 +162,7 @@ class ChatController {
     if (ticket !== this.showTicket) return;
     const identity = this.identity();
     const hidden = !!this.hidden;
+    const guestDraft = !identity && this.session === identity && this.state.needsLogin ? this.state.draft : '';
     if (this.session && this.session !== identity) this.clear();
     this.hidden = false;
     this.session = identity;
@@ -169,7 +170,7 @@ class ChatController {
     this.options = options || this.options || {};
     this.set({ busy: false, citation: null, citationLoading: false, citationError: '', historyLoading: false });
     if (!identity) {
-      this.set({ ...initial(), loading: false, fatal: true, needsLogin: true, error: '登录后，小K就能为你保存装修咨询记录。' });
+      this.set({ ...initial(), draft: guestDraft, loading: false, fatal: true, needsLogin: true, error: '登录后，小K就能为你保存装修咨询记录。' });
       return;
     }
     const target = this.conversationId || (!this.startedNew && (this.options.conversationId || this.entry?.resumeConversationId));
@@ -248,7 +249,7 @@ class ChatController {
     if (VALID_CONVERSATION_ID.test(String(publicConversationId || ''))) {
       this.publicConversationId = String(publicConversationId);
     }
-    this.set({ entryScope: scope, publicConversationId: this.publicConversationId || '',
+    this.set({ entryScope: scope, needsLogin: false, publicConversationId: this.publicConversationId || '',
       enterpriseId: scope === 'public' ? '' : String(enterprise.id || ''),
       enterpriseName: scope === 'public' ? '' : entry.acquisition && entry.acquisition.brandMode === 'anonymous' ? '本地服务商' : String(enterprise.name || ''),
       canSend: entry.canSend !== false,

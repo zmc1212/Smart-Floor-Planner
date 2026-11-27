@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction } from '@/db/transaction';
 import { one, rows } from '@/db/repositories/assistant-repository';
-import { assistantQueueFilter, type AssistantQueueScope } from './worker-scope';
+import { assistantQueueFilter, localSpeechRunFilter, type AssistantQueueScope } from './worker-scope';
 
 /** Read-only dry-run of the assistant job queue used before a Worker starts.
  *
@@ -69,13 +69,13 @@ export function classifyPreviewJob(input: PreviewJobInput): PreviewJobDecision {
   if (input.leaseExpiresAt.getTime() > input.now.getTime()) {
     return { classification: 'running', reason: 'lease_active', reclaimable: false };
   }
+  if (input.providerStartedAt === null) {
+    return { classification: 'reclaimable', reason: 'expired_without_provider', reclaimable: true };
+  }
   if (input.localSpeech) {
     // The existing claim path terminally fails lost local transcription
     // results; the preview never proposes a replay.
     return { classification: 'terminal', reason: 'local_speech_result_unknown', reclaimable: false };
-  }
-  if (input.providerStartedAt === null) {
-    return { classification: 'reclaimable', reason: 'expired_without_provider', reclaimable: true };
   }
   if (input.agentSteps >= 1 && input.incompleteAgentSteps === 0) {
     return { classification: 'reclaimable', reason: 'expired_with_known_agent_outcome', reclaimable: true };
@@ -158,15 +158,15 @@ export async function previewAssistantQueue(input: AssistantQueueScope & {
       count(*) filter (where j.status='failed')::int as failed,
       count(*) filter (where j.status='indeterminate')::int as indeterminate,
       count(*) filter (where j.status='running' and j.lease_expires_at<=${now}
-        and j.provider_started_at is null and not coalesce((r.policy_snapshot->>'localSpeech')::boolean,false))::int as expired_without_provider,
+        and j.provider_started_at is null)::int as expired_without_provider,
       count(*) filter (where j.status='running' and j.lease_expires_at<=${now}
-        and j.provider_started_at is not null and not coalesce((r.policy_snapshot->>'localSpeech')::boolean,false)
+        and j.provider_started_at is not null and not ${localSpeechRunFilter}
         and coalesce(s.n,0)>=1 and coalesce(s.incomplete,0)=0)::int as expired_known_outcome,
       count(*) filter (where j.status='running' and j.lease_expires_at<=${now}
-        and j.provider_started_at is not null and not coalesce((r.policy_snapshot->>'localSpeech')::boolean,false)
+        and j.provider_started_at is not null and not ${localSpeechRunFilter}
         and (coalesce(s.n,0)<1 or coalesce(s.incomplete,0)>0))::int as expired_unknown,
       count(*) filter (where j.status='running' and j.lease_expires_at<=${now}
-        and coalesce((r.policy_snapshot->>'localSpeech')::boolean,false))::int as expired_local_speech
+        and j.provider_started_at is not null and ${localSpeechRunFilter})::int as expired_local_speech
       from app.assistant_jobs j
       left join app.assistant_runs r on r.enterprise_id=j.enterprise_id and r.id=j.run_id
       left join lateral (
@@ -177,7 +177,7 @@ export async function previewAssistantQueue(input: AssistantQueueScope & {
       where j.status in ('queued','running','failed','indeterminate') ${scoped}`))!;
     const items = await rows(tx, sql`select j.enterprise_id::text as enterprise_id,j.id::text as id,j.kind,j.status,j.attempts,
       j.available_at,j.lease_expires_at,j.provider_started_at,
-      coalesce((r.policy_snapshot->>'localSpeech')::boolean,false) as local_speech,
+      ${localSpeechRunFilter} as local_speech,
       coalesce(s.n,0) as agent_steps,coalesce(s.incomplete,0) as incomplete_agent_steps
       from app.assistant_jobs j
       left join app.assistant_runs r on r.enterprise_id=j.enterprise_id and r.id=j.run_id

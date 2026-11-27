@@ -2,5 +2,8 @@
   "navigationBarTitleText": "云工地",
   "navigationStyle": "custom",
   "enablePullDownRefresh": true,
-  "backgroundTextStyle": "dark"
+  "backgroundTextStyle": "dark",
+  "usingComponents": {
+    "native-live-player": "../components/native-live-player/native-live-player"
+  }
 }

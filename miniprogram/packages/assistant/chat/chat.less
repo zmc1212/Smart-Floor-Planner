@@ -1,5 +1,10 @@
+@import '../../../components/staff-password-required/staff-password-exhibit.less';
+
 /* Reset the native button width before the per-control sizing rules. */
 .chat-page .chat-button { width: auto; }
+
+.staff-password-scroll { flex: 1; height: 0; min-height: 0; }
+.staff-password-content { box-sizing: border-box; padding: 10px 18px 22px 34px; }
 
 /* Disabled defaults precede the individual control styles. */
 .chat-button.is-disabled { color: #82918d; background: transparent; }
@@ -446,6 +451,7 @@
 @import './construction-receipts.less';
 @import './public-live.less';
 @import './followup.less';
+@import './followup-settings.less';
 @import './conversation-list.less';
 @import './chat-interactions.less';
 @import './message-actions-font.less';
@@ -478,3 +484,4 @@
 @import './floorplan-booking.less';
 @import './welcome-notebook.less'; /* Shared owner welcome paper and controls. */
 @import './ai-generation-notice.less';
+@import './question-return.less'; /* The standalone consultation uses the same draft layout. */

@@ -9,6 +9,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConstructionService } from '@/lib/construction/service';
+import { constructionWorkbench } from '@/lib/construction/workbench';
 import { projectSchedule } from '@/lib/construction/site-schedule';
 import { SiteChatService } from '@/lib/construction/site-chat';
 import { PlanCustomerService, deliverPlans, projectPlans } from '@/lib/construction/site-plans';
@@ -148,6 +149,12 @@ test('the plan version turns real records and stage moves into 提前 / 正常 /
   assert.match(String(view.text), /单个房间完成不等于整个项目完成/);
   // The room record proves only its own stage; it cannot close the utilities node.
   assert.equal((nodes.find(node => node.key === 'study_utilities') as Row).actual, null);
+  const ownerWorkbench = await constructionWorkbench(owner.actor, 'enterprise_admin');
+  assert.ok('items' in ownerWorkbench && Array.isArray(ownerWorkbench.items));
+  const lateNode = ownerWorkbench.items.find(item => item.projectId === pid)?.late;
+  assert.equal(lateNode?.nodeKey, 'study_utilities');
+  assert.equal(lateNode?.plannedStart, day(-8));
+  assert.equal(lateNode?.plannedEnd, day(-3));
   // A boss can ask the same projection why a node is behind; the answer must not invent a cause.
   const asked = await command(boss, '书房进度为什么落后了？');
   const answer = ((await boss.read(pid)).items as Row[]).find(item => String((item.message as Row).id) === String(asked.messageId))?.response as Row;

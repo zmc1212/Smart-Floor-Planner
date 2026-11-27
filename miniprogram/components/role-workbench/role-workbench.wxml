@@ -64,7 +64,7 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
         </view>
 
         <view class="enterprise-action-hub">
-          <button wx:if="{{role === 'designer' || role === 'enterprise_admin'}}" class="assistant-handoff-entry" bindtap="openAssistantHandoffs">小K咨询接管</button>
+          <button wx:if="{{aiEntriesEnabled && (role === 'designer' || role === 'enterprise_admin')}}" class="assistant-handoff-entry" bindtap="openAssistantHandoffs">小K咨询接管</button>
           <text class="enterprise-action-hub-title">{{role === 'enterprise_admin' ? '获客与团队' : '获客与推广'}}</text>
           <view class="enterprise-action-layout {{activityCode ? '' : 'without-activity'}}">
             <view
@@ -216,7 +216,7 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
             <view class="claim-alert-action"><text>去抢单</text><view class="claim-alert-chevron"></view></view>
           </view>
 
-          <view wx:if="{{role === 'designer'}}" class="quick-nav-grid staff-role-quick-grid">
+          <view wx:if="{{role === 'designer'}}" class="quick-nav-grid staff-role-quick-grid {{aiEntriesEnabled ? '' : 'full-width-quick-nav'}}">
             <view class="quick-nav-card lead-inbox" bindtap="openCustomers" hover-class="card-pressed">
               <view class="quick-text">
                 <text class="quick-title">客户线索</text>
@@ -224,7 +224,7 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
               </view>
               <image class="quick-nav-mascot" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" aria-hidden="true" />
             </view>
-            <view class="quick-nav-card staff-load" bindtap="openAIDesign" hover-class="card-pressed">
+            <view wx:if="{{aiEntriesEnabled}}" class="quick-nav-card staff-load" bindtap="openAIDesign" hover-class="card-pressed">
               <view class="quick-text">
                 <text class="quick-title">方案交付</text>
                 <view class="quick-desc quick-desc-lines"><text class="quick-desc-line">进入设计与</text><text class="quick-desc-line">风格配方 →</text></view>
@@ -419,7 +419,7 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
             <view class="hero-text-wrap">
               <text wx:if="{{staffName}}" class="hero-staff-name">{{staffName}}</text>
               <text class="hero-title">{{title || (role === 'designer' ? '方案协作与客户交付' : role === 'measurer' ? '今日量房排班与调度' : '工作台')}}</text>
-              <text class="hero-subtitle">{{subtitle || (role === 'designer' ? '户型自动同步 · AI出图交付' : role === 'measurer' ? '激光测距直连 · 毫米级拓扑建图' : '')}}</text>
+              <text class="hero-subtitle">{{subtitle || (role === 'designer' ? (aiEntriesEnabled ? '户型自动同步 · AI出图交付' : '户型自动同步') : role === 'measurer' ? '激光测距直连 · 毫米级拓扑建图' : '')}}</text>
             </view>
             <image
               class="hero-mascot"
@@ -466,7 +466,7 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
           <view class="claim-alert-action"><text>去抢单</text><view class="claim-alert-chevron"></view></view>
         </view>
 
-        <view wx:if="{{focus === 'overview'}}" class="quick-nav-grid">
+        <view wx:if="{{focus === 'overview'}}" class="quick-nav-grid {{role === 'designer' && !aiEntriesEnabled ? 'full-width-quick-nav' : ''}}">
           <block wx:if="{{role === 'designer'}}">
             <view class="quick-nav-card" bindtap="openCustomers" hover-class="card-pressed">
               <view class="quick-text">
@@ -475,7 +475,7 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
               </view>
               <image class="quick-nav-mascot" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" />
             </view>
-            <view class="quick-nav-card" bindtap="openAIDesign" hover-class="card-pressed">
+            <view wx:if="{{aiEntriesEnabled}}" class="quick-nav-card" bindtap="openAIDesign" hover-class="card-pressed">
               <view class="quick-text">
                 <text class="quick-title">风格配方</text>
                 <text class="quick-desc">爆款模板一键套用 →</text>

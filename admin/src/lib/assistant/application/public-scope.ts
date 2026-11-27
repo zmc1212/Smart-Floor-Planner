@@ -14,24 +14,21 @@ export type PublicAssistantScope = {
   config: PublicXiaokConfig;
 };
 
-/** Read the platform-owned mapping and public prompt config in one platform
- * transaction. A missing mapping fails closed, which keeps a misconfigured
- * deployment on the existing scan-code path. */
+/** The runtime role can read this platform-owned mapping and prompt config
+ * from either transaction scope. Probe before querying the optional table so
+ * older development schemas do not abort the caller's transaction. */
 export async function readPublicAssistantScope(tx: PostgresTransaction): Promise<PublicAssistantScope | null> {
-  try {
-    const mapping = await one<{ enterprise_id: string }>(tx, sql`select l.enterprise_id::text
-      from app.assistant_public_agent_library l
-      join app.enterprises e on e.id=l.enterprise_id and e.status='active'
-      where l.singleton=true limit 1`);
-    if (!mapping) return null;
-    const config = await readPublicXiaokConfig(tx);
-    return { enterpriseId: String(mapping.enterprise_id), config };
-  } catch (error) {
-    // Older development databases may not have the optional public mapping
-    // migration yet. Do not turn that into a public tenant or a broad query.
-    if ((error as { code?: string })?.code === '42P01') return null;
-    throw error;
-  }
+  const relation = await one<{ ready: boolean }>(tx,
+    sql`select to_regclass('app.assistant_public_agent_library') is not null as ready`);
+  if (!relation?.ready) return null;
+
+  const mapping = await one<{ enterprise_id: string }>(tx, sql`select l.enterprise_id::text
+    from app.assistant_public_agent_library l
+    join app.enterprises e on e.id=l.enterprise_id and e.status='active'
+    where l.singleton=true limit 1`);
+  if (!mapping) return null;
+  const config = await readPublicXiaokConfig(tx);
+  return { enterpriseId: String(mapping.enterprise_id), config };
 }
 
 export function publicActorEntry(scope: PublicAssistantScope, basis: Record<string, unknown> = {}) {

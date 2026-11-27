@@ -1,6 +1,8 @@
 const { reportForView, dateLabel, FollowupRecordMedia } = require('../../../utils/assistant-followups');
 const { errorCopy } = require('../../../utils/assistant-client');
+const { isInitialPasswordRequired } = require('../../../utils/session');
 const { initialBook, reportBookMethods } = require('./report-book');
+const api = require('../../../utils/api');
 
 const titles = { customer: '我家进展', designer: '设计跟进', worker: '施工跟进', boss: '企业工地简报' };
 const validId = value => /^[1-9]\d{0,18}$/.test(String(value || ''));
@@ -13,7 +15,7 @@ const projectRoutes = {
 const initialBoard = () => ({ reportBoard: false, reportBoardView: null, reportBoardKind: 'daily', reportBoardRole: '',
   reportBoardTitle: '', reportBoardLoading: false, reportBoardError: '', reportBoardPaths: {},
   reportBoardPhotoError: '', reportBoardScroll: 0, reportBoardDecision: '', reportBoardExpandedSite: '',
-  reportBoardRefreshing: false, ...initialBook() });
+  reportBoardRefreshing: false, linkedReportDecision: false, ...initialBook() });
 
 function photoView(photo) {
   return { ...photo, key: [photo.recordId, photo.version, photo.mediaId].join('_') };
@@ -125,9 +127,13 @@ const reportBoardMethods = {
       await this.followups.show({ board: true, projectId, bindingId: validId(options.bindingId) ? options.bindingId : '' });
       if (!current()) return;
       const context = this.followups.state.followupContext;
-      if (!context) return;
-      this.setData({ reportBoardRole: context.audience, reportBoardTitle: titles[context.audience] });
-      await this.loadReportBoard(this._boardKind || (options.kind === 'weekly' || context.audience === 'boss' ? 'weekly' : 'daily'));
+      if (context) {
+        this.setData({ reportBoardRole: context.audience, reportBoardTitle: titles[context.audience] });
+        await this.loadReportBoard(this._boardKind || (options.kind === 'weekly' || context.audience === 'boss' ? 'weekly' : 'daily'));
+      }
+      if (owner && current() && validId(options.ownerDecision) && this._openedOwnerDecision !== options.ownerDecision) {
+        await this.openLinkedReportDecision();
+      }
     } catch (error) {
       if (current()) this.setData({ reportBoardError: errorCopy(error) });
     } finally {
@@ -177,7 +183,9 @@ const reportBoardMethods = {
         void this.boardMedia.loadReportPhotos(context.bindingId, result.report, view.photos);
       }
     } catch (error) {
-      if (current()) this.setData({ reportBoardError: errorCopy(error) });
+      if (!current()) return;
+      if (isInitialPasswordRequired(error)) followups.failure(error);
+      else this.setData({ reportBoardError: errorCopy(error) });
     } finally {
       if (current()) this.setData({ reportBoardLoading: false });
     }
@@ -202,7 +210,10 @@ const reportBoardMethods = {
   async refreshReportBoard() {
     this.setData({ reportBoardRefreshing: true });
     try {
-      if (this.followups.state.followupContext) await this.loadReportBoard();
+      if (this.followups.state.followupContext) {
+        await this.loadReportBoard();
+        if (this._options?.ownerDecision && !this._openedOwnerDecision) await this.openLinkedReportDecision();
+      }
       else {
         const app = getApp().globalData, current = app.bootstrap?.current;
         await this.showReportBoard(current?.context || app.userInfo || {}, current?.mode, this.followups.identity());
@@ -248,6 +259,7 @@ const reportBoardMethods = {
   },
   reportBoardProjects() { wx.navigateTo({ url: base + 'projects/projects' }); },
   askReportBoard() {
+    if (this.data.aiEntriesEnabled === false) return;
     const r = this.data.reportBoardView?.detail, scope = this._boardScope;
     if (!r?.ready || !scope?.leadId || !this.followups.current()) return;
     const query = { ownerReport: r.reportId, revision: r.revision, bindingId: this.followups.selected,
@@ -258,9 +270,31 @@ const reportBoardMethods = {
     const view = this.data.reportBoardView;
     const plan = [...(view?.decisions || []), ...(view?.decided || [])].find(item => item.id === e.currentTarget.dataset.id);
     if (!plan || !this.followups.current()) return;
-    this.setData({ reportBoardDecision: plan.id });
+    this.setData({ reportBoardDecision: plan.id, linkedReportDecision: false });
     this.openSheet('reportDecision');
     return this.plans.open(plan.conversationId, plan.id);
+  },
+  async openLinkedReportDecision() {
+    const scope = this._boardScope, session = this.followups.identity(), decisionId = this._options.ownerDecision;
+    if (!scope?.leadId || !validId(decisionId) || this.data.planBusy || !session) return;
+    const current = () => this._alive && this._shown && this._boardScope === scope && session === this.followups.identity();
+    try {
+      const { data } = await api.request('/miniprogram/construction/owner-sites/' + scope.projectId,
+        'GET', {}, { suppressUnauthorized: true });
+      if (!current()) return;
+      const { project, decision } = data;
+      if (project?.id !== scope.projectId || project.leadId !== scope.leadId || !project.progressAccess
+        || decision?.id !== decisionId || !validId(decision.conversationId)) {
+        this.setData({ reportBoardError: '这个待确认事项目前不可处理，请返回查看最新进展。' });
+        return;
+      }
+      this._openedOwnerDecision = decisionId;
+      this.setData({ reportBoardDecision: decisionId, linkedReportDecision: true });
+      this.openSheet('reportDecision');
+      return this.plans.open(decision.conversationId, decisionId);
+    } catch (error) {
+      if (current()) this.setData({ reportBoardError: errorCopy(error) });
+    }
   },
 };
 

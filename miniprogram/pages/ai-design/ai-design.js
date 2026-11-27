@@ -6,6 +6,7 @@ const {
   openSchemeStudio,
 } = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../utils/aiDesignAccess.js');
+const { aiEntriesEnabled, pendingAiEntryVisibility } = require('../../utils/ai-entries.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { roleForIdentity } = require('../../utils/identity-navigation.js');
 const {
@@ -225,7 +226,13 @@ Page({
     }
   },
 
-  onShow() {
+  async onShow() {
+    const pending = pendingAiEntryVisibility();
+    if (pending) await pending;
+    if (!aiEntriesEnabled()) {
+      wx.switchTab({ url: '/pages/index/index' });
+      return;
+    }
     const roleWorkbenchRole = this.getRoleWorkbenchRole();
     if (roleWorkbenchRole) {
       this.setData({ roleWorkbenchRole });

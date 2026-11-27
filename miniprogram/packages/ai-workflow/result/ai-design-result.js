@@ -1,6 +1,8 @@
 const aiService = require('../../../utils/aiDesignService.js');
 const nativePreview = require('../../../utils/native-preview');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
+const { pendingAiEntryVisibility } = require('../../../utils/ai-entries.js');
+const { brandShareCover } = require('../../../utils/share-cover');
 
 const MODE_TITLES = {
   reference_recreate: '参考图复刻',
@@ -97,7 +99,9 @@ Page({
     pageScrollTop: 0,
   },
 
-  onLoad(options) {
+  async onLoad(options) {
+    const pending = pendingAiEntryVisibility();
+    if (pending) await pending;
     if (!canAccessAIDesign()) {
       showAIDesignAccessDenied();
       wx.switchTab({ url: '/pages/index/index' });
@@ -390,7 +394,7 @@ Page({
     return {
       title: `${task.recipeName || task.modeTitle || 'AI 设计'}成果`,
       path: `/packages/ai-workflow/result/ai-design-result?id=${this.data.id}`,
-      imageUrl: task.resultImageUrl || '',
+      imageUrl: task.resultImageUrl || brandShareCover,
     };
   },
 });

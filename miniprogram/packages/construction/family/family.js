@@ -1,6 +1,7 @@
 const api = require('../../../utils/api.js');
 const { displayName, familyErrorText } = require('../lib/family-view');
 const { loadSiteFont } = require('../lib/site-font');
+const { familyLiveMethods, normalizeFamilyCameras } = require('./family-live');
 
 function sessionToken() {
   const app = getApp();
@@ -41,8 +42,16 @@ Page({
     progress: null,
     progressError: '',
     cameras: [],
+    cameraIndex: 0,
     cameraError: '',
+    liveSrc: '',
+    livePhase: 'idle',
+    liveMessage: '',
+    liveEpoch: 0,
+    liveSettings: false,
   },
+
+  ...familyLiveMethods(api, sessionToken),
 
   onLoad(query) {
     void loadSiteFont();
@@ -62,6 +71,7 @@ Page({
   },
 
   onShow() {
+    this._visible = true;
     const token = sessionToken();
     if (!this._started || token !== this._token) {
       this._started = true;
@@ -79,11 +89,20 @@ Page({
     this.load().finally(() => wx.stopPullDownRefresh());
   },
 
+  onHide() {
+    this._visible = false;
+    this.clearFamilyLive();
+    this.setData({ liveSettings: false });
+  },
+
   onUnload() {
+    this._visible = false;
     this._generation = (this._generation || 0) + 1;
+    this.clearFamilyLive();
   },
 
   async load() {
+    this.clearFamilyLive();
     const token = sessionToken();
     this._token = token;
     const g = this._generation = (this._generation || 0) + 1;
@@ -150,6 +169,8 @@ Page({
       });
       return;
     }
+    const isCurrentProject = this.data.projectId === item.id;
+    if (!isCurrentProject) this.clearFamilyLive();
     this.setData({
       projectId: item.id,
       projectName: item.name,
@@ -158,13 +179,15 @@ Page({
       error: '',
       progress: null,
       progressError: '',
-      cameras: [],
+      cameras: isCurrentProject ? this.data.cameras : [],
+      cameraIndex: isCurrentProject ? this.data.cameraIndex : 0,
       cameraError: '',
+      liveSettings: false,
     });
     await this.refreshProject();
   },
 
-  async refreshProject() {
+  async refreshProject(autoplay = true) {
     const g = this._generation;
     const projectId = this.data.projectId || this._projectId;
     if (!projectId) return;
@@ -177,13 +200,19 @@ Page({
     ]);
     if (g !== this._generation || request !== this._projectRequest) return;
     const currentProgress = progress.data?.progress;
+    const selected = this.data.cameras[this.data.cameraIndex]?.bindingId;
+    const items = normalizeFamilyCameras(cameras.data?.items);
+    const selectedIndex = items.findIndex(camera => camera.bindingId === selected);
+    if (selected && selectedIndex === -1) this.clearFamilyLive();
     this.setData({
       progress: currentProgress || null,
       progressError: progress.error ? familyErrorText(progress.error, '施工进度暂时无法查看。') : '',
-      cameras: cameras.data && Array.isArray(cameras.data.items) ? cameras.data.items : [],
+      cameras: items,
+      cameraIndex: Math.max(0, selectedIndex),
       cameraError: cameras.error ? familyErrorText(cameras.error, '直播入口暂时无法加载。') : '',
       loading: false,
     });
+    if (autoplay && this.data.livePhase === 'idle') void this.startFamilyLive();
   },
 
   selectProject(event) {
@@ -195,6 +224,10 @@ Page({
   openCamera() {
     const projectId = this.data.projectId;
     if (!this.data.cameras.length || !/^[1-9]\d*$/.test(projectId)) return;
-    wx.navigateTo({ url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(projectId) });
+    this.clearFamilyLive();
+    wx.navigateTo({
+      url: '/packages/construction/camera/camera?projectId=' + encodeURIComponent(projectId),
+      fail: () => wx.showToast({ title: '暂时无法打开兼容播放器', icon: 'none' }),
+    });
   },
 });

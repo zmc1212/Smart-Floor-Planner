@@ -402,6 +402,7 @@ export function customerProjectIndexToDto(project: CustomerProjectIndexItem) {
   });
   return {
     leadId: project.leadId.toString(),
+    communityName: text(project.communityName) || null,
     enterprise: { name: project.enterpriseName },
     status: project.status,
     terminationType: project.terminationType || null,

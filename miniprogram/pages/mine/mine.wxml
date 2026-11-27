@@ -30,6 +30,14 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
 
     <view class="account-section-title">账号</view>
     <view class="account-surface">
+      <view wx:if="{{activeRole === 'enterprise_admin'}}" class="account-row" hover-class="account-row-pressed" bindtap="onOpenStaffActivityCode" aria-role="button">
+        <image class="account-row-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
+        <view class="account-row-copy">
+          <view class="account-row-label">分享活动码</view>
+          <view class="account-row-helper">发给客户 · 扫码留资</view>
+        </view>
+        <view class="account-chevron"></view>
+      </view>
       <view class="account-row" hover-class="account-row-pressed" bindtap="onEditProfile" aria-role="button">
         <image class="account-row-icon" src="/images/mine-icons/edit.png" mode="aspectFit" />
         <view class="account-row-copy">

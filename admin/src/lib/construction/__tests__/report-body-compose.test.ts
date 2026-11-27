@@ -45,7 +45,9 @@ test('B. internal issue numbers and unsupported quantities are rejected instead 
 
 test('E. the general advice prompt forbids guarantee and receipt wording', () => {
   const messages = generalReportMessages({}, [project()], { projectId: '38', name: '泥木' });
-  const system = messages[0].content.map(part => part.type === 'text' ? part.text : '').join('\n');
+  const systemMessage = messages[0];
+  assert.ok(systemMessage?.role === 'system');
+  const system = systemMessage.content.map(part => part.type === 'text' ? part.text : '').join('\n');
   assert.match(system, /保证……安全/);
   assert.match(system, /已完成付款、已验收、已批准、已联系/);
 });

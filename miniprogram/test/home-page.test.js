@@ -24,6 +24,10 @@ function createPage(definition, data = {}) {
   };
 }
 
+function showCustomerChat(page) {
+  page.onXiaokEntryReady({ currentTarget: { dataset: { panel: 'customer' } } });
+}
+
 test('未登录访问首页时打开小K手账', () => {
   const definition = loadHomePageDefinition();
   const originalWx = global.wx;
@@ -31,7 +35,7 @@ test('未登录访问首页时打开小K手账', () => {
   const switchedTabs = [];
   let tabBarSynced = false;
 
-  global.getApp = () => ({ globalData: {} });
+  global.getApp = () => ({ globalData: { aiEntriesEnabled: true } });
   global.wx = {
     getStorageSync: () => '',
     switchTab: ({ url }) => switchedTabs.push(url),
@@ -48,6 +52,9 @@ test('未登录访问首页时打开小K手账', () => {
 
     assert.deepEqual(switchedTabs, []);
     assert.equal(page.data.roleWorkbenchRole, 'customer');
+    assert.equal(page.data.customerTab, 'service');
+    assert.equal(page.data.activateXiaokPanel, true);
+    showCustomerChat(page);
     assert.equal(page.data.customerTab, 'xiaok');
     assert.equal(tabBarSynced, true);
   } finally {
@@ -83,6 +90,7 @@ test('客户首页在登录态恢复后原地挂载小K', async (t) => {
   const page = createPage(loadHomePageDefinition());
   let finishHydration;
   const globalData = {
+    aiEntriesEnabled: true,
     token: 'stored-token',
     sessionHydrationPromise: new Promise(resolve => { finishHydration = resolve; }),
   };
@@ -105,13 +113,14 @@ test('客户首页在登录态恢复后原地挂载小K', async (t) => {
   await shown;
 
   assert.equal(page.data.roleWorkbenchRole, 'customer');
+  showCustomerChat(page);
   assert.equal(page.data.customerTab, 'xiaok');
   assert.deepEqual(launches, []);
 });
 
 test('登录态恢复未取得角色时回到小K入口', async (t) => {
   const page = createPage(loadHomePageDefinition());
-  const globalData = { token: 'stored-token' };
+  const globalData = { token: 'stored-token', aiEntriesEnabled: true };
   globalData.sessionHydrationPromise = Promise.resolve().then(() => {
     globalData.sessionHydrationPromise = null;
     globalData.sessionRecovery = { retryable: true, reason: 'bootstrap_unavailable' };
@@ -126,12 +135,13 @@ test('登录态恢复未取得角色时回到小K入口', async (t) => {
   await page.onShow();
 
   assert.equal(page.data.roleWorkbenchRole, 'customer');
+  showCustomerChat(page);
   assert.equal(page.data.customerTab, 'xiaok');
 });
 
 test('家人链接进入指定工地且推广码进入小K', (t) => {
   const definition = loadHomePageDefinition();
-  const globalData = { token: 'customer-token', userInfo: { role: 'user' } };
+  const globalData = { token: 'customer-token', userInfo: { role: 'user' }, aiEntriesEnabled: true };
   const { getApp } = global;
   t.after(() => { global.getApp = getApp; });
   global.getApp = () => ({ globalData });
@@ -145,6 +155,7 @@ test('家人链接进入指定工地且推广码进入小K', (t) => {
   const promotion = createPage(definition);
   const promotionCode = 'p'.repeat(32);
   promotion.onLoad({ promotionCode });
+  showCustomerChat(promotion);
   assert.equal(promotion.data.roleWorkbenchRole, 'customer');
   assert.equal(promotion.data.customerTab, 'xiaok');
   assert.equal(promotion.data.promotionCode, promotionCode);

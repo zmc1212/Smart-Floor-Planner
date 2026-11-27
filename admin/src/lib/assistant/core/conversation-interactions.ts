@@ -35,8 +35,8 @@ export function readableReply(conversation: Row, message: Row, projected: Projec
     && !projected.planDecision && !projected.publicConsent && !projected.constructionClosure && !projected.siteWatch;
 }
 
-export function replyControls(message: Row, projected: Projection, feedback: Feedback | null) {
-  return { feedback, readAloud: readAloudAvailable(replyText(projected.content)),
+export function replyControls(actor: ActorContext, message: Row, projected: Projection, feedback: Feedback | null) {
+  return { feedback, readAloud: !isPublicAssistantScope(actor) && readAloudAvailable(replyText(projected.content)),
     ...(message.purpose === 'reply.regenerate' && message.reply_to_message_id ? { versionOf: String(message.reply_to_message_id) } : {}) };
 }
 
@@ -93,7 +93,7 @@ export async function ownedReply(repo: AssistantRepository, conversation: Row, m
 export async function regenerationSource(repo: AssistantRepository, conversation: Row, messageId?: string) {
   const actor = repo.actor;
   const entry = conversation.entry_snapshot as Row;
-  if (actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation' || conversation.status !== 'open' || conversation.mode !== 'ai'
+  if (actor.principal.kind !== 'user' || isPublicAssistantScope(actor) || conversation.purpose !== 'customer_consultation' || conversation.status !== 'open' || conversation.mode !== 'ai'
     || entry.activePublicSite || entry.retentionRedacted || entry.requirementReviewMode || entry.kind === 'reference_content') return null;
   const cid = String(conversation.id);
   const message = await one(repo.tx, sql`select m.*,r.trigger_message_id,r.purpose as run_purpose from app.assistant_messages m

@@ -30,7 +30,7 @@
       <view wx:if="{{feedback}}" class="notice" role="status">{{feedback}}</view>
       <text class="work-reference-note">作品供方向参考，同小区不代表同户型；实拍不表示当前可预约参观。</text>
     </block>
-    <button wx:if="{{unavailable || (!loading && !work)}}" class="secondary-action" bindtap="continueChat">{{conversationId ? '回到原咨询' : '返回首页'}}</button>
+    <button wx:if="{{unavailable || (!loading && !work)}}" class="secondary-action" bindtap="continueChat">{{aiEntriesEnabled && conversationId ? '回到原咨询' : '返回首页'}}</button>
   </view>
   <view wx:if="{{work && !loading && !unavailable && !sharedPreview}}" class="notebook-actions work-actions"><button class="studio-consult" bindtap="openDesigner">设计师主页 ↗</button><button class="studio-contact" bindtap="openPublicContact">联系设计师</button></view>
   <template is="portfolio-contact-sheet" data="{{contactSheetVisible, contactSheetOpen, contactAuthor, portraitPath, publicContact, contactBusy, contactQrPath, contactError, readOnly, pendingAction, busy, error}}" />

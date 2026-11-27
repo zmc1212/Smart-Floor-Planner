@@ -1,0 +1,74 @@
+:host { display: block; }
+.frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: radial-gradient(ellipse at 46% 38%, #2b5748, #15392f 85%);
+  color: #fffdf5;
+}
+.frame-fill { height: 100%; aspect-ratio: auto; }
+.video, .overlay, .poster { position: absolute; inset: 0; width: 100%; height: 100%; }
+.video { z-index: 0; }
+.overlay { z-index: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 10px; }
+.feedback-copy { padding: 0 48px; text-align: center; font-size: 14px; line-height: 20px; text-shadow: 0 1px 2px #09261f; }
+.play {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid #e4ebdaa0;
+  background: #093a2dde;
+  box-shadow: inset 0 0 0 3px #093a2d, inset 0 0 0 4px #cde0c754, 0 2px 7px #122c2466;
+}
+.triangle { width: 0; height: 0; margin-left: 4px; border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-left: 18px solid #fffdf5; }
+.play.is-disabled { opacity: .52; }
+.icon-button {
+  position: absolute;
+  z-index: 2;
+  bottom: 2px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-button.is-disabled { opacity: .52; }
+.stop { left: 2px; }
+.fullscreen { right: 2px; }
+.audio { right: 46px; }
+.icon-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid #e7ece070;
+  background: #09261fbf;
+}
+.glyph { width: 19px; height: 19px; }
+.square { width: 10px; height: 10px; border-radius: 1.5px; background: #fffdf5; }
+
+.frame-compact .play {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.frame-compact .play::before {
+  content: '';
+  position: absolute;
+  inset: 2.5px;
+  border: 1px solid #e4ebda80;
+  border-radius: 50%;
+  background: #194437c9;
+}
+.frame-compact .triangle { position: relative; border-top-width: 9px; border-bottom-width: 9px; border-left-width: 15px; }
+.frame-compact .icon-disc { width: 24px; height: 24px; border: 0; background: #173e3599; }
+.frame-compact .glyph { width: 18px; height: 18px; }

@@ -1,3 +1,5 @@
+const { aiEntriesEnabled, isAIDesignRoute } = require('./ai-entries.js');
+
 const ROLE_LANDING_PATHS = Object.freeze({
   customer: '/pages/index/index',
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
@@ -179,6 +181,7 @@ function fallbackRoleCapabilities(identity) {
 
 function canAccessRoute(route, bootstrapOrIdentity) {
   const path = routePath(route);
+  if (!aiEntriesEnabled() && isAIDesignRoute(path)) return false;
   const required = ROUTE_CAPABILITIES[path];
   if (!required) return true;
   const bootstrap = bootstrapOrIdentity && bootstrapOrIdentity.current

@@ -1,0 +1,62 @@
+/* Approved 09 personal settings shared by standalone chat and the home panel. */
+.notebook-chat {
+  .followup-personal-settings {
+    z-index: 0;
+    overflow: hidden;
+    padding: 28px 24px calc(12px + env(safe-area-inset-bottom)) 21px;
+    background: #f8f5ea;
+
+    &.is-embedded { padding-bottom: 12px; }
+    &.is-compact { height: auto; min-height: 0; }
+
+    > .followup-settings-paper { position: absolute; z-index: -1; inset: 0; width: 100%; height: 100%; opacity: .28; pointer-events: none; }
+    > .followup-grip { top: 10px; left: calc(50% - 27px); width: 39px; height: 5px; background: #bcbab1; }
+    > .followup-close { top: 8px; right: 8px; }
+    > .followup-detail-title { flex: none; font-size: 32px; line-height: 44px; margin: 0 0 4px; }
+    > .followup-settings-scope { flex: none; margin: 4px 0 0; }
+    > .followup-settings-scroll { margin-top: 16px; }
+    > .followup-settings-feedback, > .followup-text-action { flex: none; }
+    > .followup-settings-status { flex: none; margin: 4px 0 0; }
+    > .followup-settings-empty { color: #526e62; font-size: 14px; margin: 5px 0 10px; }
+
+    .followup-settings-project { flex: none; height: 44px; display: flex; flex-direction: column; justify-content: center; }
+    .followup-settings-picker {
+      display: flex; align-items: center; gap: 12px; height: 39px; box-sizing: border-box;
+      padding: 0 12px; border: 1rpx solid #789985; border-radius: 7px;
+      color: #073c30; font-size: 16px;
+    }
+    .followup-settings-picker .chat-image { width: 23px; height: 23px; flex: none; }
+    .followup-settings-project-name {
+      flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-family: 'Chat Serif','Songti SC',SimSun,serif; font-weight: 700;
+    }
+
+    .followup-settings-group { border-bottom: 1rpx solid #88a58a; padding-top: 17px; }
+    .followup-settings-group > .fabric-label { margin: 0 0 3px -2px; transform: rotate(-6deg); padding: 2px 11px; font-size: 14px; line-height: 20px; }
+    .followup-settings-reception { border-top: 1rpx solid #88a58a; padding: 2px 0 4px; }
+    .followup-settings-reception > .fabric-label { margin-bottom: 5px; }
+    .followup-settings-icon { display: block; width: 21px; height: 21px; flex: none; }
+    .followup-preference-row {
+      display: flex; align-items: center; gap: 11px; min-height: 45px; padding: 0 6px;
+      box-sizing: border-box; border-bottom: 1rpx solid #c8d2bf; color: #073c30; font-size: 16px;
+    }
+    .followup-preference-row > .chat-text { flex: 1; }
+    .followup-preference-row .chat-switch { flex: none; transform: scale(.78); transform-origin: right center; }
+    .followup-preference-row:last-child, .followup-settings-group .followup-setting-row:last-child { border-bottom: none; }
+    .followup-setting-row { width: 100%; gap: 11px; min-height: 64px; padding: 7px 4px 7px 6px; color: #073c30; border-color: #c8d2bf; font-size: 16px; line-height: 1.35; }
+    .followup-setting-row .followup-chevron { transform: rotate(-45deg); margin: 0 0 0 2px; }
+    .followup-setting-row.is-disabled { opacity: .55; }
+    .followup-setting-delete { color: #c32621; }
+    .followup-settings-row-copy { flex: 1; min-width: 0; font-weight: 600; }
+    .followup-settings-row-copy .followup-caption { font-size: 12px; line-height: 1.4; margin-top: 2px; font-weight: 400; }
+    .followup-settings-note { margin: 9px 0 0; }
+    .followup-settings-wechat { min-height: 44px; margin-top: 8px; border-top: 1rpx solid #c8d2bf; }
+
+    > .followup-settings-save {
+      display: flex; align-items: center; width: calc(100% + 7px); height: 44px;
+      margin: 12px 0 0 -7px; background: transparent; font-size: 15px;
+    }
+    .followup-settings-save-face { flex: 1; line-height: 38px; border-radius: 6px; background: #07533e; color: #fffdf4; }
+    .followup-settings-save.is-disabled .followup-settings-save-face { background: #d6dcc4; color: #65755f; }
+  }
+}

@@ -1,156 +1,268 @@
-<view class="owner-site-page">
-  <image class="site-paper-grain" src="../assets/notebook/capture-v3-paper.png" mode="aspectFill" aria-hidden="true" />
-  <view class="book-spine" aria-hidden="true">
+<import src="../notebook-v2.wxml" />
+<view class="owner-site-page {{renovationOverview && !siteDetail ? (renovation.ordinaryConstruction ? 'renovation-home renovation-home-construction' : 'renovation-home') : project ? 'owner-site-v2' : ''}}">
+  <image wx:if="{{project && (!renovationOverview || siteDetail)}}" class="notebook-cover-v2" src="../assets/notebook/v2-notebook-binding.jpg" mode="aspectFill" aria-hidden="true" />
+  <image wx:else class="site-paper-grain" src="../assets/notebook/capture-v3-paper.png" mode="aspectFill" aria-hidden="true" />
+  <view wx:if="{{project && (!renovationOverview || siteDetail)}}" class="site-cover-light" aria-hidden="true" />
+  <view wx:if="{{!project || renovationOverview && !siteDetail}}" class="book-spine" aria-hidden="true">
     <view class="book-stitch" style="top: 84px;" />
     <view class="book-stitch" style="top: 37%;" />
     <view class="book-stitch" style="top: 61%;" />
     <view class="book-stitch" style="bottom: 34px;" />
   </view>
-  <view class="site-nav" style="padding-top: {{navTop}}px; padding-right: {{navRight}}px; min-height: {{navHeight}}px;">
-    <text class="book-nav-title">我家工地</text>
+  <view class="site-nav {{renovationOverview && siteDetail ? 'site-nav-detail' : ''}}" style="padding-top: {{navTop}}px; padding-right: {{navRight}}px; min-height: {{navHeight}}px;">
+    <button wx:if="{{renovationOverview && siteDetail}}" class="renovation-back" bindtap="closeSiteDetail" aria-label="返回我的装修">
+      <image class="renovation-back-icon" src="../assets/arrow-left.png" mode="aspectFit" aria-hidden="true" />
+    </button>
+    <text class="book-nav-title">{{renovationOverview && !siteDetail ? '我的装修' : '我家工地'}}</text>
   </view>
-  <scroll-view class="site-scroll" scroll-y="{{!familyVisible}}" enhanced show-scrollbar="{{false}}">
+  <scroll-view class="site-scroll" scroll-y="{{!familyVisible && !renovationContactOpen}}" enhanced show-scrollbar="{{false}}"
+    scroll-into-view="{{siteDetail && scheduleOpen ? 'site-schedule-row' : ''}}">
     <view class="site-content">
-      <view wx:if="{{!needsLogin && (error || loading || projectLoading || projectError)}}" class="site-paper site-state">
-        <text>{{error || projectError || '正在读取工地…'}}</text>
-        <button wx:if="{{error || projectError}}" class="text-action" bindtap="retryProject">重新读取</button>
+      <view wx:if="{{!needsLogin && (error || loading || projectLoading || projectError || renovationLoading || renovationError)}}" class="site-paper site-state">
+        <text>{{error || projectError || renovationError || (renovationOverview && !siteDetail ? '正在读取装修资料…' : '正在读取工地…')}}</text>
+        <button wx:if="{{error || projectError || renovationError}}" class="text-action" bindtap="retryProject">重新读取</button>
+      </view>
+      <view wx:elif="{{renovationOverview && !siteDetail && renovation}}" class="renovation-content">
+        <view wx:if="{{!renovation.ordinaryConstruction || renovationCards.length > 1}}" class="renovation-project">
+          <picker wx:if="{{renovationCards.length > 1}}" range="{{renovationCards}}" range-key="name" value="{{renovationIndex}}" bindchange="selectRenovation" aria-label="切换装修项目">
+            <view class="renovation-project-picker"><text>{{renovationCards[renovationIndex].name}}</text><view class="site-chevron site-chevron-down" /></view>
+          </picker>
+          <text wx:else>{{renovationCards[renovationIndex].name}}</text>
+        </view>
+        <view wx:if="{{renovation.step !== -1 && !renovation.ordinaryConstruction}}" class="renovation-steps" aria-label="装修服务阶段">
+          <view class="renovation-steps-track"><view style="width: {{renovation.stepFill * 33.333}}%;" /></view>
+          <view wx:for="{{renovation.steps}}" wx:key="label" class="renovation-step is-{{item.tone}}">
+            <view class="renovation-step-dot" aria-hidden="true"><view /></view>
+            <text>{{item.label}}</text>
+          </view>
+        </view>
+        <view class="renovation-paper renovation-action-card {{renovation.art ? 'renovation-booking' : ''}} {{renovation.scheme ? 'renovation-scheme' : ''}} {{renovation.ordinaryConstruction ? 'renovation-progress-card' : renovation.step === 3 ? 'renovation-construction' : ''}}">
+          <view wx:if="{{renovation.ordinaryConstruction}}" class="renovation-card-top">
+            <text class="renovation-card-title">{{renovation.title}}</text>
+            <text class="renovation-chip">{{renovation.badge}}</text>
+          </view>
+          <block wx:else>
+            <view class="renovation-card-top">
+              <text class="renovation-chip {{renovation.tone === 'warm' ? 'renovation-chip-warm' : ''}}">{{renovation.badge}}</text>
+              <text wx:if="{{renovation.stage && renovation.action !== 'site'}}" class="renovation-stage">{{renovation.stage}}</text>
+            </view>
+            <view class="renovation-card-copy">
+              <text class="renovation-card-title">{{renovation.title}}</text>
+              <text wx:if="{{renovation.subtitle}}" class="renovation-card-subtitle">{{renovation.subtitle}}</text>
+              <text wx:if="{{renovation.note}}" class="renovation-card-note">{{renovation.note}}</text>
+            </view>
+          </block>
+          <image wx:if="{{renovation.art}}" class="renovation-booking-art" src="../assets/notebook/renovation/schedule-guide.png" mode="aspectFit" aria-hidden="true" />
+          <view wx:if="{{renovation.scheme}}" class="renovation-visual">
+            <image wx:if="{{renovationCover && !renovationCoverError}}" class="renovation-effect-image" src="{{renovationCover}}" mode="aspectFill" aria-label="已发布方案效果图" binderror="renovationCoverFailed" />
+            <button wx:elif="{{renovationCoverError}}" class="text-action" bindtap="loadRenovationCover">效果图暂时无法读取 · 重试</button>
+            <text wx:else>{{renovationCoverLoading ? '正在读取效果图…' : '打开方案查看详情'}}</text>
+          </view>
+          <button class="renovation-primary" bindtap="runRenovationAction">
+            <text>{{renovation.label}}</text><image class="renovation-primary-glyph" src="../assets/notebook/renovation/arrow.png" mode="aspectFit" aria-hidden="true" />
+          </button>
+        </view>
+        <view wx:if="{{renovation.step === 3 && !renovation.ordinaryConstruction}}" class="renovation-paper renovation-digest">
+          <view class="renovation-digest-head"><text>最近施工进展</text><text wx:if="{{renovation.date}}" class="renovation-meta">{{renovation.date}}</text></view>
+          <text class="renovation-digest-line">{{renovation.digest}}</text>
+          <button class="renovation-report" bindtap="openReport"><text>查看日报与周报</text><view class="site-chevron" /></button>
+        </view>
+        <view wx:if="{{renovation.rows.length}}" class="renovation-rows">
+          <button wx:for="{{renovation.rows}}" wx:key="key" class="renovation-row renovation-row-{{item.key}}" data-action="{{item.key}}" bindtap="runRenovationAction" disabled="{{item.key === 'floorplan' && renovationFloorLoading}}">
+            <image class="renovation-row-glyph" src="../assets/notebook/renovation/{{item.icon}}.png" mode="aspectFit" aria-hidden="true" />
+            <view wx:if="{{item.summary}}" class="renovation-row-copy">
+              <text class="renovation-row-label">{{item.label}}</text>
+              <text class="renovation-row-summary">{{item.summary}}</text>
+            </view>
+            <text wx:else class="renovation-row-label">{{item.key === 'floorplan' && renovationFloorLoading ? '正在读取户型图…' : item.label}}</text>
+            <text wx:if="{{item.meta}}" class="renovation-meta">{{item.meta}}</text><view class="site-chevron" aria-hidden="true" />
+            <view wx:if="{{renovation.ordinaryConstruction}}" class="renovation-row-rule" aria-hidden="true" />
+          </button>
+        </view>
       </view>
       <view wx:elif="{{needsLogin || (!project && !familyProjects.length)}}" class="site-empty">
         <view class="site-empty-art" aria-hidden="true">
           <image wx:if="{{needsLogin}}" src="../assets/notebook/owner-site-empty-guest.png" mode="aspectFit" />
           <image wx:else src="../assets/notebook/owner-site-empty-signed-in.png" mode="aspectFit" />
         </view>
-        <text class="site-empty-heading">{{needsLogin ? '打开你的施工手账' : '暂无关联工地'}}</text>
+        <text class="site-empty-heading">{{renovationOverview && !siteDetail ? (needsLogin ? '打开你的装修手账' : '还没有关联装修服务') : (needsLogin ? '打开你的施工手账' : '暂无关联工地')}}</text>
         <view class="site-empty-copy {{needsLogin ? '' : 'site-empty-copy-signed-in'}}">
-          <text>{{needsLogin ? '登录后可查看施工进度、' : '已有工地？请联系装修团队开通权限。'}}</text>
-          <text>{{needsLogin ? '现场照片和工地日报。' : '收到家人邀请，可从微信邀请卡加入。'}}</text>
+          <text>{{renovationOverview && !siteDetail ? (needsLogin ? '登录后可查看量房预约、设计方案和施工进展。' : '已有装修服务？请联系顾问接续。') : (needsLogin ? '登录后可查看施工进度、' : '已有工地？请联系装修团队开通权限。')}}</text>
+          <text wx:if="{{!needsLogin || !renovationOverview || siteDetail}}">{{needsLogin ? '现场照片和工地日报。' : '收到家人邀请，可从微信邀请卡加入。'}}</text>
         </view>
         <button wx:if="{{needsLogin}}" class="site-empty-action site-empty-login" hover-class="site-empty-action-pressed" bindtap="login">
           <text>去登录</text>
           <view class="site-chevron" aria-hidden="true" />
         </button>
         <button wx:else class="site-empty-action site-empty-refresh" hover-class="site-empty-action-pressed" bindtap="retryProject">
-          <text>刷新工地</text>
+          <text>{{renovationOverview && !siteDetail ? '刷新装修服务' : '刷新工地'}}</text>
           <image class="site-empty-refresh-icon" src="/images/ai-studio-icons-v3/refresh.png" mode="aspectFit" aria-hidden="true" />
         </button>
       </view>
       <block wx:else>
         <block wx:if="{{project}}">
-        <picker wx:if="{{projects.length > 1}}" range="{{projects}}" range-key="name" value="{{selectedIndex}}" bindchange="selectProject">
-          <view class="site-project-selector"><text class="site-project-title">{{project.name}}</text><view class="site-chevron site-chevron-down" /></view>
-        </picker>
-        <text wx:else class="site-project-title">{{project.name}}</text>
-        <view class="site-stage">
-          <view class="site-stage-current">
-            <button wx:if="{{schedule.nodes.length}}" class="site-stage-control" bindtap="toggleSchedule" aria-label="查看施工排期" aria-expanded="{{scheduleOpen}}">
-              <view class="site-stage-label">当前阶段<view class="site-chevron {{scheduleOpen ? 'site-chevron-up' : 'site-chevron-down'}}" /></view>
-            </button>
-            <text wx:else class="site-stage-label">当前阶段</text>
-            <text class="site-stage-value">{{project.stageName || (project.progressAccess ? '待更新' : '暂无可查看阶段')}}</text>
-          </view>
-          <button wx:if="{{scheduleError}}" class="site-schedule-retry" bindtap="readSchedule">{{scheduleError}} · 重试</button>
-          <text wx:elif="{{project.progressAccess}}" class="site-schedule-status site-schedule-{{schedule.color || 'gray'}}">{{scheduleLoading ? '读取排期…' : schedule.label}}</text>
-        </view>
-        <view wx:if="{{scheduleOpen && schedule.nodes.length}}" class="site-paper site-schedule">
-          <view wx:for="{{schedule.nodes}}" wx:key="key" class="site-schedule-node">
-            <view class="site-schedule-dot site-schedule-dot-{{item.color}}" />
-            <view class="site-schedule-node-copy">
-              <text>{{item.roomName ? item.roomName + ' · ' : ''}}{{item.stageName}}</text>
-              <text class="site-meta">{{item.label}}<text wx:if="{{item.timeText && item.timeText !== item.label}}"> · {{item.timeText}}</text><text wx:elif="{{!item.timeText && item.plannedStart}}"> · {{item.plannedStart}} 至 {{item.plannedEnd}}</text></text>
+          <view class="site-project-head">
+            <view class="site-project-identity">
+              <picker wx:if="{{projects.length > 1}}" range="{{projects}}" range-key="name" value="{{selectedIndex}}" bindchange="selectProject" aria-label="切换装修项目">
+                <view class="site-project-selector">
+                  <text class="site-project-name">{{project.communityName || project.name}}</text>
+                  <text wx:if="{{project.areaLabel}}" class="site-project-area">{{project.areaLabel}}</text>
+                  <image class="site-picker-arrow" src="../assets/notebook/chevron.png" mode="aspectFit" aria-hidden="true" />
+                </view>
+              </picker>
+              <view wx:else class="site-project-selector">
+                <text class="site-project-name">{{project.communityName || project.name}}</text>
+                <text wx:if="{{project.areaLabel}}" class="site-project-area">{{project.areaLabel}}</text>
+              </view>
             </view>
+            <button wx:if="{{project.progressAccess}}" class="site-more-trigger" bindtap="toggleSiteMore" aria-expanded="{{siteMoreOpen}}">
+              <text>更多</text><image class="site-picker-arrow {{siteMoreOpen ? 'site-more-arrow-open' : ''}}" src="../assets/notebook/chevron.png" mode="aspectFit" aria-hidden="true" />
+            </button>
           </view>
-        </view>
 
-        <button wx:if="{{camera}}" class="site-paper site-camera" bindtap="openCamera" aria-label="查看监控">
-          <view class="site-camera-frame">
-            <image wx:if="{{camera.src}}" class="site-camera-image" src="{{camera.src}}" mode="aspectFill"
-              binderror="cameraImageFailed" data-date="{{camera.dateLabel}}" />
-            <text wx:else class="site-camera-placeholder">监控封面暂不可用</text>
-            <view class="site-camera-play" aria-hidden="true"><view class="site-play-triangle" /></view>
+          <template wx:if="{{notebookTask}}" is="notebook-task-v2" data="{{task: notebookTask}}" />
+          <view wx:if="{{project.progressAccess && siteMoreOpen}}" class="site-paper site-utility">
+            <button class="site-utility-row site-family" bindtap="openFamilySheet" aria-label="家人查看，邀请与管理">
+              <image class="notebook-row-icon notebook-ink-icon" src="../assets/notebook/v2-person.png" mode="aspectFit" aria-hidden="true" />
+              <text class="notebook-row-copy">家人查看</text><view class="site-family-action"><text>邀请与管理</text><image class="site-link-arrow site-row-arrow" src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" /></view>
+            </button>
+            <button class="site-utility-row site-reminders-toggle" bindtap="toggleSiteReminders" aria-expanded="{{remindersOpen}}">
+              <text>当前提醒</text><image class="site-link-arrow site-row-arrow {{remindersOpen ? 'site-link-arrow-down' : ''}}" src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" />
+            </button>
+            <block wx:if="{{remindersOpen}}">
+              <text wx:if="{{remindersLoading}}" class="site-meta site-report-empty">正在读取提醒…</text>
+              <view wx:elif="{{remindersError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{remindersError}}</text><button class="text-action" bindtap="loadSiteReminders">重试</button></view>
+              <text wx:elif="{{!siteReminders.length}}" class="site-meta site-report-empty">暂无已送达的提醒</text>
+              <view wx:for="{{siteReminders}}" wx:key="reminderId" class="site-reminder-row">
+                <button class="site-utility-row site-reminder-item" bindtap="openSiteReminder" data-id="{{item.reminderId}}" aria-expanded="{{reminderDetail.reminderId === item.reminderId}}">
+                  <view class="site-reminder-heading"><text>{{item.title}}</text><text wx:if="{{item.dateLabel}}" class="site-meta">{{item.dateLabel}}</text></view>
+                  <text class="site-reminder-status {{item.readAt ? 'site-meta' : 'site-reminder-unread'}}">{{item.readAt ? '已读' : '未读'}}</text>
+                </button>
+                <block wx:if="{{reminderSelected === item.reminderId}}">
+                  <text wx:if="{{reminderReading}}" class="site-meta site-report-empty">正在读取提醒…</text>
+                  <view wx:elif="{{reminderReadError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{reminderReadError}}</text><button class="text-action" bindtap="openSiteReminder" data-id="{{item.reminderId}}">重试</button></view>
+                  <text wx:elif="{{reminderDetail}}" class="site-reminder-body" user-select>{{reminderDetail.body}}</text>
+                </block>
+              </view>
+            </block>
+            <button wx:if="{{liveApplication && notebookTask.kind !== 'live'}}" class="site-utility-row site-live-progress" bindtap="openLiveApplication">
+              <view class="notebook-row-copy">
+                <text>直播公开进度 · {{liveApplication.alias}}</text>
+                <text class="site-meta">{{liveApplication.statusLabel}}</text>
+              </view>
+              <image class="site-link-arrow site-row-arrow" src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" />
+            </button>
+            <view wx:if="{{liveError}}" class="site-utility-row">
+              <text>{{liveError}}</text><button class="text-action" bindtap="retryLiveApplication">重新读取</button>
+            </view>
+            <button wx:if="{{report && aiEntriesEnabled}}" class="site-utility-row" bindtap="askXiaok" disabled="{{!report.bindingId || !project.leadId}}">
+              <text>问小K</text><image class="site-link-arrow site-row-arrow" src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" />
+            </button>
           </view>
-          <view class="site-camera-footer">
-            <view class="site-camera-meta"><text class="site-camera-name">{{camera.name}}</text><text wx:if="{{camera.dateLabel}}" class="site-meta">{{camera.dateLabel}}</text></view>
-            <view class="site-camera-cta"><text>查看监控</text><view class="site-chevron" /></view>
-          </view>
-        </button>
-        <view wx:else class="site-paper site-state site-camera-state">
-          <text>{{cameraLoading ? '正在读取监控…' : (cameraError || '工地监控尚未开通')}}</text>
-          <button wx:if="{{cameraError}}" class="text-action" bindtap="retryCover">重新读取</button>
-        </view>
 
-        <view wx:if="{{liveApplication.canDecide || report.pending.length}}" class="site-paper site-pending">
-          <button wx:if="{{liveApplication.canDecide}}" class="site-pending-row site-live-application" bindtap="openLiveApplication">
-            <text class="site-pending-label">待我确认</text>
-            <text class="site-row-title">直播公开申请 · {{liveApplication.alias}}</text><view class="site-chevron" />
-          </button>
-          <button wx:for="{{report.pending}}" wx:key="key" class="site-pending-row" data-record="{{item.recordId}}" bindtap="openReport">
-            <text wx:if="{{index === 0 && !liveApplication.canDecide}}" class="site-pending-label">现场待沟通</text>
-            <text class="site-row-title">{{item.text}}</text><view class="site-chevron" />
-          </button>
-        </view>
-        <view wx:if="{{liveApplication && !liveApplication.canDecide}}" class="site-paper site-live-progress">
-          <button class="site-pending-row" bindtap="openLiveApplication">
-            <view><text>直播公开进度 · {{liveApplication.alias}}</text><text class="site-meta">{{liveApplication.statusLabel}}</text></view>
-            <view class="site-chevron" />
-          </button>
-        </view>
-        <view wx:if="{{liveError}}" class="site-paper site-state">
-          <text>{{liveError}}</text><button class="text-action" bindtap="retryLiveApplication">重新读取</button>
-        </view>
+          <block wx:if="{{project.progressAccess}}">
+            <view class="site-progress-card">
+              <image class="notebook-task-paper site-progress-paper" src="../assets/notebook/v2-task-paper.png" mode="scaleToFill" aria-hidden="true" />
+              <text class="notebook-task-tab site-progress-tab">施工进展</text>
+              <view class="site-current-stage">
+                <text class="site-progress-title">{{project.stageName || '阶段待更新'}}</text>
+                <text wx:if="{{schedule.stageStatus}}" class="site-progress-status">{{schedule.stageStatus}}</text>
+              </view>
+              <view wx:if="{{report.progress[0]}}" class="site-progress-update">
+                <view class="site-progress-update-copy">
+                  <text class="site-progress-label">最近进展</text>
+                  <text class="site-progress-excerpt">{{report.progress[0]}}</text>
+                  <text wx:if="{{report.dateLabel}}" class="site-meta">{{report.dateLabel}}</text>
+                </view>
+                <image wx:if="{{reportPhoto}}" class="site-report-photo" src="{{reportPhoto}}" mode="aspectFill" aria-label="日报现场照片" />
+              </view>
+              <view wx:if="{{nextStep || schedule.next}}" class="site-progress-next">
+                <text class="site-progress-label">下一步</text>
+                <button wx:if="{{nextStep}}" class="site-progress-next-copy" data-record="{{nextStep.recordId}}" bindtap="openReport" aria-label="{{nextStep.text + '，查看现场原记录'}}">
+                  <text class="site-progress-next-text">{{nextStep.text}}</text>
+                </button>
+                <text wx:else class="site-progress-next-copy">{{(schedule.next.timeText || schedule.next.date) + ' · ' + schedule.next.stageName}}</text>
+              </view>
+            </view>
 
-        <view class="site-paper site-report">
-          <view class="site-report-heading"><text class="fabric site-report-label">最新日报</text><text class="site-meta">{{report.dateLabel}}</text></view>
-          <view wx:if="{{report.progress.length}}" class="site-report-lines">
-            <view wx:for="{{report.progress}}" wx:key="index" class="site-report-line"><view class="site-bullet" /><text>{{item}}</text></view>
-          </view>
-          <text wx:else class="site-meta site-report-empty">{{report ? '这份日报暂无进展摘要' : '暂无已发布的日报'}}</text>
-          <view wx:if="{{project.progressAccess}}" class="site-report-actions">
-            <button wx:if="{{report}}" class="site-report-ask" bindtap="askXiaok" disabled="{{!report.bindingId || !project.leadId}}">问小K</button>
-            <view wx:if="{{report}}" class="site-report-divider" aria-hidden="true"></view>
-            <button class="site-report-link text-action" bindtap="openReport"><text>查看日报与周报</text><view class="site-chevron" /></button>
-          </view>
-        </view>
-
-        <view wx:if="{{project.progressAccess}}" class="site-paper site-utility">
-          <button class="site-utility-row site-reminders-toggle" bindtap="toggleSiteReminders" aria-expanded="{{remindersOpen}}">
-            <text>当前提醒</text><view class="site-chevron {{remindersOpen ? 'site-chevron-down' : ''}}" />
-          </button>
-          <block wx:if="{{remindersOpen}}">
-            <text wx:if="{{remindersLoading}}" class="site-meta site-report-empty">正在读取提醒…</text>
-            <view wx:elif="{{remindersError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{remindersError}}</text><button class="text-action" bindtap="loadSiteReminders">重试</button></view>
-            <text wx:elif="{{!siteReminders.length}}" class="site-meta site-report-empty">暂无已送达的提醒</text>
-            <view wx:for="{{siteReminders}}" wx:key="reminderId" class="site-reminder-row">
-              <button class="site-utility-row site-reminder-item" bindtap="openSiteReminder" data-id="{{item.reminderId}}" aria-expanded="{{reminderDetail.reminderId === item.reminderId}}">
-                <view class="site-reminder-heading"><text>{{item.title}}</text><text wx:if="{{item.dateLabel}}" class="site-meta">{{item.dateLabel}}</text></view>
-                <text class="site-reminder-status {{item.readAt ? 'site-meta' : 'site-reminder-unread'}}">{{item.readAt ? '已读' : '未读'}}</text>
+            <view class="site-board-links">
+              <button id="site-schedule-row" class="site-board-link site-plan-v2" bindtap="toggleSchedule"
+                aria-label="{{scheduleError ? '重试读取施工排期' : '施工排期'}}" aria-expanded="{{scheduleOpen}}"
+                disabled="{{scheduleLoading || (!schedule.nodes.length && !scheduleError)}}">
+                <image class="site-entry-icon notebook-ink-icon" src="../assets/notebook/v2-calendar.png" mode="aspectFit" aria-hidden="true" />
+                <view class="site-entry-copy">
+                  <text class="site-entry-title">施工排期</text>
+                  <text class="site-meta">{{scheduleLoading ? '读取中…' : scheduleError ? scheduleError + ' · 重试' : (schedule.label || '未排期')}}</text>
+                </view>
+                <image wx:if="{{schedule.nodes.length || scheduleError}}" class="site-link-arrow {{scheduleOpen ? 'site-link-arrow-down' : ''}}" src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" />
               </button>
-              <block wx:if="{{reminderSelected === item.reminderId}}">
-                <text wx:if="{{reminderReading}}" class="site-meta site-report-empty">正在读取提醒…</text>
-                <view wx:elif="{{reminderReadError}}" class="site-reminder-state" role="alert"><text class="site-meta">{{reminderReadError}}</text><button class="text-action" bindtap="openSiteReminder" data-id="{{item.reminderId}}">重试</button></view>
-                <text wx:elif="{{reminderDetail}}" class="site-reminder-body" user-select>{{reminderDetail.body}}</text>
-              </block>
+              <view class="site-entry-divider" aria-hidden="true" />
+              <button class="site-board-link site-record-entry" bindtap="openReport" aria-label="施工记录，日报与周报">
+                <image class="site-entry-icon" src="../assets/notebook/file.png" mode="aspectFit" aria-hidden="true" />
+                <view class="site-entry-copy">
+                  <text class="site-entry-title">施工记录</text>
+                  <text class="site-meta">日报与周报</text>
+                </view>
+                <image class="site-link-arrow" src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" />
+              </button>
+            </view>
+
+            <view wx:if="{{scheduleOpen && schedule.nodes.length}}" class="site-schedule">
+              <view wx:for="{{schedule.nodes}}" wx:key="key" class="site-schedule-node">
+                <view class="site-schedule-dot site-schedule-dot-{{item.color}}" />
+                <view class="site-schedule-node-copy">
+                  <text>{{item.roomName ? item.roomName + ' · ' : ''}}{{item.stageName}}</text>
+                  <text class="site-meta">{{item.label}}<text wx:if="{{item.timeText && item.timeText !== item.label}}"> · {{item.timeText}}</text><text wx:elif="{{!item.timeText && item.plannedStart}}"> · {{item.plannedStart}} 至 {{item.plannedEnd}}</text></text>
+                </view>
+              </view>
             </view>
           </block>
-          <button class="site-utility-row site-family" bindtap="openFamilySheet" aria-label="家人查看，邀请与管理">
-            <text>家人查看</text><view class="site-family-action"><text>邀请与管理</text><view class="site-chevron" /></view>
-          </button>
-        </view>
+
+          <view wx:if="{{camera}}" class="site-paper site-camera">
+            <text class="notebook-task-tab site-camera-tab">工地监控</text>
+            <view class="site-camera-frame">
+              <native-live-player id="owner-site-live-player" class="site-camera-player"
+                src="{{liveSrc}}" epoch="{{liveEpoch}}" phase="{{livePhase}}" fill="{{true}}" compact-controls="{{true}}" audio-allowed="{{true}}"
+                poster="{{camera.src}}" poster-mode="aspectFill" poster-key="{{(camera.bindingId || '') + ':' + camera.dateLabel}}"
+                message="{{liveMessage || (livePhase === 'idle' && !camera.src ? '监控封面暂不可用' : '')}}"
+                bindadvance="onPrivateLiveAdvance" bindplaybackerror="onPrivateLiveError" bindplay="playCamera" bindstop="restoreCameraCover"
+                bindpostererror="cameraImageFailed"
+              />
+            </view>
+            <view class="site-camera-footer">
+              <view class="site-camera-meta">
+                <text class="site-camera-name">{{camera.name}}</text>
+                <text wx:if="{{camera.dateLabel && livePhase === 'idle'}}" class="site-meta">{{camera.dateLabel}}</text>
+              </view>
+              <button class="site-camera-cta" bindtap="openCamera">
+                <text>查看监控</text><image class="site-link-arrow" src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" />
+              </button>
+            </view>
+          </view>
+          <view wx:elif="{{cameraLoading || cameraError}}" class="site-paper site-state site-camera-state">
+            <text>{{cameraLoading ? '正在读取监控…' : cameraError}}</text>
+            <button wx:if="{{cameraError}}" class="text-action" bindtap="retryCover">重新读取</button>
+          </view>
         </block>
-        <view wx:if="{{familyProjects.length}}" class="site-family-shared">
+      </block>
+        <view wx:if="{{familyProjects.length && !loading && !needsLogin}}" class="site-family-shared">
           <view class="site-family-shared-head">
             <text class="site-family-shared-title">家人分享的工地</text>
-            <text class="site-meta">只读查看施工进度和直播</text>
+            <text wx:if="{{!(renovationOverview && !siteDetail && renovation.ordinaryConstruction)}}" class="site-meta">只读查看施工进度和直播</text>
+            <view wx:else class="renovation-row-rule" aria-hidden="true" />
           </view>
           <button wx:for="{{familyProjects}}" wx:key="id" class="site-paper site-family-shared-card" data-id="{{item.id}}" bindtap="openFamilyProject">
             <view class="site-family-shared-main">
               <text class="site-family-shared-name">{{item.name}}</text>
-              <text class="site-meta">家人查看</text>
+              <text wx:if="{{!(renovationOverview && !siteDetail && renovation.ordinaryConstruction)}}" class="site-meta">家人查看</text>
             </view>
+            <text wx:if="{{renovationOverview && !siteDetail && renovation.ordinaryConstruction}}" class="site-family-shared-tag">只读</text>
             <view class="site-chevron" />
+            <view wx:if="{{renovationOverview && !siteDetail && renovation.ordinaryConstruction}}" class="renovation-row-rule" aria-hidden="true" />
           </button>
         </view>
-      </block>
     </view>
   </scroll-view>
   <family-sheet wx:if="{{familyVisible}}" id="owner-family-sheet" project-id="{{project.id}}" binddismiss="closeFamilySheet" />
+  <designer-contact-sheet wx:if="{{renovationContactOpen}}" visible="{{true}}" designer="{{renovationAdvisor}}" bind:close="closeRenovationContact" />
 </view>

@@ -151,6 +151,8 @@ const COPY = {
   appointment_date_out_of_range: '这个日期暂不可预约，请选择其他日期。',
   appointment_time_past: '这个时段已经过去，请重新选择。',
   lead_phone_conflict: '该手机号已绑定其他客户档案，请联系服务人员。',
+  construction_followup_no_project: '还没有可跟进的工地，请联系负责人把你加入在建项目。',
+  construction_report_unavailable: '服务暂时不可用，请稍后重新读取。',
 };
 
 function errorCopy(error) {

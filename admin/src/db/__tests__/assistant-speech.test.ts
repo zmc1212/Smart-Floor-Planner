@@ -11,7 +11,8 @@ import { closePostgresPool } from '@/lib/postgresql';
 import { D4SharingFixture } from '../../../scripts/assistant-d4-sharing-fixture';
 import { SpeechService } from '@/lib/assistant/speech/service';
 import { processSpeech } from '@/lib/assistant/speech/worker';
-import { claimJob, markProviderStarted, failRun } from '@/lib/assistant/infrastructure/job-queue';
+import { claimJob, markProviderStarted, failRun, type Lease } from '@/lib/assistant/infrastructure/job-queue';
+import { previewAssistantQueue } from '@/lib/assistant/infrastructure/job-preview';
 import { speechConfigurationHash } from '@/lib/assistant/speech/local';
 import { siteActor } from '@/lib/construction/site-chat';
 import { processSiteAction } from '@/lib/construction/site-action-worker';
@@ -66,6 +67,56 @@ test('real local-service failure preserves the recording and only an explicit sa
     const key=randomUUID(),r=await service.retry(a.id,a.version,key);assert.notEqual(r.runId,u.runId);assert.equal((await service.retry(a.id,a.version,key)).runId,r.runId);
     await processSpeech((await claimJob())!,mock);assert.equal((await service.list()).items[0].status,'succeeded');
   }finally{await f.cleanup();}
+});
+test('queue preview and recovery agree before and after local transcription starts', async () => {
+  const f = new D4SharingFixture();
+  try {
+    await f.create();
+    const service = voice(f);
+    const audio = await service.upload(randomUUID(), speechWav());
+    const filter = { enterpriseId: f.eid, runId: String(audio.runId) };
+    const expire = (lease: Lease) => withTenantTransaction(f.eid, tx => tx.execute(sql`update app.assistant_jobs
+      set lease_expires_at=now()-interval '10 seconds' where enterprise_id=${f.eid} and id=${lease.jobId}`));
+    const lease = await claimJob(filter);
+    assert.ok(lease);
+    await expire(lease);
+    const beforeStart = await previewAssistantQueue({ enterpriseId: f.eid });
+    assert.equal(beforeStart.counts.expiredWithoutProvider, 1);
+    assert.equal(beforeStart.items.find(item => item.jobId === lease.jobId)?.reason, 'expired_without_provider');
+    const reclaimed = await claimJob(filter);
+    assert.ok(reclaimed);
+    assert.notEqual(reclaimed.token, lease.token);
+    await markProviderStarted(reclaimed);
+    await expire(reclaimed);
+    const afterStart = await previewAssistantQueue({ enterpriseId: f.eid });
+    assert.equal(afterStart.counts.expiredLocalSpeech, 1);
+    assert.equal(afterStart.items.find(item => item.jobId === lease.jobId)?.reason, 'local_speech_result_unknown');
+    assert.equal(await claimJob(filter), null);
+    assert.equal((await service.list()).items[0].errorCode, 'speech_result_unknown');
+  } finally {
+    await f.cleanup();
+  }
+});
+test('a pilot Worker can transcribe an outside homeowner draft without taking staff recordings', async () => {
+  const f = new D4SharingFixture();
+  try {
+    await f.create();
+    const customer = voice(f);
+    const customerAudio = await customer.upload(randomUUID(), speechWav());
+    const staff = new SpeechService(f.site().actor, { kind: 'site', id: f.projectId });
+    const staffAudio = await staff.upload(randomUUID(), speechWav());
+    const scope = { enterpriseId: f.enterpriseIds[1], includeSharedConsultations: true };
+    const preview = await previewAssistantQueue(scope);
+    assert.equal(preview.counts.queuedReady, 1);
+    const lease = await claimJob({ ...scope, runId: String(customerAudio.runId) });
+    assert.ok(lease);
+    await processSpeech(lease, mock);
+    assert.equal((await customer.list()).items[0].status, 'succeeded');
+    assert.equal(await claimJob({ ...scope, runId: String(staffAudio.runId) }), null);
+    assert.equal((await staff.list()).items[0].status, 'queued');
+  } finally {
+    await f.cleanup();
+  }
 });
 test('a revoked recording while transcription is in flight cannot publish a late transcript or a chat message',async()=>{
   const f=new D4SharingFixture();try{await f.create();const service=voice(f),u=await service.upload(randomUUID(),speechWav());await processSpeech((await claimJob())!,async()=>{await service.remove(u.id,randomUUID());return mock();});

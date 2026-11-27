@@ -8,8 +8,10 @@ import { withPlatformTransaction } from '../src/db/transaction';
 import { closePostgresPool } from '../src/lib/postgresql';
 import { AssistantError } from '../src/lib/assistant/contracts';
 import { cookieToken, sessionCameraHttp } from '../src/lib/construction/camera/http';
-import { authorizeCameraMedia, cameraPublicOrigin, digest } from '../src/lib/construction/camera/service';
+import { authorizeCameraMedia, authorizeNativeCameraMedia, cameraPublicOrigin, digest } from '../src/lib/construction/camera/service';
 import { cameraMediaPath, rewriteCameraPlaylist } from '../src/lib/construction/camera/media';
+import { openCameraAacMedia, stopCameraAacJobs } from '../src/lib/construction/camera/live-aac';
+import { liveMediaCorsHeaders } from '../src/lib/construction/public-live/media-cors';
 import { cameraWatchdog } from '../src/lib/construction/camera/ptz';
 import { cameraWvp } from '../src/lib/construction/camera/wvp';
 import {authorizeRecordingMedia,reconcileRecordings,purgeCameraRecordings} from '../src/lib/construction/camera/recordings';
@@ -17,7 +19,7 @@ import {refreshSdWindows,reconcileSdPlaybacks} from '../src/lib/construction/cam
 import {purgeCameraSnapshots} from '../src/lib/construction/camera/snapshot-retention';
 import {captureDueOwnerCovers} from '../src/lib/construction/camera/owner-cover';
 import {startStorageHealthSampler} from '../src/lib/construction/camera/storage';
-import {embeddedCameraHttp} from './construction-camera-embedded';
+import {embeddedCameraHttp, privateLiveGatewayHttp} from './construction-camera-embedded';
 import { debugCameraEntryPath, debugCameraGatewayHttp } from './construction-camera-debug-entry';
 
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== 'production');
@@ -88,7 +90,7 @@ const server = http.createServer(async (req, res) => {
       ? await embeddedCameraHttp(req, url)
       : cover && req.method === 'GET'
         ? await sessionCameraHttp(new Request(url, { headers: { cookie: req.headers.cookie || '' } }), ['cover', cover[1]])
-        : await debugCameraGatewayHttp(req, url, debugEntry);
+        : await privateLiveGatewayHttp(req, url) ?? await debugCameraGatewayHttp(req, url, debugEntry);
     if (response) {
       for (const [key, value] of response.headers) res.setHeader(key, value);
       const cookies = response.headers.getSetCookie();
@@ -120,44 +122,94 @@ const server = http.createServer(async (req, res) => {
       }finally{clearInterval(interval);clearTimeout(timer);abort.abort();res.off('close',disconnect);}
       return;
     }
+    const native = /^\/camera-media\/native\/(n1\.[1-9]\d{0,18}\.[A-Za-z0-9_-]{43})\/([1-9]\d*)\/(.+)$/.exec(url.pathname);
     const media = /^\/camera-media\/([1-9]\d*)\/(.+)$/.exec(url.pathname);
-    if (media) {
+    if (native || media) {
+      if (native) {
+        // Native HLS requests originate in the Mini Program host. Only the
+        // ticket-scoped media path uses cross-origin, cookie-free reads.
+        for (const [name, value] of Object.entries(liveMediaCorsHeaders)) res.setHeader(name, value);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        if (req.method === 'OPTIONS') {
+          const wanted = String(req.headers['access-control-request-method'] || '');
+          const headers = String(req.headers['access-control-request-headers'] || '').toLowerCase().split(',').map(value => value.trim()).filter(Boolean);
+          if (!['GET', 'HEAD'].includes(wanted) || headers.some(value => value !== 'range')) { res.writeHead(404).end(); return; }
+          res.writeHead(204, { 'Access-Control-Max-Age': '0' }).end();
+          return;
+        }
+      }
       if (!['GET','HEAD'].includes(req.method || '')) { res.writeHead(405).end(); return; }
-      const token = cookieToken(req.headers.cookie || null), generation = Number(media[1]);
-      const stream = await authorizeCameraMedia(token, generation);
-      const source = new URL(cameraMediaPath(stream, media[2]), stream.syntheticOrigin ?? cameraWvp().mediaOrigin);
+      const token = native ? native[1] : cookieToken(req.headers.cookie || null);
+      const generation = Number(native ? native[2] : media![1]);
+      const resource = native ? native[3] : media![2];
+      if (native && resource === 'live.flv') { res.writeHead(404).end(); return; }
+      const authorize = native ? authorizeNativeCameraMedia : authorizeCameraMedia;
+      const stream = await authorize(token, generation);
+      const mediaOrigin = stream.syntheticOrigin ?? cameraWvp().mediaOrigin;
+      const aacSegment = resource.startsWith('aac/');
+      if (aacSegment && !stream.liveAac) { res.writeHead(404).end(); return; }
+      const source = new URL(cameraMediaPath(stream, resource), mediaOrigin);
       const cookieKey = digest(token) + ':' + generation;
       const headers: Record<string,string> = {};
       if (req.headers.range) headers.Range = req.headers.range;
       const sourceCookie = hlsCookies.get(cookieKey); if (sourceCookie && sourceCookie.expires > Date.now()) headers.Cookie = sourceCookie.value;
       const abort = new AbortController(); let validating = false;
-      const disconnect = () => abort.abort(); res.once('close', disconnect);
+      const disconnect = () => { if (!res.writableFinished) abort.abort(); };
+      res.once('close', disconnect);
       const interval = setInterval(async () => {
         if (validating) return; validating = true;
-        try { await authorizeCameraMedia(token, generation); } catch { abort.abort(); res.destroy(); }
+        try { await authorize(token, generation); } catch { abort.abort(); res.destroy(); }
         finally { validating = false; }
       }, 5000);
       // 4G SD playback needs a SIP INVITE round trip before ZLM emits the first
       // byte, which can exceed 15s on a cold start. Live streams start at once.
       const firstByteTimeout = setTimeout(disconnect, 45000);
       try {
+        if (stream.liveAac && (resource === 'hls.m3u8' || aacSegment)) {
+          const flv = new URL(cameraMediaPath(stream, 'live.flv'), mediaOrigin);
+          const output = await openCameraAacMedia(flv, resource, abort.signal, native ? 3 : 1);
+          if (output.file) {
+            try {
+              const { size } = await output.file.stat();
+              res.writeHead(200, { 'Content-Type': 'video/mp2t', 'Content-Length': size });
+              if (req.method === 'HEAD') res.end();
+              else await pipeline(output.file.createReadStream(), res);
+            } finally { await output.file.close(); }
+          } else {
+            await authorize(token, generation);
+            const playlist = rewriteCameraPlaylist(output.manifest, source, stream, generation, native?.[1]);
+            res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' }).end(req.method === 'HEAD' ? undefined : playlist);
+          }
+          return;
+        }
         const upstream = await fetch(source, { method: req.method, redirect: 'error', signal: abort.signal, headers });
         clearTimeout(firstByteTimeout);
         if (!upstream.ok && upstream.status !== 206) { res.writeHead(502).end(); await upstream.body?.cancel(); return; }
-        if (media[2].endsWith('.m3u8') && req.method !== 'HEAD') {
+        if (resource.endsWith('.m3u8') && req.method !== 'HEAD') {
           const cookies = upstream.headers.getSetCookie().map(value=>value.split(';')[0]).filter(value=>/^[A-Za-z0-9_-]+=[^\r\n;]{1,2048}$/.test(value));
           if (cookies.length) {
             if (hlsCookies.size >= 5000 && !hlsCookies.has(cookieKey)) hlsCookies.delete(hlsCookies.keys().next().value!);
             hlsCookies.set(cookieKey,{value:cookies.join('; '),expires:Date.now()+120000});
           }
-          const text = rewriteCameraPlaylist(await upstream.text(), source, stream, generation);
+          const text = rewriteCameraPlaylist(await upstream.text(), source, stream, generation, native?.[1]);
           res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' }).end(text); return;
         }
         for (const h of ['content-type','content-length','content-range','accept-ranges']) { const value = upstream.headers.get(h); if (value) res.setHeader(h, value); }
         res.writeHead(upstream.status);
-        if (upstream.body && req.method !== 'HEAD') await pipeline(Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]), res);
-        else res.end();
-      } finally { clearInterval(interval); clearTimeout(firstByteTimeout); abort.abort(); res.off('close', disconnect); }
+        if (upstream.body && req.method !== 'HEAD') {
+          const body = Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]);
+          // Pipeline handles transfer failures. The fetch adapter can also emit
+          // a late abort after that pipeline has settled.
+          body.on('error', () => {});
+          await pipeline(body, res);
+        } else res.end();
+      } finally {
+        clearInterval(interval);
+        clearTimeout(firstByteTimeout);
+        res.off('close', disconnect);
+        disconnect();
+      }
       return;
     }
     // Embedded trials expose only the handlers above and authenticated media.
@@ -178,5 +230,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 server.listen(Number(process.env.CAMERA_GATEWAY_PORT || 3017), process.env.CAMERA_BIND_HOST || '127.0.0.1', () => console.log('Construction camera gateway listening'));
-async function shutdown() { clearInterval(watchdog);clearInterval(recorder);clearInterval(sdWatcher);clearInterval(sdClockWatcher);clearInterval(snapshots);clearInterval(covers); server.closeAllConnections(); server.close(); await stopStorageSampler(); await closePostgresPool(); }
+async function shutdown() { clearInterval(watchdog);clearInterval(recorder);clearInterval(sdWatcher);clearInterval(sdClockWatcher);clearInterval(snapshots);clearInterval(covers); server.closeAllConnections(); server.close(); await stopCameraAacJobs(); await stopStorageSampler(); await closePostgresPool(); }
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown);

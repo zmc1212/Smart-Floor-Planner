@@ -1,11 +1,20 @@
 const api = require('../../../utils/api');
 const { loadSiteFont } = require('../lib/site-font');
 const { publicConsultationId } = require('../../../utils/public-site-client');
+const { aiEntriesEnabled, syncAiEntryVisibility } = require('../../../utils/ai-entries');
+const { brandShareCover } = require('../../../utils/share-cover');
 const empty = () => ({ loading:true, detail:null, src:'', playerEpoch:0, state:'connecting', error:'', paused:false, shareAvailable:false, canConsult:false, guideQuestion:'', navTop:47, navRight:100, navHeight:44 });
 const validId = v => /^[1-9]\d{0,18}$/.test(String(v||''));
 const withdrawn = error => [401,403,404].includes(error.statusCode) || error.code === 'public_live_unavailable';
 const connectionError = '暂时无法连接直播，请重试。';
+const bufferRecoveryMs = 8000;
 const shareCover = '/packages/construction/assets/notebook/public-live-share-cover.jpg';
+function isBufferStall(detail) {
+  if (detail?.fatal === true) return false;
+  // Stable can report the HLS detail only in errMsg.
+  return detail?.details === 'bufferStalledError'
+    || /^HLS error, type: mediaError, details: bufferStalledError(?:,|$)/.test(detail?.errMsg || '');
+}
 function sourceUrl(url) {
   if(typeof url!=='string')throw {code:'invalid_response'};
   const path=url.replace(/^(?:https:\/\/[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?)(?=\/)/,'');
@@ -13,7 +22,7 @@ function sourceUrl(url) {
   return path===url?api.getBaseUrls()[0].replace(/\/api$/,'')+url:url;
 }
 Page({
-  data:empty(),
+  data: { ...empty(), aiEntriesEnabled: false },
   onLoad(options) {
     loadSiteFont();
     this.options=options||{};this.alive=true;this.epoch=0;
@@ -22,6 +31,7 @@ Page({
   },
   onShow() {
     this.visible = true;
+    this.syncAiEntryVisibility();
     const ticket = this.consultTicket = (this.consultTicket || 0) + 1;
     if (validId(this.options.conversationId)) void publicConsultationId(this.options).then(cid => {
       if (this.alive && this.visible && this.consultTicket === ticket) {
@@ -31,9 +41,13 @@ Page({
     });
     this.connect();
   },
+  syncAiEntryVisibility,
   onHide() {this.clear();},
   onUnload() {this.alive=false;this.clear();},
-  clear() {this.visible=false;this.epoch++;this.consultationId='';clearInterval(this.poll);clearTimeout(this.renew);try{wx.createVideoContext('public-live-video',this).stop();}catch(_){}this.setData({src:'',state:'stopped',paused:false,shareAvailable:false,canConsult:false,guideQuestion:''});},
+  clear() {this.visible=false;this.epoch++;this.consultationId='';clearInterval(this.poll);clearTimeout(this.renew);this.clearBufferRecovery();this.stopPlayer();this.setData({src:'',state:'stopped',paused:false,shareAvailable:false,canConsult:false,guideQuestion:''});},
+  stopPlayer() {
+    try { this.selectComponent?.('#public-live-player')?.stop(); } catch (_) {}
+  },
   setShareAvailable(shareAvailable) {
     this.setData({ shareAvailable, ...(shareAvailable ? {} : { guideQuestion: '' }) });
     const options = { menus: ['shareAppMessage'] };
@@ -62,6 +76,8 @@ Page({
   async connect() {
     clearInterval(this.poll);
     clearTimeout(this.renew);
+    this.clearBufferRecovery();
+    this.lastPlaybackTime = 0;
     const epoch = ++this.epoch;
     this.setShareAvailable(false);
     if (!validId(this.options.enterpriseId) || !/^[a-f0-9]{48}$/.test(String(this.options.key || ''))) {
@@ -112,8 +128,9 @@ Page({
       ++this.epoch;
       clearInterval(this.poll);
       clearTimeout(this.renew);
+      this.clearBufferRecovery();
       this.setShareAvailable(false);
-      try { wx.createVideoContext('public-live-video', this).stop(); } catch (_) {}
+      this.stopPlayer();
       const stopped = withdrawn(error);
       this.setData({ src:'', loading:false, paused:false, state:stopped ? 'stopped' : 'failed',
         error:stopped ? '直播已停止公开' : '暂时无法核对直播状态，请重试。' });
@@ -122,30 +139,44 @@ Page({
     }
   },
   isCurrentPlayer(event) {
-    return this.data.src && Number(event?.currentTarget?.dataset?.playerEpoch) === this.epoch;
+    return this.data.src && event.detail?.epoch === this.epoch;
   },
   played(event) {
-    const time = event.detail.currentTime;
-    if (this.isCurrentPlayer(event) && this.data.state === 'connecting' && Number.isFinite(time) && time > 0) {
-      this.setData({state:'playing',error:''});
-    }
+    const time = event.detail?.currentTime;
+    if (!this.isCurrentPlayer(event) || !Number.isFinite(time) || time <= (this.lastPlaybackTime || 0)) return;
+    this.lastPlaybackTime = time;
+    this.clearBufferRecovery();
+    if (this.data.state === 'connecting') this.setData({ state: 'playing', error: '' });
   },
   playbackError(event) {
     if (!this.isCurrentPlayer(event)) return;
+    if (!isBufferStall(event.detail)) return this.failPlayback();
+    if (this.data.paused || this.bufferRecovery !== undefined) return;
+    const epoch = this.epoch;
+    this.bufferRecovery = setTimeout(() => {
+      this.bufferRecovery = undefined;
+      if (this.alive && this.visible && epoch === this.epoch && this.data.src) this.failPlayback();
+    }, bufferRecoveryMs);
+  },
+  clearBufferRecovery() {
+    if (this.bufferRecovery === undefined) return;
+    clearTimeout(this.bufferRecovery);
+    this.bufferRecovery = undefined;
+  },
+  failPlayback() {
+    this.clearBufferRecovery();
     clearTimeout(this.renew);
     this.setData({src:'',loading:false,state:'failed',error:connectionError,paused:false});
   },
-  toggle() {
-    if (this.data.state === 'paused') return this.connect();
-    if (this.data.state !== 'playing') return;
-    try { wx.createVideoContext('public-live-video',this).pause(); } catch (_) { return; }
+  pause(event) {
+    if (!this.isCurrentPlayer(event) || this.data.state !== 'playing') return;
+    this.clearBufferRecovery();
     this.setData({paused:true,state:'paused'});
   },
-  fullscreen() {if(this.data.src)wx.createVideoContext('public-live-video',this).requestFullScreen({direction:90});},
   retry() {return this.connect();},
   back() {wx.navigateBack({fail:()=>{if(validId(this.options.siteId)&&validId(this.options.versionId))wx.redirectTo({url:'/packages/construction/public-site/public-site?enterpriseId='+this.options.enterpriseId+'&siteId='+this.options.siteId+'&versionId='+this.options.versionId});else wx.redirectTo({url:'/packages/construction/public-sites/public-sites?enterpriseId='+this.options.enterpriseId});}});},
   consult(event) {
-    if (!this.consultationId || !this.visible || !this.data.shareAvailable) return;
+    if (!aiEntriesEnabled() || !this.consultationId || !this.visible || !this.data.shareAvailable) return;
     const values = {
       conversationId: this.consultationId,
       ...(validId(this.options.siteId) && validId(this.options.versionId) ? { publicSiteId: this.options.siteId, publicVersionId: this.options.versionId } : {}),
@@ -154,7 +185,7 @@ Page({
     wx.navigateTo({ url: '/packages/assistant/chat/chat?' + Object.entries(values).map(([key, value]) => key + '=' + encodeURIComponent(value)).join('&') });
   },
   onShareAppMessage() {
-    if (!this.data.shareAvailable) return { title:'家客来', path:'/pages/index/index' };
+    if (!this.data.shareAvailable) return { title: '家客来', path: '/pages/index/index', imageUrl: brandShareCover };
     const { enterpriseId, key } = this.options;
     return {
       title: this.data.detail.name || '公开工地直播',

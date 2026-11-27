@@ -42,10 +42,10 @@ test('role landing navigation is idempotent and uses relaunch for subpackage rou
   }
 });
 
-test('login completion always enters the signed identity landing', () => {
+test('login completion keeps the signed role landing when consultation return is unavailable', () => {
   assert.match(
     loginSource,
-    /finishLogin\(\)\s*\{\s*navigateToRoleLanding\(app\.globalData\.userInfo\);\s*\}/
+    /finishLogin\(\)\s*\{[\s\S]*authorizeQuestionReturn\(this\._resumeId, this\._resumeOrigin, app\.globalData\)[\s\S]*if \(this\._resumeId\) dismissQuestionLogin\(this\._resumeId\);\s*navigateToRoleLanding\(app\.globalData\.userInfo\);/
   );
 });
 

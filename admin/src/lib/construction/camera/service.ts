@@ -7,13 +7,15 @@ import { fail, id, key } from '@/lib/assistant/contracts';
 import { constructionAccess } from '../service';
 import { object, text, version, type ConstructionActor } from '../contracts';
 import { cameraWvp, gbId, type CameraStream, type WvpClient } from './wvp';
+import { cameraLiveAacEnabled, cameraMediaPath } from './media';
+import { openCameraAacMedia } from './live-aac';
 import {currentStorageHealth} from './storage';
 import {guardLiveWriter} from './writer-policy';
 import {authorizeSdMedia,reconcileSdPlaybacks} from './sd';
 import {retentionDefault,nodeRetentionDays} from './retention-defaults';
 import {coverIntervalHours} from './cover-defaults';
 import { cameraCoverJpeg, storedCameraCover } from './owner-cover';
-import { cameraAccess, cameraActorRef, isCameraCustomer, type CameraActor } from './access';
+import { cameraAccess, cameraActorRef, customerCameraPlayback, isCameraCustomer, type CameraActor, type CameraCustomerIdentity } from './access';
 import { debugSignalBinding, debugSignalStream } from './debug-source';
 import { currentCameraCustomerGrant } from './customer-grants';
 import { privateSnapshot, retainedSnapshot, snapshotRetentionJoins } from './snapshot-retention';
@@ -27,6 +29,15 @@ export function parseCameraToken(value: string) {
   if (!m) fail('camera_session_expired', 401);
   return { eid: m[1], hash: digest(value) };
 }
+type CameraSessionKey = ReturnType<typeof parseCameraToken>;
+
+function parseNativeLiveTicket(ticket: string): CameraSessionKey {
+  const match = /^n1\.([1-9]\d{0,18})\.[A-Za-z0-9_-]{43}$/.exec(ticket);
+  if (!match) fail('camera_session_expired', 401);
+  // The native media ticket cannot be presented as an H5 cookie.
+  return { eid: match[1], hash: digest(ticket) };
+}
+
 export function cameraPublicOrigin() {
   let u: URL;
   try { u = new URL(process.env.CAMERA_PUBLIC_ORIGIN || ''); } catch { fail('camera_not_configured', 503); }
@@ -181,13 +192,15 @@ export async function exchangeCameraEntry(token: string) {
     if (!e) fail('camera_entry_expired', 401);
     await cameraAccess(tx, e.actor as CameraActor, String(e.project_id));
     await tx.execute(sql`update app.construction_camera_entries set consumed_at=now() where token_hash=${hash}`);
-    await tx.execute(sql`insert into app.construction_camera_sessions(enterprise_id,token_hash,project_id,actor,csrf_hash,expires_at,absolute_expires_at)
-      values(${eid},${digest(session)},${String(e.project_id)},${JSON.stringify(e.actor)}::jsonb,${digest(csrf)},now()+interval '60 seconds',now()+interval '4 hours')`);
+    await insertCameraSession(tx, e.actor as CameraActor, String(e.project_id), digest(session), digest(csrf));
   });
   return { session, csrf };
 }
-export async function cameraSession(tx: PostgresTransaction, token: string, csrf?: string) {
-  const { eid, hash } = parseCameraToken(token);
+async function insertCameraSession(tx: PostgresTransaction, actor: CameraActor, projectId: string, hash: string, csrfHash: string) {
+  await tx.execute(sql`insert into app.construction_camera_sessions(enterprise_id,token_hash,project_id,actor,csrf_hash,expires_at,absolute_expires_at)
+    values(${actor.enterpriseId},${hash},${projectId},${JSON.stringify(actor)}::jsonb,${csrfHash},now()+interval '60 seconds',now()+interval '4 hours')`);
+}
+async function readCameraSession(tx: PostgresTransaction, { eid, hash }: CameraSessionKey, csrf?: string) {
   const s = await one(tx, sql`select * from app.construction_camera_sessions where enterprise_id=${eid} and token_hash=${hash}
     and closed_at is null and expires_at>now() and absolute_expires_at>now() for update`);
   if (!s || (csrf !== undefined && digest(csrf) !== s.csrf_hash)) fail('camera_session_expired', 401);
@@ -197,6 +210,9 @@ export async function cameraSession(tx: PostgresTransaction, token: string, csrf
   return { ...s, recording_id:s.recording_id, sd_playback_id:s.sd_playback_id, binding_id: s.binding_id, stream_id: s.stream_id, stream_app: s.stream_app,
     play_version: s.play_version, view_expires_at: s.view_expires_at,
     access, actor: s.actor as CameraActor, eid, hash, pid: String(s.project_id) };
+}
+export async function cameraSession(tx: PostgresTransaction, token: string, csrf?: string) {
+  return readCameraSession(tx, parseCameraToken(token), csrf);
 }
 export async function sessionState(token: string) {
   const { eid } = parseCameraToken(token);
@@ -232,35 +248,126 @@ export async function sessionHeartbeat(token: string, csrf: string, stop = false
   if(stop&&result.playbackId)await reconcileSdPlaybacks(upstream,result.playbackId);
   return {stopped:stop};
 }
-export async function startCameraView(token: string, csrf: string, bindingId: string, upstream?: WvpClient) {
-  const { eid, hash } = parseCameraToken(token);
+async function startCameraSessionView(session: CameraSessionKey, bindingId: string, upstream?: WvpClient, csrf?: string) {
+  const { eid, hash } = session;
   const intent = await withTenantTransaction(eid, async tx => {
-    const s = await cameraSession(tx, token, csrf);
+    const s = await readCameraSession(tx, session, csrf);
     const debugCamera = s.access.debugCamera;
     if (debugCamera ? bindingId !== debugCamera.item.binding_id : bindingId === debugSignalBinding)
       fail('camera_binding_unavailable', 404);
     const c = debugCamera?.syntheticOrigin ? null : await binding(tx, eid, s.pid, bindingId);
     const n = await one(tx, sql`update app.construction_camera_sessions set binding_id=${c ? bindingId : null},recording_id=null,sd_playback_id=null,play_version=play_version+1,stream_id=null,view_expires_at=null where token_hash=${hash} returning play_version`);
-    return { c, generation: Number(n!.play_version) };
+    return { c, generation: Number(n!.play_version), liveAac: !debugCamera && cameraLiveAacEnabled(eid, s.pid, bindingId) };
   });
   let stream: CameraStream = debugSignalStream;
   if (intent.c) {
     const provider = upstream ?? cameraWvp();
     stream = await provider.play(String(intent.c.device_id), String(intent.c.channel_id));
     await guardLiveWriter(eid, bindingId, stream, provider);
+    if (intent.liveAac) {
+      const source = new URL(cameraMediaPath(stream, 'live.flv'), provider.mediaOrigin);
+      // Give a cold 4G feed time to buffer before the player's first-frame deadline.
+      // A slow warm-up leaves the same encoder running for the authorized playlist read.
+      await openCameraAacMedia(source, 'hls.m3u8', AbortSignal.timeout(6500), 3).catch(() => {});
+    }
   }
   await withTenantTransaction(eid, async tx => {
-    const s = await cameraSession(tx, token, csrf);
+    const s = await readCameraSession(tx, session, csrf);
     if (intent.c) await binding(tx, eid, s.pid, bindingId);
     if (Number(s.play_version) !== intent.generation) fail('camera_play_superseded', 409);
-    await tx.execute(sql`update app.construction_camera_sessions set stream_app=${stream.app},stream_id=${stream.stream},view_expires_at=now()+interval '60 seconds' where token_hash=${hash}`);
+    await tx.execute(sql`update app.construction_camera_sessions set stream_app=${stream.app},stream_id=${stream.stream},
+      expires_at=case when ${csrf === undefined} then least(absolute_expires_at,now()+interval '60 seconds') else expires_at end,
+      view_expires_at=now()+interval '60 seconds' where token_hash=${hash}`);
   });
-  return { generation: intent.generation, flv: `/camera-media/${intent.generation}/live.flv`, hls: `/camera-media/${intent.generation}/hls.m3u8` };
+  return { generation: intent.generation, liveAac: intent.liveAac };
 }
-export async function authorizeCameraMedia(token: string, generation: number): Promise<CameraStream & { syntheticOrigin?: string }> {
-  const { eid } = parseCameraToken(token);
+
+export async function startCameraView(token: string, csrf: string, bindingId: string, upstream?: WvpClient) {
+  const { generation, liveAac } = await startCameraSessionView(parseCameraToken(token), bindingId, upstream, csrf);
+  return { generation, flv: `/camera-media/${generation}/live.flv`, hls: `/camera-media/${generation}/hls.m3u8`,
+    ...(liveAac ? { preferredFormat: 'hls' as const } : {}) };
+}
+
+type NativeCameraViewer = CameraCustomerIdentity | ConstructionActor;
+
+function requireNativeCameraActor(actor: CameraActor) {
+  if (!isCameraCustomer(actor) && (!actor.miniProgramUserId || !actor.miniProgramContextVersion))
+    fail('camera_forbidden', 403);
+}
+
+export async function openNativeCustomerLive(identity: CameraCustomerIdentity, projectId: string, bindingId: string, upstream?: WvpClient) {
+  const playback = await customerCameraPlayback(identity, projectId);
+  return openNativeCameraLive(playback.actor, playback.projectId, bindingId, upstream);
+}
+
+export async function openNativeCameraLive(actor: CameraActor, projectId: string, bindingId: string, upstream?: WvpClient) {
+  requireNativeCameraActor(actor);
+  const origin = cameraPublicOrigin();
+  const ticket = `n1.${actor.enterpriseId}.${secret()}`;
+  const session = parseNativeLiveTicket(ticket);
+  await withTenantTransaction(session.eid, async tx => {
+    await cameraAccess(tx, actor, projectId);
+    await insertCameraSession(tx, actor, projectId, session.hash, digest(secret()));
+  });
+  try {
+    const { generation } = await startCameraSessionView(session, bindingId, upstream);
+    return { ticket, url: `${origin}/camera-media/native/${ticket}/${generation}/hls.m3u8`, expiresIn: 60 };
+  } catch (error) {
+    // A failed start never delivers a ticket. Bound the orphan even if cleanup fails.
+    await withTenantTransaction(session.eid, tx => tx.execute(sql`update app.construction_camera_sessions
+      set closed_at=now(),view_expires_at=null,stream_id=null where token_hash=${session.hash}`)).catch(() => {});
+    throw error;
+  }
+}
+
+export async function updateNativeCameraLive(viewer: NativeCameraViewer, projectId: string, ticket: string, stop: boolean) {
+  const session = parseNativeLiveTicket(ticket);
+  if ('adminId' in viewer && viewer.enterpriseId !== session.eid) fail('camera_project_unavailable', 404);
+  return withTenantTransaction(session.eid, async tx => {
+    const s = await readCameraSession(tx, session);
+    const actor = s.actor;
+    requireNativeCameraActor(actor);
+    if (s.recording_id || s.sd_playback_id) fail('camera_forbidden', 403);
+    const customer = isCameraCustomer(actor);
+    const sameViewer = customer
+      ? 'userId' in viewer && actor.userId === viewer.userId && actor.contextVersion === viewer.contextVersion
+      : 'adminId' in viewer && actor.adminId === viewer.adminId && actor.miniProgramUserId === viewer.miniProgramUserId &&
+        actor.miniProgramContextVersion === viewer.miniProgramContextVersion;
+    if ((customer && actor.debug ? actor.debug.targetProjectId : s.pid) !== projectId || !sameViewer)
+      fail('camera_project_unavailable', 404);
+    if (stop) {
+      await tx.execute(sql`update app.construction_camera_sessions set closed_at=now(),stream_id=null,
+        view_expires_at=null,play_version=play_version+1 where token_hash=${session.hash}`);
+      return { stopped: true };
+    }
+    if (!s.stream_id || new Date(String(s.view_expires_at)).getTime() <= Date.now())
+      fail('camera_view_expired', 401);
+    if (!s.access.debugCamera?.syntheticOrigin) {
+      if (!s.binding_id) fail('camera_view_expired', 401);
+      await binding(tx, session.eid, s.pid, String(s.binding_id));
+    }
+    await tx.execute(sql`update app.construction_camera_sessions set
+      expires_at=least(absolute_expires_at,now()+interval '60 seconds'),
+      view_expires_at=least(absolute_expires_at,now()+interval '60 seconds') where token_hash=${session.hash}`);
+    return { stopped: false, expiresIn: 60 };
+  });
+}
+export async function authorizeCameraMedia(token: string, generation: number) {
+  return authorizeCameraSessionMedia(parseCameraToken(token), generation, false);
+}
+
+export async function authorizeNativeCameraMedia(ticket: string, generation: number) {
+  return authorizeCameraSessionMedia(parseNativeLiveTicket(ticket), generation, true);
+}
+
+async function authorizeCameraSessionMedia(session: CameraSessionKey, generation: number, native: boolean): Promise<CameraStream & { syntheticOrigin?: string; liveAac?: true }> {
+  const { eid } = session;
   return withTenantTransaction(eid, async tx => {
-    const s = await cameraSession(tx, token);
+    const s = await readCameraSession(tx, session);
+    if (native) {
+      requireNativeCameraActor(s.actor);
+      if (s.recording_id || s.sd_playback_id) fail('camera_forbidden', 403);
+    }
     if (s.access.liveOnly && (s.recording_id || s.sd_playback_id)) fail('camera_forbidden', 403);
     if (s.recording_id || !s.stream_id || Number(s.play_version) !== generation || new Date(String(s.view_expires_at)).getTime() <= Date.now()) fail('camera_view_expired', 401);
     const syntheticOrigin = s.access.debugCamera?.syntheticOrigin;
@@ -270,8 +377,10 @@ export async function authorizeCameraMedia(token: string, generation: number): P
     }
     if (!s.binding_id) fail('camera_view_expired', 401);
     if(s.sd_playback_id)return authorizeSdMedia(tx,s);
-    await binding(tx, eid, s.pid, String(s.binding_id));
-    return { app: String(s.stream_app), stream: String(s.stream_id) };
+    const bindingId = String(s.binding_id);
+    await binding(tx, eid, s.pid, bindingId);
+    const liveAac = !s.access.debugCamera && cameraLiveAacEnabled(eid, s.pid, bindingId);
+    return { app: String(s.stream_app), stream: String(s.stream_id), ...(liveAac ? { liveAac: true as const } : {}) };
   });
 }
 export async function normalizeCameraSnapshot(image: Buffer) {

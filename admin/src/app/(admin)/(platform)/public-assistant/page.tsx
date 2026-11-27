@@ -17,6 +17,7 @@ import {
 import { PageContainer } from '@ant-design/pro-components';
 import { ArrowDown, ArrowUp, Bot, Plus, Trash2 } from 'lucide-react';
 import { notify } from '@/components/admin/operation-feedback';
+import { MiniProgramAiEntriesCard } from '@/components/assistant/mini-program-ai-entries';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
   DEFAULT_PUBLIC_ASSISTANT_CONFIG,
@@ -117,6 +118,7 @@ export default function PublicAssistantPage() {
     title="平台通用小K"
     subTitle="面向尚未关联装修企业的散客，提供通用装修问答和服务关联引导"
   >
+    {canManage && <MiniProgramAiEntriesCard />}
     <Card loading={loading} className="admin-panel-card">
       <Space direction="vertical" size={22} className="w-full">
         <Alert

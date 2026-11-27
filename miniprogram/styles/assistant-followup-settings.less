@@ -4,34 +4,15 @@
 .notebook-chat {
   .followup-settings-sheet > .followup-detail-title { font-family: 'Chat Settings Serif','Chat Serif',SimSun,serif; font-size: 62rpx; font-weight: 900; }
   .followup-settings-sheet { margin-left: 32rpx; width: calc(100% - 32rpx); height: calc(100% - 88px); padding: 55rpx 44rpx calc(22rpx + env(safe-area-inset-bottom)) 40rpx; }
-  .followup-settings-picker { display: flex; align-items: center; gap: 20rpx; min-height: 44px; box-sizing: border-box; padding: 6rpx 20rpx; border: 1rpx solid #789985; border-radius: 8rpx; color: #073c30; font-size: 28rpx; }
-  .followup-settings-picker .chat-image { width: 42rpx; height: 42rpx; flex: none; }
-  .followup-settings-picker > .chat-text:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Chat Serif',SimSun,serif; font-weight: 700; }
-  .followup-settings-sheet > .followup-caption { margin-top: 8rpx; }
-  .followup-settings-group { border-bottom: 1rpx solid #88a58a; padding-top: 30rpx; }
-  .followup-settings-group > .fabric-label { margin: 0 0 12rpx; transform: rotate(-5deg); font-size: 28rpx; line-height: 1.5; }
-  .followup-settings-group:first-of-type { border-top: 1rpx solid #88a58a; margin-top: 28rpx; padding-top: 0; }
-  .followup-preference-row { display: flex; align-items: center; gap: 24rpx; min-height: 44px; padding: 0 12rpx 0 16rpx; box-sizing: border-box; border-bottom: 1rpx solid #c8d2bf; color: #073c30; font-size: 31rpx; }
-  .followup-preference-row > .chat-text { flex: 1; }
-  .followup-preference-row:last-child, .followup-settings-group .followup-setting-row:last-child { border-bottom: none; }
-  .followup-preference-row .chat-switch { flex: none; transform: scale(.78); transform-origin: right center; }
-  .followup-settings-group .followup-setting-row { gap: 24rpx; min-height: 64px; padding: 13rpx 12rpx 13rpx 16rpx; box-sizing: border-box; font-size: 31rpx; }
-  .followup-settings-group .followup-setting-row > .chat-group:nth-child(2) { flex: 1; min-width: 0; }
-  .followup-settings-group .followup-setting-row .followup-caption { font-size: 21rpx; margin-top: 3rpx; }
-  .followup-settings-group .followup-setting-delete { color: #cb2b25; }
   .followup-settings-save { width: 100%; margin: 30rpx 0 0; min-height: 44px; line-height: 44px; border-radius: 8rpx; font-size: 29rpx; flex: none; }
   .followup-settings-feedback { color: #5d7569; font-size: 25rpx; line-height: 1.6; margin-top: 15rpx; }
+
   .followup-setting-icon { position: relative; width: 30rpx; height: 30rpx; box-sizing: border-box; flex: none; color: inherit; border: 1.5px solid currentColor; }
   .followup-icon-bell { border-radius: 50% 50% 15% 15%; height: 25rpx; margin-bottom: 5rpx; }
   .followup-icon-bell::after { content: ''; position: absolute; width: 7rpx; border-bottom: 2px solid currentColor; bottom: -8rpx; left: 8rpx; }
   .followup-icon-report, .followup-icon-calendar { border-radius: 4rpx; }
   .followup-icon-report::after, .followup-icon-calendar::after { content: ''; position: absolute; inset: 8rpx 5rpx 5rpx; border-top: 1px solid currentColor; border-bottom: 1px solid currentColor; }
   .followup-icon-calendar::before { content: ''; position: absolute; left: 6rpx; right: 6rpx; top: -5rpx; height: 7rpx; border-left: 1.5px solid currentColor; border-right: 1.5px solid currentColor; }
-  .followup-icon-hide { height: 23rpx; border-radius: 70% 10%; transform: rotate(45deg); }
-  .followup-icon-hide::after { content: ''; position: absolute; inset: -9rpx 11rpx; border-left: 1.5px solid currentColor; }
   .followup-icon-pause { border-radius: 50%; }
   .followup-icon-pause::after { content: ''; position: absolute; inset: 5rpx 8rpx; border-left: 1.5px solid currentColor; border-right: 1.5px solid currentColor; }
-  .followup-icon-delete { width: 24rpx; height: 29rpx; margin: 0 3rpx; border-radius: 0 0 3rpx 3rpx; }
-  .followup-icon-delete::before { content: ''; position: absolute; left: -5rpx; right: -5rpx; top: -6rpx; border-top: 1.5px solid currentColor; }
-  .followup-icon-delete::after { content: ''; position: absolute; inset: 5rpx 5rpx; border-left: 1px solid currentColor; border-right: 1px solid currentColor; }
 }

@@ -130,6 +130,7 @@ Page({
   },
   retryCitation() { if (this._citationId) return this.openCitation({ currentTarget: { dataset: { id: this._citationId } } }); },
   back() { wx.navigateBack({ fail: () => wx.redirectTo({ url: '/packages/construction/projects/projects' }) }); },
+  returnToProjects() { wx.redirectTo({ url: '/packages/construction/projects/projects' }); },
   input(e) { if (this.data.resubmit || this.data.draft || this.data.attachments.length || this._conversationInput) this.client.input(e.detail.value); else this.capture.input(e.detail.value); },
   async send() { if (this.data.speechBusy || this.data.captureSaving) return;
     if (!this.data.resubmit && !this.data.draft && !this.data.attachments.length && !this._conversationInput) return this.capture.submit();

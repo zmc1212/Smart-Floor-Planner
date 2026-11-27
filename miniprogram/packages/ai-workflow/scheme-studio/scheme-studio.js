@@ -1,6 +1,8 @@
 const aiService = require('../../../utils/aiDesignService.js');
 const nativePreview = require('../../../utils/native-preview');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
+const { pendingAiEntryVisibility } = require('../../../utils/ai-entries.js');
+const { brandShareCover } = require('../../../utils/share-cover');
 const {
   applyModelDefaults,
   applyScopeToDraft,
@@ -283,7 +285,9 @@ Page({
     startNewRound: false,
   },
 
-  onLoad(options) {
+  async onLoad(options) {
+    const pending = pendingAiEntryVisibility();
+    if (pending) await pending;
     if (!canAccessAIDesign()) {
       showAIDesignAccessDenied();
       wx.navigateBack({ delta: 1, fail: () => wx.switchTab({ url: '/pages/index/index' }) });
@@ -1582,6 +1586,7 @@ Page({
     return {
       title,
       path: `/packages/ai-workflow/scheme-studio/scheme-studio?${query}`,
+      imageUrl: brandShareCover,
     };
   },
 });

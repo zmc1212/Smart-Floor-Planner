@@ -27,6 +27,10 @@ test('media paths and every HLS URI stay inside the authorized stream', () => {
   const stream = { app: 'rtp', stream: 'one' }, source = new URL('http://media.test/rtp/one/hls.m3u8');
   assert.equal(cameraMediaPath(stream, 'live.flv'), '/rtp/one.live.flv');
   const result = rewriteCameraPlaylist('#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2,\nhls/1.ts', source, stream, 2);
+  const nativeTicket = 'n1.1454.' + 'x'.repeat(43);
+  const native = rewriteCameraPlaylist('#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\nhls/a.ts', source, stream, 2, nativeTicket);
+  assert.ok(native.includes('/camera-media/native/' + nativeTicket + '/2/init.mp4'));
+  assert.ok(native.endsWith('/camera-media/native/' + nativeTicket + '/2/hls/a.ts'));
   assert.ok(result.includes('URI="/camera-media/2/init.mp4"')); assert.ok(result.includes('/camera-media/2/hls/1.ts'));
   for (const bad of ['../other/1.ts','https://outside.test/file.ts','//outside.test/a.ts','%2e%2e/one.ts','one.ts?secret=x']) assert.throws(() => rewriteCameraPlaylist('#EXTM3U\n'+bad, source, stream, 2));
   for (const bad of ['../private','//a.ts','/a.ts','a%2fts','a.json']) assert.throws(() => cameraMediaPath(stream, bad));

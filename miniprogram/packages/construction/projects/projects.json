@@ -1,5 +1,7 @@
 {
   "navigationStyle": "custom",
   "enablePullDownRefresh": true,
-  "usingComponents": {}
+  "usingComponents": {
+    "native-live-player": "../components/native-live-player/native-live-player"
+  }
 }

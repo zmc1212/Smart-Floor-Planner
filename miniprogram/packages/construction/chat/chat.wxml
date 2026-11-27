@@ -12,12 +12,19 @@
       <view wx:if="{{loading}}" class="state">正在读取本工地对话…</view>
       <view wx:if="{{!loading && !fatal && !write}}" class="feedback">当前只可查看工地记录，发送和核对操作暂不可用。</view>
       <view wx:if="{{focusedRecordUnavailable && !fatal}}" class="feedback">这条原记录目前不可查看。</view>
-      <view wx:if="{{error}}" class="feedback" role="alert"><text>{{error}}</text><button wx:if="{{pending}}" bindtap="reconcile" disabled="{{busy}}">核对同一次操作</button><button wx:else bindtap="refresh" disabled="{{busy}}">重新读取</button></view>
+      <view wx:if="{{error}}" class="feedback {{fatal && (fatalStatus === 403 || fatalStatus === 404) ? 'site-access-feedback' : ''}}" role="alert">
+        <text>{{fatal && (fatalStatus === 403 || fatalStatus === 404) ? '原工地已不可访问' : error}}</text>
+        <button wx:if="{{pending}}" bindtap="reconcile" disabled="{{busy}}">核对同一次操作</button>
+        <button wx:elif="{{fatal && (fatalStatus === 403 || fatalStatus === 404)}}" bindtap="returnToProjects">返回列表</button>
+        <button wx:else bindtap="refresh" disabled="{{busy}}">重新读取</button>
+      </view>
       <view wx:if="{{speechBusy || speechError}}" class="feedback" role="status"><text>{{speechBusy ? '正在录音，结束后可回听并发送。' : speechError}}</text><button wx:if="{{!speechBusy}}" bindtap="voice">处理录音</button></view>
       <view wx:if="{{success && !error}}" class="success" aria-live="polite">{{success}}</view>
       <view wx:if="{{pending && !error}}" class="feedback"><text>提交结果待核对，原内容和版本已保留。</text><button bindtap="reconcile" disabled="{{busy}}">核对同一次操作</button></view>
       <button wx:if="{{nextCursor}}" class="text-button history" bindtap="older" disabled="{{busy}}">查看更早的对话</button>
-      <view wx:if="{{!loading && !items.length && !captureQueue.length && !fatal}}" class="empty"><text>说说现场进展</text><text class="helper">拍照、说一句或选常用工作，发完可查看送达状态。</text></view>
+      <view wx:if="{{!loading && !error && !items.length && !captureQueue.length && !fatal && !write}}" class="site-chat-empty">
+        <text class="site-chat-empty-title">暂无现场记录</text>
+      </view>
       <view wx:for="{{items}}" wx:key="message.id" class="conversation-turn" id="source-{{item.message.id}}">
         <view class="source-message"><view class="source-copy">
           <view class="source-bubble">
@@ -102,7 +109,7 @@
       <view class="scroll-end"></view>
     </view>
   </scroll-view>
-  <view class="composer-wrap">
+  <view wx:if="{{!fatal}}" class="composer-wrap">
     <view wx:if="{{resubmit || pendingRetakeCount}}" class="feedback"><text wx:if="{{resubmit}}">正在补拍原记录 {{resubmit.originalId}}，请按原记录中的要求添加新照片。</text><text wx:else>有{{pendingRetakeCount}}条施工记录需要补拍，请查看具体要求。</text><button wx:if="{{resubmit}}" bindtap="cancelResubmit" disabled="{{busy || pending}}">退出补拍</button><button wx:else class="view-retake" bindtap="showRetake" disabled="{{busy || pending}}">查看补拍要求</button></view>
     <view wx:if="{{attachments.length}}" class="queued-photos"><view wx:for="{{attachments}}" wx:key="*this" class="queued-photo"><image src="{{mediaPaths[item]}}" mode="aspectFill" data-id="{{item}}" bindtap="preview" /><button class="text-button" data-id="{{item}}" bindtap="removePhoto" disabled="{{busy || pending}}">移除</button></view></view>
     <view wx:if="{{captureError}}" class="feedback" role="alert">{{captureError}}</view>
@@ -110,8 +117,14 @@
     <view wx:if="{{captureVoice}}" class="queued-voice"><button class="text-button" bindtap="playCapture">回听录音 · {{captureVoice.durationSeconds}}秒</button><button class="text-button" data-id="{{captureVoice.id}}" bindtap="removeCapture">移除</button></view>
     <view wx:if="{{textMode || captureText || draft || resubmit}}" class="composer"><textarea class="composer-input" value="{{resubmit || draft || attachments.length ? draft : captureText}}" focus="{{inputFocus}}" placeholder="说说今天干了什么…" maxlength="4000" auto-height adjust-position="{{false}}" show-confirm-bar="{{false}}" aria-label="现场进展" bindinput="input" bindkeyboardheightchange="keyboard" disabled="{{busy || pending || !write || fatal}}"/></view>
     <view wx:if="{{captureText || capturePhotos.length || captureVoice || draft || attachments.length}}" class="capture-submit-row"><button class="primary capture-send" bindtap="send" disabled="{{busy || pending || !write || fatal || speechBusy || captureSaving}}" loading="{{captureSaving}}">发送</button></view>
-    <view class="capture-secondary"><button class="quick-entry" bindtap="openQuickWork" disabled="{{!write || fatal || resubmit || busy || pending}}"><text>选常用工作</text></button><button class="type-entry" bindtap="typeReport" disabled="{{!write || fatal}}">打字</button><button class="chat-entry" bindtap="typeChat" disabled="{{!write || fatal}}">对话</button></view>
-    <view class="capture-actions"><button class="capture-action add-photo" bindtap="photo" disabled="{{busy || pending || !write || fatal || captureSaving || capturePhotos.length >= 4}}"><image src="../assets/notebook/capture-camera.png" mode="aspectFit"/><text>拍照</text></button><button class="capture-action voice" bindtap="voice" disabled="{{busy || pending || !write || fatal || speechBusy || resubmit || captureSaving}}"><image src="../assets/notebook/capture-mic.png" mode="aspectFit"/><text>说一句</text></button></view>
+    <view class="capture-entry">
+      <view wx:if="{{!loading && !error && !fatal && write && !items.length && !captureQueue.length && !pending && !textMode && !captureText && !capturePhotos.length && !captureVoice && !draft && !attachments.length && !resubmit}}" class="site-chat-empty first-site-record">
+        <text class="site-chat-empty-title">说说现场进展</text>
+        <text class="site-chat-empty-copy">拍照、说一句或选常用工作。</text>
+      </view>
+      <view class="capture-secondary"><button class="quick-entry" bindtap="openQuickWork" disabled="{{!write || fatal || resubmit || busy || pending}}"><text>选常用工作</text></button><button class="type-entry" bindtap="typeReport" disabled="{{!write || fatal}}">打字</button><button class="chat-entry" bindtap="typeChat" disabled="{{!write || fatal}}">对话</button></view>
+      <view class="capture-actions"><button class="capture-action add-photo" bindtap="photo" disabled="{{busy || pending || !write || fatal || captureSaving || capturePhotos.length >= 4}}"><image src="../assets/notebook/capture-camera.png" mode="aspectFit"/><text>拍照</text></button><button class="capture-action voice" bindtap="voice" disabled="{{busy || pending || !write || fatal || speechBusy || resubmit || captureSaving}}"><image src="../assets/notebook/capture-mic.png" mode="aspectFit"/><text>说一句</text></button></view>
+    </view>
   </view>
   <view wx:if="{{sheet === 'quick'}}" class="sheet-mask quick-mask {{sheetOpen ? 'open' : ''}}" bindtap="closeSheet" catchtouchmove="stop"><view class="sheet quick-sheet" catchtap="stop">
     <view class="quick-heading"><text>选常用工作</text><button class="text-button" bindtap="closeSheet">收起<image src="../assets/notebook/chevron.png" mode="aspectFit"/></button></view>

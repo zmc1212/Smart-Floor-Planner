@@ -1,3 +1,4 @@
+const { aiEntriesEnabled } = require('./ai-entries');
 const FREE_DESIGN_ROUTE = 'packages/business/free-design-service/free-design-service';
 const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
 const ACQUISITION_ROUTE = 'packages/business/acquisition-chat/acquisition-chat';
@@ -10,8 +11,17 @@ function serviceEntryCode(value) {
   } catch (_) { return ''; }
 }
 
+function freeDesignServiceUrl(code) {
+  return `/${FREE_DESIGN_ROUTE}?token=${encodeURIComponent(code)}`;
+}
+
 async function openPromotionChat(code, fail) {
   const app = getApp();
+  if (app.globalData.aiEntriesRequest) await app.globalData.aiEntriesRequest;
+  if (!aiEntriesEnabled(app.globalData)) {
+    wx.redirectTo({ url: freeDesignServiceUrl(code), fail });
+    return;
+  }
   if (app.globalData.sessionHydrationPromise) await app.globalData.sessionHydrationPromise;
   const mode = app.globalData.bootstrap?.current?.mode || app.globalData.userInfo?.mode;
   const query = '?promotionCode=' + encodeURIComponent(code);
@@ -45,4 +55,4 @@ function resolveServiceEntryUrl(scanResult, { assistant = false } = {}) {
   return '';
 }
 
-module.exports = { resolveServiceEntryUrl, serviceEntryCode, openPromotionChat };
+module.exports = { resolveServiceEntryUrl, serviceEntryCode, freeDesignServiceUrl, openPromotionChat };

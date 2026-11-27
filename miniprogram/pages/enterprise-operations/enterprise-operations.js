@@ -1,8 +1,10 @@
 const { roleForIdentity } = require('../../utils/identity-navigation.js');
+const { syncAiEntryVisibility } = require('../../utils/ai-entries.js');
 
 Page({
   data: {
     role: '',
+    aiEntriesEnabled: false,
   },
 
   syncRole() {
@@ -21,7 +23,9 @@ Page({
 
   onShow() {
     this.syncRole();
+    this.syncAiEntryVisibility();
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
     if (tabBar && typeof tabBar.syncSelected === 'function') tabBar.syncSelected();
   },
+  syncAiEntryVisibility,
 });

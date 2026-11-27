@@ -269,29 +269,28 @@ test('atomic attribution uses stable lowest-load assignment and tenant isolation
   assert.deepEqual(tenantBRows.map((rows) => rows.length), [0, 0, 0]);
 });
 
-test('concurrent authorization creates one active attribution and retry survives closure', async () => {
+test('concurrent authorization creates one attribution and old keys respect current service', async () => {
   const enterpriseId = enterpriseIds[0];
   const source = await createSource(enterpriseId, 'concurrent');
   const customer = await createCustomer('concurrent-customer');
 
-  const [first, second] = await Promise.all([
+  const authorize = (suffix: string) =>
     withPlatformTransaction((transaction) =>
       new ReferralLeadRepository(transaction).authorizeAndCreateLead({
         source,
         customerUserId: customer.id,
-        idempotencyKeyHash: `${runKey}-concurrent-a`,
+        idempotencyKeyHash: `${runKey}-${suffix}`,
       })
-    ),
-    withPlatformTransaction((transaction) =>
-      new ReferralLeadRepository(transaction).authorizeAndCreateLead({
-        source,
-        customerUserId: customer.id,
-        idempotencyKeyHash: `${runKey}-concurrent-b`,
-      })
-    ),
-  ]);
+    );
+  const keys = ['concurrent-a', 'concurrent-b'];
+  const [first, second] = await Promise.all(keys.map(authorize));
   assert.equal(first.lead.id, second.lead.id);
   assert.deepEqual(new Set([first.kind, second.kind]), new Set(['created', 'existing_attribution']));
+  for (const key of keys) {
+    const receipt = await authorize(key);
+    assert.equal(receipt.kind, 'idempotent');
+    assert.equal(receipt.lead.id, first.lead.id);
+  }
 
   const counts = await withPlatformTransaction(async (transaction) => ({
     leads: await transaction
@@ -319,36 +318,15 @@ test('concurrent authorization creates one active attribution and retry survives
   );
   assert.ok(released[0]?.releasedAt);
 
-  const idempotent = await withPlatformTransaction((transaction) =>
-    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
-      source,
-      customerUserId: customer.id,
-      idempotencyKeyHash: `${runKey}-concurrent-a`,
-    })
-  );
-  assert.equal(idempotent.kind, 'idempotent');
-  assert.equal(idempotent.lead.id, first.lead.id);
-
-  const reusedKey = `${runKey}-concurrent-b`;
-  const reusedIdempotent = await withPlatformTransaction((transaction) =>
-    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
-      source,
-      customerUserId: customer.id,
-      idempotencyKeyHash: reusedKey,
-    })
-  );
-  assert.equal(reusedIdempotent.kind, 'idempotent');
-  assert.equal(reusedIdempotent.lead.id, first.lead.id);
-
-  const replacement = await withPlatformTransaction((transaction) =>
-    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
-      source,
-      customerUserId: customer.id,
-      idempotencyKeyHash: `${runKey}-replacement`,
-    })
-  );
+  for (const key of keys) await assert.rejects(authorize(key), { code: 'customer_service_changed' });
+  const replacement = await authorize('replacement');
   assert.equal(replacement.kind, 'created');
   assert.notEqual(replacement.lead.id, first.lead.id);
+  for (const key of keys) {
+    const receipt = await authorize(key);
+    assert.equal(receipt.kind, 'existing_attribution');
+    assert.equal(receipt.lead.id, replacement.lead.id);
+  }
 });
 
 test('an archived lead does not block a later claim', async () => {

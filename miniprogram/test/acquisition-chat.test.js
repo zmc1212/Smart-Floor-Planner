@@ -42,7 +42,7 @@ test('acquisition QR compatibility route forwards to XiaoK and authorization bel
   t.after(() => Object.assign(global, previous));
   let opened, page;
   global.wx = { reLaunch: options => { opened = options.url; } };
-  global.getApp = () => ({ globalData: {} });
+  global.getApp = () => ({ globalData: { aiEntriesEnabled: true } });
   global.Page = definition => { page = { ...definition, setData() {} }; };
   require('../packages/business/acquisition-chat/acquisition-chat');
   await page.onLoad({ scene: token.slice(3) });

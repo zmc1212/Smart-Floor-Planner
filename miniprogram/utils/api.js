@@ -9,6 +9,7 @@ const API_BASE_URLS = Object.freeze({
 // Switch this value before building or previewing the Mini Program.
 // `local` targets the development machine and is intended for WeChat Developer Tools.
 const ACTIVE_API_ENVIRONMENT = 'production';
+
 // 微信开发者工具共用同一 App 实例时，App 级请求可能仍持有旧的环境模块。
 // 仅在开发者工具中允许用本地存储临时覆盖目标环境，真机与线上包始终使用上方配置。
 const API_ENV_OVERRIDE_KEY = 'sfp:apiEnvironmentOverride';

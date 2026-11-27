@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import type { SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { PostgresTransaction } from '@/db/transaction';
+import { readPublicAssistantScope } from '../application/public-scope';
 import {
   DEFAULT_PUBLIC_ASSISTANT_CONFIG,
   normalizePublicAssistantConfig,
@@ -25,4 +29,16 @@ test('public XiaoK topics are bounded to three short prompts', () => {
   });
   assert.equal(config.prompts.length, 3);
   assert.equal(config.prompts[0].title, '标题0');
+});
+
+test('a schema without the public mapping returns no scope without querying the missing table', async () => {
+  const dialect = new PgDialect();
+  const transaction = {
+    execute: async (query: SQL) => {
+      assert.match(dialect.sqlToQuery(query).sql, /to_regclass\('app\.assistant_public_agent_library'\)/);
+      return { rows: [{ ready: false }] };
+    },
+  } as unknown as PostgresTransaction;
+
+  assert.equal(await readPublicAssistantScope(transaction), null);
 });

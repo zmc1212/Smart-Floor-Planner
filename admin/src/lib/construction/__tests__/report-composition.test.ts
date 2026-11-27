@@ -30,7 +30,9 @@ test('report wording uses the existing exact citation catalog and preserves ever
   assert.deepEqual(reportFinalTool(['9']).parameters.required, ['projects']);
 });
 test('report prompt restates standards and record fields without receipt wording', () => {
-  const system = reportMessages({}, [project])[0].content.map(part => part.type === 'text' ? part.text : '').join('\n');
+  const systemMessage = reportMessages({}, [project])[0];
+  assert.ok(systemMessage?.role === 'system');
+  const system = systemMessage.content.map(part => part.type === 'text' ? part.text : '').join('\n');
   assert.match(system, /保证……安全/);
   assert.match(system, /企业标准原文本身含这些保证性表述，不要逐字引用该句/);
   assert.match(system, /记录里写的是：现场交接为完成/);

@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server';
 import { proxy } from '@/proxy';
 import { GET as listAdminUsers } from '@/app/api/admin-users/route';
 import { GET as listUsers } from '@/app/api/users/route';
+import { GET as readAiEntries, PATCH as saveAiEntries } from '@/app/api/platform/miniprogram-ai-entries/route';
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
 
@@ -76,6 +77,27 @@ test('admin-users and users APIs reject anonymous callers at the route level', a
   const users = await listUsers(new Request('http://localhost/api/users'));
   assert.equal(users.status, 401);
   assert.deepEqual(await users.json(), { success: false, error: 'Unauthorized' });
+});
+
+test('platform AI entry visibility accepts writes only from platform sessions with a boolean', async () => {
+  const url = 'http://localhost/api/platform/miniprogram-ai-entries';
+  const request = (cookie?: string) => new Request(url, {
+    method: 'PATCH',
+    headers: cookie ? { cookie } : {},
+    body: JSON.stringify({ enabled: 'true' }),
+  });
+  assert.equal((await saveAiEntries(request())).status, 401);
+
+  const owner = `auth_token=${await signAdminToken('enterprise_admin', ['public-assistant'])}`;
+  assert.equal((await saveAiEntries(request(owner))).status, 403);
+  assert.equal((await readAiEntries(new Request(url, { headers: { cookie: owner } }))).status, 403);
+
+  for (const role of ['admin', 'super_admin']) {
+    const token = await signAdminToken(role, ['public-assistant']);
+    const cookie = `auth_token=${token}`;
+    assert.equal((await proxy(middlewareRequest('/api/platform/miniprogram-ai-entries', { cookie }))).status, 200);
+    assert.equal((await saveAiEntries(request(cookie))).status, 400);
+  }
 });
 
 test('admin-users and users APIs reject enterprise-scoped roles at the route level', async () => {

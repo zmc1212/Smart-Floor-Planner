@@ -1,5 +1,6 @@
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
+const { brandShareCover } = require('../../../utils/share-cover');
 const { activeTypeForScope, normalizeJoinCodeScope, rosterLinkLabel, tabsForScope } = require('./enterprise-join-codes-model.js');
 
 const COPY_BY_TYPE = {
@@ -148,7 +149,7 @@ Page({
       ? enterpriseName ? `邀请加入${enterpriseName}` : '邀请加入本企业 · 成为家装设计顾问或家装现场顾问'
       : inviterDisplayName && enterpriseName ? `${inviterDisplayName}邀请你加入${enterpriseName}推广团队`
         : enterpriseName ? `邀请成为${enterpriseName}推广人` : '邀请成为本企业推广人';
-    return { title, path: token ? `/packages/business/onboarding/onboarding?token=${encodeURIComponent(token)}` : '/pages/index/index', imageUrl: this.data.qrImagePath || '' };
+    return { title, path: token ? `/packages/business/onboarding/onboarding?token=${encodeURIComponent(token)}` : '/pages/index/index', imageUrl: this.data.qrImagePath || brandShareCover };
   },
 
   openReferrerRoster() { wx.navigateTo({ url: '/packages/enterprise/enterprise-referrers/enterprise-referrers' }); },

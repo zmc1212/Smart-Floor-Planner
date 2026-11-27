@@ -273,6 +273,14 @@ Page({
     }
   },
 
+  syncAiEntryVisibility() {
+    const canUseAIDesign = this.data.isLoggedIn && canAccessAIDesign();
+    this.setData({
+      canUseAIDesign,
+      workbenchActions: buildWorkbenchActions(this.data.mineData.actions, canUseAIDesign),
+    });
+  },
+
   syncNavigationMetrics() {
     const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     let menuRect = null;
@@ -548,6 +556,11 @@ Page({
 
   onEditProfile() {
     wx.navigateTo({ url: '/packages/business/profile-edit/profile-edit' });
+  },
+
+  onOpenStaffActivityCode() {
+    if (!this.data.isLoggedIn || this.data.activeRole !== 'enterprise_admin') return;
+    wx.navigateTo({ url: '/packages/business/staff-activity-code/staff-activity-code' });
   },
 
   onOpenRegistrationCode() {

@@ -25,7 +25,7 @@ test('the default 小K welcome page remains unchanged when there is no site cont
   assert.match(js, /旧房改造/);
   assert.match(js, /装修风格/);
   assert.match(js, /预算安排/);
-  assert.match(wxml, /wx:if="\{\{!siteContext && !reportQuestion\.selected/);
+  assert.match(wxml, /wx:if="\{\{!resumedQuestion && !siteContext && !reportQuestion\.selected/);
   assert.match(wxml, /小K会客室/);
   assert.match(wxml, /class="notebook-welcome"/);
 });
@@ -58,7 +58,7 @@ test('the site welcome keeps the notebook language and the three-step topics', (
 test('the site report offers 问小K and the shared utility card opens reminders', () => {
   const wxml = fs.readFileSync(path.join(root, 'packages', 'construction', 'owner-home', 'owner-home.wxml'), 'utf8');
   const js = fs.readFileSync(path.join(root, 'packages', 'construction', 'owner-home', 'owner-home.js'), 'utf8');
-  assert.match(wxml, /class="site-report-actions"/);
+  assert.match(wxml, /bindtap="toggleSiteMore"/);
   assert.match(wxml, /bindtap="askXiaok"/);
   assert.match(wxml, /bindtap="openReport"/);
   assert.match(wxml, /class="site-paper site-utility"/);
