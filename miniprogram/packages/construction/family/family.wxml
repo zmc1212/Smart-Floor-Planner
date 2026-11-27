@@ -82,7 +82,7 @@
         </view>
         <text class="family-stage-label">当前节点</text>
         <text class="family-stage-value">{{progress.construction.stageName || '团队尚未标记'}}</text>
-        <text class="family-summary">{{progress.available === false ? '施工计划尚未发布，暂无法判断进度是否正常。' : progress.summary}}</text>
+        <text class="family-summary">{{progress.summary}}</text>
         <template is="progress-nodes" data="{{nodes: progress.nodes, showReason: true}}" />
       </view>
       <view class="family-permission">

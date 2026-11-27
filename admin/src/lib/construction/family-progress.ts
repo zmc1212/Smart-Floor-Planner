@@ -13,6 +13,7 @@ import {
 } from './family-access';
 import { projectSchedule } from './site-schedule';
 import { ownerProjectIssueStatus } from './customer';
+import { latestPublishedProgress } from './publication-receipt';
 
 function maskPhone(value: unknown) {
   const phone = String(value || '');
@@ -140,8 +141,10 @@ export class CustomerProjectProgress {
         const policy = grant?.payload as Row | undefined;
         if (!policy?.allowed || String(policy.ownerId) !== String(project.customer_user_id)) fail('construction_not_found', 404);
       }
-      return { projectId, access: owner ? 'owner' : 'family_view',
-        progress: await projectSchedule(tx, eid, project, owner ? { customerId: uid } : { family: true }),
+      const progress = await projectSchedule(tx, eid, project, owner ? { customerId: uid } : { family: true });
+      const latest = !owner && project.customer_user_id ? await latestPublishedProgress(tx, eid, projectId, String(project.customer_user_id)) : null;
+      return { projectId, access: owner ? 'owner' : 'family_view', progress,
+        ...(!owner && latest ? { latestProgressText: latest.text } : {}),
         ...(owner ? { issues: await ownerProjectIssueStatus(tx, eid, uid, projectId) } : {}) };
     });
   }

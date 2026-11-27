@@ -21,14 +21,16 @@ const labels = { done: '做完了', partial: '做了一部分', not_started: '�
 
 /** Local originals + one immutable send key per record. Remote records remain the shared service's authority. */
 class SiteCapture {
-  constructor({ site, emit, files = nativeFiles, requireStages = false }) { Object.assign(this, { site, emit, files, requireStages }); this.epoch = 0; }
+  constructor({ site, emit, files = nativeFiles, requireStages = false, managerPublish = false, initialStages = [] }) {
+    Object.assign(this, { site, emit, files, requireStages, managerPublish, initialStages }); this.epoch = 0;
+  }
   valid(epoch = this.epoch) { return this.visible && epoch === this.epoch && this.site.current(this.siteEpoch); }
   show() {
     this.visible = true; ++this.epoch; this.siteEpoch = this.site.epoch;
-    this.storageKey = 'site:capture:' + this.site.session.key + ':' + this.site.projectId;
+    this.storageKey = 'site:capture:' + this.site.session.key + ':' + this.site.projectId + (this.managerPublish ? ':manager' : '');
     try {
       const saved = this.site.storage.get(this.storageKey);
-      this.value = saved && saved.version === 1 ? clone(saved) : { version: 1, draft: emptyDraft(), queue: [] };
+      this.value = saved && saved.version === 1 ? clone(saved) : { version: 1, draft: { ...emptyDraft(), stageKeys: this.initialStages }, queue: [] };
       this.value.draft = { ...emptyDraft(), ...(this.value.draft || {}) };
       if (!Array.isArray(this.value.draft.stageKeys)) this.value.draft.stageKeys = [];
       this.render(); this.accepted(this.site.state.items);
@@ -89,7 +91,8 @@ class SiteCapture {
     if (!quick && this.requireStages && (!Array.isArray(d.stageKeys) || !d.stageKeys.length)) { this.emit({ captureError: '请选择本次上报涉及的施工阶段。' }); return false; }
     if (!quick && !d.text.trim() && !d.photos.length && !d.voice) return false;
     if (this.value.queue.length >= 20) { this.emit({ captureError: '待上传记录较多，请先联网续传。' }); return false; }
-    const capture = quick ? { kind: 'quick', ...selection } : { kind: 'free' };
+    const capture = quick ? { kind: 'quick', ...selection } : this.managerPublish
+      ? { kind: 'manager', target: this.site.publicationTarget } : { kind: 'free' };
     const room = this.site.state.rooms?.find(r => r.id === selection.roomId);
     const work = this.site.state.quickWorks?.find(w => w.id === selection.workId);
     const entry = { key: key(), createdAt: new Date().toISOString(), text: d.text.trim(), photos: clone(d.photos), voice: d.voice && clone(d.voice), stageKeys: clone(d.stageKeys || []), capture,
@@ -108,7 +111,7 @@ class SiteCapture {
   }
   restoreCheckpointDraft() {
     if (!this.valid() || this.flushing) return false;
-    const entry = this.value?.queue.find(item => item.checkpointChanged && !item.dispatched && !item.receipt);
+    const entry = this.value?.queue.find(item => (item.checkpointChanged || item.targetChanged) && !item.dispatched && !item.receipt);
     const draft = this.value?.draft;
     if (!entry || !draft || draft.text || draft.photos.length || draft.voice || draft.stageKeys.length) return false;
     try {
@@ -142,7 +145,14 @@ class SiteCapture {
       if (!this.valid(epoch) || !this.site.state.write || this.site.state.fatal) return;
       for (const original of this.value.queue.slice()) {
         if (!this.valid(epoch)) return;
-        if (original.receipt) continue;
+        if (original.receipt) {
+          if (this.managerPublish) {
+            await this.accepted([{ message: { client_message_id: original.key } }]);
+            if (this.valid(epoch)) this.emit({ captureManagerReceipt: original.receipt });
+            return;
+          }
+          continue;
+        }
         let e = this.value.queue.find(x => x.key === original.key); if (!e) continue;
         this.activeKey = e.key; this.render();
         try {
@@ -170,8 +180,16 @@ class SiteCapture {
             if (!this.valid(epoch)) return;
           }
           if (result?.status !== 'received' || result.requestKey !== e.key || !(result.recordId === null || /^[1-9]\d*$/.test(String(result.recordId)))
-            || !/^[1-9]\d*$/.test(String(result.messageId)) || JSON.stringify(result.mediaIds) !== JSON.stringify(e.body?.mediaIds || [])) throw Error('invalid_capture_receipt');
+            || !/^[1-9]\d*$/.test(String(result.messageId)) || JSON.stringify(result.mediaIds) !== JSON.stringify(e.body?.mediaIds || [])
+            || (this.managerPublish && (!result.recordId || result.organizationStatus !== (e.body?.inspectionCheckpoint ? 'draft' : 'published')))) {
+            throw Error('invalid_capture_receipt');
+          }
           this.update(e.key, { receipt: result, error: '' });
+          if (this.managerPublish) {
+            await this.accepted([{ message: { client_message_id: e.key } }]);
+            if (this.valid(epoch)) this.emit({ captureManagerReceipt: result });
+            return;
+          }
           await this.site.load();
           if (this.valid(epoch)) await this.accepted(this.site.state.items);
         } catch (error) {
@@ -183,8 +201,9 @@ class SiteCapture {
           if (!this.valid(epoch) || !this.value.queue.some(x => x.key === e.key)) return;
           const known = error.statusCode >= 400 && error.statusCode < 500 && error.statusCode !== 408;
           const checkpointChanged = known && (error.error || error.code || error.message) === 'inspection_checkpoint_changed';
-          this.update(e.key, { ...(known ? { dispatched: false } : {}), checkpointChanged,
-            error: known ? errorText(error) : e.dispatched ? '送达结果待核对' : '待上传 · 已留在手机' });
+          const targetChanged = known && (error.error || error.code || error.message) === 'site_publication_target_changed';
+          this.update(e.key, { ...(known ? { dispatched: false } : {}), checkpointChanged, targetChanged,
+            error: targetChanged ? '业主关联已调整，请重新确认' : known ? errorText(error) : e.dispatched ? '送达结果待核对' : '待上传 · 已留在手机' });
           break;
         }
       }

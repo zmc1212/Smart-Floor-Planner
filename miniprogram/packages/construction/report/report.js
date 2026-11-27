@@ -5,6 +5,7 @@ const { SiteCapture } = require('../chat/site-capture');
 const { uploadSiteMedia } = require('../chat/site-client');
 
 const route = '/packages/construction/report/report';
+const reviewPage = '/packages/construction/inspection-record/inspection-record';
 const maxPhotos = 9;
 
 function metrics() {
@@ -46,6 +47,8 @@ Page({
     loading: true,
     error: '',
     project: null,
+    managerPublish: false,
+    preview: null,
     stages: [],
     stageChips: [],
     selectedStages: [],
@@ -112,7 +115,7 @@ Page({
       const result = await api.request('/miniprogram/construction/workbench?projectId=' + this.projectId, 'GET', {}, { suppressUnauthorized: true });
       const data = result.data || {};
       if (!this._visible) return;
-      if (data.view !== 'worker' || !data.project) {
+      if (!['worker', 'manager'].includes(data.view) || !data.project || data.project.id !== this.projectId) {
         this.setData({ loading: false, error: '这个工地当前不能上报，请返回工地列表重新选择。' });
         return;
       }
@@ -125,7 +128,8 @@ Page({
         this.setData({ loading: false, error: '企业还没有配置施工阶段，请联系管理员后再上报。', project: data.project });
         return;
       }
-      this.setData({ loading: false, project: data.project, stages, stageChips: decorateStages(stages, []) });
+      this.setData({ loading: false, project: data.project, stages, stageChips: decorateStages(stages, []),
+        managerPublish: data.view === 'manager' });
       this.createCapture(current, data);
       if (this.data.mode === 'photo' && !this.data.photos.length) {
         setTimeout(() => { if (this._visible && !this.data.photos.length) this.choosePhotos(true); }, 420);
@@ -138,9 +142,13 @@ Page({
   },
 
   createCapture(current, data) {
+    const managerPublish = data.view === 'manager';
+    const stageKey = data.project.stageKey;
+    const initialStages = managerPublish && data.stages.some(stage => stage.key === stageKey) ? [stageKey] : [];
     const site = {
       base: '/miniprogram/construction/projects/' + this.projectId + '/chat',
       projectId: this.projectId,
+      publicationTarget: data.project.publicationTarget,
       epoch: 1,
       session: { key: current.key || String(current.token).slice(-16) },
       storage: {
@@ -151,15 +159,19 @@ Page({
       request: api.request,
       uploadFile: uploadSiteMedia,
       state: { items: [], rooms: [], quickWorks: [], write: true, fatal: false },
-      current: () => this._visible,
+      current: () => this._visible && identity().token === current.token && identity().key === current.key,
       load: async () => {
         const result = await api.request('/miniprogram/construction/workbench?projectId=' + this.projectId, 'GET', {}, { suppressUnauthorized: true });
-      const items = result.data?.reports?.items || [];
+        const fresh = result.data;
+        if (managerPublish && (fresh?.view !== 'manager' || fresh.project?.id !== this.projectId || !fresh.canCapture || !fresh.project.customerAccess)) {
+          throw new Error('manager_publication_unavailable');
+        }
+        const items = fresh?.reports?.items || [];
         site.state.items = items.map(item => ({ message: { client_message_id: item.clientMessageId } }));
       },
     };
     this.site = site;
-    this.capture = new SiteCapture({ site, requireStages: true, emit: patch => this.applyCapture(patch) });
+    this.capture = new SiteCapture({ site, requireStages: true, managerPublish, initialStages, emit: patch => this.applyCapture(patch) });
     this.capture.show();
     const selected = Array.isArray(this.capture.value?.draft?.stageKeys) ? this.capture.value.draft.stageKeys : [];
     this.setData({ selectedStages: selected, stageChips: decorateStages(data.stages, selected) });
@@ -190,6 +202,16 @@ Page({
     if (patch.captureSubmitted) this._sawQueue = true;
     if (next.queue?.length) this._sawQueue = true;
     this.setData(next);
+    if (patch.captureManagerReceipt) {
+      const { recordId } = patch.captureManagerReceipt;
+      if (/^[1-9]\d*$/.test(String(recordId))) {
+        this._submitting = false;
+        this.setData({ submitting: false, preview: null, captureError: '' });
+        wx.redirectTo({ url: reviewPage + '?projectId=' + this.projectId + '&recordId=' + recordId,
+          fail: () => wx.navigateTo({ url: reviewPage + '?projectId=' + this.projectId + '&recordId=' + recordId }) });
+      }
+      return;
+    }
     if (!this._submitting) return;
     if (next.captureError) {
       this._submitting = false;
@@ -198,7 +220,7 @@ Page({
     }
     const sending = 'captureSending' in patch ? Boolean(patch.captureSending) : this.data.sending;
     const queue = 'captureQueue' in patch ? (patch.captureQueue || []) : this.data.queue;
-    if (this._sawQueue && !sending && !queue.length) this.finishSuccess();
+    if (!this.data.managerPublish && this._sawQueue && !sending && !queue.length) this.finishSuccess();
   },
 
   finishSuccess() {
@@ -235,7 +257,9 @@ Page({
     try {
       const result = await api.request('/miniprogram/construction/workbench?projectId=' + this.projectId, 'GET', {}, { suppressUnauthorized: true });
       if (this._visible && result.data?.stages) {
-        this.setData({ stages: result.data.stages }, () => this.capture.render());
+        if (this.data.managerPublish && result.data.view === 'manager') this.site.publicationTarget = result.data.project?.publicationTarget;
+        this.setData({ stages: result.data.stages, ...(this.data.managerPublish && result.data.view === 'manager' ? { project: result.data.project } : {}) },
+          () => this.capture.render());
       }
       if (this._visible) this.setData({ captureError: '原材料已恢复，请按当前工序提交。' });
     } catch {
@@ -361,7 +385,7 @@ Page({
   },
 
   submit() {
-    if (this.data.loading || this.data.submitting || !this.capture) return;
+    if (this.data.loading || this.data.submitting || this.data.saving || !this.capture) return;
     if (this.data.recording) {
       wx.showToast({ title: '请先结束录音', icon: 'none' });
       return;
@@ -374,6 +398,39 @@ Page({
       wx.showToast({ title: '请添加照片、语音或文字', icon: 'none' });
       return;
     }
+    if (this.data.managerPublish) {
+      if (this.data.queue.length) {
+        wx.showToast({ title: '请先核对上次提交', icon: 'none' });
+        return;
+      }
+      if (!this.data.project?.customerAccess || !this.site.publicationTarget) {
+        wx.showToast({ title: '请先开通业主查看，内容已保留', icon: 'none' });
+        return;
+      }
+      if (!this.data.text.trim() && !this.data.photos.length) {
+        wx.showToast({ title: '请补一句进展或添加照片', icon: 'none' });
+        return;
+      }
+      this.stopVoice();
+      const stageNames = this.data.stages.filter(stage => this.data.selectedStages.includes(stage.key)).map(stage => stage.name);
+      this.setData({ preview: { stageNames: stageNames.join('、'), text: this.data.text.trim() || '现场照片 · ' + this.data.photos.length + '张',
+        photos: this.data.photos, checkpoint: Boolean(this.capture.value?.draft?.inspectionCheckpoint) } });
+      return;
+    }
+    this.sendCapture();
+  },
+
+  closePreview() {
+    if (!this._submitting) this.setData({ preview: null });
+  },
+
+  confirmPublication() {
+    if (this._submitting || !this.data.preview) return;
+    this.setData({ preview: null });
+    this.sendCapture();
+  },
+
+  sendCapture() {
     this._sawQueue = false;
     this._submitting = true;
     this.setData({ submitting: true, captureError: '' });

@@ -200,12 +200,15 @@ Page({
     ]);
     if (g !== this._generation || request !== this._projectRequest) return;
     const currentProgress = progress.data?.progress;
+    const scheduleSummary = currentProgress?.available === false
+      ? '施工计划尚未发布，暂无法判断进度是否正常。' : currentProgress?.summary;
+    const progressSummary = [scheduleSummary, progress.data?.latestProgressText].filter(Boolean).join('\n');
     const selected = this.data.cameras[this.data.cameraIndex]?.bindingId;
     const items = normalizeFamilyCameras(cameras.data?.items);
     const selectedIndex = items.findIndex(camera => camera.bindingId === selected);
     if (selected && selectedIndex === -1) this.clearFamilyLive();
     this.setData({
-      progress: currentProgress || null,
+      progress: currentProgress ? { ...currentProgress, summary: progressSummary } : null,
       progressError: progress.error ? familyErrorText(progress.error, '施工进度暂时无法查看。') : '',
       cameras: items,
       cameraIndex: Math.max(0, selectedIndex),

@@ -23,6 +23,19 @@
         <text wx:if="{{item.record.status === 'published' && item.record.inspection_receipt}}" class="review-reason">到场核查 · {{item.record.inspection_receipt.note}}</text>
         <text wx:if="{{item.record.review_requirements && item.record.status === 'changes_requested'}}" class="review-reason">补充要求 · {{item.record.review_requirements}}</text>
       </view>
+      <view wx:if="{{item.publication}}" class="paper review-publication" role="status">
+        <view class="review-title-row">
+          <view class="review-publication-title">
+            <image src="../assets/notebook/capture-check.png" mode="aspectFit" aria-hidden="true" />
+            <text>已发布给业主</text>
+          </view>
+          <text wx:if="{{item.publication.ownerReadable}}" class="review-state published">业主可查看</text>
+        </view>
+        <view class="review-publication-periods">
+          <view>日报 <text class="review-period {{item.publication.daily}}">{{item.publication.dailyLabel}}</text></view>
+          <view>周报 <text class="review-period {{item.publication.weekly}}">{{item.publication.weeklyLabel}}</text></view>
+        </view>
+      </view>
       <view wx:if="{{success && !sheet}}" class="review-success" role="status">{{success}}</view>
       <view class="paper review-section">
         <text class="review-heading">上报原件</text>

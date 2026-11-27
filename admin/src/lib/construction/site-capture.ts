@@ -22,8 +22,14 @@ export const siteQuickWorks = [
 ] as const;
 export const siteProgressLabels = { done: '做完了', partial: '做了一部分', not_started: '还没做', unsure: '说不准' } as const;
 type Quick = { kind: 'quick'; workId: string; roomId: string | null; location: 'whole' | 'unsure' | null; progress: keyof typeof siteProgressLabels };
-export function captureInput(value: unknown): { kind: 'free' } | Quick {
-  if ((value as Row)?.kind === 'free') { object(value, ['kind']); return { kind: 'free' }; }
+export function captureInput(value: unknown): { kind: 'free' } | { kind: 'manager'; target: string } | Quick {
+  const kind = (value as Row)?.kind;
+  if (kind === 'free') { object(value, ['kind']); return { kind }; }
+  if (kind === 'manager') {
+    const { target } = object(value, ['kind', 'target']);
+    if (typeof target !== 'string' || !/^[a-f0-9]{64}$/.test(target)) fail('invalid_construction', 422);
+    return { kind, target };
+  }
   const v = object(value, ['kind', 'workId', 'roomId', 'location', 'progress']);
   if (v.kind !== 'quick' || !siteQuickWorks.some(w => w.id === v.workId) || !Object.hasOwn(siteProgressLabels, String(v.progress))
     || !(v.roomId === null ? ['whole', 'unsure'].includes(String(v.location)) : typeof v.roomId === 'string' && /^[1-9]\d{0,18}$/.test(v.roomId) && v.location === null)) fail('invalid_construction', 422);
@@ -75,8 +81,10 @@ export async function saveSiteCapture(tx: PostgresTransaction, actor: ActorConte
   const stageSnapshot = stageSelection(body.stageKeys, stages);
   const inspectionCheckpoint = checkpointSelection(body.inspectionCheckpoint, stages, stageSnapshot);
   if (body.speech !== undefined || selection.kind === 'quick' && audio || selection.kind === 'free' && !raw && !audio && !mediaIds.length) fail('invalid_construction', 422);
+  if (selection.kind === 'manager' && (!stageSnapshot.length || raw.length > 2000 || (!raw && !mediaIds.length))) fail('site_review_required', 422);
   if (audio && Number((await one(tx, sql`select count(*) n from app.assistant_speech_assets where enterprise_id=${eid} and conversation_id=${String(c.id)}`))!.n) >= 20) fail('speech_limit', 422);
-  const draft: SiteDraft = { title: '现场施工进展', roomId: null, completed: '', pending: '', coordination: '', note: raw };
+  const draft: SiteDraft = { title: '现场施工进展', roomId: null, completed: '', pending: '', coordination: '',
+    note: raw || (selection.kind === 'manager' ? `现场照片 · ${mediaIds.length}张` : '') };
   let roomName = '', original = raw;
   if (selection.kind === 'quick') {
     const room = selection.roomId ? await one(tx, sql`select name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} and id=${selection.roomId}`) : null;
@@ -94,7 +102,7 @@ export async function saveSiteCapture(tx: PostgresTransaction, actor: ActorConte
     fallbackText: audio ? `语音上报 · ${Math.ceil(audio.durationMs / 1000)}秒` : `现场照片 · ${mediaIds.length}张` }];
   const message = await appendMessage(tx, actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: 'site.source', content: { version: 1, blocks } });
   const r = (await one(tx, sql`insert into app.construction_site_records(enterprise_id,project_id,conversation_id,source_message_id,author_id,status,data,room_id,room_name_snapshot,stage_snapshot,inspection_checkpoint)
-    values(${eid},${projectId},${String(c.id)},${String(message.id)},${actor.principal.adminId},${selection.kind === 'quick' ? 'draft' : 'organizing'},${JSON.stringify(draft)}::jsonb,${draft.roomId},${roomName},${JSON.stringify(stageSnapshot)}::jsonb,${inspectionCheckpoint ? JSON.stringify(inspectionCheckpoint) : null}::jsonb) returning *`))!;
+    values(${eid},${projectId},${String(c.id)},${String(message.id)},${actor.principal.adminId},${selection.kind === 'free' ? 'organizing' : 'draft'},${JSON.stringify(draft)}::jsonb,${draft.roomId},${roomName},${JSON.stringify(stageSnapshot)}::jsonb,${inspectionCheckpoint ? JSON.stringify(inspectionCheckpoint) : null}::jsonb) returning *`))!;
   for (let i = 0; i < mediaIds.length; i++) await tx.execute(sql`insert into app.construction_site_attachments(enterprise_id,project_id,record_id,media_id,position)
     values(${eid},${projectId},${String(r.id)},${mediaIds[i]},${i})`);
   let speechId: string | null = null;

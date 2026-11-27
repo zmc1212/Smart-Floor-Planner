@@ -127,6 +127,10 @@
             <view class="notebook-link-v2"><text>复查</text><image src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" /></view>
           </button>
           <view wx:if="{{!model.onsiteTask && !model.pendingReport && !model.review}}" class="notebook-row-v2 notebook-muted-v2">当前工地暂无待处理的施工事项</view>
+          <button wx:if="{{model.canCapture}}" class="notebook-row-v2 manager-project-link" bindtap="capture">
+            <image class="notebook-row-icon" src="../assets/notebook/file.png" mode="aspectFit" aria-hidden="true" />
+            <view class="notebook-row-copy">记进展</view><view class="notebook-link-v2"><image src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" /></view>
+          </button>
           <button class="notebook-row-v2 manager-project-link {{model.combinedManager ? 'compact' : ''}}" bindtap="openProject">
             <image class="notebook-row-icon notebook-ink-icon" src="/custom-tab-bar/assets/notebook-home.png" mode="aspectFit" aria-hidden="true" />
             <view class="notebook-row-copy">排期与分工</view><view class="notebook-link-v2"><text>查看工地</text><image src="../assets/notebook/arrow-right.png" mode="aspectFit" aria-hidden="true" /></view>

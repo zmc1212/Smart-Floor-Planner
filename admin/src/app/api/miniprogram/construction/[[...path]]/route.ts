@@ -11,7 +11,7 @@ import { CustomerProjectProgress, customerConstructionProjects, customerProgress
 import { signFamilyInviteCode, verifyFamilyInviteCode } from '@/lib/construction/family-invite-code';
 import { createFamilyInviteCode, getMiniProgramCodeContentType } from '@/lib/wechat-miniprogram-code';
 import { staffMiniCameraHttp, customerCameraHttp } from '@/lib/construction/camera/http';
-import { ownerSiteHome, ownerSiteList } from '@/lib/construction/owner-home';
+import { ownerSiteHome, ownerSiteList, ownerSiteProgressPhoto } from '@/lib/construction/owner-home';
 import { ownerSiteCover } from '@/lib/construction/camera/owner-cover';
 import { issueOwnerLiveWebTicket, ownerApplicationSummary } from '@/lib/construction/public-live/project-owner';
 
@@ -57,6 +57,10 @@ async function handle(request: NextRequest, context: Context) {
       // explicit camera grant), so any identity mode of the same user works.
       if (!actor.user.openid) fail('construction_not_found', 404);
       const identity = { userId: actor.user._id, contextVersion: token.contextVersion };
+      if (read && p.length === 7 && p[2] === 'progress' && p[5] === 'media' && !request.nextUrl.search) {
+        const media = await ownerSiteProgressPhoto(identity, p[1], p[3], Number(id(p[4])), p[6]);
+        return new Response(new Uint8Array(media.data), { headers: { 'Content-Type': media.mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+      }
       if (p[2] === 'public-live') {
         if (request.nextUrl.search) fail('construction_not_found', 404);
         const projectId = id(p[1]);

@@ -77,8 +77,8 @@
 
         <view class="paper text-paper">
           <view class="paper-heading"><view class="fabric">文字说明（选填）</view></view>
-          <textarea class="report-textarea" value="{{text}}" maxlength="4000" placeholder="补充说明，例如：客厅东墙线管已铺完，等待验收" bindinput="onTextInput" adjust-position="{{true}}" show-confirm-bar="{{false}}" />
-          <text class="text-count">{{textLength}}/4000</text>
+          <textarea class="report-textarea" value="{{text}}" maxlength="{{managerPublish ? 2000 : 4000}}" placeholder="补充说明，例如：客厅东墙线管已铺完，等待验收" bindinput="onTextInput" adjust-position="{{true}}" show-confirm-bar="{{false}}" />
+          <text class="text-count">{{textLength}}/{{managerPublish ? 2000 : 4000}}</text>
         </view>
 
         <view wx:if="{{captureError}}" class="feedback" role="alert">
@@ -86,15 +86,42 @@
           <button wx:if="{{queue.length}}" class="outline" bindtap="retryUpload" disabled="{{sending}}">重试上传</button>
         </view>
         <view wx:if="{{queue.length}}" class="queue-row">
-          <text>{{sending ? '正在提交…' : checkpointChanged ? '必到工序已调整' : '待提交 ' + queue.length + ' 条…'}}</text>
+          <text>{{sending ? '正在提交…' : checkpointChanged ? '必到工序已调整' : (managerPublish && queue[0].error) || '待提交 ' + queue.length + ' 条…'}}</text>
           <button wx:if="{{checkpointChanged}}" class="outline" bindtap="replaceCheckpoint" disabled="{{sending}}">重新选择工序</button>
+          <button wx:elif="{{managerPublish && queue[0].targetChanged}}" class="outline" bindtap="replaceCheckpoint" disabled="{{sending}}">重新核对</button>
+          <button wx:elif="{{managerPublish && !sending && !captureError}}" class="outline" bindtap="retryUpload">核对提交</button>
         </view>
-        <text class="submit-helper">提交后进入待审核，由施工经理、设计师或老板审核通过</text>
+        <text class="submit-helper">{{managerPublish ? '先核对内容和可见范围，再确认发布' : '提交后进入待审核，由施工经理、设计师或老板审核通过'}}</text>
       </block>
     </view>
   </view>
 
   <view class="report-footer">
-    <button class="primary submit-button" bindtap="submit" loading="{{submitting}}" disabled="{{loading || submitting}}">提交审核</button>
+    <button class="primary submit-button" bindtap="submit" loading="{{submitting}}" disabled="{{loading || submitting}}">{{managerPublish ? '预览并发布' : '提交审核'}}</button>
+  </view>
+  <view wx:if="{{preview}}" class="sheet-mask" bindtap="closePreview">
+    <view class="sheet report-preview" catchtap="noop">
+      <view class="report-preview-handle" aria-hidden="true" />
+      <view class="sheet-heading">
+        <text>{{preview.checkpoint ? '核对现场上报' : '发布给业主'}}</text>
+        <button class="report-preview-close" bindtap="closePreview" aria-label="关闭"><image src="../assets/notebook/close.png" mode="aspectFit" aria-hidden="true" /></button>
+      </view>
+      <scroll-view class="sheet-body" scroll-y>
+        <text class="report-preview-project">{{project.name}}</text>
+        <view class="report-preview-paper">
+          <text class="report-preview-stage">{{preview.stageNames}}</text>
+          <text class="report-preview-text" user-select>{{preview.text}}</text>
+          <view wx:if="{{preview.photos.length}}" class="photo-wall">
+            <view wx:for="{{preview.photos}}" wx:key="id" class="photo-cell"><image src="{{item.path}}" mode="aspectFill" /></view>
+          </view>
+        </view>
+        <view wx:if="{{preview.checkpoint}}" class="report-preview-scope">该工序需先到场审核。</view>
+        <view wx:else class="report-preview-scope">
+          <image class="report-preview-lock" src="../assets/notebook/lock-keyhole.png" mode="aspectFit" aria-hidden="true" />
+          <view><text class="report-preview-scope-title">可见范围</text><text>本工地业主及已授权家人</text></view>
+        </view>
+      </scroll-view>
+      <button class="primary submit-button" bindtap="confirmPublication" loading="{{submitting}}" disabled="{{submitting}}">{{preview.checkpoint ? '前往到场审核' : '确认发布 →'}}</button>
+    </view>
   </view>
 </view>

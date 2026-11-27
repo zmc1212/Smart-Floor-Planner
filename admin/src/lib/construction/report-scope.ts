@@ -66,13 +66,13 @@ export async function followupProjects(tx: PostgresTransaction, eid: string, bin
         where m.enterprise_id=p.enterprise_id and m.project_id=p.id and m.admin_id=${binding.admin_id ? String(binding.admin_id) : null} and m.active)))
     order by p.id limit 21 for share of p,l`);
 }
-async function accessibleRecord(tx: PostgresTransaction, eid: string, binding: Row, pid: string, rid: string) {
+export async function accessibleRecord(tx: PostgresTransaction, eid: string, binding: Row, pid: string, rid: string) {
   const record = await currentRecord(tx, eid, pid, rid, true);
   if (!record || record.row.status !== 'published') return null;
   const r = record.row;
   if (binding.audience === 'customer' && !await publishedSiteRecord(tx, eid, String(binding.user_id), rid, Number(r.published_version), true)) return null;
   const authors = [r.author_id, r.approved_by].filter(Boolean).map(String);
-  if (await siteAccessRevoked(tx, eid, pid, authors, new Date(String(r.published_at)), { reviewers: r.approved_by ? [String(r.approved_by)] : [] })) return null;
+  if (await siteAccessRevoked(tx, eid, pid, authors, r.published_at as Date | string, { reviewers: r.approved_by ? [String(r.approved_by)] : [] })) return null;
   return record;
 }
 /** Detect real, still-authorized publications after a saved daily cutoff.

@@ -60,6 +60,21 @@ button.photo-remove { position:absolute; top:4px; right:4px; width:24px !importa
 .report-footer { position:fixed; z-index:8; left:0; right:0; bottom:0; box-sizing:border-box; display:flex; justify-content:center; padding:10px 24px calc(25px + env(safe-area-inset-bottom)); background:linear-gradient(180deg,#f7f3e9e6,#f7f3e9 35%); }
 .report-footer .submit-button { width:100% !important; max-width:338px !important; min-height:52px; border-radius:10px; font-size:18px; font-weight:600; }
 
+.report-preview { display:flex; flex-direction:column; height:524px; max-height:76vh; padding-top:10px; }
+.report-preview-handle { align-self:center; width:40px; height:5px; flex:none; border-radius:3px; background:#c9d5c8; margin-bottom:8px; }
+.report-preview .sheet-heading { flex:none; font-size:22px; }
+.report-preview .sheet-body { flex:1; height:0; min-height:0; margin:0 0 12px; }
+.report-preview button.report-preview-close { flex:none; display:flex; align-items:center; justify-content:center; width:44px !important; height:44px; padding:0; background:transparent; margin-right:-10px; }
+.report-preview-close image { width:18px; height:18px; }
+.report-preview-project { display:block; color:#526c60; font-size:14px; margin-bottom:22px; }
+.report-preview-paper, .report-preview-scope { padding:12px; border-radius:8px; border:1px solid #d9e1d3; background:#f5f4ea; }
+.report-preview-stage { display:inline-block; padding:4px 8px; border-radius:6px; background:#dce9da; font-size:12px; }
+.report-preview-text { display:block; margin:10px 0; line-height:1.55; font-size:16px; overflow-wrap:anywhere; }
+.report-preview-scope { display:flex; align-items:center; gap:10px; margin-top:24px; background:#e6eee3; font-size:13px; }
+.report-preview-lock { width:22px; height:22px; flex:none; }
+.report-preview-scope-title { display:block; font-weight:600; margin-bottom:4px; }
+.report-preview .submit-button { flex:none; width:100% !important; max-width:none !important; min-height:48px; }
+
 @media(max-width:360px) {
   .report-content { padding-left:29px; padding-right:13px; }
   .report-footer { padding-left:25px; padding-right:25px; }

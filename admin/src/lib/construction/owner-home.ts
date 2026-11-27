@@ -8,6 +8,8 @@ import type { StageSuggestedQuestion } from '@/lib/xiaok-v1/stage-workflow-setti
 import { FollowupService } from './followup-service';
 import { reportOwnerDecisions } from './site-plans';
 import { currentStage, readStageSettings } from './stages-store';
+import { latestPublishedProgress } from './publication-receipt';
+import { accessibleRecord } from './report-scope';
 
 // Progress/report access and video access are separate grants. Family access
 // continues through the shared family page and is never an owner-home grant.
@@ -40,7 +42,7 @@ export async function ownerSiteHome(identity: { userId: string; contextVersion: 
   const eid = await ownerSiteEnterprise(uid, pid);
   const actor = { enterpriseId: eid, principal: { kind: 'user' as const, userId: uid },
     contextVersion: identity.contextVersion, capabilities: ['assistant.followup.self' as const] };
-  const { project, decision } = await withTenantTransaction(eid, async tx => {
+  const { project, decision, latestProgress } = await withTenantTransaction(eid, async tx => {
     const identityIsCurrent = await one(tx, sql`select app.assistant_identity_is_current(${uid}::bigint,${identity.contextVersion}::integer) as valid`);
     if (!identityIsCurrent?.valid) fail('identity_context_invalid', 401);
     const repo = new AssistantRepository(tx, actor);
@@ -61,9 +63,29 @@ export async function ownerSiteHome(identity: { userId: string; contextVersion: 
       ...(progressAccess ? { communityName: String(p.community_name || ''), area: p.area == null ? null : Number(p.area) } : {}),
       ...(agent && agent.experience && stage ? {stageExperience:publicStageExperience(agent.experience,stage.name)} : {}),
       ...(agent && agent.questions.length ? { suggestedQuestions: agent.questions } : {}) },
+      latestProgress: progressAccess ? await latestPublishedProgress(tx, eid, pid, uid) : null,
       decision: pending ? { id: pending.id, title: pending.title, conversationId: pending.conversationId,
         publishedAt: pending.publishedAt } : null };
   });
   const report = project.progressAccess ? await new FollowupService(actor).latestOwnerDaily(pid) : null;
-  return { project, report, decision };
+  return { project, report, decision, latestProgress };
+}
+
+export async function ownerSiteProgressPhoto(identity: { userId: string; contextVersion: number }, projectId: string,
+  recordId: string, version: number, mediaId: string) {
+  const uid = id(identity.userId), pid = id(projectId), rid = id(recordId), mid = id(mediaId);
+  if (!Number.isInteger(version) || version < 1 || version > 2147483647) fail('construction_not_found', 404);
+  const eid = await ownerSiteEnterprise(uid, pid);
+  return withTenantTransaction(eid, async tx => {
+    const identityIsCurrent = await one(tx, sql`select app.assistant_identity_is_current(${uid}::bigint,${identity.contextVersion}::integer) as valid`);
+    if (!identityIsCurrent?.valid) fail('identity_context_invalid', 401);
+    const source = await accessibleRecord(tx, eid, { audience: 'customer', user_id: uid }, pid, rid);
+    if (!source || Number(source.row.published_version) !== version || !source.media.some(item => String(item.id) === mid)) {
+      fail('construction_not_found', 404);
+    }
+    const media = await one(tx, sql`select data,mime_type from app.construction_site_media
+      where enterprise_id=${eid} and project_id=${pid} and id=${mid} and deleted_at is null`);
+    if (!media?.data) fail('construction_not_found', 404);
+    return { data: media.data as Buffer, mime: String(media.mime_type) };
+  });
 }

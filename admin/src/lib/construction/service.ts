@@ -26,7 +26,7 @@ export async function constructionAccess(tx: PostgresTransaction, actor: Constru
 }
 const fields: Record<string, string[]> = {
   list: [], brief: [], options: [], lead: ['leadId'], stages: [], saveStages: ['expectedVersion', 'stages'], detail: ['projectId'],
-  create: ['leadId', 'name', 'managerId', 'rooms'], update: ['projectId', 'expectedVersion', 'name', 'status', 'customerAccess'],
+  create: ['leadId', 'name', 'managerId', 'rooms', 'stageKey', 'customerAccess'], update: ['projectId', 'expectedVersion', 'name', 'status', 'customerAccess'],
   member: ['projectId', 'expectedVersion', 'adminId', 'role', 'active', 'workLabel'], room: ['projectId', 'expectedVersion', 'roomId', 'name'],
   contact: ['projectId', 'expectedVersion', 'stageKey', 'staffIds', 'primaryStaffId'],
   progress: ['projectId', 'expectedVersion', 'stageKey', 'note', 'sendReminder'],
@@ -106,12 +106,23 @@ export class ConstructionService {
         return idempotent(tx, actorContext(a), 'construction:create', requestKey!, input, async () => {
           const leadId = id(input.leadId), name = text(input.name, 80), managerId = await staff(tx, eid, input.managerId);
           await projectLead(tx, eid, leadId);
+          if (input.customerAccess !== undefined && typeof input.customerAccess !== 'boolean') fail('invalid_construction', 422);
+          // The original API default still applies to callers that omit the field.
+          const customerAccess = input.customerAccess !== false;
+          const key = input.stageKey === undefined ? null : stageKey(input.stageKey);
+          const stage = key ? stages.find(item => item.key === key) : undefined;
+          if (key && !stage) fail('construction_stage_unavailable', 422);
           if (!Array.isArray(input.rooms) || input.rooms.length > 30) fail('invalid_construction', 422);
           const names = input.rooms.map(v => text(v, 50)); if (new Set(names).size !== names.length) fail('invalid_construction', 422);
-          const p = (await one(tx, sql`insert into app.construction_projects(enterprise_id,lead_id,name) values(${eid},${leadId},${name}) returning *`))!, pid = String(p.id);
+          const p = (await one(tx, sql`insert into app.construction_projects(enterprise_id,lead_id,name,customer_access,current_stage_key,progress_revision)
+            values(${eid},${leadId},${name},${customerAccess},${key},${stage ? 1 : 0}) returning *`))!, pid = String(p.id);
           await tx.execute(sql`insert into app.construction_members(enterprise_id,project_id,admin_id,role) values(${eid},${pid},${managerId},'manager')`);
           for (const name of names) await tx.execute(sql`insert into app.construction_rooms(enterprise_id,project_id,name) values(${eid},${pid},${name})`);
-          await audit(tx, a, pid, 'create', { name, leadId, managerId, rooms: names });
+          await audit(tx, a, pid, 'create', { name, leadId, managerId, rooms: names, customerAccess });
+          if (stage) {
+            await audit(tx, a, pid, 'progress', { stageKey: stage.key, note: '', sendReminder: false, progressRevision: Number(p.progress_revision) });
+            await recordStageReminder(tx, actorContext(a), p, Number(settings.version), stageReminder(name, stage, ''));
+          }
           return { id: pid, version: 1 };
         });
       }

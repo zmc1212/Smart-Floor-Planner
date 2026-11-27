@@ -2,6 +2,7 @@ import { fingerprint } from '@/lib/assistant/contracts';
 import { issueStatusLabel } from '@/lib/xiaok-v1/progress-status';
 import { weeklyProjectStageName } from '@/lib/xiaok-v1/weekly-report-service';
 import type { FollowupAudience, ReportFacts, ReportProject, WeeklyScheduleFacts } from './report-scope';
+import { publishedSiteNote } from './site-contract';
 
 const periodDate = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -37,8 +38,9 @@ export function reportRecordLine(project: string, room: string, text: string) {
 }
 
 export function reportProgressLine(project: ReportProject, kind: 'daily' | 'weekly') {
-  const latest = [...project.records].reverse().find(record => reportText(record.data?.completed));
-  if (latest) return reportRecordLine(project.name, reportText(latest.room), reportText(latest.data.completed));
+  const text = (record: ReportProject['records'][number]) => reportText(record.data?.completed) || publishedSiteNote(reportText(record.data?.note));
+  const latest = [...project.records].reverse().find(text);
+  if (latest) return reportRecordLine(project.name, reportText(latest.room), text(latest));
   const period = kind === 'weekly' ? '本周' : '当日';
   return project.records.length ? `${period}有 ${project.records.length} 条现场记录。` : `${period}暂无新现场记录。`;
 }

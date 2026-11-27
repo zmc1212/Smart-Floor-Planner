@@ -15,6 +15,7 @@ import { enqueueReportBody } from './report-body-store';
 import { buildRoleWeeklyDigest } from '@/lib/xiaok-v1/weekly-report-service';
 import { reportWorkbench } from './report-workbench';
 import { buildReportReading } from './report-reading';
+import { publishedSiteNote } from './site-contract';
 
 type ReminderPreferences = { stage: boolean; daily: boolean; weekly: boolean };
 const preferences = (b: Row): ReminderPreferences => ({ stage: b.remind_stage !== false, daily: b.remind_daily !== false, weekly: b.remind_weekly !== false });
@@ -238,7 +239,8 @@ export class FollowupService {
       return { bindingId: String(binding.id), reportId: view.reportId, revision: view.revision, periodStart: new Date(String(view.periodStart)).toISOString(),
         publishedAt: row.delivered_at ? new Date(String(row.delivered_at)).toISOString() : null,
         photo,
-        progress: project.records.map(r => typeof r.data.completed === 'string' ? r.data.completed.trim() : '').filter(Boolean).slice(0, 2),
+        progress: project.records.map(r => String(r.data.completed || '').trim()
+          || publishedSiteNote(String(r.data.note || ''))).filter(Boolean).slice(0, 2),
         pending: (project.publishedRecordItems || []).flatMap(item => [item.pending, item.coordination]
           .map((value, index) => ({ key: item.recordId + ':' + index, recordId: item.recordId, text: value.trim(),
             room: item.room, publishedAt: item.publishedAt, coordination: index === 1 }))

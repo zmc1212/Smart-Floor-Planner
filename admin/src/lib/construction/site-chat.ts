@@ -23,6 +23,7 @@ import { siteKnowledgeQuestion, siteKnowledgeResponse } from './site-knowledge';
 import { citationProjection, webCitationProjection } from '@/lib/assistant/knowledge/sources';
 import { parseWebCitationId } from '@/lib/assistant/agent/web-evidence';
 import { captureInput, capturedRecord, saveSiteCapture, scheduleCapturedRecord, siteQuickWorks } from './site-capture';
+import { sitePublicationReceipt } from './publication-receipt';
 import { syncDelegationStaffNotices } from '@/lib/native-workflow/live/delegation-chat';
 import { inspectionEvidenceAvailable, inspectionPoint, inspectionProjection, inspectionReceipt, mintInspectionProof, type InspectionPin } from './inspection-policy';
 
@@ -43,7 +44,7 @@ export async function recordVersion(tx: PostgresTransaction, eid: string, record
       stages: record.stage_snapshot || [], reviewRequirements: record.review_requirements, returnedBy: record.returned_by, returnedAt: record.returned_at,
       inspectionCheckpoint: record.inspection_checkpoint, inspectionDecision: record.inspection_decision, inspectionReceipt: record.inspection_receipt }))}::jsonb)`);
 }
-type SitePermission = { manage: boolean; reviewRecords: boolean; canPublishCustomer: boolean;
+type SitePermission = { manage: boolean; projectManager: boolean; reviewRecords: boolean; canPublishCustomer: boolean;
   write: boolean; recordWrite: boolean; collaboration: boolean; executionOnly: boolean };
 const mayTriage = (record: Row) => record.status === 'draft' && !record.inspection_checkpoint
   || record.status === 'organizing' && (!record.run_id || ['failed', 'cancelled'].includes(String(record.run_status)));
@@ -98,7 +99,7 @@ export class SiteChatService {
       if ((!owner && !member) || p.status === 'archived' || p.archived_at) fail('construction_not_found', 404);
       const collaboration = collaborationEnabled(eid);
       const manage = (!collaboration && owner) || member?.role === 'manager';
-      const permission = { manage, collaboration,
+      const permission = { manage, collaboration, projectManager: member?.role === 'manager',
         // Report approval is project-manager, project-designer or enterprise-owner.
         // Only the manager/owner may also publish an approved record to the customer.
         reviewRecords: owner || manage || member?.role === 'designer',
@@ -150,8 +151,10 @@ export class SiteChatService {
       if (!message) fail('construction_not_found', 404);
       const rooms = await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} order by id`);
       const original = await this.projectRecord(tx, c, p, record, permission);
+      const publicationReceipt = permission.reviewRecords ? await sitePublicationReceipt(tx, eid, p, record) : null;
       return siteDto({ project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access },
-        write: permission.write, collaboration: permission.collaboration, rooms, items: [{ message, record: original }] }) as Row;
+        write: permission.write, collaboration: permission.collaboration, rooms,
+        items: [{ message, record: publicationReceipt ? { ...original, publicationReceipt } : original }] }) as Row;
     }, false);
   }
 
@@ -268,20 +271,30 @@ export class SiteChatService {
     const versions = parseSiteVersions(body.versions);
     const raw = text(body.text, 4000, false), mediaIds = body.mediaIds;
     const capture = body.capture === undefined ? null : captureInput(body.capture);
-    if (body.inspectionCheckpoint !== undefined && capture?.kind !== 'free') fail('invalid_construction', 422);
+    if (body.inspectionCheckpoint !== undefined && capture?.kind !== 'free' && capture?.kind !== 'manager') fail('invalid_construction', 422);
     if (capture && body.speech !== undefined) fail('invalid_construction', 422);
     if (body.stageKeys !== undefined && (!capture || !Array.isArray(body.stageKeys) || body.stageKeys.length > 10
       || new Set(body.stageKeys).size !== body.stageKeys.length || body.stageKeys.some(value => typeof value !== 'string'))) fail('invalid_construction', 422);
     if (!Array.isArray(mediaIds) || mediaIds.length > 9 || new Set(mediaIds).size !== mediaIds.length
       || (!body.capture && (!raw && !mediaIds.length || body.recording !== undefined))) fail('invalid_construction', 422);
     mediaIds.forEach(id);
-    return this.scope(projectId, true, async (tx, c, _p, permission) => {
+    return this.scope(projectId, true, async (tx, c, project, permission) => {
+      if (capture?.kind === 'manager' && (!permission.projectManager || !project.customer_access || !project.customer_user_id)) fail('construction_forbidden', 403);
+      if (capture?.kind === 'manager' && capture.target !== fingerprint([projectId, String(project.customer_user_id)])) fail('site_publication_target_changed');
       const result = await idempotent(tx, this.actor, 'site:send:' + projectId, requestKey, body, async () => {
       const perform = async () => {
       const eid = this.staff.enterpriseId;
       for (const mid of mediaIds) if (!await one(tx, sql`select id from app.construction_site_media a where a.enterprise_id=${eid} and a.project_id=${projectId} and a.id=${mid}
         and a.uploader_id=${this.staff.adminId} and a.deleted_at is null and not exists(select 1 from app.construction_site_attachments x where x.enterprise_id=a.enterprise_id and x.project_id=a.project_id and x.media_id=a.id)
         and not ${sharedMediaUsed(eid, projectId, mid)} for share`)) fail('construction_media_unavailable', 422);
+      if (capture?.kind === 'manager') {
+        const received = await saveSiteCapture(tx, this.actor, c, projectId, body, requestKey);
+        // A selected mandatory checkpoint continues through the existing onsite review.
+        if (body.inspectionCheckpoint) return received;
+        await new SiteChatService(this.staff, tx).mutate(projectId, received.recordId, 'publish',
+          { expectedVersion: 1, audience: 'customer' }, fingerprint(['site:publish', projectId, received.recordId, requestKey]));
+        return { ...received, organizationStatus: 'published' };
+      }
       const intent = siteIssueCommand(raw) || planCommand(raw) || resolutionCommand(raw) ? 'request' : siteMessageIntent(raw, mediaIds.length);
       // Explicit shortcuts and audio are reports. Typed questions/actions keep their existing routing.
       if (capture && (capture.kind === 'quick' || body.recording !== undefined || intent === 'report'
@@ -310,7 +323,7 @@ export class SiteChatService {
         const actionRun = await requestSiteAction(tx, this.actor, c, settings, message);
         if (actionRun) {
           await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, 'request', siteActionWaiting,
-            { actionRunId: actionRun.runId, actionVersions: versions, actionProjectVersion: Number(_p.version), sourceHash: fingerprint(message.content) });
+            { actionRunId: actionRun.runId, actionVersions: versions, actionProjectVersion: Number(project.version), sourceHash: fingerprint(message.content) });
           return { ...actionRun, recordId: null, intent: 'request' };
         }
       }

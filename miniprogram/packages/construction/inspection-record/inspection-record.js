@@ -8,6 +8,7 @@ const route = '/packages/construction/inspection-record/inspection-record';
 const validId = value => /^[1-9]\d*$/.test(String(value || ''));
 const sheetTitles = { publish: '确认审核', request_changes: '退回补充', inspection_triage: '确认审核方式', edit: '修改整理内容', withdraw: '撤回发布' };
 const statusLabels = { published: '审核通过', changes_requested: '需补充', withdrawn: '已撤回', draft: '待审核', organizing: '待审核' };
+const reportStateLabels = { pending: '待生成', generated: '已生成', not_enabled: '未开通' };
 const editFields = [{ key: 'title', label: '标题', limit: 80 }, { key: 'completed', label: '本次完成', limit: 1000 },
   { key: 'pending', label: '尚未完成', limit: 1000 }, { key: 'coordination', label: '待沟通', limit: 1000 }, { key: 'note', label: '补充说明', limit: 2000 }];
 function identity() {
@@ -41,6 +42,8 @@ Page({
     if ('items' in patch) {
       const item = patch.items[0], r = item?.record;
       next.item = r ? { ...item, statusLabel: r.resubmittedRecordId ? '已补交' : statusLabels[r.status],
+        publication: r.publicationReceipt ? { ...r.publicationReceipt, dailyLabel: reportStateLabels[r.publicationReceipt.daily],
+          weeklyLabel: reportStateLabels[r.publicationReceipt.weekly] } : null,
         stages: (r.stage_snapshot || []).map(stage => stage.name).join('、'),
         approvedAt: r.published_at ? siteMessageTime(r.published_at) : '' } : null;
     }

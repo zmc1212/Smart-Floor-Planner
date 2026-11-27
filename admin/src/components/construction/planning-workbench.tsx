@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
-import { Alert, Button, Checkbox, DatePicker, Drawer, Form, Input, Modal, Radio, Select, Space, Switch, Tabs, Tag, Typography } from 'antd';
+import { Alert, Button, Checkbox, DatePicker, Drawer, Form, Input, Modal, Radio, Select, Space, Switch, Tabs, Tag, Typography, theme } from 'antd';
 import dayjs from 'dayjs';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { PublicationWorkbench } from './publication-workbench';
@@ -25,6 +25,7 @@ export function PlanningWorkbench() {
   </PageContainer>;
 }
 function Workbench({ identity }: { identity: string }) {
+  const { token } = theme.useToken();
   const [items, setItems] = useState<Project[]>([]), [detail, setDetail] = useState<Detail | null>(null), [selected, setSelected] = useState('');
   const [catalog, setCatalog] = useState<{ owner: boolean; leads: ConstructionLead[]; staff: Staff[] }>({ owner: false, leads: [], staff: [] });
   const [sourceLead, setSourceLead] = useState<ConstructionLead | null>(null);
@@ -128,7 +129,9 @@ function Workbench({ identity }: { identity: string }) {
       const values = await form.validateFields(), kind = editor.kind;
       let body: Record<string, unknown>, path = 'projects', method = 'POST';
       if (kind === 'stages') { path = 'stages'; method = 'PATCH'; body = { expectedVersion: settings.version, stages: values.stages }; }
-      else if (kind === 'create') body = { leadId: values.leadId, managerId: values.managerId, name: values.name, rooms: String(values.rooms || '').split(/\n/).map(s => s.trim()).filter(Boolean) };
+      else if (kind === 'create') body = { leadId: values.leadId, managerId: values.managerId, name: values.name,
+        rooms: String(values.rooms || '').split(/\n/).map(s => s.trim()).filter(Boolean),
+        stageKey: values.stageKey, customerAccess: values.customerAccess === true };
       else if (kind === 'schedule') {
         if (schedule?.kind === 'view') { setEditor(null); return; }
         if (!detail?.manage || detail.project.status !== 'active' || !schedule || scheduleStale) return;
@@ -280,6 +283,11 @@ function Workbench({ identity }: { identity: string }) {
           <Form.Item name="rooms" label="项目房间（可选，每行一个）"><Input.TextArea rows={3} maxLength={1500} /></Form.Item>
         </>}
         {editor && ['create','project','room'].includes(editor.kind) && <Form.Item name="name" label={editor.kind === 'room' ? '房间名称' : '项目名称'} rules={[{ required: true, whitespace: true }]}><Input maxLength={editor.kind === 'room' ? 50 : 80} /></Form.Item>}
+        {editor?.kind === 'create' && <div style={{ padding: token.paddingSM, background: token.colorSuccessBg,
+          border: '1px solid ' + token.colorSuccessBorder, borderRadius: token.borderRadius }}>
+          <Form.Item name="stageKey" label="当前施工工序"><Select allowClear placeholder="待确认" options={settings.stages.map(stage => ({ value: stage.key, label: stage.name }))} /></Form.Item>
+          <Form.Item name="customerAccess" valuePropName="checked" extra="当前关联业主可查看已发布的工地内容。" style={{ marginBottom: 0 }}><Checkbox>同时开通业主查看</Checkbox></Form.Item>
+        </div>}
         {editor?.kind === 'project' && <>
           <Form.Item name="status" label="项目状态" rules={[{ required: true }]}><Select options={options(['active','paused','archived'])} /></Form.Item>
           <Form.Item name="customerAccess" label="客户可查看节点并联系施工人员" valuePropName="checked" extra="收回后历史施工消息和电话入口失效；恢复或重新发送需据实际进度确认。"><Switch disabled={!detail?.owner} /></Form.Item>

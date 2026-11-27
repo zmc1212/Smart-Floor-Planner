@@ -20,16 +20,22 @@ import { customerSiteMedia, publishedSiteRecord, deliverSiteNotifications } from
 import { queryBusiness, businessSnapshotAvailable } from '@/lib/assistant/agent/business-tools';
 import { deleteConstructionData } from '@/db/repositories/construction-cleanup';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
-import { signMiniProgramToken } from '@/lib/miniprogram-jwt';
+import { signMiniProgramToken, verifyFamilyInvite } from '@/lib/miniprogram-jwt';
 import { NextRequest } from 'next/server';
 import { SignJWT } from 'jose';
 import { GET } from '@/app/api/miniprogram/construction/[[...path]]/route';
 import { GET as adminGet, POST as adminPost } from '@/app/api/construction/[[...path]]/route';
-import type { ActorContext } from '@/lib/assistant/contracts';
+import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { parseSiteDraft } from '@/lib/construction/site-contract';
 import { siteWatchIntent } from '@/lib/construction/site-watches';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
+import { ownerSiteHome, ownerSiteProgressPhoto } from '@/lib/construction/owner-home';
+import { enqueueReport, ensureFollowupBinding } from '@/lib/construction/report-store';
+import { deliverConstructionReports, processConstructionReport } from '@/lib/construction/report-worker';
+import { getDefaultMenuKeys } from '@/lib/admin-user-roles';
+import { SystemRoleRepository } from '@/db/repositories/system-role-repository';
+import { CustomerProjectProgress } from '@/lib/construction/family-progress';
 
 const prefix = 'site-chat-' + randomUUID(), eids: string[] = [], uids: string[] = [], owners: string[] = [], staffIds: string[][] = [];
 const platformIds: string[] = [];
@@ -63,6 +69,9 @@ before(async () => {
     await savePlatformLlmConfig({ enabled: true, providerKey: provider.providerKey, baseUrl: provider.baseUrl, model: provider.model, apiKey: provider.apiKey });
   }
   await withPlatformTransaction(async tx => {
+    await new SystemRoleRepository(tx).ensureDefaults([
+      { roleKey: 'designer', label: '设计师', menuKeys: getDefaultMenuKeys('designer') },
+    ]);
     for (const role of ['admin','super_admin']) platformIds.push(String((await one(tx, sql`insert into app.admin_users(username,password_hash,role,status,must_change_password,display_name)
       values(${prefix+role},'test-only',${role},'active',false,${role}) returning id`))!.id));
     for (let i = 0; i < 2; i++) {
@@ -354,6 +363,97 @@ test('six domain tables force tenant RLS and pure contracts reject invalid room 
   assert.throws(() => parseSiteDraft(output('999999999').text, ['1']));
   assert.equal(siteWatchIntent('怎么取消关注？'), null);
 });
+
+test('manager progress is published once to the confirmed owner and tracks the actual daily and weekly versions', async () => {
+  const enterpriseId = eids[0];
+  const userId = customer.principal.kind === 'user' ? customer.principal.userId : '';
+  assert.ok(userId);
+  const identity = { userId, contextVersion: 1 };
+  const create = { leadId: lid, name: '合成 · 负责人发布', managerId: staffIds[0][1], rooms: ['厨房'], stageKey: 'utilities', customerAccess: true };
+  const createKey = randomUUID();
+  const created = await owner.execute('create', create, createKey);
+  assert.deepEqual(await owner.execute('create', create, createKey), created);
+  const projectId = String(created.id);
+  const detail = (await owner.execute('detail', { projectId })).project as Row;
+  assert.equal(detail.current_stage_key, 'utilities');
+  assert.equal(detail.customer_access, true);
+  const denied = await act('create', { ...create, name: '合成 · 未开通查看', customerAccess: false });
+  await assert.rejects(ownerSiteHome(identity, String(denied.id)), /construction_not_found/);
+  await assert.rejects(act('create', { ...create, stageKey: 'invalid_stage' }), /construction_stage_unavailable/);
+  await act('member', { projectId, expectedVersion: Number(detail.version), adminId: staffIds[0][0], role: 'worker', active: true, workLabel: '' });
+
+  const manager = site(0, 1);
+  const board = await constructionWorkbench(actor(0, 1), 'designer', projectId) as Row;
+  assert.equal(board.view, 'manager');
+  assert.equal(board.canCapture, true);
+  const target = String((board.project as Row).publicationTarget);
+  const text = '厨房线管铺好了，明天核对底盒位置。';
+  const body = { text, mediaIds: [] as string[], stageKeys: ['utilities'], capture: { kind: 'manager', target } };
+  await assert.rejects(site().send(projectId, body, randomUUID()), /construction_forbidden/);
+  await assert.rejects(manager.send(projectId, { ...body, capture: { kind: 'manager', target: fingerprint('旧业主') } }, randomUUID()),
+    /site_publication_target_changed/);
+  const photo = await sharp({ create: { width: 32, height: 24, channels: 3, background: '#a69376' } }).jpeg().toBuffer();
+  body.mediaIds = [String((await manager.upload(projectId, randomUUID(), photo)).id)];
+  const requestKey = randomUUID();
+  const sent = await manager.send(projectId, body, requestKey) as Row;
+  assert.equal(sent.organizationStatus, 'published');
+  assert.equal(sent.runId, null);
+  assert.deepEqual(await manager.send(projectId, body, requestKey), sent);
+  assert.deepEqual(await manager.operation(projectId, requestKey), { found: true, result: sent });
+  const recordId = String(sent.recordId), [mediaId] = body.mediaIds;
+  const readReceipt = async () => ((((await manager.reviewRecord(projectId, recordId)).items as Row[])[0].record as Row).publicationReceipt);
+  assert.deepEqual(await readReceipt(), { ownerReadable: true, daily: 'not_enabled', weekly: 'not_enabled' });
+  const reopened = await ownerSiteHome(identity, projectId);
+  assert.equal(reopened.latestProgress?.recordId, recordId);
+  assert.equal(reopened.latestProgress?.text, text);
+  assert.equal(reopened.latestProgress?.mediaId, mediaId);
+  assert.equal((await ownerSiteProgressPhoto(identity, projectId, recordId, 2, mediaId)).mime, 'image/jpeg');
+  await assert.rejects(ownerSiteProgressPhoto(identity, projectId, recordId, 1, mediaId), /construction_not_found/);
+  const familyId = uids[2];
+  const family = new CustomerProjectProgress({ ...customer, principal: { kind: 'user', userId: familyId } });
+  await assert.rejects(family.read(projectId), /construction_not_found/);
+  const invite = await verifyFamilyInvite((await new CustomerProjectProgress(customer).invite(projectId)).token);
+  assert.ok(invite);
+  await family.acceptInvite(invite);
+  assert.equal((await family.read(projectId)).latestProgressText, text);
+  await assert.rejects(ownerSiteProgressPhoto({ userId: familyId, contextVersion: 1 }, projectId, recordId, 2, mediaId), /construction_not_found/);
+
+  await withTenantTransaction(enterpriseId, tx => tx.execute(sql`insert into app.construction_report_settings
+    (enterprise_id,enabled,next_daily_at,next_weekly_at,audiences,project_ids)
+    values(${enterpriseId},true,now()+interval '1 day',now()+interval '7 days','["customer"]'::jsonb,${JSON.stringify([projectId])}::jsonb)`));
+  assert.deepEqual(await readReceipt(), { ownerReadable: true, daily: 'pending', weekly: 'pending' });
+  for (const kind of ['daily', 'weekly'] as const) {
+    const queued = await withTenantTransaction(enterpriseId, async tx => {
+      const binding = await ensureFollowupBinding(tx, enterpriseId, { kind: 'user', id: userId, audience: 'customer', projectId });
+      const settings = (await one(tx, sql`select * from app.construction_report_settings where enterprise_id=${enterpriseId}`))!;
+      const end = new Date(Date.now() + 1000);
+      const start = new Date(end.getTime() - (kind === 'daily' ? 1 : 7) * 86400000);
+      return enqueueReport(tx, enterpriseId, binding, settings, { kind, start, end, cutoff: end, scheduledAt: end });
+    });
+    assert.ok(queued);
+    const lease = await claimJob({ enterpriseId, runId: queued.runId });
+    assert.ok(lease);
+    await processConstructionReport(lease);
+    await deliverConstructionReports(enterpriseId);
+    assert.deepEqual(await readReceipt(), { ownerReadable: true, daily: 'generated', weekly: kind === 'daily' ? 'pending' : 'generated' });
+  }
+  const stages = await owner.execute('stages');
+  await act('saveStages', { expectedVersion: stages.version, stages: (stages.stages as Row[]).map(stage =>
+    stage.key === 'utilities' ? { ...stage, inspectionCheckpoints: [{ key: 'seal_review', name: '封槽前到场核对' }] } : stage) });
+  const required = await manager.send(projectId, { ...body, mediaIds: [], text: '封槽前请到场核对。',
+    inspectionCheckpoint: { stageKey: 'utilities', key: 'seal_review' } }, randomUUID()) as Row;
+  assert.equal(required.organizationStatus, 'draft');
+  await assert.rejects(manager.mutate(projectId, String(required.recordId), 'publish',
+    { expectedVersion: 1, audience: 'customer' }, randomUUID()), /inspection_pin_missing|inspection_proof_required/);
+  assert.equal((await ownerSiteHome(identity, projectId)).latestProgress?.recordId, recordId);
+  const current = (await owner.execute('detail', { projectId })).project as Row;
+  await act('update', { projectId, expectedVersion: Number(current.version), name: create.name, status: 'active', customerAccess: false });
+  await assert.rejects(ownerSiteHome(identity, projectId), /construction_not_found/);
+  await assert.rejects(ownerSiteProgressPhoto(identity, projectId, recordId, 2, mediaId), /construction_not_found/);
+  await assert.rejects(family.read(projectId), /construction_not_found/);
+  assert.deepEqual(await readReceipt(), { ownerReadable: false, daily: 'not_enabled', weekly: 'not_enabled' });
+});
+
 test('configured real provider, private photo and durable Worker produce a reviewable draft without formal approvals', { skip: !live }, async () => {
   const photo = await sharp({ create: { width: 128, height: 96, channels: 3, background: '#cac4b6' } }).jpeg().toBuffer();
   const media = await site().upload(pid, randomUUID(), photo);

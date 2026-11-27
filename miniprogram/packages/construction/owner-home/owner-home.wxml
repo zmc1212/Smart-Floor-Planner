@@ -168,13 +168,13 @@
                 <text class="site-progress-title">{{project.stageName || '阶段待更新'}}</text>
                 <text wx:if="{{schedule.stageStatus}}" class="site-progress-status">{{schedule.stageStatus}}</text>
               </view>
-              <view wx:if="{{report.progress[0]}}" class="site-progress-update">
+              <view wx:if="{{latestProgress || report.progress[0]}}" class="site-progress-update">
                 <view class="site-progress-update-copy">
                   <text class="site-progress-label">最近进展</text>
-                  <text class="site-progress-excerpt">{{report.progress[0]}}</text>
-                  <text wx:if="{{report.dateLabel}}" class="site-meta">{{report.dateLabel}}</text>
+                  <text class="site-progress-excerpt">{{latestProgress ? latestProgress.text : report.progress[0]}}</text>
+                  <text wx:if="{{latestProgress || report.dateLabel}}" class="site-meta">{{latestProgress ? latestProgress.dateLabel : report.dateLabel}}</text>
                 </view>
-                <image wx:if="{{reportPhoto}}" class="site-report-photo" src="{{reportPhoto}}" mode="aspectFill" aria-label="日报现场照片" />
+                <image wx:if="{{reportPhoto}}" class="site-report-photo" src="{{reportPhoto}}" mode="aspectFill" aria-label="现场照片" />
               </view>
               <view wx:if="{{nextStep || schedule.next}}" class="site-progress-next">
                 <text class="site-progress-label">下一步</text>

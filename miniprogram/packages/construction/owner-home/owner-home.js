@@ -14,7 +14,7 @@ const familyBase = '/miniprogram/construction/customer-projects';
 const readOptions = { suppressUnauthorized: true };
 const emptyReminders = { remindersOpen: false, siteReminders: [], remindersLoading: false, remindersError: '',
   reminderSelected: '', reminderDetail: null, reminderReading: false, reminderReadError: '' };
-const emptyProject = { project: null, report: null, reportPhoto: '', nextStep: null, notebookTask: null, camera: null, projectLoading: false, projectError: '', cameraLoading: false, cameraError: '',
+const emptyProject = { project: null, report: null, reportPhoto: '', latestProgress: null, nextStep: null, notebookTask: null, camera: null, projectLoading: false, projectError: '', cameraLoading: false, cameraError: '',
   liveApplication: null, liveError: '', schedule: null, scheduleLoading: false, scheduleError: '', scheduleOpen: false,
   siteMoreOpen: false, familyVisible: false, ...emptyReminders };
 const emptyAccount = { ...emptyProject, ...emptyRenovation, projects: [], familyProjects: [] };
@@ -238,16 +238,20 @@ Component({
           pending: (data.report.pending || []).filter(item => typeof item.text === 'string' && item.text.trim()),
         } : null;
         const nextStep = report?.pending?.find(item => item.coordination) || report?.pending?.[0] || null;
+        const latestProgress = project.progressAccess && data.latestProgress?.text
+          ? { ...data.latestProgress, dateLabel: shanghaiDate(data.latestProgress.publishedAt, true) + ' 发布' } : null;
         const projects = this.data.projects;
         const unlisted = openFamily && !projects.some(item => item.id === projectId);
-        this.setData({ project, report, nextStep, notebookTask: ownerTask(this._ownerDecision), projectLoading: false, cameraLoading: true,
+        this.setData({ project, report, latestProgress, nextStep, notebookTask: ownerTask(this._ownerDecision), projectLoading: false, cameraLoading: true,
           ...(unlisted ? { projects: [...projects, { id: projectId, name: project.name }], selectedIndex: projects.length } : {}) });
         if (openFamily) this.openFamilySheet();
         await Promise.all([
           this.readCover(projectId, generation, token),
           project.progressAccess && this.readLiveApplication(projectId, generation, token),
           project.progressAccess && this.readSchedule(),
-          report?.progress?.[0] && report.photo && this.readReportPhoto(projectId, report, generation, token),
+          latestProgress?.mediaId
+            ? this.readProgressPhoto(projectId, latestProgress, generation, token)
+            : !latestProgress && report?.progress?.[0] && report.photo && this.readReportPhoto(projectId, report, generation, token),
         ]);
       } catch (error) {
         if (this.current(generation, token)) this.setData({ ...emptyProject,
@@ -259,11 +263,19 @@ Component({
       const ids = [report.bindingId, report.reportId, projectId, recordId, mediaId];
       if (!ids.every(value => /^[1-9]\d{0,18}$/.test(String(value))) || !Number.isSafeInteger(report.revision) || report.revision < 1) return;
       const path = `/miniprogram/assistant/followups/${report.bindingId}/reports/${report.reportId}/projects/${projectId}/records/${recordId}/media/${mediaId}?revision=${report.revision}`;
+      await this.readSitePhoto(path, generation, token);
+    },
+    async readProgressPhoto(projectId, progress, generation, token) {
+      const { recordId, version, mediaId } = progress;
+      if (![projectId, recordId, mediaId].every(value => /^[1-9]\d{0,18}$/.test(String(value))) || !Number.isSafeInteger(version) || version < 1) return;
+      await this.readSitePhoto(`${base}/${projectId}/progress/${recordId}/${version}/media/${mediaId}`, generation, token);
+    },
+    async readSitePhoto(path, generation, token) {
       try {
         const file = await api.downloadFile(path, readOptions);
         if (this.current(generation, token)) this.setData({ reportPhoto: file.tempFilePath });
         else this.clearReportPhoto(file.tempFilePath);
-      } catch { /* The report stays available through the existing protected entry. */ }
+      } catch { /* Keep the progress excerpt when its photo is unavailable. */ }
     },
     clearReportPhoto(path = this.data.reportPhoto) {
       if (!path) return;

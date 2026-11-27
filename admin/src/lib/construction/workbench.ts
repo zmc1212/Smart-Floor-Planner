@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { assistantWritesEnabled, one, rows } from '@/db/repositories/assistant-repository';
-import { fail, id } from '@/lib/assistant/contracts';
+import { fail, fingerprint, id } from '@/lib/assistant/contracts';
 import { constructionAccess } from './service';
 import { constructionBrief } from './brief';
 import { readStageSettings } from './stages-store';
@@ -11,7 +11,7 @@ import type { ConstructionActor } from './contracts';
 import { inspectionSummary, workbenchOnsiteTask } from './inspection';
 
 type Project = { id: string; name: string; role: 'worker' | 'manager' | 'observer' | 'designer';
-  status: string; stageKey: string | null; assigned: boolean };
+  status: string; stageKey: string | null; assigned: boolean; customerAccess: boolean; ownerId: string | null };
 type RecordKind = 'capture' | 'draft' | 'rework';
 
 const awaitingOwner = new Set(['awaiting_owner', 'rectifying', 'reopened']);
@@ -66,6 +66,8 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
     // The reviewer scope follows assignments rather than the account label.
     const allowed = staffRole === 'designer' ? sql`m.role in ('designer','manager')` : sql`m.role in ('worker','manager','observer','designer')`;
     const projects = await rows<Project>(tx, sql`select p.id::text,p.name,p.status,p.current_stage_key as "stageKey",m.role,
+      (p.customer_access and l.customer_user_id is not null) as "customerAccess",
+      l.customer_user_id::text as "ownerId",
       exists(select 1 from app.construction_stage_assignments s where s.enterprise_id=p.enterprise_id and s.project_id=p.id
         and s.stage_key=p.current_stage_key and s.admin_id=m.admin_id) as assigned
       from app.construction_projects p join app.leads l on l.enterprise_id=p.enterprise_id and l.id=p.lead_id
@@ -93,7 +95,11 @@ export function constructionWorkbench(actor: ConstructionActor, staffRole: strin
       pendingReport: await latestPendingReport(tx, eid, project.id) };
     if (project.role === 'manager') {
       const issue = active.find(issue => issue.classification === 'awaiting_review');
-      return { view: 'manager', ...scope, draft: await recordCard(tx, actor, project.id, 'draft'),
+      const settings = await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`);
+      const canCapture = project.status === 'active' && assistantWritesEnabled(settings);
+      return { view: 'manager', ...scope, project: { ...scope.project, stageKey: project.stageKey, customerAccess: project.customerAccess,
+        publicationTarget: project.customerAccess ? fingerprint([project.id, project.ownerId]) : null },
+        canCapture, draft: await recordCard(tx, actor, project.id, 'draft'),
         inspection: await inspectionSummary(tx, actor, owner),
         onsiteTask: await workbenchOnsiteTask(tx, actor, owner, project.id),
         review: issue ? issueCard(issue) : await recordCard(tx, actor, project.id, 'rework'),
