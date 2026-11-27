@@ -1036,6 +1036,8 @@ Phase 7 最终治理已实现：纯 geometry/read-model 依赖方向、全模块
 
 业主从「工地 → 查看日报与周报」进入；施工人员、设计师从工地工作台的「工地日报与周报」进入并保留所选工地；老板从「企业日周报」进入，默认周报。共用 `packages/assistant/chat/chat?reportBoard=1` 和已批准的[四端单屏设计](../design-references/xiaok-report-workflow-v1-20261120/README.md)。切换保留原收件人与项目范围，历史复用月份、周期及项目筛选，已阅写入现有精确版本回执。
 
+业主从工地打开报告时按所选工地查找跟进绑定。该工地尚无绑定时，日报和周报均显示既有空态。员工只有一条企业跟进绑定时，仍可通过服务端权限检查打开后续分页中的获权工地。Stable 390×844 使用本地客户端连接线上服务复测，项目 7 切换并重进两种周期均显示空态，项目 5 重进读回同一份已保存的日报和周报。[项目 7 复测](../tmp/xiaok-demo-retest-20261127/report-native.json) · [项目 5 复测](../tmp/xiaok-demo-retest-20261127/report-native-5.json)。
+
 共用 V004 手账阅读页，每个周期含详情和图版两张整屏书页。左滑从右上角卷起，页眉、周期书签、正文及页脚随书页翻动。右滑从左上角回到详情，页脚也可点按。图版按手机宽度排版，纵向滚动读完长图，同一期来回翻页保留图版的滚动位置。「原图」会重新核验权限并打开原尺寸图片。微信原生胶囊使用系统安全区。[确认稿 V004](../design-references/xiaok-report-workflow-v1-20261120/README.md#整屏翻阅-v004)。
 
 海报就绪后，「发朋友圈」纸签与「原图」并排。点按后重新校验当前报告，将获权 PNG 交给微信原生图片分享面板，并关闭附带的小程序入口。基础库 3.8.2 起可在面板选择朋友圈，由用户在微信内确认发布。权限或报告变化会清除旧图并提供重新读取。面板不可用时提示通过原图保存。[微信图片分享 API](https://github.com/wechat-miniprogram/api-typings/blob/master/types/wx/lib.wx.api.d.ts#L31708-L31720)。 Stable 已核对日报、周报的 76×24px 分享纸签、44px 触区及原图纸签位置。微信原生面板已打开完整周报长图，模拟器内朋友圈项禁用。四端演示使用公开的小区名和虚构施工记录。[周报图版](../tmp/report-share-20261125/weekly-poster.png) · [日报图版](../tmp/report-share-20261125/daily-poster.png) · [原生分享面板](../tmp/report-share-20261125/weekly-native-share-menu.png) · [原生证据](../tmp/report-share-20261125/native-fresh.json)。

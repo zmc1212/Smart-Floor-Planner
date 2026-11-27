@@ -115,13 +115,21 @@ class FollowupController {
       if (!bindingId) {
         await this.loadList();
         if (!this.current(epoch)) return;
-        const available = this.state.followupBindings.filter(b => b.status !== 'deleted');
-        const match = available.find(b => projectId && b.projects?.some(p => p.id === projectId))
-          || (available.length === 1 ? available[0] : null);
-        bindingId = match?.bindingId || '';
+        if (!this.state.followupError && !this.state.followupPasswordRequired) {
+          const available = this.state.followupBindings.filter(b => b.status !== 'deleted');
+          const match = projectId && available.find(b => b.projects?.some(p => p.id === projectId));
+          const only = available.length === 1 ? available[0] : null;
+          // Staff bindings cover an enterprise, so the requested site may be on a later page.
+          bindingId = match?.bindingId || (only && (!projectId || only.audience !== 'customer') ? only.bindingId : '');
+        }
       }
       if (bindingId) await this.select(bindingId, projectId, { readReports: false });
-      else this.set({ followupLoading: false, followupContext: null });
+      else {
+        this.selected = '';
+        this.selectedProjectId = '';
+        this.set({ ...initialHistory(), followupLoading: false, followupContext: null, followupReports: [],
+          followupCursor: null, followupDetail: null, followupOriginal: null });
+      }
       return;
     }
     if (report) {

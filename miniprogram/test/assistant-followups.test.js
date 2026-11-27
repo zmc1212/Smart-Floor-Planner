@@ -34,6 +34,45 @@ function fixture() {
   return { client, controller, context, report, calls, emitted, intercept(fn) { intercept = fn; }, identity(value) { session = value; } };
 }
 
+test('a new owner site stays empty until it has its own report binding', async () => {
+  const { calls, context, controller, intercept } = fixture();
+  await controller.show({ board: true, projectId: '248' });
+  assert.equal(controller.state.followupContext.bindingId, '27');
+
+  calls.length = 0;
+  await controller.show({ board: true, projectId: '249' });
+  assert.deepEqual(calls.map(({ method, path }) => [method, path]), [['GET', '/followups']]);
+  assert.equal(controller.state.followupError, '');
+  assert.equal(controller.state.followupLoading, false);
+  assert.equal(controller.state.followupContext, null);
+  assert.deepEqual(controller.state.followupReports, []);
+  assert.equal(controller.selected, '');
+
+  const newSite = { ...context, bindingId: '28', projects: [{ id: '249', name: '合成测试·新工地' }] };
+  calls.length = 0;
+  intercept(({ path }) => {
+    if (path === '/followups') return { items: [context, newSite] };
+    if (path === '/followups/28') return newSite;
+  });
+  await controller.show({ board: true, projectId: '249' });
+  assert.equal(controller.state.followupContext.bindingId, '28');
+  assert.deepEqual(calls.map(({ path }) => path), ['/followups', '/followups/28']);
+  assert.equal(calls[1].body.projectId, '249');
+});
+
+test('a staff report board can use its sole enterprise binding to check a project on a later page', async () => {
+  const { calls, context, controller, intercept } = fixture();
+  const staff = { ...context, audience: 'designer', projectsNextCursor: '248' };
+  intercept(({ path }) => {
+    if (path === '/followups') return { items: [staff] };
+    if (path === '/followups/27') return { ...staff, selectedProject: { id: '249', name: '合成测试·下一页工地' } };
+  });
+  await controller.show({ board: true, projectId: '249' });
+  assert.deepEqual(calls.map(({ path }) => path), ['/followups', '/followups/27']);
+  assert.equal(calls[1].body.projectId, '249');
+  assert.equal(controller.state.followupContext.selectedProject.id, '249');
+});
+
 test('staff follow-up can reopen its original entry after a transport failure before binding selection', async () => {
   const f = fixture();
   f.intercept(({ path }) => {
