@@ -8,7 +8,7 @@ async function handle(request:NextRequest,context:{params:Promise<{path?:string[
   return withTenantRoute(request,{roles:[...ENTERPRISE_MANAGEMENT_ROLES],requireEnterprise:true},async actor=>{
     try {
       await new GuidanceSettingsService(actor.enterpriseId!,actor.userId).execute();
-      const data=await handleHandoff(request,(await context.params).path||[],{enterpriseId:actor.enterpriseId!,principal:{kind:'admin',adminId:actor.userId},contextVersion:0,capabilities:['assistant.handoff.staff']});
+      const data=await handleHandoff(request,(await context.params).path||[],{enterpriseId:actor.enterpriseId!,principal:{kind:'admin',adminId:actor.userId},contextVersion:0,capabilities:['assistant.handoff.staff']},{inlineImages:true});
       if(data instanceof Response)return data;
       return NextResponse.json({success:true,data},{headers:{'Cache-Control':'no-store'}});
     }catch(e){return handoffError(e);}

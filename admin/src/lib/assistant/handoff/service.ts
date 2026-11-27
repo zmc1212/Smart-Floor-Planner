@@ -8,6 +8,7 @@ import { appendMessage, cancelRuns, idempotent, conversationSource } from '../co
 import { allRequirementKeys } from '../requirements/contract';
 import { adaptSurveyGraphToRooms, parseFormalSurveyLayout } from '@/lib/survey-graph';
 import { agentMessageAvailable } from '../agent/media-context';
+import { formalMediaSourceAvailable } from '../media/formal-source';
 import { recordNeedIssueReview } from '@/lib/construction/need-issues';
 import { currentHandoffOwner } from './owner';
 
@@ -169,25 +170,57 @@ export class HandoffService {
       floorPlanId: l.layout_data && parseFormalSurveyLayout(l.layout_data) ? String(l.primary_floor_plan_id) : null,
       planName: l.plan_name || '', rooms: l.layout_data && parseFormalSurveyLayout(l.layout_data) ? adaptSurveyGraphToRooms(l.layout_data).map(r => ({ id: r.id, name: r.name })) : [] }));
   }
-  staffRead(conversationId:string) {
+  staffRead(conversationId:string, { inlineImages = false }: { inlineImages?: boolean } = {}) {
     return this.scoped(false,async repo=>{
       const {c,h,staff}=await this.staffConversation(repo,conversationId);
       if (h.state === 'waiting') return { conversationId: String(c.id), mode: c.mode,
         status: c.status, version: Number(c.version), handoff: dispatchHandoff(h), messages: [] };
-      const messages=h.state==='active'?await rows(repo.tx,sql`select id,seq,author_kind,admin_id,content from app.assistant_messages where enterprise_id=${this.actor.enterpriseId}
-        and conversation_id=${conversationId}
-        and not ${privateReportReply}
-        and ${c.purpose==='construction_followup'?sql`purpose is distinct from 'construction.report.facts'`:sql`true`} order by seq desc limit 100`):[];
+      const enterpriseId = this.actor.enterpriseId;
+      const canViewImages = inlineImages && h.mediaConsent === true && !(c.entry_snapshot as Row)?.retentionRedacted;
+      // The former media card included uploads older than the 100-message window.
+      const messages = await rows(repo.tx, sql`
+        with recent as (
+          select id from app.assistant_messages
+          where enterprise_id=${enterpriseId} and conversation_id=${conversationId} and not ${privateReportReply}
+            and ${c.purpose === 'construction_followup' ? sql`purpose is distinct from 'construction.report.facts'` : sql`true`}
+          order by seq desc limit 100
+        ), images as (
+          select m.id as message_id, a.id as media_id, a.deleted_at, a.source_ref, a.customer_user_id, a.width, a.height
+          from app.assistant_media a join app.assistant_messages m on m.enterprise_id=a.enterprise_id
+            and m.conversation_id=a.conversation_id and m.client_message_id='media:' || a.request_key
+          where ${canViewImages} and a.enterprise_id=${enterpriseId} and a.conversation_id=${conversationId}
+            and m.author_kind='user' and m.purpose='media.upload'
+        )
+        select m.id, m.seq, m.author_kind, m.admin_id, m.content, m.purpose,
+          i.media_id, i.deleted_at as media_deleted_at, i.source_ref, i.customer_user_id, i.width, i.height
+        from (select id from recent union select message_id from images) visible
+        join app.assistant_messages m on m.id=visible.id left join images i on i.message_id=m.id
+        order by m.seq`);
       const summary = await one(repo.tx, sql`select id,status,draft_fields,confirmed_fields from app.assistant_requirement_summaries
         where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and status!='redacted' order by id desc limit 1`);
       const projected = await this.project(repo,c);
       const packet: Row = { ...h.packet, summary: summary || null };
-      for (const m of messages) if (!await agentMessageAvailable(repo.tx, this.actor.enterpriseId, conversationId, String(m.id))) {
-        m.content = { version: 1, blocks: [{ type: 'text', text: '这条回答所依据的资料已不可用，请重新提问。' }] };
+      const history = [];
+      for (const m of messages) {
+        const messageId = String(m.id);
+        const available = await agentMessageAvailable(repo.tx, enterpriseId, conversationId, messageId);
+        const message = {
+          id: messageId, seq: String(m.seq), authorKind: m.author_kind,
+          isOwn: String(m.admin_id) === String(staff.id),
+          text: available ? safeText(m.content as Parameters<typeof safeText>[0]) : '这条回答所依据的资料已不可用，请重新提问。',
+        };
+        if (inlineImages && m.author_kind === 'user' && m.purpose === 'media.upload') {
+          const image = available && m.media_id && !m.media_deleted_at && await formalMediaSourceAvailable(repo.tx, enterpriseId, m)
+            ? { id: String(m.media_id), width: Number(m.width), height: Number(m.height) }
+            : null;
+          history.push({ ...message, image });
+        } else {
+          history.push(message);
+        }
       }
       return {...projected, handoff: { ...projected.handoff, packet },
         candidates: await this.candidates(repo, conversationId, staff),
-        messages:messages.reverse().map(m=>({id:String(m.id),seq:String(m.seq),authorKind:m.author_kind,isOwn: String(m.admin_id) === String(staff.id),text:safeText(m.content as Parameters<typeof safeText>[0])}))};
+        messages: history};
     });
   }
   staffWrite(conversationId:string,requestKey:string,input:Row) {

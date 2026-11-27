@@ -18,13 +18,13 @@ export async function staffHandoffHttp(request:Request,path:string[]) {
     return NextResponse.json({success:true,data},{headers:{'Cache-Control':'no-store'}});
   }catch(e){return handoffError(e);}
 }
-export async function handleHandoff(request:Request,path:string[],actor:ActorContext) {
+export async function handleHandoff(request:Request,path:string[],actor:ActorContext,options: { inlineImages?: boolean } = {}) {
   const service=new HandoffService(actor);
   if(request.method==='GET' && path[1]==='media' && [2,3].includes(path.length))return mediaHttp(request,actor,id(path[0]),path.slice(2));
   if(request.method==='GET' && !path.length)return service.staffList();
   if(path.length!==1)fail('assistant_resource_not_found',404);
   const conversationId=id(path[0]);
-  if(request.method==='GET')return service.staffRead(conversationId);
+  if(request.method==='GET')return service.staffRead(conversationId,options);
   if(request.method!=='POST')fail('assistant_resource_not_found',404);
   const text=await request.text();if(text.length>12000)fail('invalid_message',422);
   let body;try{body=JSON.parse(text);}catch{fail('invalid_message',422);}
