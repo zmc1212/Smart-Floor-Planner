@@ -82,7 +82,7 @@ test('Enterprise consultation history includes ordinary chats with tenant, media
 
     const request = (name: string, path: string[] = [], query = '', eid = enterpriseId) => {
       const account = accounts.get(name);
-      const headers = account ? { Cookie: `auth_token=${account.token}${eid ? `; global_tenant_id=${eid}` : ''}` } : {};
+      const headers = account ? { Cookie: `auth_token=${account.token}${eid ? `; global_tenant_id=${eid}` : ''}` } : undefined;
       return GET(new NextRequest('http://localhost:3006/api/assistant/consultations/' + path.join('/') + query, { headers }),
         { params: Promise.resolve({ path }) });
     };
