@@ -446,16 +446,14 @@ export class SiteChatService {
       inspection_triage: ['expectedVersion', 'mode', 'reason'] };
     if (!allowed[action]) fail('construction_not_found', 404);
     object(body, allowed[action]); version(body.expectedVersion);
-    return this.scope(projectId, true, (tx, c, p, permission) => idempotent(tx, this.actor, `site:${projectId}:${recordId}:${action}`, requestKey, body, async () => {
+    const reviewAction = ['publish', 'request_changes', 'inspection_triage'].includes(action);
+    const writeRecord = async (tx: PostgresTransaction, c: Row, p: Row, permission: SitePermission) => {
       const eid = this.staff.enterpriseId;
-      const reviewAction = ['publish', 'request_changes', 'inspection_triage'].includes(action);
-      if (!permission.recordWrite && !(reviewAction && permission.reviewRecords)) fail('construction_forbidden', 403);
       let scheduleCompletion;
       const r = await one(tx, sql`select r.*,(${inspectionEvidenceAvailable}) as inspection_evidence_available,q.status as run_status
         from app.construction_site_records r left join app.assistant_runs q on q.enterprise_id=r.enterprise_id and q.id=r.run_id
         where r.enterprise_id=${eid} and r.project_id=${projectId} and r.id=${recordId} for update of r`);
-      if (!r || (!permission.manage && String(r.author_id) !== this.staff.adminId
-        && !(reviewAction && permission.reviewRecords))) fail('construction_forbidden', 403);
+      if (!r || (!permission.manage && String(r.author_id) !== this.staff.adminId && !reviewAction)) fail('construction_forbidden', 403);
       if (Number(r.version) !== body.expectedVersion) fail('version_conflict');
       if (action === 'resubmit') {
         if (String(r.author_id) !== this.staff.adminId) fail('construction_forbidden', 403);
@@ -507,7 +505,6 @@ export class SiteChatService {
       }
       if (r.run_id) await cancelRuns(tx, this.actor, String(c.id), String(r.run_id));
       if (action === 'inspection_triage') {
-        if (!permission.reviewRecords || p.archived_at) fail('construction_forbidden', 403);
         if (!mayTriage(r) || (r.inspection_checkpoint && body.mode !== 'onsite')) fail('inspection_context_changed', 409);
         if (!['onsite', 'remote'].includes(String(body.mode))) fail('invalid_construction', 422);
         const note = text(body.reason, 500), data = r.data as Row;
@@ -517,7 +514,6 @@ export class SiteChatService {
         await tx.execute(sql`update app.construction_site_records set status='draft',data=${JSON.stringify(draft)}::jsonb,
           inspection_decision=${JSON.stringify(decision)}::jsonb where enterprise_id=${eid} and id=${recordId}`);
       } else if (action === 'request_changes') {
-        if (!permission.reviewRecords) fail('construction_forbidden', 403);
         if (!['draft','published'].includes(String(r.status)) && !(r.status === 'organizing' && mayTriage(r))) fail('site_rework_state_conflict');
         const requirements = text(body.requirements, 1000);
         await tx.execute(sql`update app.construction_site_records set status='changes_requested',review_requirements=${requirements},returned_by=${this.staff.adminId},returned_at=now(),
@@ -530,12 +526,6 @@ export class SiteChatService {
         await tx.execute(sql`update app.construction_site_records set data=${JSON.stringify(data)}::jsonb,room_id=${data.roomId},room_name_snapshot=${String(room?.name || '')},status='draft',audience='internal',published_version=null,published_customer_id=null,approved_by=null,published_at=null,withdrawal_reason='',
           inspection_receipt=null where enterprise_id=${eid} and id=${recordId}`);
       } else if (action === 'publish') {
-        // Reviewers publish any record; an author who may write records can still
-        // submit their own evidence to the internal audience. Customer-facing
-        // publication remains restricted by canPublishCustomer below.
-        const authorInternal = permission.write && permission.recordWrite
-          && String(r.author_id) === this.staff.adminId && body.audience === 'internal';
-        if (!permission.reviewRecords && !authorInternal) fail('construction_forbidden', 403);
         if (body.scheduleCompletion !== undefined) {
           if (!permission.collaboration || !permission.manage) fail('construction_forbidden', 403);
           scheduleCompletion = await confirmScheduleCompletion(tx, eid, p, r, body.scheduleCompletion);
@@ -561,7 +551,12 @@ export class SiteChatService {
         values(${eid},${'construction.record.' + action + '.v1'},'construction_site_record',${recordId},${Number(updated.version)},
         ${JSON.stringify(this.actor.principal)}::jsonb,${requestKey},${JSON.stringify({ projectId, recordId, version: updated.version, ...(scheduleCompletion ? { scheduleCompletion } : {}) })}::jsonb)`);
       return { id: recordId, version: Number(updated.version), status: updated.status, audience: updated.audience };
-    }));
+    };
+    return this.scope(projectId, true, (tx, c, p, permission) => {
+      // Check the current role even when the request has a saved receipt.
+      if (reviewAction ? !permission.reviewRecords : !permission.recordWrite) fail('construction_forbidden', 403);
+      return idempotent(tx, this.actor, `site:${projectId}:${recordId}:${action}`, requestKey, body, () => writeRecord(tx, c, p, permission));
+    });
   }
   versions(projectId: string, recordId: string) {
     id(recordId);

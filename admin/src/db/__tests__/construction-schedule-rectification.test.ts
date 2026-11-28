@@ -127,7 +127,7 @@ test('the plan version turns real records and stage moves into 提前 / 正常 /
     completed: '墙面底漆完成', pending: '', coordination: '', note: '' }), toolCalls: [], finishReason: 'stop', providerRequestId: null,
     usage: { inputTokens: 70, outputTokens: 30 } }));
   const bedroomRecord = String(bedroom.recordId);
-  await worker.mutate(pid, bedroomRecord, 'publish', { expectedVersion: await recordVersion(worker, bedroomRecord), audience: 'internal' }, randomUUID());
+  await boss.mutate(pid, bedroomRecord, 'publish', { expectedVersion: await recordVersion(worker, bedroomRecord), audience: 'internal' }, randomUUID());
 
   // A stage that is removed after publication leaves an unverifiable node, not a normal one.
   const kept = (await act('stages', {})).stages as Row[];
@@ -211,7 +211,7 @@ test('confirm, assign and rectify keep one business status; the worker return ne
     completed: '插座底盒复位并补漆完成', pending: '', coordination: '', note: '' }), toolCalls: [], finishReason: 'stop',
     providerRequestId: null, usage: { inputTokens: 80, outputTokens: 35 } }));
   proofRecordId = String(record.recordId);
-  await worker.mutate(pid, proofRecordId, 'publish', { expectedVersion: await recordVersion(worker, proofRecordId), audience: 'internal' }, randomUUID());
+  await boss.mutate(pid, proofRecordId, 'publish', { expectedVersion: await recordVersion(worker, proofRecordId), audience: 'internal' }, randomUUID());
   await command(worker, `回复事项${issueId}：底盒已复位并补漆，现场记录${proofRecordId}含整改照片。`);
   assert.equal((await issueView())!.status, 'awaiting_review');
   // The manager may disclose the bounded state to the original consultation,
@@ -262,7 +262,7 @@ test('a misreport can be excluded with a reason and reopened without keeping the
     completed: '墙面修补', pending: '有色差', coordination: '', note: '' }), toolCalls: [], finishReason: 'stop',
     providerRequestId: null, usage: { inputTokens: 60, outputTokens: 20 } }));
   const recordId = String(sent.recordId);
-  await worker.mutate(pid, recordId, 'publish', { expectedVersion: await recordVersion(worker, recordId), audience: 'internal' }, randomUUID());
+  await boss.mutate(pid, recordId, 'publish', { expectedVersion: await recordVersion(worker, recordId), audience: 'internal' }, randomUUID());
   await command(boss, `跟进记录${recordId}：核对墙面色差是否属于施工问题。`);
   const issues = await withTenantTransaction(eids[0], tx => projectSiteIssues(tx, eids[0], pid));
   const second = issues.find(item => item.issueId !== issueId)!;

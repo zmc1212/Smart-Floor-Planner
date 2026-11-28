@@ -23,7 +23,7 @@ import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { signMiniProgramToken, verifyFamilyInvite } from '@/lib/miniprogram-jwt';
 import { NextRequest } from 'next/server';
 import { SignJWT } from 'jose';
-import { GET } from '@/app/api/miniprogram/construction/[[...path]]/route';
+import { GET, POST } from '@/app/api/miniprogram/construction/[[...path]]/route';
 import { GET as adminGet, POST as adminPost } from '@/app/api/construction/[[...path]]/route';
 import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
@@ -47,6 +47,8 @@ const actor = (index = 0, staffIndex = 0) => ({ enterpriseId: eids[index], admin
   ...(index === 0 && staffIndex === 0 ? { miniProgramUserId: workerUser, miniProgramContextVersion: 1 } : {}) });
 const site = (index = 0, staffIndex = 0) => new SiteChatService(actor(index, staffIndex));
 const boss = () => new SiteChatService({ enterpriseId: eids[0], adminId: owners[0] });
+const signWorkerToken = () => signMiniProgramToken({ sub: workerUser, id: workerUser, mode: 'staff', role: 'construction_staff',
+  staffRole: 'construction_staff', staffId: staffIds[0][0], enterpriseId: eids[0], contextVersion: 1, source: 'phone' });
 const read = () => site().read(pid);
 const record = async (id = rid) => ((await read()).items as Row[]).find(x => String((x.record as Row).id) === id)!.record as Row;
 const act = (action: string, body: Row) => owner.execute(action, body, randomUUID());
@@ -115,7 +117,7 @@ test('shared conversation is project-owned; designer, worker and owner reenter t
   await assert.rejects(withTenantTransaction(eids[0], tx => new AssistantRepository(tx, site().actor).conversation(cid)));
 });
 test('phone-authorized first-password-change staff can use the HTTP entry without acquiring customer/private-chat access', async () => {
-  const token = await signMiniProgramToken({ sub: workerUser, id: workerUser, mode: 'staff', role: 'construction_staff', staffRole: 'construction_staff', staffId: staffIds[0][0], enterpriseId: eids[0], contextVersion: 1, source: 'phone' });
+  const token = await signWorkerToken();
   const response = await GET(new NextRequest(`http://localhost:3006/api/miniprogram/construction/projects/${pid}/chat`, { headers: { Authorization: 'Bearer ' + token } }), { params: Promise.resolve({ path: ['projects',pid,'chat'] }) });
   assert.equal(response.status, 200);
 });
@@ -167,10 +169,39 @@ test('explicit watch uses the original private chat with a real receipt and visi
 });
 test('internal publication never opens the source chat or notifies the homeowner; workers cannot approve their own report', async () => {
   const version = (await record()).version;
-  await assert.rejects(site().mutate(pid, rid, 'publish', { expectedVersion: version, audience: 'customer' }, randomUUID()), { code: 'construction_forbidden' });
-  await assert.rejects(site().mutate(pid, rid, 'publish', { expectedVersion: version, audience: 'internal' }, randomUUID()), { code: 'construction_forbidden' });
-  await boss().mutate(pid, rid, 'publish', { expectedVersion: version, audience: 'internal' }, randomUUID());
+  const token = await signWorkerToken();
+  const path = ['projects', pid, 'chat', 'records', rid, 'publish'];
+  for (const audience of ['internal', 'customer']) {
+    const response = await POST(new NextRequest('http://localhost:3006/api/miniprogram/construction/' + path.join('/'), {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Idempotency-Key': randomUUID() },
+      body: JSON.stringify({ expectedVersion: version, audience }),
+    }), { params: Promise.resolve({ path }) });
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).error, 'construction_forbidden');
+  }
+  const pending = await record();
+  assert.equal(pending.version, version);
+  assert.equal(pending.status, 'draft');
+  assert.equal(pending.approved_by, null);
+  assert.equal(pending.published_version, null);
+  const event = await withTenantTransaction(eids[0], tx => one(tx, sql`select id from app.domain_event_outbox
+    where enterprise_id=${eids[0]} and type='construction.record.publish.v1' and aggregate_id=${rid}`));
+  assert.ok(!event);
+  const reviewer = site(0, 1), reviewBody = { expectedVersion: version, audience: 'internal' }, reviewKey = randomUUID();
+  const approved = await reviewer.mutate(pid, rid, 'publish', reviewBody, reviewKey);
+  assert.equal(String((await record()).approved_by), staffIds[0][1]);
+  assert.deepEqual(await reviewer.mutate(pid, rid, 'publish', reviewBody, reviewKey), approved);
   assert.ok(!(await privateChat.messages(cid)).items.some((m: Row) => m.siteRecord));
+
+  const membership = { projectId: pid, adminId: staffIds[0][1], active: true, workLabel: '' };
+  await act('member', { ...membership, expectedVersion: await pv(), role: 'worker' });
+  try {
+    await assert.rejects(reviewer.mutate(pid, rid, 'publish', reviewBody, reviewKey),
+      { code: 'construction_forbidden', status: 403 });
+  } finally {
+    await act('member', { ...membership, expectedVersion: await pv(), role: 'designer' });
+  }
 });
 test('manager publication exposes only this reviewed version and associated photos, and reentry does not duplicate delivery', async () => {
   await edit(); const result = await publish();
@@ -292,7 +323,14 @@ test('manager returns require instructions; new-photo resubmissions retain the o
     const visible = ((await site().read(pid)).items as Row[]).find(i => (i.record as Row)?.id === childId)!.record as Row;
     assert.equal(visible.canPublish, false); assert.equal(visible.review_requirements, requirements);
     assert.deepEqual((visible.media as Row[]).map(m => m.id), [newPhoto]);
-    await assert.rejects(site().mutate(pid, childId, 'publish', { expectedVersion: child.version, audience: 'internal' }, randomUUID()), { code: 'construction_forbidden' });
+    for (const audience of ['internal', 'customer']) {
+      await assert.rejects(site().mutate(pid, childId, 'publish', { expectedVersion: child.version, audience }, randomUUID()),
+        { code: 'construction_forbidden', status: 403 });
+    }
+    const pending = (await get(childId))!;
+    assert.equal(pending.status, 'draft');
+    assert.equal(pending.version, child.version);
+    assert.equal(pending.approved_by, null);
     await manager.mutate(pid, childId, 'publish', { expectedVersion: child.version, audience: 'customer' }, randomUUID());
     const versions = (await manager.versions(pid, childId)).items as Row[];
     assert.ok(versions.some(v => (v.snapshot as Row).recordId === originalId));

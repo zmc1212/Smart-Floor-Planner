@@ -1106,7 +1106,7 @@ C01 `packages/assistant/chat/chat` 展示防水专业回答、有据检查清单
 
 `packages/construction/inspection-record/inspection-record` 读取单条原描述、照片、语音和版本。经理、设计师及企业负责人在此确认审核方式、内审、定位后审核或退回补充。聊天中的审核链接进入同一个独立页。工人从历史打开原上报回执和补交入口。上报页提供企业已配置的可选必到工序。权限变化、原件撤回或版本冲突时重新读取。旧上报与证据不足的上报可由获权审核人确认方式。
 
-专职施工经理和兼任施工经理的设计师从原工作台「排期与分工」上方的「记进展」进入原 V004 现场上报。已有工序时预选该工序，填文字或加照片后可预览原内容和可见范围，然后确认发布。语音可随原件留在内部。必到工序仍走到场审核，施工师傅仍从工地独立上报页「提交审核」。原记录用 `GET /api/miniprogram/construction/inspection/projects/:projectId/records/:recordId` 读取业主可见结果和日报、周报各自状态。日报生成前，业主从原工地详情就能看到获权进展和首张照片。已获授权的家人在原施工进度卡读到进展文字。「下一步」和排期继续使用已保存的业务信息。[局部确认图](../design-references/owner-site-staff-workbench-20261126-v2/lightweight-site-approved-20261128.png) · [隔离服务验收](../tmp/lightweight-site-20261128/service-final.log) · [Stable 原生写入与重进](../tmp/lightweight-site-20261128/stable-02/native.json)。
+专职施工经理和兼任施工经理的设计师从原工作台「排期与分工」上方的「记进展」进入原 V004 现场上报。已有工序时预选该工序，填文字或加照片后可预览原内容和可见范围，然后确认发布。语音可随原件留在内部。必到工序仍走到场审核。施工师傅从工地独立上报页「提交审核」，原上报和补交在获权人员审核前保持待审核，内部发布也需要审核权限。原记录用 `GET /api/miniprogram/construction/inspection/projects/:projectId/records/:recordId` 读取业主可见结果和日报、周报各自状态。日报生成前，业主从原工地详情就能看到获权进展和首张照片。已获授权的家人在原施工进度卡读到进展文字。「下一步」和排期继续使用已保存的业务信息。[局部确认图](../design-references/owner-site-staff-workbench-20261126-v2/lightweight-site-approved-20261128.png) · [隔离服务验收](../tmp/lightweight-site-20261128/service-final.log) · [Stable 原生写入与重进](../tmp/lightweight-site-20261128/stable-worker-approval-01/native.json)。
 
 选站页列出必到／建议到场、待办数和缺位置状态，允许有权人员在工地入口定位补点。可选当前位置、地图位置或已确认的工地入口作为起点，支持最多八站及一站优先。连接中断时沿用同一算路请求标识，等待 PostgreSQL 任务完成或接管。执行页显示下一站、首条待办、后续顺序与固定底部操作。微信原生底图使用 GCJ-02 展示 WGS84 点位和天地图驾车路线，地图选点按反向转换提交。分段车程以分钟展示，概览累计同一组数字。
 

@@ -54,7 +54,7 @@ async function record(completed = false, published = false, withImage = complete
   await processSiteRecord(lease!, async () => ({text:JSON.stringify({title:'合成现场记录',roomId:room,completed:completed?'右侧插座已安装':'',pending:completed?'':'底盒待核对',coordination:'',note:''}),toolCalls:[],finishReason:'stop',providerRequestId:null,usage:{inputTokens:50,outputTokens:40}}));
   const rid = String(sent.recordId);
   let r = (await withTenantTransaction(eids[0],tx=>one(tx,sql`select version from app.construction_site_records where enterprise_id=${eids[0]} and id=${rid}`)))!;
-  if (published) r=await worker.mutate(pid,rid,'publish',{expectedVersion:Number(r.version),audience:'internal'},randomUUID());
+  if (published) r=await boss.mutate(pid,rid,'publish',{expectedVersion:Number(r.version),audience:'internal'},randomUUID());
   const original=await withTenantTransaction(eids[0],tx=>one(tx,sql`select media_id from app.construction_site_attachments where enterprise_id=${eids[0]} and project_id=${pid} and record_id=${rid} order by position limit 1`));
   return {id:rid,version:Number(r.version),mediaId:String(original?.media_id || '')};
 }

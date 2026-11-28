@@ -168,7 +168,7 @@ test('worker feedback is linked to the approved plan; evidence stays unverified 
     toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 90, outputTokens: 40 } }));
   evidenceId = String(sent.recordId);
   const versions = (await worker.read(pid)).versions as { records: Record<string, number> };
-  await worker.mutate(pid, evidenceId, 'publish', { expectedVersion: versions.records[evidenceId], audience: 'internal' }, randomUUID());
+  await boss.mutate(pid, evidenceId, 'publish', { expectedVersion: versions.records[evidenceId], audience: 'internal' }, randomUUID());
   await command(designer, `落实事项${issueId}方案${planId}记录${evidenceId}：书房插座底盒按已确认版本安装完成。`);
   assert.equal((await issueView())!.status, 'implemented');
   const ownerView = (await ownerIssues()).find(item => item.kind === 'need_review'); assert.ok(ownerView);
